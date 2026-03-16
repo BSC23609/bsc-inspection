@@ -1,0 +1,963 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Bharat Steel – Inspection Portal</title>
+
+<!-- ✅ STEP 1: Paste your Azure App Client ID below -->
+<script>
+  var CLIENT_ID = '5aac2be9-f6f4-44a1-b15b-25af5684377d';
+  var ONEDRIVE_FOLDER = 'BSC Inspections';
+</script>
+
+<!-- Microsoft Authentication Library -->
+<script src="https://alcdn.msauth.net/browser/2.38.3/js/msal-browser.min.js"></script>
+
+<!-- SheetJS for Excel generation -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap');
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --brand:#B91C1C;--brand-dark:#7F1D1D;--brand-light:#FEF2F2;
+  --green:#15803D;--green-bg:#DCFCE7;--green-border:#16A34A;
+  --blue:#1D4ED8;--blue-bg:#EFF6FF;
+  --gray-50:#F9FAFB;--gray-100:#F3F4F6;--gray-200:#E5E7EB;
+  --gray-400:#9CA3AF;--gray-600:#4B5563;--gray-800:#1F2937;
+  --font:'IBM Plex Sans',sans-serif;
+  --r:8px;--rlg:12px;--rxl:16px
+}
+body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);font-size:14px;min-height:100vh;-webkit-font-smoothing:antialiased}
+
+/* SCREENS */
+.screen{display:none;min-height:100vh;flex-direction:column}
+.screen.active{display:flex}
+
+/* ============================
+   HOME SCREEN
+   ============================ */
+.home-header{background:var(--brand);padding:36px 24px 32px;color:#fff;text-align:center}
+.home-logo{width:56px;height:56px;background:rgba(255,255,255,0.15);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;letter-spacing:0.05em;margin:0 auto 14px;border:1.5px solid rgba(255,255,255,0.25)}
+.home-title{font-size:22px;font-weight:600}
+.home-company{font-size:13px;opacity:0.75;margin-top:4px}
+
+.home-body{flex:1;padding:28px 20px;max-width:480px;margin:0 auto;width:100%}
+.section-label{font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--gray-400);margin-bottom:12px}
+
+.form-card{background:#fff;border-radius:var(--rlg);border:1px solid var(--gray-200);padding:20px;cursor:pointer;transition:all 0.18s;display:flex;align-items:center;gap:16px;margin-bottom:12px;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+.form-card:hover{border-color:var(--brand);box-shadow:0 4px 16px rgba(185,28,28,0.1);transform:translateY(-1px)}
+.form-card:active{transform:translateY(0);box-shadow:none}
+.card-icon{width:48px;height:48px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:22px}
+.card-icon.red{background:var(--brand-light)}
+.card-icon.green{background:var(--green-bg)}
+.card-body{flex:1}
+.card-title{font-size:15px;font-weight:600;color:var(--gray-800);margin-bottom:3px}
+.card-desc{font-size:12px;color:var(--gray-400);line-height:1.5}
+.card-arrow{font-size:20px;color:var(--gray-400)}
+.form-card:hover .card-arrow{color:var(--brand)}
+
+/* AUTH STATUS CARD */
+.auth-card{background:#fff;border-radius:var(--rlg);border:1px solid var(--gray-200);padding:14px 16px;margin-bottom:20px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.auth-status{display:flex;align-items:center;gap:8px;font-size:12px}
+.auth-dot{width:8px;height:8px;border-radius:50%;background:var(--gray-200);flex-shrink:0}
+.auth-dot.connected{background:#4ADE80}
+.auth-dot.connecting{background:#FDE047;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.auth-text{color:var(--gray-600);line-height:1.4}
+.auth-text strong{color:var(--gray-800);display:block;font-size:13px}
+.connect-btn{padding:7px 14px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:6px;transition:all 0.15s}
+.connect-btn:hover{background:var(--gray-50);border-color:var(--gray-400)}
+.connect-btn.connected{border-color:var(--green-border);color:var(--green)}
+
+.home-footer{padding:20px;text-align:center;font-size:11px;color:var(--gray-400)}
+
+/* ============================
+   FORM SCREENS
+   ============================ */
+.form-topbar{background:var(--brand);color:#fff;padding:0 16px;display:flex;align-items:center;height:52px;gap:12px;position:sticky;top:0;z-index:50;flex-shrink:0;box-shadow:0 2px 8px rgba(185,28,28,0.3)}
+.back-btn{width:34px;height:34px;border-radius:8px;background:rgba(255,255,255,0.15);border:1px solid rgba(255,255,255,0.2);color:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;transition:background 0.15s}
+.back-btn:hover{background:rgba(255,255,255,0.25)}
+.topbar-info{flex:1;min-width:0}
+.topbar-title{font-size:14px;font-weight:600;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar-sub{font-size:10px;opacity:0.7}
+.topbar-badge{font-size:10px;background:rgba(255,255,255,0.15);padding:3px 9px;border-radius:4px;font-weight:600;letter-spacing:0.04em;white-space:nowrap;border:1px solid rgba(255,255,255,0.2)}
+
+.form-scroll{flex:1;overflow-y:auto;padding:20px 16px 110px;max-width:860px;margin:0 auto;width:100%}
+
+/* SECTION CARDS */
+.sec-card{background:#fff;border-radius:var(--rlg);border:1px solid var(--gray-200);margin-bottom:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
+.sec-head{padding:12px 18px;background:var(--gray-50);border-bottom:1px solid var(--gray-200);font-size:10px;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:var(--gray-400);display:flex;align-items:center;gap:8px}
+.sec-head-icon{font-size:14px}
+.sec-body{padding:18px}
+
+/* FIELDS */
+.fg{display:grid;gap:13px;margin-bottom:13px}
+.fg:last-child{margin-bottom:0}
+.fg-1{grid-template-columns:1fr}
+.fg-2{grid-template-columns:1fr 1fr}
+.fg-3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:540px){.fg-2{grid-template-columns:1fr 1fr}.fg-3{grid-template-columns:1fr 1fr}}
+@media(max-width:380px){.fg-2,.fg-3{grid-template-columns:1fr}}
+
+.field{display:flex;flex-direction:column;gap:5px}
+.field label{font-size:11px;font-weight:600;color:var(--gray-600);text-transform:uppercase;letter-spacing:0.05em}
+.req{color:var(--brand)}
+.field input,.field select,.field textarea{
+  padding:9px 11px;border-radius:var(--r);border:1px solid var(--gray-200);
+  background:#fff;color:var(--gray-800);font-family:var(--font);font-size:13px;
+  outline:none;transition:border-color 0.15s,box-shadow 0.15s;width:100%
+}
+.field input:focus,.field select:focus,.field textarea:focus{
+  border-color:var(--brand);box-shadow:0 0 0 3px rgba(185,28,28,0.08)
+}
+.field textarea{resize:vertical;min-height:68px;line-height:1.5}
+.field select{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%239CA3AF' d='M6 8L1 3h10z'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:28px}
+
+/* PILLS */
+.pills{display:flex;gap:6px;flex-wrap:wrap;margin-top:2px}
+.pill{padding:7px 14px;border-radius:20px;border:1px solid var(--gray-200);font-size:12px;font-weight:500;cursor:pointer;color:var(--gray-600);background:#fff;transition:all 0.15s;user-select:none;white-space:nowrap}
+.pill:hover{border-color:var(--brand);color:var(--brand)}
+.pill.sel{background:var(--brand-light);color:var(--brand);border-color:var(--brand);font-weight:600}
+
+/* YES/NO TOGGLE */
+.yn{display:flex;gap:5px}
+.yn-btn{padding:7px 16px;border-radius:6px;border:1px solid var(--gray-200);font-size:12px;font-weight:500;cursor:pointer;background:#fff;color:var(--gray-600);font-family:var(--font);transition:all 0.15s}
+.yn-btn:hover{border-color:var(--gray-400)}
+.yn-btn.y.a{background:var(--green-bg);color:var(--green);border-color:var(--green-border);font-weight:600}
+.yn-btn.n.a{background:var(--brand-light);color:var(--brand);border-color:var(--brand);font-weight:600}
+
+/* CONDITION GRID */
+.cond-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+@media(max-width:460px){.cond-grid{grid-template-columns:1fr}}
+.cond-row{display:flex;align-items:center;justify-content:space-between;padding:11px 13px;border-radius:var(--r);border:1px solid var(--gray-200);background:var(--gray-50);gap:8px}
+.cond-lbl{font-size:12px;font-weight:500;color:var(--gray-800)}
+
+/* MEASUREMENTS TABLE */
+.tbl-wrap{overflow-x:auto;border:1px solid var(--gray-200);border-radius:var(--r)}
+.meas-tbl{width:100%;border-collapse:collapse;font-size:12px;min-width:600px}
+.meas-tbl th{padding:10px 8px;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--gray-400);background:var(--gray-50);text-align:left;border-bottom:1px solid var(--gray-200);white-space:nowrap}
+.meas-tbl td{padding:5px 5px;border-bottom:1px solid var(--gray-100)}
+.meas-tbl tr:last-child td{border-bottom:none}
+.meas-tbl tr:hover td{background:var(--gray-50)}
+.meas-tbl input{width:100%;padding:6px 7px;border-radius:5px;border:1px solid transparent;background:transparent;color:var(--gray-800);font-family:var(--font);font-size:12px;outline:none;transition:all 0.15s}
+.meas-tbl input:hover{border-color:var(--gray-200);background:#fff}
+.meas-tbl input:focus{border-color:var(--brand);background:#fff;box-shadow:0 0 0 2px rgba(185,28,28,0.07)}
+.row-del{padding:4px 8px;border:none;background:transparent;color:var(--gray-400);cursor:pointer;border-radius:4px;font-size:13px;transition:all 0.15s}
+.row-del:hover{color:var(--brand);background:var(--brand-light)}
+.add-row-btn{margin-top:10px;padding:7px 16px;border-radius:var(--r);border:1px dashed var(--gray-200);background:transparent;color:var(--gray-400);font-family:var(--font);font-size:12px;font-weight:500;cursor:pointer;transition:all 0.15s}
+.add-row-btn:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-light)}
+
+/* PROCESSED QTY */
+.pq-table{width:100%;border-collapse:collapse}
+.pq-table th{padding:9px 10px;font-size:10px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;color:var(--gray-400);background:var(--gray-50);text-align:left;border-bottom:1px solid var(--gray-200)}
+.pq-table th:first-child{border-right:1px solid var(--gray-200)}
+.pq-table td{padding:6px 6px;border-bottom:1px solid var(--gray-100);vertical-align:middle}
+.pq-table tr:last-child td{border-bottom:none}
+.pq-table tr:hover td{background:var(--gray-50)}
+.pq-size-lbl{font-size:12px;font-weight:700;color:var(--gray-600);padding:6px 10px;white-space:nowrap;border-right:1px solid var(--gray-200);min-width:60px}
+.pq-inp{width:100%;padding:6px 8px;border-radius:5px;border:1px solid transparent;background:transparent;color:var(--gray-800);font-family:var(--font);font-size:12px;outline:none;transition:all 0.15s;min-width:70px}
+.pq-inp:hover{border-color:var(--gray-200);background:#fff}
+.pq-inp:focus{border-color:var(--brand);background:#fff;box-shadow:0 0 0 2px rgba(185,28,28,0.07)}
+
+/* PHOTO UPLOAD */
+.photo-upload{border:2px dashed var(--gray-200);border-radius:var(--r);padding:20px 16px;text-align:center;cursor:pointer;transition:all 0.15s;color:var(--gray-400)}
+.photo-upload:hover{border-color:var(--brand);background:var(--brand-light);color:var(--brand)}
+.photo-upload input{display:none}
+.photo-upload-icon{font-size:24px;margin-bottom:6px}
+.photo-upload-text{font-size:12px;font-weight:500}
+.photo-upload-sub{font-size:10px;margin-top:3px;opacity:0.7}
+.photo-previews{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.photo-thumb{width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid var(--gray-200)}
+
+/* SUBMIT BAR */
+.submit-bar{position:fixed;bottom:0;left:0;right:0;background:#fff;border-top:1px solid var(--gray-200);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;z-index:50;box-shadow:0 -4px 16px rgba(0,0,0,0.06)}
+.submit-info{font-size:11px;color:var(--gray-400);line-height:1.5}
+.submit-info strong{color:var(--gray-800)}
+.submit-btns{display:flex;gap:8px;flex-shrink:0}
+.btn-primary{padding:10px 20px;border-radius:var(--r);border:none;background:var(--brand);color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer;transition:background 0.15s;display:flex;align-items:center;gap:8px;white-space:nowrap}
+.btn-primary:hover{background:var(--brand-dark)}
+.btn-primary:disabled{opacity:0.45;cursor:not-allowed}
+.btn-sec{padding:10px 16px;border-radius:var(--r);border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:var(--font);font-size:13px;cursor:pointer;transition:background 0.15s;font-weight:500}
+.btn-sec:hover{background:var(--gray-50)}
+.spinner{width:15px;height:15px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:spin 0.7s linear infinite;display:none;flex-shrink:0}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+/* TOAST */
+.toast{position:fixed;bottom:80px;right:16px;padding:13px 17px;border-radius:var(--rlg);font-size:13px;font-weight:500;z-index:999;display:none;max-width:320px;line-height:1.5;box-shadow:0 4px 24px rgba(0,0,0,0.12)}
+.toast.ok{background:var(--green-bg);color:#14532D;border:1px solid var(--green-border)}
+.toast.err{background:var(--brand-light);color:#7F1D1D;border:1px solid var(--brand)}
+.toast.inf{background:#fff;color:var(--gray-800);border:1px solid var(--gray-200)}
+.toast.show{display:block;animation:tin 0.2s ease}
+@keyframes tin{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+
+/* SUCCESS SCREEN */
+.success-screen{position:fixed;inset:0;background:#fff;z-index:200;display:none;flex-direction:column;align-items:center;justify-content:center;padding:32px;text-align:center}
+.success-screen.show{display:flex}
+.success-icon{width:72px;height:72px;border-radius:50%;background:var(--green-bg);display:flex;align-items:center;justify-content:center;font-size:32px;margin-bottom:20px;border:2px solid var(--green-border)}
+.success-title{font-size:20px;font-weight:600;margin-bottom:8px;color:var(--gray-800)}
+.success-ref{font-size:13px;color:var(--gray-400);margin-bottom:6px}
+.success-path{font-size:12px;color:var(--blue);background:var(--blue-bg);padding:8px 14px;border-radius:6px;margin:12px 0 24px;font-family:monospace}
+.success-btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+.btn-green{padding:11px 22px;border-radius:var(--r);border:none;background:var(--green);color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer}
+.btn-outline{padding:11px 22px;border-radius:var(--r);border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer}
+</style>
+</head>
+<body>
+
+<!-- ============================
+     HOME SCREEN
+     ============================ -->
+<div class="screen active" id="screen-home">
+  <div class="home-header">
+    <div class="home-logo" id="homeLogo" onclick="adminTap()">BSC</div>
+    <div class="home-title">Bharat Steel (Chennai)</div>
+    <div class="home-company">Inspection Portal · BSCQMS</div>
+  </div>
+
+  <div class="home-body">
+
+    <!-- OneDrive status - hidden from users, admin only -->
+    <div class="auth-card" id="authCard" style="display:none">
+      <div class="auth-status">
+        <div class="auth-dot" id="authDot"></div>
+        <div class="auth-text">
+          <strong id="authTitle">Not connected</strong>
+          <span id="authSub">Admin: connect OneDrive to enable saving</span>
+        </div>
+      </div>
+      <button class="connect-btn" id="connectBtn" onclick="connectOneDrive()">
+        <svg width="14" height="14" viewBox="0 0 21 21"><rect x="0" y="0" width="10" height="10" fill="#F25022"/><rect x="11" y="0" width="10" height="10" fill="#7FBA00"/><rect x="0" y="11" width="10" height="10" fill="#00A4EF"/><rect x="11" y="11" width="10" height="10" fill="#FFB900"/></svg>
+        Sign in
+      </button>
+    </div>
+
+    <div class="section-label">Select a form to fill</div>
+
+    <div class="form-card" onclick="openForm('inward')">
+      <div class="card-icon red">📦</div>
+      <div class="card-body">
+        <div class="card-title">Coil Inward Inspection</div>
+        <div class="card-desc">Vehicle arrival, coil identity, dimensions and physical condition check</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+
+    <div class="form-card" onclick="openForm('quality')">
+      <div class="card-icon green">🔬</div>
+      <div class="card-body">
+        <div class="card-title">CTL Quality Inspection</div>
+        <div class="card-desc">Sheet measurements, processed quantity, final dimensions and sign-off · BSCQMS-PRD-008</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+
+    <div class="home-footer">
+      Submissions saved as Excel log + PDF<br>OneDrive: pdqc@bharatsteels.in / BSC Inspections
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     INWARD INSPECTION FORM
+     ============================ -->
+<div class="screen" id="screen-inward">
+  <div class="form-topbar">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Coil Inward Inspection</div>
+      <div class="topbar-sub">Complete all required fields and submit</div>
+    </div>
+    <div class="topbar-badge">INWARD</div>
+  </div>
+  <div class="form-scroll">
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🚛</span> Vehicle & Coil Identity</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>Vehicle Number <span class="req">*</span></label><input type="text" id="i_vehicle" placeholder="e.g. TN09AB1234" autocomplete="off"></div>
+          <div class="field"><label>Batch Number <span class="req">*</span></label><input type="text" id="i_batch" placeholder="Enter batch number" autocomplete="off"></div>
+        </div>
+        <div class="fg fg-1">
+          <div class="field">
+            <label>Make of Coil <span class="req">*</span></label>
+            <div class="pills" id="ig_make">
+              <div class="pill" onclick="rp('ig_make',this,'SAIL')">SAIL</div>
+              <div class="pill" onclick="rp('ig_make',this,'JSW')">JSW</div>
+              <div class="pill" onclick="rp('ig_make',this,'TATA')">TATA</div>
+              <div class="pill" onclick="rp('ig_make',this,'AMNS')">AMNS</div>
+              <div class="pill" onclick="rp('ig_make',this,'NMDC')">NMDC</div>
+              <div class="pill" onclick="rp('ig_make',this,'JSPL')">JSPL</div>
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-1">
+          <div class="field">
+            <label>Grade <span class="req">*</span></label>
+            <div class="pills" id="ig_grade">
+              <div class="pill" onclick="rp('ig_grade',this,'E250')">E250</div>
+              <div class="pill" onclick="rp('ig_grade',this,'E350/ST52')">E350 / ST52</div>
+              <div class="pill" onclick="rp('ig_grade',this,'HSFQ450/450/EQV')">HSFQ450 / 450 / EQV</div>
+              <div class="pill" onclick="rp('ig_grade',this,'HSFQ550/550/EQV')">HSFQ550 / 550 / EQV</div>
+              <div class="pill" onclick="rpOther('ig_grade',this,'i_grade_other_wrap')">Other</div>
+            </div>
+            <div id="i_grade_other_wrap" style="display:none;margin-top:8px">
+              <input type="text" id="i_grade_other" placeholder="Type grade name..." oninput="rs['ig_grade']=this.value" style="width:100%;padding:8px 11px;border-radius:8px;border:1px solid #B91C1C;background:#fff;color:#1F2937;font-family:inherit;font-size:13px;outline:none">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📏</span> Dimensions</div>
+      <div class="sec-body">
+        <div class="fg fg-1">
+          <div class="field">
+            <label>Width (mm) <span class="req">*</span></label>
+            <div class="pills" id="ig_width">
+              <div class="pill" onclick="rp('ig_width',this,'1250')">1250</div>
+              <div class="pill" onclick="rp('ig_width',this,'1500')">1500</div>
+              <div class="pill" onclick="rp('ig_width',this,'2000')">2000</div>
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-3">
+          <div class="field"><label>Thickness (mm) <span class="req">*</span></label><input type="number" id="i_thick" placeholder="e.g. 3.15" step="0.01"></div>
+          <div class="field"><label>Coil Weight (T)</label><input type="number" id="i_weight" placeholder="e.g. 12.5" step="0.001"></div>
+          <div class="field"><label>Coil ID (mm)</label><input type="number" id="i_coil_id" placeholder="e.g. 610"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Actual Thickness (mm)</label><input type="number" id="i_act_thick" placeholder="Measured value" step="0.01"></div>
+          <div class="field"><label>Actual Width (mm)</label><input type="number" id="i_act_width" placeholder="Measured value"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🔍</span> Physical Condition</div>
+      <div class="sec-body">
+        <div class="cond-grid">
+          <div class="cond-row"><span class="cond-lbl">Identification Sticker</span><div class="yn" id="yn_sticker"><button class="yn-btn y" onclick="yn('yn_sticker','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_sticker','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Edge Damage – Inner</span><div class="yn" id="yn_ei"><button class="yn-btn y" onclick="yn('yn_ei','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_ei','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Edge Damage – Outer</span><div class="yn" id="yn_eo"><button class="yn-btn y" onclick="yn('yn_eo','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_eo','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Scratch Mark</span><div class="yn" id="yn_scratch"><button class="yn-btn y" onclick="yn('yn_scratch','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scratch','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Strapping</span><div class="yn" id="yn_strap"><button class="yn-btn y" onclick="yn('yn_strap','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_strap','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Rust on Surface</span><div class="yn" id="yn_rust"><button class="yn-btn y" onclick="yn('yn_rust','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_rust','N',this)">No</button></div></div>
+        </div>
+        <div class="fg fg-1" style="margin-top:14px">
+          <div class="field">
+            <label>Any Other Damages</label>
+            <div class="pills" id="ig_damage">
+              <div class="pill" onclick="rp('ig_damage',this,'Nil')">Nil</div>
+              <div class="pill" onclick="rp('ig_damage',this,'Oil Marks')">Oil Marks</div>
+              <div class="pill" onclick="rp('ig_damage',this,'Liner Marks')">Liner Marks</div>
+              <div class="pill" onclick="rp('ig_damage',this,'Rope Damage')">Rope Damage</div>
+              <div class="pill" onclick="rp('ig_damage',this,'Other')">Other</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">👤</span> Inspector & Remarks</div>
+      <div class="sec-body">
+        <div class="fg fg-1">
+          <div class="field">
+            <label>Inspected By <span class="req">*</span></label>
+            <div class="pills" id="ig_inspector">
+              <div class="pill" onclick="rp('ig_inspector',this,'Sathya')">Sathya</div>
+              <div class="pill" onclick="rp('ig_inspector',this,'Kumar')">Kumar</div>
+              <div class="pill" onclick="rp('ig_inspector',this,'Mahendran')">Mahendran</div>
+              <div class="pill" onclick="rp('ig_inspector',this,'Dhanush')">Dhanush</div>
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-1">
+          <div class="field"><label>Remarks</label><textarea id="i_remarks" placeholder="Any additional notes or observations..."></textarea></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📷</span> Photos</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field">
+            <label>Coil Photo</label>
+            <div class="photo-upload" onclick="document.getElementById('i_coil_photo').click()">
+              <input type="file" id="i_coil_photo" accept="image/*" onchange="prevSingle(this,'i_cp')">
+              <div class="photo-upload-icon">📸</div>
+              <div class="photo-upload-text">Tap to upload</div>
+              <div class="photo-upload-sub">JPG, PNG up to 10MB</div>
+            </div>
+            <div class="photo-previews" id="i_cp"></div>
+          </div>
+          <div class="field">
+            <label>Sticker Photo</label>
+            <div class="photo-upload" onclick="document.getElementById('i_sticker_photo').click()">
+              <input type="file" id="i_sticker_photo" accept="image/*" onchange="prevSingle(this,'i_sp')">
+              <div class="photo-upload-icon">🏷️</div>
+              <div class="photo-upload-text">Tap to upload</div>
+              <div class="photo-upload-sub">JPG, PNG up to 10MB</div>
+            </div>
+            <div class="photo-previews" id="i_sp"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+  <div class="submit-bar">
+    <div class="submit-info">
+      <strong>Bharat Steel (Chennai) · Inward Inspection</strong>
+      <span id="i_save_status" style="display:block;font-size:10px;margin-top:1px">All submissions are saved automatically</span>
+    </div>
+    <div class="submit-btns">
+      <button class="btn-sec" onclick="clearForm('inward')">Clear</button>
+      <button class="btn-primary" id="i_submit" onclick="submitInward()">
+        <div class="spinner" id="i_spin"></div>
+        <span id="i_lbl">Submit</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     QUALITY INSPECTION FORM
+     ============================ -->
+<div class="screen" id="screen-quality">
+  <div class="form-topbar">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">CTL Quality Inspection</div>
+      <div class="topbar-sub">BSCQMS-PRD-008 · REV 03 · 12-Mar-26</div>
+    </div>
+    <div class="topbar-badge">REV 03</div>
+  </div>
+  <div class="form-scroll">
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📋</span> Header Information</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>Date of Inspection <span class="req">*</span></label><input type="date" id="q_date"></div>
+          <div class="field"><label>Time of Inspection <span class="req">*</span></label><input type="time" id="q_time"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Coil Number <span class="req">*</span></label><input type="text" id="q_coil_no" placeholder="Enter coil number" autocomplete="off"></div>
+          <div class="field"><label>Batch Number</label><input type="text" id="q_batch" placeholder="Batch / heat number" autocomplete="off"></div>
+        </div>
+        <div class="fg fg-1">
+          <div class="field">
+            <label>Make of Coil</label>
+            <div class="pills" id="qg_make">
+              <div class="pill" onclick="rp('qg_make',this,'SAIL')">SAIL</div>
+              <div class="pill" onclick="rp('qg_make',this,'JSW')">JSW</div>
+              <div class="pill" onclick="rp('qg_make',this,'TATA')">TATA</div>
+              <div class="pill" onclick="rp('qg_make',this,'AMNS')">AMNS</div>
+              <div class="pill" onclick="rp('qg_make',this,'NMDC')">NMDC</div>
+              <div class="pill" onclick="rp('qg_make',this,'JSPL')">JSPL</div>
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-3">
+          <div class="field"><label>Coil Thickness (mm)</label><input type="number" id="q_thick" placeholder="e.g. 3.15" step="0.01"></div>
+          <div class="field"><label>Coil Grade</label><input type="text" id="q_grade" placeholder="e.g. E250"></div>
+          <div class="field"><label>Coil Width (mm)</label><input type="number" id="q_width" placeholder="e.g. 1250"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Coil Weight (T)</label><input type="number" id="q_weight" placeholder="e.g. 12.5" step="0.001"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📐</span> Sheet Measurements</div>
+      <div class="sec-body">
+        <div class="tbl-wrap">
+          <table class="meas-tbl">
+            <thead>
+              <tr>
+                <th>Sheet No.</th><th>Thickness</th><th>Width</th><th>Length</th>
+                <th>Diagonal 1</th><th>Diagonal 2</th><th>Line Speed</th><th>Remarks</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="q_rows"></tbody>
+          </table>
+        </div>
+        <button class="add-row-btn" onclick="addRow()">+ Add row</button>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📦</span> Processed Quantity</div>
+      <div class="sec-body" style="padding:0">
+        <div style="overflow-x:auto">
+          <table class="pq-table" id="pq_grid"></table>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🔢</span> Final Measurements</div>
+      <div class="sec-body">
+        <div class="fg fg-3">
+          <div class="field"><label>First Bit Length</label><input type="text" id="q_first_bit" placeholder="mm or m"></div>
+          <div class="field"><label>Last Bit Length</label><input type="text" id="q_last_bit" placeholder="mm or m"></div>
+          <div class="field"><label>Defective Length</label><input type="text" id="q_defective" placeholder="mm or m"></div>
+        </div>
+        <div class="fg fg-3">
+          <div class="field"><label>Balance Coil Weight (T)</label><input type="text" id="q_bal_wt" placeholder="e.g. 0.45"></div>
+          <div class="field">
+            <label>Coil No. Verified</label>
+            <div class="yn" id="yn_verified">
+              <button class="yn-btn y" onclick="yn('yn_verified','Y',this)">Yes</button>
+              <button class="yn-btn n" onclick="yn('yn_verified','N',this)">No</button>
+            </div>
+          </div>
+          <div class="field"><label>Blade Clearance</label><input type="text" id="q_blade" placeholder="e.g. 0.05 mm"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">✍️</span> Sign-off</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>Machine Operated By</label><input type="text" id="q_operator" placeholder="Operator name"></div>
+          <div class="field"><label>Inspected By <span class="req">*</span></label><input type="text" id="q_inspector" placeholder="Inspector name"></div>
+        </div>
+        <div class="fg fg-1">
+          <div class="field"><label>Overall Remarks</label><textarea id="q_remarks" placeholder="Any observations, issues or notes..."></textarea></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📷</span> Pictures (if any)</div>
+      <div class="sec-body">
+        <div class="photo-upload" onclick="document.getElementById('q_photos').click()">
+          <input type="file" id="q_photos" accept="image/*" multiple onchange="prevMulti(this,'q_photo_prev')">
+          <div class="photo-upload-icon">📸</div>
+          <div class="photo-upload-text">Tap to upload photos</div>
+          <div class="photo-upload-sub">Multiple files allowed · JPG, PNG up to 10MB each</div>
+        </div>
+        <div class="photo-previews" id="q_photo_prev"></div>
+      </div>
+    </div>
+
+  </div>
+  <div class="submit-bar">
+    <div class="submit-info">
+      <strong>Bharat Steel (Chennai) · CTL Quality</strong>
+      <span style="display:block;font-size:10px;margin-top:1px">All submissions are saved automatically</span>
+    </div>
+    <div class="submit-btns">
+      <button class="btn-sec" onclick="clearForm('quality')">Clear</button>
+      <button class="btn-primary" id="q_submit" onclick="submitQuality()">
+        <div class="spinner" id="q_spin"></div>
+        <span id="q_lbl">Submit</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- SUCCESS SCREEN -->
+<div class="success-screen" id="success-screen">
+  <div class="success-icon">✓</div>
+  <div class="success-title" id="success-title">Submission saved!</div>
+  <div class="success-ref" id="success-ref">Ref: BSC-000000</div>
+  <div class="success-path" id="success-path">/BSC Inspections/...</div>
+  <div class="success-btns">
+    <button class="btn-green" onclick="newEntry()">New Entry</button>
+    <button class="btn-outline" onclick="goHome(); hideSuccess()">Home</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ============================================================
+//  STATE
+// ============================================================
+var rs = {}, ys = {}, rowCount = 0;
+
+// ============================================================
+//  SERVER URL — auto-filled after Render deployment
+// ============================================================
+var SERVER_URL = 'https://bsc-inspection-api.onrender.com';
+
+async function sendToServer(payload) {
+  var resp = await fetch(SERVER_URL + '/submit', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload)
+  });
+  var json = await resp.json();
+  if (json.status !== 'success') throw new Error(json.message || 'Server error');
+  return json;
+}
+
+function buildInwardPDF(data, ref) {
+  var ts = new Date().toLocaleString('en-IN');
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body{font-family:Arial,sans-serif;font-size:11px;color:#111;margin:0;padding:20px}
+  .header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #B91C1C;padding-bottom:12px;margin-bottom:16px}
+  .co-name{font-size:16px;font-weight:700;color:#B91C1C}
+  .co-sub{font-size:10px;color:#666}
+  .doc-ref{text-align:right;font-size:10px;color:#666}
+  h2{font-size:13px;font-weight:700;background:#B91C1C;color:#fff;padding:6px 10px;border-radius:3px;margin:12px 0 8px}
+  table{width:100%;border-collapse:collapse;margin-bottom:10px}
+  td{padding:6px 8px;border:1px solid #E5E7EB;vertical-align:top}
+  td.lbl{background:#F3F4F6;font-weight:700;width:35%;color:#374151}
+  .yn-yes{color:#15803D;font-weight:700} .yn-no{color:#B91C1C;font-weight:700}
+  .footer{margin-top:20px;border-top:1px solid #E5E7EB;padding-top:10px;font-size:9px;color:#9CA3AF;text-align:center}
+</style></head><body>
+<div class="header">
+  <div><div class="co-name">Bharat Steel (Chennai) Pvt. Ltd.</div><div class="co-sub">Coil Inward Inspection Report</div></div>
+  <div class="doc-ref">Ref: ${ref}<br>Date: ${ts}</div>
+</div>
+<h2>Vehicle & Coil Identity</h2>
+<table>
+  <tr><td class="lbl">Vehicle Number</td><td>${data.vehicle_number}</td><td class="lbl">Batch Number</td><td>${data.batch_number}</td></tr>
+  <tr><td class="lbl">Make of Coil</td><td>${data.make_of_coil}</td><td class="lbl">Grade</td><td>${data.grade}</td></tr>
+</table>
+<h2>Dimensions</h2>
+<table>
+  <tr><td class="lbl">Width (mm)</td><td>${data.width}</td><td class="lbl">Thickness (mm)</td><td>${data.thickness}</td></tr>
+  <tr><td class="lbl">Coil Weight (T)</td><td>${data.coil_weight||'-'}</td><td class="lbl">Coil ID (mm)</td><td>${data.coil_id||'-'}</td></tr>
+  <tr><td class="lbl">Actual Thickness (mm)</td><td>${data.actual_thickness||'-'}</td><td class="lbl">Actual Width (mm)</td><td>${data.actual_width||'-'}</td></tr>
+</table>
+<h2>Physical Condition</h2>
+<table>
+  <tr><td class="lbl">Identification Sticker</td><td class="${data.id_sticker==='Y'?'yn-yes':'yn-no'}">${data.id_sticker==='Y'?'YES':'NO'}</td><td class="lbl">Edge Damage – Inner</td><td class="${data.edge_inner==='Y'?'yn-yes':'yn-no'}">${data.edge_inner==='Y'?'YES':'NO'}</td></tr>
+  <tr><td class="lbl">Edge Damage – Outer</td><td class="${data.edge_outer==='Y'?'yn-yes':'yn-no'}">${data.edge_outer==='Y'?'YES':'NO'}</td><td class="lbl">Scratch Mark</td><td class="${data.scratch==='Y'?'yn-yes':'yn-no'}">${data.scratch==='Y'?'YES':'NO'}</td></tr>
+  <tr><td class="lbl">Strapping</td><td class="${data.strapping==='Y'?'yn-yes':'yn-no'}">${data.strapping==='Y'?'YES':'NO'}</td><td class="lbl">Rust on Surface</td><td class="${data.rust==='Y'?'yn-yes':'yn-no'}">${data.rust==='Y'?'YES':'NO'}</td></tr>
+  <tr><td class="lbl">Other Damages</td><td colspan="3">${data.other_damages||'-'}</td></tr>
+</table>
+<h2>Inspector</h2>
+<table>
+  <tr><td class="lbl">Inspected By</td><td>${data.inspected_by}</td><td class="lbl">Remarks</td><td>${data.remarks||'-'}</td></tr>
+</table>
+<div class="footer">Bharat Steel (Chennai) Pvt. Ltd. · BSCQMS Inward Inspection · ${ref}</div>
+</body></html>`;
+}
+
+function buildQualityPDF(data, ref) {
+  var ts = new Date().toLocaleString('en-IN');
+  var rowsHtml = (data.sheet_measurements||[]).map(function(r){
+    return '<tr><td>'+r.sheet_no+'</td><td>'+r.thickness+'</td><td>'+r.width+'</td><td>'+r.length+'</td><td>'+r.d1+'</td><td>'+r.d2+'</td><td>'+r.line_speed+'</td><td>'+r.remarks+'</td></tr>';
+  }).join('');
+  var pqHtml = '';
+  var pqRows = '';
+  for(var i=1;i<=10;i++) {
+    var s = (data.processed_qty||{})['size_'+i]||{};
+    if(s.length||s.nos||s.weight_t) {
+      pqRows += '<tr><td class="lbl">Size '+i+'</td><td>'+( s.length||'-')+'</td><td>'+(s.nos||'-')+'</td><td>'+(s.weight_t||'-')+' T</td></tr>';
+    }
+  }
+  if(pqRows) pqHtml = '<h2>Processed Quantity</h2><table><thead><tr><th>Size</th><th>Length (mm)</th><th>No. of Sheets</th><th>Weight (T)</th></tr></thead><tbody>'+pqRows+'</tbody></table>';
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+  body{font-family:Arial,sans-serif;font-size:10px;color:#111;margin:0;padding:16px}
+  .header{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #B91C1C;padding-bottom:10px;margin-bottom:14px}
+  .co-name{font-size:15px;font-weight:700;color:#B91C1C} .co-sub{font-size:9px;color:#666}
+  .doc-ref{text-align:right;font-size:9px;color:#666}
+  h2{font-size:11px;font-weight:700;background:#B91C1C;color:#fff;padding:5px 8px;border-radius:3px;margin:10px 0 6px}
+  table{width:100%;border-collapse:collapse;margin-bottom:8px}
+  td{padding:5px 7px;border:1px solid #E5E7EB;vertical-align:top}
+  td.lbl{background:#F3F4F6;font-weight:700;width:30%;color:#374151}
+  th{padding:6px 7px;border:1px solid #E5E7EB;background:#1F2937;color:#fff;font-size:9px;text-align:left}
+  .yn-yes{color:#15803D;font-weight:700} .yn-no{color:#B91C1C;font-weight:700}
+  .footer{margin-top:14px;border-top:1px solid #E5E7EB;padding-top:8px;font-size:8px;color:#9CA3AF;text-align:center}
+</style></head><body>
+<div class="header">
+  <div><div class="co-name">Bharat Steel (Chennai) Pvt. Ltd.</div><div class="co-sub">CTL Quality Inspection Report · BSCQMS-PRD-008 REV 03</div></div>
+  <div class="doc-ref">Ref: ${ref}<br>Date: ${ts}</div>
+</div>
+<h2>Header Information</h2>
+<table>
+  <tr><td class="lbl">Date of Inspection</td><td>${data.date}</td><td class="lbl">Time</td><td>${data.time}</td></tr>
+  <tr><td class="lbl">Coil Number</td><td>${data.coil_number}</td><td class="lbl">Batch Number</td><td>${data.batch_number||'-'}</td></tr>
+  <tr><td class="lbl">Make of Coil</td><td>${data.make||'-'}</td><td class="lbl">Coil Grade</td><td>${data.coil_grade||'-'}</td></tr>
+  <tr><td class="lbl">Coil Thickness (mm)</td><td>${data.coil_thickness||'-'}</td><td class="lbl">Coil Width (mm)</td><td>${data.coil_width||'-'}</td></tr>
+  <tr><td class="lbl">Coil Weight (T)</td><td>${data.coil_weight||'-'}</td></tr>
+</table>
+<h2>Sheet Measurements</h2>
+<table><thead><tr><th>Sheet No.</th><th>Thickness</th><th>Width</th><th>Length</th><th>Diagonal 1</th><th>Diagonal 2</th><th>Line Speed</th><th>Remarks</th></tr></thead><tbody>${rowsHtml||'<tr><td colspan="8" style="text-align:center;color:#9CA3AF">No measurements entered</td></tr>'}</tbody></table>
+${pqHtml}
+<h2>Final Measurements</h2>
+<table>
+  <tr><td class="lbl">First Bit Length</td><td>${data.first_bit||'-'}</td><td class="lbl">Last Bit Length</td><td>${data.last_bit||'-'}</td></tr>
+  <tr><td class="lbl">Defective Length</td><td>${data.defective||'-'}</td><td class="lbl">Balance Coil Wt. (T)</td><td>${data.balance_wt||'-'}</td></tr>
+  <tr><td class="lbl">Coil No. Verified</td><td class="${data.coil_verified==='Y'?'yn-yes':'yn-no'}">${data.coil_verified==='Y'?'YES':'NO'}</td><td class="lbl">Blade Clearance</td><td>${data.blade_clearance||'-'}</td></tr>
+</table>
+<h2>Sign-off</h2>
+<table>
+  <tr><td class="lbl">Machine Operated By</td><td>${data.operator||'-'}</td><td class="lbl">Inspected By</td><td>${data.inspector}</td></tr>
+  <tr><td class="lbl">Overall Remarks</td><td colspan="3">${data.remarks||'-'}</td></tr>
+</table>
+<div class="footer">Bharat Steel (Chennai) Pvt. Ltd. · BSCQMS-PRD-008 REV 03 · ${ref}</div>
+</body></html>`;
+}
+
+// ============================================================
+//  COLLECT FORM DATA
+// ============================================================
+function gv(id){ return (document.getElementById(id)||{}).value||''; }
+
+function collectInward() {
+  return {
+    vehicle_number: gv('i_vehicle'), batch_number: gv('i_batch'),
+    make_of_coil: rs['ig_make']||'', grade: rs['ig_grade']||'',
+    width: rs['ig_width']||'', thickness: gv('i_thick'),
+    coil_weight: gv('i_weight'), coil_id: gv('i_coil_id'),
+    actual_thickness: gv('i_act_thick'), actual_width: gv('i_act_width'),
+    id_sticker: ys['yn_sticker']||'', edge_inner: ys['yn_ei']||'',
+    edge_outer: ys['yn_eo']||'', scratch: ys['yn_scratch']||'',
+    strapping: ys['yn_strap']||'', rust: ys['yn_rust']||'',
+    other_damages: rs['ig_damage']||'',
+    inspected_by: rs['ig_inspector']||'', remarks: gv('i_remarks'),
+    timestamp: new Date().toISOString()
+  };
+}
+
+function collectQuality() {
+  var rows = [];
+  document.querySelectorAll('#q_rows tr').forEach(function(tr) {
+    var id = tr.id.replace('row_','');
+    rows.push({
+      sheet_no: gv('r'+id+'_sno'), thickness: gv('r'+id+'_th'),
+      width: gv('r'+id+'_w'), length: gv('r'+id+'_l'),
+      d1: gv('r'+id+'_d1'), d2: gv('r'+id+'_d2'),
+      line_speed: gv('r'+id+'_sp'), remarks: gv('r'+id+'_rm')
+    });
+  });
+  var pq = {};
+  for(var i=1;i<=10;i++) {
+    pq['size_'+i] = {
+      length: gv('pq_s'+i+'_len'),
+      nos: gv('pq_s'+i+'_nos'),
+      weight_t: gv('pq_s'+i+'_wt')
+    };
+  }
+  return {
+    date: gv('q_date'), time: gv('q_time'), coil_number: gv('q_coil_no'),
+    batch_number: gv('q_batch'), make: rs['qg_make']||'',
+    coil_thickness: gv('q_thick'), coil_grade: gv('q_grade'),
+    coil_width: gv('q_width'), coil_weight: gv('q_weight'),
+    sheet_measurements: rows, processed_qty: pq,
+    first_bit: gv('q_first_bit'), last_bit: gv('q_last_bit'),
+    defective: gv('q_defective'), balance_wt: gv('q_bal_wt'),
+    coil_verified: ys['yn_verified']||'', blade_clearance: gv('q_blade'),
+    operator: gv('q_operator'), inspector: gv('q_inspector'),
+    remarks: gv('q_remarks'), timestamp: new Date().toISOString()
+  };
+}
+
+// ============================================================
+//  SUBMIT HANDLERS
+// ============================================================
+function submitInward() {
+  var d = collectInward();
+  if (!d.vehicle_number) { toast('err','Vehicle number is required'); return; }
+  if (!d.batch_number)   { toast('err','Batch number is required'); return; }
+  if (!d.make_of_coil)   { toast('err','Please select make of coil'); return; }
+  if (!d.grade)          { toast('err','Please select grade'); return; }
+  if (!d.inspected_by)   { toast('err','Please select inspector'); return; }
+  runSubmit('i_submit','i_spin','i_lbl', d, 'Inward');
+}
+
+function submitQuality() {
+  var d = collectQuality();
+  if (!d.date)       { toast('err','Date of inspection is required'); return; }
+  if (!d.coil_number){ toast('err','Coil number is required'); return; }
+  if (!d.inspector)  { toast('err','Inspected by is required'); return; }
+  runSubmit('q_submit','q_spin','q_lbl', d, 'Quality');
+}
+
+function runSubmit(btnId, spinId, lblId, data, folder) {
+  var btn = document.getElementById(btnId);
+  var sp  = document.getElementById(spinId);
+  var lb  = document.getElementById(lblId);
+  btn.disabled = true; sp.style.display = 'block'; lb.textContent = 'Saving...';
+
+  var ref = 'BSC-' + Date.now().toString().slice(-6);
+  data.ref = ref;
+  data.form_type = folder;
+  data.pdf_content = folder === 'Inward' ? buildInwardPDF(data, ref) : buildQualityPDF(data, ref);
+
+  var doSave = async function() {
+    try {
+      lb.textContent = 'Submitting...';
+      await sendToServer(data);
+      showSuccess(ref, 'BSC Inspections / ' + folder, folder);
+    } catch(e) {
+      toast('err', 'Failed: ' + e.message + '. Downloading locally instead.');
+      downloadLocal(data.pdf_content, folder+'_'+ref+'.html', 'text/html');
+      showSuccess(ref, 'Local download', folder);
+    }
+    btn.disabled = false; sp.style.display = 'none'; lb.textContent = 'Submit';
+  };
+  doSave();
+}
+function downloadLocal(content, filename, type) {
+  var blob = new Blob([content], { type: type });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+}
+
+// ============================================================
+//  SUCCESS SCREEN
+// ============================================================
+function showSuccess(ref, path, formType) {
+  document.getElementById('success-title').textContent = formType + ' form saved!';
+  document.getElementById('success-ref').textContent = 'Reference: ' + ref;
+  document.getElementById('success-path').textContent = path;
+  document.getElementById('success-screen').classList.add('show');
+  window.scrollTo(0,0);
+}
+function hideSuccess() { document.getElementById('success-screen').classList.remove('show'); }
+function newEntry() {
+  hideSuccess();
+  var btn = document.querySelector('#screen-inward .btn-primary, #screen-quality .btn-primary');
+  // Reset the form that was just submitted
+  clearCurrentForm();
+}
+var lastFormType = '';
+function clearCurrentForm() {
+  // Reset submit button
+  ['i_submit','q_submit'].forEach(function(id) {
+    var btn = document.getElementById(id);
+    if(btn) { btn.disabled=false; }
+  });
+  document.getElementById('i_spin').style.display='none';
+  document.getElementById('q_spin').style.display='none';
+  document.getElementById('i_lbl').textContent='Submit';
+  document.getElementById('q_lbl').textContent='Submit';
+}
+
+// ============================================================
+//  ADMIN SECRET ACCESS (tap logo 5 times)
+// ============================================================
+var adminTapCount = 0, adminTapTimer = null;
+function adminTap() {
+  adminTapCount++;
+  clearTimeout(adminTapTimer);
+  adminTapTimer = setTimeout(function(){ adminTapCount = 0; }, 2000);
+  if (adminTapCount >= 5) {
+    adminTapCount = 0;
+    document.getElementById('authCard').style.display = 'flex';
+    toast('inf', 'Admin mode — connect OneDrive');
+  }
+}
+
+
+function openForm(f) {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-'+f).classList.add('active');
+  lastFormType = f;
+  window.scrollTo(0,0);
+}
+function goHome() {
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById('screen-home').classList.add('active');
+  hideSuccess();
+  window.scrollTo(0,0);
+}
+
+function rp(g, el, v) {
+  document.querySelectorAll('#'+g+' .pill').forEach(p=>p.classList.remove('sel'));
+  el.classList.add('sel'); rs[g] = v;
+  // hide any other-input for this group
+  var wrap = document.getElementById(g.replace('ig_','i_').replace('qg_','q_')+'_other_wrap');
+  if(wrap) { wrap.style.display='none'; }
+}
+function rpOther(g, el, wrapId) {
+  document.querySelectorAll('#'+g+' .pill').forEach(p=>p.classList.remove('sel'));
+  el.classList.add('sel');
+  var wrap = document.getElementById(wrapId);
+  if(wrap) { wrap.style.display='block'; var inp=wrap.querySelector('input'); if(inp){inp.focus(); rs[g]=inp.value;} }
+}
+function yn(g, v, el) {
+  document.getElementById(g).querySelectorAll('.yn-btn').forEach(b=>b.classList.remove('a'));
+  el.classList.add('a'); ys[g] = v;
+}
+
+function addRow() {
+  rowCount++;
+  var tb = document.getElementById('q_rows'), tr = document.createElement('tr');
+  tr.id = 'row_'+rowCount;
+  var cols = ['sno','th','w','l','d1','d2','sp','rm'];
+  tr.innerHTML = cols.map((c,i)=>'<td><input type="text" id="r'+rowCount+'_'+c+'" placeholder="'+(i===0?rowCount:'')+'"></td>').join('')+'<td><button class="row-del" onclick="delRow('+rowCount+')">✕</button></td>';
+  tb.appendChild(tr);
+}
+function delRow(id) { var e=document.getElementById('row_'+id); if(e) e.remove(); }
+
+function buildPQ() {
+  var g = document.getElementById('pq_grid');
+  var html = '<thead><tr><th style="min-width:64px">Size</th><th>Length (mm)</th><th>No. of Sheets</th><th>Weight (T)</th></tr></thead><tbody>';
+  for(var i=1;i<=10;i++) {
+    html += '<tr>'
+      + '<td class="pq-size-lbl">Size '+i+'</td>'
+      + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_len" placeholder="0" step="0.01"></td>'
+      + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_nos" placeholder="0" step="1"></td>'
+      + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_wt" placeholder="0.000" step="0.001"></td>'
+      + '</tr>';
+  }
+  html += '</tbody>';
+  g.innerHTML = html;
+}
+
+function prevSingle(inp, pid) {
+  var p = document.getElementById(pid); p.innerHTML = '';
+  if(inp.files&&inp.files[0]) { var img=document.createElement('img'); img.className='photo-thumb'; img.src=URL.createObjectURL(inp.files[0]); p.appendChild(img); }
+}
+function prevMulti(inp, pid) {
+  var p = document.getElementById(pid); p.innerHTML = '';
+  Array.from(inp.files).forEach(function(f){ var img=document.createElement('img'); img.className='photo-thumb'; img.src=URL.createObjectURL(f); p.appendChild(img); });
+}
+
+function toast(type, msg) {
+  var t = document.getElementById('toast');
+  t.className = 'toast '+type+' show'; t.textContent = msg;
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('show'), 4500);
+}
+
+function clearForm(which) {
+  if(!confirm('Clear all fields in this form?')) return;
+  var prefix = which === 'inward' ? '#screen-inward' : '#screen-quality';
+  document.querySelectorAll(prefix+' input, '+prefix+' textarea').forEach(i=>i.value='');
+  document.querySelectorAll(prefix+' .pill').forEach(p=>p.classList.remove('sel'));
+  document.querySelectorAll(prefix+' .yn-btn').forEach(b=>b.classList.remove('a'));
+  document.querySelectorAll(prefix+' .photo-previews').forEach(p=>p.innerHTML='');
+  if (which === 'quality') {
+    document.getElementById('q_rows').innerHTML=''; rowCount=0;
+    buildPQ(); addRow(); addRow(); addRow();
+    var now=new Date(), pad=n=>n.toString().padStart(2,'0');
+    document.getElementById('q_date').value=now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+    document.getElementById('q_time').value=pad(now.getHours())+':'+pad(now.getMinutes());
+  }
+  ['ig_make','ig_grade','ig_width','ig_damage','ig_inspector','qg_make'].forEach(k=>delete rs[k]);
+  ['yn_sticker','yn_ei','yn_eo','yn_scratch','yn_strap','yn_rust','yn_verified'].forEach(k=>delete ys[k]);
+  toast('inf','Form cleared');
+}
+
+// ============================================================
+//  INIT
+// ============================================================
+buildPQ();
+addRow(); addRow(); addRow();
+var now = new Date(), pad = n=>n.toString().padStart(2,'0');
+document.getElementById('q_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+document.getElementById('q_time').value = pad(now.getHours())+':'+pad(now.getMinutes());
+</script>
+</body>
+</html>
