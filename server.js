@@ -1,7 +1,6 @@
 const express    = require('express');
 const cors       = require('cors');
 const fetch      = require('node-fetch');
-const htmlPdf    = require('html-pdf-node');
 const nodemailer = require('nodemailer');
 
 const app = express();
@@ -104,7 +103,14 @@ app.post('/submit', async (req, res) => {
     const fileName = batchNo + '_(' + dateStr + ')_' + suffix;
     if (!folder) return res.status(400).json({ status: 'error', message: 'Missing form_type' });
     const token = await getToken();
-    const pdfBuffer = await generatePDF(data.pdf_content);
+    
+    // Accept PDF as base64 from client (instant - no server-side rendering)
+    let pdfBuffer;
+    if (data.pdf_base64) {
+      pdfBuffer = Buffer.from(data.pdf_base64.split(',').pop(), 'base64');
+    } else {
+      throw new Error('Missing pdf_base64 in request');
+    }
     await uploadFile(token, 'BSC Inspections/' + folder + '/PDF/' + fileName + '.pdf', pdfBuffer, 'application/pdf');
     if (data.photos && data.photos.length > 0) {
       for (var i = 0; i < data.photos.length; i++) {
@@ -194,9 +200,6 @@ app.post('/photos', async (req, res) => {
   } catch(err) { res.status(500).json({ status:'error', message: err.message }); }
 });
 
-async function generatePDF(htmlContent) {
-  return await htmlPdf.generatePdf({ content: htmlContent }, { format: 'A4', printBackground: true, margin: { top:'15mm', bottom:'15mm', left:'15mm', right:'15mm' } });
-}
 async function getToken() {
   const body = new URLSearchParams({ grant_type:'client_credentials', client_id:CLIENT_ID, client_secret:CLIENT_SECRET, scope:'https://graph.microsoft.com/.default' });
   const resp = await fetch('https://login.microsoftonline.com/' + TENANT_ID + '/oauth2/v2.0/token', { method:'POST', body });

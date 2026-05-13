@@ -181,6 +181,8 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 .btn-green{padding:11px 22px;border-radius:var(--r);border:none;background:var(--green);color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer}
 .btn-outline{padding:11px 22px;border-radius:var(--r);border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -1465,6 +1467,62 @@ function buildShearingPDF(data, ref) {
     + photosHtml
     + '<div class="ft">BHARAT STEEL (CHENNAI) PVT. LTD. \u00b7 BSCQMS-PRD-008 REV 01 \u00b7 '+ref+'</div>';
   return '<!DOCTYPE html><html><head><meta charset="UTF-8">'+css+'</head><body>'+head+body+'</body></html>';
+}
+
+
+// ============================================================
+//  CLIENT-SIDE PDF GENERATION (instant - uses jsPDF + html2canvas)
+// ============================================================
+async function generatePDFInBrowser(htmlContent) {
+  // Create a hidden iframe to render the HTML
+  var iframe = document.createElement('iframe');
+  iframe.style.cssText = 'position:fixed;top:-10000px;left:-10000px;width:800px;height:auto;border:none';
+  document.body.appendChild(iframe);
+  
+  var doc = iframe.contentDocument || iframe.contentWindow.document;
+  doc.open();
+  doc.write(htmlContent);
+  doc.close();
+  
+  // Wait for images to load
+  await new Promise(function(resolve) {
+    var imgs = doc.querySelectorAll('img');
+    if (imgs.length === 0) { setTimeout(resolve, 200); return; }
+    var loaded = 0;
+    var done = function() { loaded++; if (loaded >= imgs.length) setTimeout(resolve, 100); };
+    imgs.forEach(function(img) {
+      if (img.complete) done();
+      else { img.onload = done; img.onerror = done; }
+    });
+    setTimeout(resolve, 3000); // safety timeout
+  });
+  
+  // Render to canvas
+  var canvas = await html2canvas(doc.body, { scale: 1.5, useCORS: true, allowTaint: true, backgroundColor: '#fff' });
+  
+  // Convert canvas to PDF
+  var pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+  var pageWidth = 210;
+  var pageHeight = 297;
+  var imgWidth = pageWidth;
+  var imgHeight = (canvas.height * pageWidth) / canvas.width;
+  
+  if (imgHeight <= pageHeight) {
+    pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, 0, imgWidth, imgHeight);
+  } else {
+    // Multi-page
+    var position = 0;
+    var heightLeft = imgHeight;
+    while (heightLeft > 0) {
+      if (position > 0) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.85), 'JPEG', 0, -position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+      position += pageHeight;
+    }
+  }
+  
+  document.body.removeChild(iframe);
+  return pdf.output('datauristring');
 }
 
 // ============================================================
