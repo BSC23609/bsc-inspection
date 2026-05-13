@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BSC Inspection Dashboard</title>
+<style>
+  :root {
+    --brand: #1A6DAF;
+    --brand-dark: #145a94;
+    --brand-light: #e8f2fb;
+    --inward: #1A6DAF;
+    --quality: #0e7c5b;
+    --shearing: #b45309;
+    --gray-50: #f9fafb;
+    --gray-100: #f3f4f6;
+    --gray-200: #e5e7eb;
+    --gray-400: #9ca3af;
+    --gray-600: #4b5563;
+    --gray-800: #1f2937;
+    --r: 10px;
+    --shadow: 0 2px 12px rgba(0,0,0,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: var(--gray-800); min-height: 100vh; }
+
+  /* HEADER */
+  .topbar { background: var(--brand); color: #fff; padding: 0 20px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
+  .topbar-left { display: flex; align-items: center; gap: 12px; }
+  .topbar-logo { width: 36px; height: 36px; border-radius: 6px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
+  .topbar-title { font-size: 16px; font-weight: 700; }
+  .topbar-sub { font-size: 11px; opacity: 0.8; }
+  .topbar-right { font-size: 12px; opacity: 0.85; }
+
+  /* MAIN */
+  .main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+
+  /* DATE PICKER */
+  .date-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+  .date-bar label { font-size: 13px; font-weight: 600; color: var(--gray-600); }
+  .date-bar input[type=date] { border: 1.5px solid var(--gray-200); border-radius: 8px; padding: 8px 12px; font-size: 14px; color: var(--gray-800); outline: none; background: #fff; }
+  .date-bar input[type=date]:focus { border-color: var(--brand); }
+  .btn-today { background: var(--brand); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-today:hover { background: var(--brand-dark); }
+  .btn-refresh { background: #fff; color: var(--brand); border: 1.5px solid var(--brand); border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .btn-refresh:hover { background: var(--brand-light); }
+  .last-updated { font-size: 11px; color: var(--gray-400); margin-left: auto; }
+
+  /* STAT CARDS */
+  .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
+  @media(max-width:600px) { .stats-grid { grid-template-columns: 1fr; } }
+  .stat-card { background: #fff; border-radius: var(--r); padding: 20px; box-shadow: var(--shadow); border-top: 4px solid var(--brand); position: relative; overflow: hidden; }
+  .stat-card.inward { border-top-color: var(--inward); }
+  .stat-card.quality { border-top-color: var(--quality); }
+  .stat-card.shearing { border-top-color: var(--shearing); }
+  .stat-card-bg { position: absolute; right: -10px; top: -10px; font-size: 64px; opacity: 0.06; }
+  .stat-label { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--gray-400); margin-bottom: 6px; }
+  .stat-count { font-size: 42px; font-weight: 800; line-height: 1; margin-bottom: 4px; }
+  .stat-card.inward .stat-count { color: var(--inward); }
+  .stat-card.quality .stat-count { color: var(--quality); }
+  .stat-card.shearing .stat-count { color: var(--shearing); }
+  .stat-sub { font-size: 12px; color: var(--gray-400); }
+  .stat-total { font-size: 11px; color: var(--gray-400); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--gray-100); }
+
+  /* CHART */
+  .chart-card { background: #fff; border-radius: var(--r); padding: 20px; box-shadow: var(--shadow); margin-bottom: 24px; }
+  .chart-title { font-size: 14px; font-weight: 700; color: var(--gray-800); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+  .chart-wrap { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding-bottom: 24px; position: relative; overflow-x: auto; }
+  .chart-col { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 36px; }
+  .chart-bars { display: flex; align-items: flex-end; gap: 2px; height: 100px; }
+  .bar { width: 10px; border-radius: 3px 3px 0 0; transition: height 0.4s; cursor: pointer; position: relative; }
+  .bar:hover::after { content: attr(data-val); position: absolute; top: -20px; left: 50%; transform: translateX(-50%); background: var(--gray-800); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px; white-space: nowrap; }
+  .bar.inward { background: var(--inward); }
+  .bar.quality { background: var(--quality); }
+  .bar.shearing { background: var(--shearing); }
+  .chart-label { font-size: 10px; color: var(--gray-400); text-align: center; }
+  .chart-legend { display: flex; gap: 16px; margin-top: 12px; flex-wrap: wrap; }
+  .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gray-600); }
+  .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+
+  /* TABLES */
+  .tables-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  @media(max-width:900px) { .tables-grid { grid-template-columns: 1fr; } }
+  .table-card { background: #fff; border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  .table-head { padding: 14px 16px; font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; justify-content: space-between; }
+  .table-head.inward { background: var(--inward); }
+  .table-head.quality { background: var(--quality); }
+  .table-head.shearing { background: var(--shearing); }
+  .table-head-count { background: rgba(255,255,255,0.25); border-radius: 20px; padding: 2px 10px; font-size: 12px; }
+  .table-body { max-height: 320px; overflow-y: auto; }
+  .table-row { padding: 10px 16px; border-bottom: 1px solid var(--gray-100); display: flex; flex-direction: column; gap: 3px; }
+  .table-row:last-child { border-bottom: none; }
+  .table-row:hover { background: var(--gray-50); }
+  .row-batch { font-size: 13px; font-weight: 600; color: var(--gray-800); }
+  .row-meta { font-size: 11px; color: var(--gray-400); }
+  .row-time { font-size: 11px; color: var(--gray-400); }
+  .empty-state { padding: 30px; text-align: center; color: var(--gray-400); font-size: 13px; }
+  .empty-icon { font-size: 28px; margin-bottom: 6px; }
+
+  /* LOADING */
+  .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--gray-400); gap: 10px; }
+  .spinner { width: 20px; height: 20px; border: 2px solid var(--gray-200); border-top-color: var(--brand); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ERROR */
+  .error-bar { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 8px; padding: 12px 16px; font-size: 13px; margin-bottom: 16px; display: none; }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-left">
+    <div class="topbar-logo">BSC</div>
+    <div>
+      <div class="topbar-title">BSC Inspection Dashboard</div>
+      <div class="topbar-sub">BHARAT STEEL (CHENNAI) PVT. LTD.</div>
+    </div>
+  </div>
+  <div class="topbar-right" id="clock"></div>
+</div>
+
+<div class="main">
+
+  <!-- DATE BAR -->
+  <div class="date-bar">
+    <label>📅 Viewing:</label>
+    <input type="date" id="datePicker" onchange="loadData()">
+    <button class="btn-today" onclick="setToday()">Today</button>
+    <button class="btn-refresh" onclick="loadData()">↻ Refresh</button>
+    <span class="last-updated" id="lastUpdated"></span>
+  </div>
+
+  <div class="error-bar" id="errorBar"></div>
+
+  <!-- STAT CARDS -->
+  <div class="stats-grid">
+    <div class="stat-card inward">
+      <div class="stat-card-bg">📦</div>
+      <div class="stat-label">Inward Coil</div>
+      <div class="stat-count" id="cnt-inward">—</div>
+      <div class="stat-sub">entries today</div>
+      <div class="stat-total" id="total-inward"></div>
+    </div>
+    <div class="stat-card quality">
+      <div class="stat-card-bg">✅</div>
+      <div class="stat-label">CTL Quality</div>
+      <div class="stat-count" id="cnt-quality">—</div>
+      <div class="stat-sub">entries today</div>
+      <div class="stat-total" id="total-quality"></div>
+    </div>
+    <div class="stat-card shearing">
+      <div class="stat-card-bg">✂️</div>
+      <div class="stat-label">Shearing</div>
+      <div class="stat-count" id="cnt-shearing">—</div>
+      <div class="stat-sub">entries today</div>
+      <div class="stat-total" id="total-shearing"></div>
+    </div>
+  </div>
+
+  <!-- CHART — last 7 days -->
+  <div class="chart-card">
+    <div class="chart-title">📊 Last 7 Days Activity</div>
+    <div class="chart-wrap" id="chartWrap">
+      <div class="loading"><div class="spinner"></div> Loading chart...</div>
+    </div>
+    <div class="chart-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:var(--inward)"></div> Inward</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--quality)"></div> CTL Quality</div>
+      <div class="legend-item"><div class="legend-dot" style="background:var(--shearing)"></div> Shearing</div>
+    </div>
+  </div>
+
+  <!-- TABLES -->
+  <div class="tables-grid">
+    <!-- Inward -->
+    <div class="table-card">
+      <div class="table-head inward">
+        <span>📦 Inward Entries</span>
+        <span class="table-head-count" id="badge-inward">0</span>
+      </div>
+      <div class="table-body" id="list-inward">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+    <!-- Quality -->
+    <div class="table-card">
+      <div class="table-head quality">
+        <span>✅ CTL Quality Entries</span>
+        <span class="table-head-count" id="badge-quality">0</span>
+      </div>
+      <div class="table-body" id="list-quality">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+    <!-- Shearing -->
+    <div class="table-card">
+      <div class="table-head shearing">
+        <span>✂️ Shearing Entries</span>
+        <span class="table-head-count" id="badge-shearing">0</span>
+      </div>
+      <div class="table-body" id="list-shearing">
+        <div class="loading"><div class="spinner"></div></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+var SERVER_URL = 'https://lydia-gloveless-graig.ngrok-free.dev';
+var allData = {};
+
+// Clock
+function updateClock() {
+  document.getElementById('clock').textContent = new Date().toLocaleString('en-IN', { weekday:'short', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+}
+setInterval(updateClock, 1000);
+updateClock();
+
+// Init
+function setToday() {
+  var d = new Date();
+  document.getElementById('datePicker').value = d.toISOString().split('T')[0];
+  loadData();
+}
+
+function getSelectedDate() {
+  return document.getElementById('datePicker').value; // YYYY-MM-DD
+}
+
+function formatDateLabel(isoDate) {
+  var d = new Date(isoDate + 'T00:00:00');
+  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short' });
+}
+
+// Parse date from filename or timestamp
+function parseEntryDate(entry) {
+  // Try timestamp first
+  if (entry.timestamp) {
+    var d = new Date(entry.timestamp);
+    if (!isNaN(d)) return d.toISOString().split('T')[0];
+  }
+  // Try fileName pattern: BATCH_(DD-MM-YYYY)_suffix
+  var m = entry.fileName.match(/\((\d{2})-(\d{2})-(\d{4})\)/);
+  if (m) return m[3] + '-' + m[2] + '-' + m[1]; // YYYY-MM-DD
+  return null;
+}
+
+function formatTime(entry) {
+  if (!entry.timestamp) return '';
+  var d = new Date(entry.timestamp);
+  if (isNaN(d)) return '';
+  return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+}
+
+async function loadData() {
+  var selectedDate = getSelectedDate();
+  if (!selectedDate) { setToday(); return; }
+
+  showError('');
+
+  // Show loading
+  ['inward','quality','shearing'].forEach(f => {
+    document.getElementById('cnt-' + f).textContent = '—';
+    document.getElementById('list-' + f).innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  });
+  document.getElementById('chartWrap').innerHTML = '<div class="loading"><div class="spinner"></div> Loading chart...</div>';
+
+  try {
+    var resp = await fetch(SERVER_URL + '/stats', {
+      headers: { 'ngrok-skip-browser-warning': '1' }
+    });
+    if (!resp.ok) throw new Error('Server returned ' + resp.status);
+    allData = await resp.json();
+    document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString('en-IN');
+    renderAll(selectedDate);
+  } catch(e) {
+    showError('Cannot connect to server: ' + e.message + '. Make sure the server is running.');
+    ['inward','quality','shearing'].forEach(f => {
+      document.getElementById('cnt-' + f).textContent = '0';
+      document.getElementById('list-' + f).innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div>Server offline</div>';
+    });
+    document.getElementById('chartWrap').innerHTML = '<div class="empty-state">No data available</div>';
+  }
+}
+
+function renderAll(selectedDate) {
+  var folders = { inward: 'Inward', quality: 'Quality', shearing: 'Shearing' };
+  var todayCounts = {};
+
+  Object.keys(folders).forEach(function(key) {
+    var folderKey = folders[key];
+    var rows = allData[folderKey] || [];
+    var todayRows = rows.filter(r => parseEntryDate(r) === selectedDate);
+    todayCounts[key] = todayRows.length;
+
+    // Update count card
+    document.getElementById('cnt-' + key).textContent = todayRows.length;
+    document.getElementById('badge-' + key).textContent = todayRows.length;
+    document.getElementById('total-' + key).textContent = 'Total all time: ' + rows.length;
+
+    // Render list
+    var listEl = document.getElementById('list-' + key);
+    if (todayRows.length === 0) {
+      listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>No entries for this date</div>';
+    } else {
+      listEl.innerHTML = todayRows.map(function(r) {
+        var label = r.batch || r.name || r.fileName || '-';
+        var time  = formatTime(r);
+        return '<div class="table-row">'
+          + '<div class="row-batch">' + label + '</div>'
+          + '<div class="row-meta">' + (r.name && r.batch ? r.name : r.fileName) + '</div>'
+          + (time ? '<div class="row-time">⏰ ' + time + '</div>' : '')
+          + '</div>';
+      }).join('');
+    }
+  });
+
+  renderChart(selectedDate);
+}
+
+function renderChart(selectedDate) {
+  // Build last 7 days
+  var days = [];
+  for (var i = 6; i >= 0; i--) {
+    var d = new Date(selectedDate + 'T00:00:00');
+    d.setDate(d.getDate() - i);
+    days.push(d.toISOString().split('T')[0]);
+  }
+
+  var folders = { inward: 'Inward', quality: 'Quality', shearing: 'Shearing' };
+  var maxVal = 1;
+  var dayCounts = days.map(function(day) {
+    var counts = {};
+    Object.keys(folders).forEach(function(key) {
+      counts[key] = (allData[folders[key]] || []).filter(r => parseEntryDate(r) === day).length;
+      if (counts[key] > maxVal) maxVal = counts[key];
+    });
+    return { day: day, counts: counts };
+  });
+
+  var chartWrap = document.getElementById('chartWrap');
+  var maxH = 90;
+  chartWrap.innerHTML = dayCounts.map(function(dc) {
+    var label = formatDateLabel(dc.day);
+    var isSelected = dc.day === selectedDate;
+    return '<div class="chart-col">'
+      + '<div class="chart-bars">'
+      + '<div class="bar inward" style="height:' + Math.max(2, Math.round(dc.counts.inward / maxVal * maxH)) + 'px" data-val="Inward: ' + dc.counts.inward + '" title="Inward: ' + dc.counts.inward + '"></div>'
+      + '<div class="bar quality" style="height:' + Math.max(2, Math.round(dc.counts.quality / maxVal * maxH)) + 'px" data-val="CTL: ' + dc.counts.quality + '" title="CTL: ' + dc.counts.quality + '"></div>'
+      + '<div class="bar shearing" style="height:' + Math.max(2, Math.round(dc.counts.shearing / maxVal * maxH)) + 'px" data-val="Shearing: ' + dc.counts.shearing + '" title="Shearing: ' + dc.counts.shearing + '"></div>'
+      + '</div>'
+      + '<div class="chart-label" style="font-weight:' + (isSelected?'700':'400') + ';color:' + (isSelected?'var(--brand)':'var(--gray-400)') + '">' + label + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function showError(msg) {
+  var el = document.getElementById('errorBar');
+  el.textContent = msg;
+  el.style.display = msg ? 'block' : 'none';
+}
+
+// Auto-refresh every 2 minutes
+setInterval(function() { if (getSelectedDate()) loadData(); }, 120000);
+
+// Init on load
+setToday();
+</script>
+</body>
+</html>
