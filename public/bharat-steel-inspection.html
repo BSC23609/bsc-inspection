@@ -634,6 +634,167 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   </div>
 </div>
 
+
+<!-- SHEARING FORM SCREEN -->
+<div class="screen" id="screen-shearing">
+  <div class="form-topbar">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Shearing Quality Inspection</div>
+      <div class="topbar-sub">BSCQMS-PRD-008 REV 01</div>
+    </div>
+    <div class="topbar-badge">SHEARING</div>
+  </div>
+
+  <div class="form-scroll">
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📋</span> Header Information</div>
+      <div class="fg fg-2">
+        <div class="field"><label>Customer Name *</label><input type="text" id="sh_customer" placeholder="Customer name"></div>
+        <div class="field"><label>Date *</label><input type="date" id="sh_date"></div>
+      </div>
+      <div class="fg fg-2">
+        <div class="field"><label>Batch Number *</label><input type="text" id="sh_batch" placeholder="Batch number"></div>
+        <div class="field">
+          <label>Grade *</label>
+          <div id="sg_grade" class="pills">
+            <div class="pill" onclick="rp('sg_grade',this,'E250')">E250</div>
+            <div class="pill" onclick="rp('sg_grade',this,'E350')">E350</div>
+            <div class="pill" onclick="rp('sg_grade',this,'HSFQ450')">HSFQ450</div>
+            <div class="pill" onclick="rp('sg_grade',this,'HSFQ550')">HSFQ550</div>
+            <div class="pill" onclick="rpOther('sg_grade',this,'sh_grade_other_wrap')">Other</div>
+          </div>
+          <div id="sh_grade_other_wrap" style="display:none;margin-top:8px">
+            <input type="text" id="sg_grade_other" placeholder="Specify other" onchange="rs['sg_grade']=this.value">
+          </div>
+        </div>
+      </div>
+      <div class="fg fg-2">
+        <div class="field">
+          <label>Make *</label>
+          <div id="sg_make" class="pills">
+            <div class="pill" onclick="rp('sg_make',this,'SAIL')">SAIL</div>
+            <div class="pill" onclick="rp('sg_make',this,'SAIL RSP')">SAIL RSP</div>
+            <div class="pill" onclick="rp('sg_make',this,'SAIL BSP')">SAIL BSP</div>
+            <div class="pill" onclick="rp('sg_make',this,'JSW')">JSW</div>
+            <div class="pill" onclick="rp('sg_make',this,'TATA')">TATA</div>
+            <div class="pill" onclick="rp('sg_make',this,'AMNS')">AMNS</div>
+            <div class="pill" onclick="rp('sg_make',this,'NMDC')">NMDC</div>
+            <div class="pill" onclick="rp('sg_make',this,'JSPL')">JSPL</div>
+            <div class="pill" onclick="rpOther('sg_make',this,'sh_make_other_wrap')">Other</div>
+          </div>
+          <div id="sh_make_other_wrap" style="display:none;margin-top:8px">
+            <input type="text" id="sg_make_other" placeholder="Specify other" onchange="rs['sg_make']=this.value">
+          </div>
+        </div>
+        <div class="field">
+          <label>Type</label>
+          <div id="sg_type" class="pills">
+            <div class="pill" onclick="rp('sg_type',this,'HR')">HR</div>
+            <div class="pill" onclick="rp('sg_type',this,'CR')">CR</div>
+          </div>
+        </div>
+      </div>
+      <div class="fg fg-2">
+        <div class="field"><label>Process</label><input type="text" id="sh_process" value="Shearing" readonly></div>
+        <div class="field"><label>Input Size</label><input type="text" id="sh_input_size" placeholder="e.g. 1500x555"></div>
+      </div>
+      <div class="fg fg-2">
+        <div class="field"><label>Operator Name</label><input type="text" id="sh_operator" placeholder="Operator"></div>
+        <div class="field">
+          <label>QC Name *</label>
+          <div id="sg_qc" class="pills">
+            <div class="pill" onclick="rp('sg_qc',this,'Sathya')">Sathya</div>
+            <div class="pill" onclick="rp('sg_qc',this,'Kumar')">Kumar</div>
+            <div class="pill" onclick="rp('sg_qc',this,'Mahendran')">Mahendran</div>
+            <div class="pill" onclick="rp('sg_qc',this,'Dhanush')">Dhanush</div>
+            <div class="pill" onclick="rp('sg_qc',this,'Vignesh')">Vignesh</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📏</span> Sheet Measurements</div>
+      <div style="overflow-x:auto">
+        <table id="sh_meas_table" style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:var(--gray-50)">
+            <th style="padding:8px;border:1px solid var(--gray-200)">Sheet No.</th>
+            <th style="padding:8px;border:1px solid var(--gray-200)">Width 1</th>
+            <th style="padding:8px;border:1px solid var(--gray-200)">Width 2</th>
+            <th style="padding:8px;border:1px solid var(--gray-200)">Diag 1</th>
+            <th style="padding:8px;border:1px solid var(--gray-200)">Diag 2</th>
+            <th style="padding:8px;border:1px solid var(--gray-200)">Remarks</th>
+            <th style="padding:8px;border:1px solid var(--gray-200);width:30px"></th>
+          </tr></thead>
+          <tbody id="sh_rows"></tbody>
+        </table>
+      </div>
+      <button type="button" class="btn-outline" style="margin-top:10px" onclick="addShRow()">+ Add Row</button>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">✅</span> Quality Checklist</div>
+      <div class="fg fg-2">
+        <div class="field"><label>Burr -/< 10%</label><input type="number" id="sh_burr" step="0.01" placeholder="e.g. 12"></div>
+        <div class="field"><label>Blade Clearance</label><input type="number" id="sh_blade_clearance" step="0.01" placeholder="e.g. 12"></div>
+      </div>
+      <div class="fg fg-3">
+        <div class="field">
+          <label>Cutting Finish</label>
+          <div id="sg_cut_finish" class="pills">
+            <div class="pill" onclick="rp('sg_cut_finish',this,'Ok')">Ok</div>
+            <div class="pill" onclick="rp('sg_cut_finish',this,'Not Ok')">Not Ok</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Surface Condition</label>
+          <div id="sg_surface" class="pills">
+            <div class="pill" onclick="rp('sg_surface',this,'Ok')">Ok</div>
+            <div class="pill" onclick="rp('sg_surface',this,'Not Ok')">Not Ok</div>
+          </div>
+        </div>
+        <div class="field">
+          <label>Bow / Bend</label>
+          <div id="sg_bow" class="pills">
+            <div class="pill" onclick="rp('sg_bow',this,'Ok')">Ok</div>
+            <div class="pill" onclick="rp('sg_bow',this,'Not Ok')">Not Ok</div>
+          </div>
+        </div>
+      </div>
+      <div class="fg fg-1">
+        <div class="field"><label>QC Signature Date</label><input type="date" id="sh_sig_date"></div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📝</span> Overall Observation</div>
+      <div class="field"><textarea id="sh_observation" rows="4" placeholder="Overall observation and remarks..."></textarea></div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📷</span> Photos</div>
+      <div class="field">
+        <label>Upload Photos (up to 10)</label>
+        <input type="file" id="sh_photos" accept="image/*" multiple capture="environment">
+      </div>
+    </div>
+
+    <div style="padding:8px 4px;font-size:11px;color:var(--gray-400);text-align:center">
+      <strong>BHARAT STEEL (CHENNAI) · Shearing Inspection</strong><br>
+      All submissions are saved automatically
+    </div>
+  </div>
+
+  <div class="form-actions">
+    <button class="btn-outline" onclick="clearForm('shearing')">Clear</button>
+    <button class="btn-primary" id="sh_submit" onclick="submitShearing()">
+      <span class="spinner" id="sh_spin" style="display:none"></span>
+      <span id="sh_lbl">Submit</span>
+    </button>
+  </div>
+</div>
+
 <!-- PHOTO VIEWER SCREEN -->
 <div class="screen" id="screen-photos">
   <div class="form-topbar">
@@ -1036,11 +1197,11 @@ function runSubmit(btnId, spinId, lblId, data, folder) {
       lb.textContent = 'Reading photos...';
       var photoInputs = folder === 'Inward'
         ? ['i_coil_photo','i_sticker_photo']
-        : ['q_photos'];
+        : folder === 'Shearing' ? ['sh_photos'] : ['q_photos'];
       data.photos = await collectPhotosBase64(photoInputs);
 
       // Build PDF with photos embedded
-      data.pdf_content = folder === 'Inward' ? buildInwardPDF(data, ref) : buildQualityPDF(data, ref);
+      data.pdf_content = folder === 'Inward' ? buildInwardPDF(data, ref) : folder === 'Shearing' ? buildShearingPDF(data, ref) : buildQualityPDF(data, ref);
 
       lb.textContent = 'Submitting...';
       await sendToServer(data);
@@ -1168,7 +1329,7 @@ function toast(type, msg) {
 
 function clearForm(which) {
   if(!confirm('Clear all fields in this form?')) return;
-  var prefix = which === 'inward' ? '#screen-inward' : '#screen-quality';
+  var prefix = which === 'inward' ? '#screen-inward' : which === 'shearing' ? '#screen-shearing' : '#screen-quality';
   document.querySelectorAll(prefix+' input, '+prefix+' textarea').forEach(i=>i.value='');
   document.querySelectorAll(prefix+' .pill').forEach(p=>p.classList.remove('sel'));
   document.querySelectorAll(prefix+' .yn-btn').forEach(b=>b.classList.remove('a'));
@@ -1185,9 +1346,137 @@ function clearForm(which) {
   toast('inf','Form cleared');
 }
 
+
+// ============================================================
+//  SHEARING FORM
+// ============================================================
+var shRowCount = 0;
+function addShRow() {
+  shRowCount++;
+  var tr = document.createElement('tr');
+  tr.id = 'sh_row_' + shRowCount;
+  var id = shRowCount;
+  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="sr'+id+'_sno" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_w1" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_w2" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_d1" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_d2" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="sr'+id+'_rm" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeShRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">×</button></td>';
+  document.getElementById('sh_rows').appendChild(tr);
+}
+function removeShRow(id) {
+  var el = document.getElementById('sh_row_' + id);
+  if (el) el.remove();
+}
+
+function collectShearing() {
+  var rows = [];
+  document.querySelectorAll('#sh_rows tr').forEach(function(tr) {
+    var id = tr.id.replace('sh_row_','');
+    rows.push({
+      sheet_no: gv('sr'+id+'_sno'),
+      width1: gv('sr'+id+'_w1'),
+      width2: gv('sr'+id+'_w2'),
+      diag1: gv('sr'+id+'_d1'),
+      diag2: gv('sr'+id+'_d2'),
+      remarks: gv('sr'+id+'_rm')
+    });
+  });
+  return {
+    customer_name: gv('sh_customer'),
+    date: gv('sh_date'),
+    batch_number: gv('sh_batch'),
+    grade: rs['sg_grade']||'',
+    make: rs['sg_make']||'',
+    type: rs['sg_type']||'',
+    process: gv('sh_process'),
+    input_size: gv('sh_input_size'),
+    operator: gv('sh_operator'),
+    qc_name: rs['sg_qc']||'',
+    measurements: rows,
+    burr: gv('sh_burr'),
+    blade_clearance: gv('sh_blade_clearance'),
+    cutting_finish: rs['sg_cut_finish']||'',
+    surface_condition: rs['sg_surface']||'',
+    bow_bend: rs['sg_bow']||'',
+    sig_date: gv('sh_sig_date'),
+    overall_observation: gv('sh_observation'),
+    timestamp: new Date().toISOString()
+  };
+}
+
+function submitShearing() {
+  var d = collectShearing();
+  if (!d.customer_name) { toast('err','Customer name is required'); return; }
+  if (!d.batch_number)  { toast('err','Batch number is required'); return; }
+  if (!d.grade)         { toast('err','Please select grade'); return; }
+  if (!d.make)          { toast('err','Please select make'); return; }
+  if (!d.qc_name)       { toast('err','Please select QC name'); return; }
+  runSubmit('sh_submit','sh_spin','sh_lbl', d, 'Shearing');
+}
+
+function buildShearingPDF(data, ref) {
+  var ts = new Date().toLocaleString('en-IN');
+  var rowsHtml = (data.measurements||[]).filter(r=>r.sheet_no||r.width1||r.width2).map(function(r){
+    return '<tr><td>'+r.sheet_no+'</td><td>'+r.width1+'</td><td>'+r.width2+'</td><td>'+r.diag1+'</td><td>'+r.diag2+'</td><td>'+r.remarks+'</td></tr>';
+  }).join('');
+  var photosHtml = buildPhotosHTML(data.photos);
+  var logoImg = document.querySelector('#screen-home img') ? document.querySelector('#screen-home img').src : '';
+  var css = '<style>'
+    + 'body{font-family:Arial,sans-serif;font-size:11px;color:#111;margin:0;padding:20px}'
+    + '.hdr{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1A6DAF;padding-bottom:12px;margin-bottom:16px}'
+    + '.cn{font-size:16px;font-weight:700;color:#1A6DAF}'
+    + '.cs{font-size:10px;color:#666}'
+    + '.dr{text-align:right;font-size:10px;color:#666}'
+    + 'h2{font-size:13px;font-weight:700;background:#1A6DAF;color:#fff;padding:6px 10px;border-radius:3px;margin:12px 0 8px}'
+    + 'table{width:100%;border-collapse:collapse;margin-bottom:10px}'
+    + 'td{padding:6px 8px;border:1px solid #E5E7EB;vertical-align:top}'
+    + 'td.l{background:#F3F4F6;font-weight:700;width:35%;color:#374151}'
+    + 'th{padding:6px 8px;border:1px solid #E5E7EB;background:#1F2937;color:#fff;font-size:10px;text-align:left}'
+    + '.y{color:#15803D;font-weight:700}.n{color:#B91C1C;font-weight:700}'
+    + '.ft{margin-top:20px;border-top:1px solid #E5E7EB;padding-top:10px;font-size:9px;color:#9CA3AF;text-align:center}'
+    + '</style>';
+  var head = '<div class="hdr"><div style="display:flex;align-items:center;gap:10px">'
+    + '<img src="'+logoImg+'" style="width:48px;height:48px;border-radius:6px">'
+    + '<div><div class="cn">BHARAT STEEL (CHENNAI) PVT. LTD.</div>'
+    + '<div class="cs">Shearing Quality Inspection Report \u00b7 BSCQMS-PRD-008 REV 01</div></div></div>'
+    + '<div class="dr">Ref: '+ref+'<br>Date: '+ts+'</div></div>';
+  var body = '<h2>Header Information</h2>'
+    + '<table>'
+    + '<tr><td class="l">Customer Name</td><td colspan="3">'+(data.customer_name||'-')+'</td></tr>'
+    + '<tr><td class="l">Batch Number</td><td>'+(data.batch_number||'-')+'</td><td class="l">Grade</td><td>'+(data.grade||'-')+'</td></tr>'
+    + '<tr><td class="l">Make</td><td>'+(data.make||'-')+'</td><td class="l">Type</td><td>'+(data.type||'-')+'</td></tr>'
+    + '<tr><td class="l">Process</td><td>'+(data.process||'-')+'</td><td class="l">Input Size</td><td>'+(data.input_size||'-')+'</td></tr>'
+    + '<tr><td class="l">Operator Name</td><td>'+(data.operator||'-')+'</td><td class="l">QC Name</td><td>'+(data.qc_name||'-')+'</td></tr>'
+    + '</table>'
+    + '<h2>Sheet Measurements</h2>'
+    + '<table><thead><tr><th>Sheet No.</th><th>Width 1</th><th>Width 2</th><th>Diag 1</th><th>Diag 2</th><th>Remarks</th></tr></thead>'
+    + '<tbody>'+(rowsHtml||'<tr><td colspan="6" style="text-align:center;color:#9CA3AF">No measurements entered</td></tr>')+'</tbody></table>'
+    + '<h2>Quality Checklist</h2>'
+    + '<table>'
+    + '<tr><td class="l">Burr -/&lt; 10%</td><td>'+(data.burr||'-')+'</td><td class="l">Blade Clearance</td><td>'+(data.blade_clearance||'-')+'</td></tr>'
+    + '<tr><td class="l">Cutting Finish</td><td class="'+(data.cutting_finish==='Ok'?'y':'n')+'">'+(data.cutting_finish||'-')+'</td><td class="l">Surface Condition</td><td class="'+(data.surface_condition==='Ok'?'y':'n')+'">'+(data.surface_condition||'-')+'</td></tr>'
+    + '<tr><td class="l">Bow / Bend</td><td class="'+(data.bow_bend==='Ok'?'y':'n')+'">'+(data.bow_bend||'-')+'</td><td class="l">QC Signature Date</td><td>'+(data.sig_date||'-')+'</td></tr>'
+    + '</table>'
+    + '<h2>Overall Observation</h2>'
+    + '<table><tr><td>'+(data.overall_observation||'-')+'</td></tr></table>'
+    + photosHtml
+    + '<div class="ft">BHARAT STEEL (CHENNAI) PVT. LTD. \u00b7 BSCQMS-PRD-008 REV 01 \u00b7 '+ref+'</div>';
+  return '<!DOCTYPE html><html><head><meta charset="UTF-8">'+css+'</head><body>'+head+body+'</body></html>';
+}
+
 // ============================================================
 //  INIT
 // ============================================================
 buildPQ();
 addRow(); addRow(); addRow();
-var now = new Date(), pad = n=>n.toString().padStart(2
+var now = new Date(), pad = n=>n.toString().padStart(2,'0');
+document.getElementById('q_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+document.getElementById('q_time').value = pad(now.getHours())+':'+pad(now.getMinutes());
+addShRow(); addShRow(); addShRow();
+document.getElementById('sh_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+document.getElementById('sh_sig_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+</script>
+</body>
+</html>
