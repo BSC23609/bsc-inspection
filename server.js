@@ -8,6 +8,10 @@ const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Serve static HTML files from public folder
+const path = require('path');
+app.use(express.static(path.join(__dirname, 'public')));
+
 app.use((req, res, next) => {
   res.setTimeout(120000, () => {
     res.status(408).json({ status: 'error', message: 'Request timed out.' });
@@ -50,7 +54,13 @@ async function sendInwardEmail(pdfBuffer, fileName, data) {
   console.log('Email sent | Subject:', subject, '| To:', recipients);
 }
 
-app.get('/', (req, res) => { res.json({ status: 'BSC Inspection Server is running' }); });
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'bharat-steel-inspection.html'));
+});
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'BSC Inspection Server is running' });
+});
 
 // STATS endpoint — reads Excel logs and returns daily counts
 app.get('/stats', async (req, res) => {
