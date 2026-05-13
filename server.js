@@ -28,7 +28,10 @@ const SMTP_PASS     = process.env.SMTP_PASS || '';
 const transporter = nodemailer.createTransport({
   host: 'smtp.office365.com', port: 587, secure: false,
   auth: { user: SMTP_USER, pass: SMTP_PASS },
-  tls: { ciphers: 'SSLv3' }
+  tls: { ciphers: 'SSLv3' },
+  connectionTimeout: 15000,
+  greetingTimeout: 15000,
+  socketTimeout: 30000
 });
 
 // =====================================================
@@ -348,12 +351,14 @@ app.post('/submit', async (req, res) => {
     
     await appendExcelRow(token, folder, data, fileName);
     
-    if (folder === 'Inward' && SMTP_PASS) {
-      try { await sendInwardEmail(pdfBuffer, fileName, data); }
-      catch (mailErr) { console.error('Email error (non-fatal):', mailErr.message); }
-    }
-    
+    // Send response FIRST, then send email in background (non-blocking)
     res.json({ status: 'success', ref: ref, filename: fileName });
+    
+    if (folder === 'Inward' && SMTP_PASS) {
+      sendInwardEmail(pdfBuffer, fileName, data)
+        .then(() => console.log('Email sent successfully'))
+        .catch(err => console.error('Email error (non-fatal):', err.message));
+    }
   } catch (err) {
     console.error('Submit error:', err.message);
     res.status(500).json({ status: 'error', message: err.message });
