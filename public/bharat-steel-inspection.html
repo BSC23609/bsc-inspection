@@ -649,134 +649,135 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   <div class="form-scroll">
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📋</span> Header Information</div>
-      <div class="fg fg-2">
-        <div class="field"><label>Customer Name *</label><input type="text" id="sh_customer" placeholder="Customer name"></div>
-        <div class="field"><label>Date *</label><input type="date" id="sh_date"></div>
-      </div>
-      <div class="fg fg-2">
-        <div class="field"><label>Batch Number *</label><input type="text" id="sh_batch" placeholder="Batch number"></div>
-        <div class="field">
-          <label>Grade *</label>
-          <div id="sg_grade" class="pills">
-            <div class="pill" onclick="rp('sg_grade',this,'E250')">E250</div>
-            <div class="pill" onclick="rp('sg_grade',this,'E350')">E350</div>
-            <div class="pill" onclick="rp('sg_grade',this,'HSFQ450')">HSFQ450</div>
-            <div class="pill" onclick="rp('sg_grade',this,'HSFQ550')">HSFQ550</div>
-            <div class="pill" onclick="rpOther('sg_grade',this,'sh_grade_other_wrap')">Other</div>
-          </div>
-          <div id="sh_grade_other_wrap" style="display:none;margin-top:8px">
-            <input type="text" id="sg_grade_other" placeholder="Specify other" onchange="rs['sg_grade']=this.value">
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>Customer Name *</label><input type="text" id="sh_customer" placeholder="Customer name"></div>
+          <div class="field"><label>Date *</label><input type="date" id="sh_date"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Batch Number *</label><input type="text" id="sh_batch" placeholder="Batch number"></div>
+          <div class="field">
+            <label>Grade *</label>
+            <div id="sg_grade" class="pills">
+              <div class="pill" onclick="rp('sg_grade',this,'E250')">E250</div>
+              <div class="pill" onclick="rp('sg_grade',this,'E350')">E350</div>
+              <div class="pill" onclick="rp('sg_grade',this,'HSFQ450')">HSFQ450</div>
+              <div class="pill" onclick="rp('sg_grade',this,'HSFQ550')">HSFQ550</div>
+              <div class="pill" onclick="rpOther('sg_grade',this,'sh_grade_other_wrap')">Other</div>
+            </div>
+            <div id="sh_grade_other_wrap" style="display:none;margin-top:8px">
+              <input type="text" id="sg_grade_other" placeholder="Specify other" onchange="rs['sg_grade']=this.value">
+            </div>
           </div>
         </div>
-      </div>
-      <div class="fg fg-2">
-        <div class="field">
-          <label>Make *</label>
-          <div id="sg_make" class="pills">
-            <div class="pill" onclick="rp('sg_make',this,'SAIL')">SAIL</div>
-            <div class="pill" onclick="rp('sg_make',this,'SAIL RSP')">SAIL RSP</div>
-            <div class="pill" onclick="rp('sg_make',this,'SAIL BSP')">SAIL BSP</div>
-            <div class="pill" onclick="rp('sg_make',this,'JSW')">JSW</div>
-            <div class="pill" onclick="rp('sg_make',this,'TATA')">TATA</div>
-            <div class="pill" onclick="rp('sg_make',this,'AMNS')">AMNS</div>
-            <div class="pill" onclick="rp('sg_make',this,'NMDC')">NMDC</div>
-            <div class="pill" onclick="rp('sg_make',this,'JSPL')">JSPL</div>
-            <div class="pill" onclick="rpOther('sg_make',this,'sh_make_other_wrap')">Other</div>
+        <div class="fg fg-2">
+          <div class="field">
+            <label>Make *</label>
+            <div id="sg_make" class="pills">
+              <div class="pill" onclick="rp('sg_make',this,'SAIL')">SAIL</div>
+              <div class="pill" onclick="rp('sg_make',this,'SAIL RSP')">SAIL RSP</div>
+              <div class="pill" onclick="rp('sg_make',this,'SAIL BSP')">SAIL BSP</div>
+              <div class="pill" onclick="rp('sg_make',this,'JSW')">JSW</div>
+              <div class="pill" onclick="rp('sg_make',this,'TATA')">TATA</div>
+              <div class="pill" onclick="rp('sg_make',this,'AMNS')">AMNS</div>
+              <div class="pill" onclick="rp('sg_make',this,'NMDC')">NMDC</div>
+              <div class="pill" onclick="rp('sg_make',this,'JSPL')">JSPL</div>
+              <div class="pill" onclick="rpOther('sg_make',this,'sh_make_other_wrap')">Other</div>
+            </div>
+            <div id="sh_make_other_wrap" style="display:none;margin-top:8px">
+              <input type="text" id="sg_make_other" placeholder="Specify other" onchange="rs['sg_make']=this.value">
+            </div>
           </div>
-          <div id="sh_make_other_wrap" style="display:none;margin-top:8px">
-            <input type="text" id="sg_make_other" placeholder="Specify other" onchange="rs['sg_make']=this.value">
+          <div class="field">
+            <label>Type</label>
+            <div id="sg_type" class="pills">
+              <div class="pill" onclick="rp('sg_type',this,'HR')">HR</div>
+              <div class="pill" onclick="rp('sg_type',this,'CR')">CR</div>
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label>Type</label>
-          <div id="sg_type" class="pills">
-            <div class="pill" onclick="rp('sg_type',this,'HR')">HR</div>
-            <div class="pill" onclick="rp('sg_type',this,'CR')">CR</div>
-          </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Process</label><input type="text" id="sh_process" value="Shearing" readonly></div>
+          <div class="field"><label>Input Size</label><input type="text" id="sh_input_size" placeholder="e.g. 1500x555"></div>
         </div>
-      </div>
-      <div class="fg fg-2">
-        <div class="field"><label>Process</label><input type="text" id="sh_process" value="Shearing" readonly></div>
-        <div class="field"><label>Input Size</label><input type="text" id="sh_input_size" placeholder="e.g. 1500x555"></div>
-      </div>
-      <div class="fg fg-2">
-        <div class="field"><label>Operator Name</label><input type="text" id="sh_operator" placeholder="Operator"></div>
-        <div class="field">
-          <label>QC Name *</label>
-          <div id="sg_qc" class="pills">
-            <div class="pill" onclick="rp('sg_qc',this,'Sathya')">Sathya</div>
-            <div class="pill" onclick="rp('sg_qc',this,'Kumar')">Kumar</div>
-            <div class="pill" onclick="rp('sg_qc',this,'Mahendran')">Mahendran</div>
-            <div class="pill" onclick="rp('sg_qc',this,'Dhanush')">Dhanush</div>
-            <div class="pill" onclick="rp('sg_qc',this,'Vignesh')">Vignesh</div>
-          </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Operator Name</label><input type="text" id="sh_operator" placeholder="Operator"></div>
+          <div class="field"><label>QC Name *</label><input type="text" id="sh_qc_name" value="Vignesh" placeholder="QC name"></div>
         </div>
       </div>
     </div>
 
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📏</span> Sheet Measurements</div>
-      <div style="overflow-x:auto">
-        <table id="sh_meas_table" style="width:100%;border-collapse:collapse;font-size:12px">
-          <thead><tr style="background:var(--gray-50)">
-            <th style="padding:8px;border:1px solid var(--gray-200)">Sheet No.</th>
-            <th style="padding:8px;border:1px solid var(--gray-200)">Width 1</th>
-            <th style="padding:8px;border:1px solid var(--gray-200)">Width 2</th>
-            <th style="padding:8px;border:1px solid var(--gray-200)">Diag 1</th>
-            <th style="padding:8px;border:1px solid var(--gray-200)">Diag 2</th>
-            <th style="padding:8px;border:1px solid var(--gray-200)">Remarks</th>
-            <th style="padding:8px;border:1px solid var(--gray-200);width:30px"></th>
-          </tr></thead>
-          <tbody id="sh_rows"></tbody>
-        </table>
+      <div class="sec-body">
+        <div style="overflow-x:auto">
+          <table id="sh_meas_table" style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:var(--gray-50)">
+              <th style="padding:8px;border:1px solid var(--gray-200)">Sheet No.</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Width 1</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Width 2</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Diag 1</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Diag 2</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Remarks</th>
+              <th style="padding:8px;border:1px solid var(--gray-200);width:30px"></th>
+            </tr></thead>
+            <tbody id="sh_rows"></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn-outline" style="margin-top:10px" onclick="addShRow()">+ Add Row</button>
       </div>
-      <button type="button" class="btn-outline" style="margin-top:10px" onclick="addShRow()">+ Add Row</button>
     </div>
 
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">✅</span> Quality Checklist</div>
-      <div class="fg fg-2">
-        <div class="field"><label>Burr -/< 10%</label><input type="number" id="sh_burr" step="0.01" placeholder="e.g. 12"></div>
-        <div class="field"><label>Blade Clearance</label><input type="number" id="sh_blade_clearance" step="0.01" placeholder="e.g. 12"></div>
-      </div>
-      <div class="fg fg-3">
-        <div class="field">
-          <label>Cutting Finish</label>
-          <div id="sg_cut_finish" class="pills">
-            <div class="pill" onclick="rp('sg_cut_finish',this,'Ok')">Ok</div>
-            <div class="pill" onclick="rp('sg_cut_finish',this,'Not Ok')">Not Ok</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>Burr -/&lt; 10%</label><input type="number" id="sh_burr" step="0.01" placeholder="e.g. 12"></div>
+          <div class="field"><label>Blade Clearance</label><input type="number" id="sh_blade_clearance" step="0.01" placeholder="e.g. 12"></div>
+        </div>
+        <div class="fg fg-3">
+          <div class="field">
+            <label>Cutting Finish</label>
+            <div id="sg_cut_finish" class="pills">
+              <div class="pill" onclick="rp('sg_cut_finish',this,'Ok')">Ok</div>
+              <div class="pill" onclick="rp('sg_cut_finish',this,'Not Ok')">Not Ok</div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Surface Condition</label>
+            <div id="sg_surface" class="pills">
+              <div class="pill" onclick="rp('sg_surface',this,'Ok')">Ok</div>
+              <div class="pill" onclick="rp('sg_surface',this,'Not Ok')">Not Ok</div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Bow / Bend</label>
+            <div id="sg_bow" class="pills">
+              <div class="pill" onclick="rp('sg_bow',this,'Ok')">Ok</div>
+              <div class="pill" onclick="rp('sg_bow',this,'Not Ok')">Not Ok</div>
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label>Surface Condition</label>
-          <div id="sg_surface" class="pills">
-            <div class="pill" onclick="rp('sg_surface',this,'Ok')">Ok</div>
-            <div class="pill" onclick="rp('sg_surface',this,'Not Ok')">Not Ok</div>
-          </div>
+        <div class="fg fg-1">
+          <div class="field"><label>QC Signature Date</label><input type="date" id="sh_sig_date"></div>
         </div>
-        <div class="field">
-          <label>Bow / Bend</label>
-          <div id="sg_bow" class="pills">
-            <div class="pill" onclick="rp('sg_bow',this,'Ok')">Ok</div>
-            <div class="pill" onclick="rp('sg_bow',this,'Not Ok')">Not Ok</div>
-          </div>
-        </div>
-      </div>
-      <div class="fg fg-1">
-        <div class="field"><label>QC Signature Date</label><input type="date" id="sh_sig_date"></div>
       </div>
     </div>
 
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📝</span> Overall Observation</div>
-      <div class="field"><textarea id="sh_observation" rows="4" placeholder="Overall observation and remarks..."></textarea></div>
+      <div class="sec-body">
+        <div class="field"><textarea id="sh_observation" rows="4" placeholder="Overall observation and remarks..."></textarea></div>
+      </div>
     </div>
 
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📷</span> Photos</div>
-      <div class="field">
-        <label>Upload Photos (up to 10)</label>
-        <input type="file" id="sh_photos" accept="image/*" multiple capture="environment">
+      <div class="sec-body">
+        <div class="field">
+          <label>Upload Photos (up to 10)</label>
+          <input type="file" id="sh_photos" accept="image/*" multiple capture="environment">
+        </div>
       </div>
     </div>
 
@@ -1393,7 +1394,7 @@ function collectShearing() {
     process: gv('sh_process'),
     input_size: gv('sh_input_size'),
     operator: gv('sh_operator'),
-    qc_name: rs['sg_qc']||'',
+    qc_name: gv('sh_qc_name'),
     measurements: rows,
     burr: gv('sh_burr'),
     blade_clearance: gv('sh_blade_clearance'),
@@ -1412,7 +1413,7 @@ function submitShearing() {
   if (!d.batch_number)  { toast('err','Batch number is required'); return; }
   if (!d.grade)         { toast('err','Please select grade'); return; }
   if (!d.make)          { toast('err','Please select make'); return; }
-  if (!d.qc_name)       { toast('err','Please select QC name'); return; }
+  if (!d.qc_name)       { toast('err','QC name is required'); return; }
   runSubmit('sh_submit','sh_spin','sh_lbl', d, 'Shearing');
 }
 
