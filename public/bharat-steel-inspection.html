@@ -1101,8 +1101,26 @@ async function collectPhotosBase64(inputIds) {
 
 function fileToBase64(file) {
   return new Promise(function(resolve) {
+    // Compress image before converting to base64
+    var img = new Image();
     var reader = new FileReader();
-    reader.onload = function(e) { resolve(e.target.result); };
+    reader.onload = function(e) {
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        var MAX = 900;
+        var w = img.width, h = img.height;
+        if (w > h && w > MAX) { h = h * (MAX/w); w = MAX; }
+        else if (h > MAX) { w = w * (MAX/h); h = MAX; }
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+      img.onerror = function() { resolve(e.target.result); };
+      img.src = e.target.result;
+    };
     reader.readAsDataURL(file);
   });
 }
@@ -1203,8 +1221,14 @@ function runSubmit(btnId, spinId, lblId, data, folder) {
         : folder === 'Shearing' ? ['sh_photos'] : ['q_photos'];
       data.photos = await collectPhotosBase64(photoInputs);
 
-      // Build PDF with photos embedded
-      data.pdf_content = folder === 'Inward' ? buildInwardPDF(data, ref) : folder === 'Shearing' ? buildShearingPDF(data, ref) : buildQualityPDF(data, ref);
+      // Build HTML
+      lb.textContent = 'Generating PDF...';
+      var pdfHtml = folder === 'Inward' ? buildInwardPDF(data, ref) : folder === 'Shearing' ? buildShearingPDF(data, ref) : buildQualityPDF(data, ref);
+
+      // Generate PDF in browser
+      data.pdf_base64 = await generatePDFInBrowser(pdfHtml);
+      
+      // DON'T send the HTML to server - too big
 
       lb.textContent = 'Submitting...';
       await sendToServer(data);
@@ -1513,7 +1537,7 @@ async function generatePDFInBrowser(htmlContent) {
   var canvas;
   try {
     canvas = await html2canvas(target, { 
-      scale: 1.5, 
+      scale: 1.2, 
       useCORS: true, 
       allowTaint: true, 
       backgroundColor: '#ffffff',
@@ -1532,7 +1556,7 @@ async function generatePDFInBrowser(htmlContent) {
   var pageHeight = 297;
   var imgWidth = pageWidth;
   var imgHeight = (canvas.height * pageWidth) / canvas.width;
-  var imgData = canvas.toDataURL('image/jpeg', 0.85);
+  var imgData = canvas.toDataURL('image/jpeg', 0.7);
   
   if (imgHeight <= pageHeight) {
     pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
