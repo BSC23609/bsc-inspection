@@ -2,14 +2,11 @@ const express    = require('express');
 const cors       = require('cors');
 const fetch      = require('node-fetch');
 const nodemailer = require('nodemailer');
+const PDFDocument = require('pdfkit');
 
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-
-// Serve static HTML files from public folder
-const path = require('path');
-app.use(express.static(path.join(__dirname, 'public')));
 
 app.use((req, res, next) => {
   res.setTimeout(120000, () => {
@@ -17,6 +14,9 @@ app.use((req, res, next) => {
   });
   next();
 });
+
+const path = require('path');
+app.use(express.static(path.join(__dirname, 'public')));
 
 const CLIENT_ID     = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -31,13 +31,240 @@ const transporter = nodemailer.createTransport({
   tls: { ciphers: 'SSLv3' }
 });
 
+// =====================================================
+// PDF GENERATION using pdfkit (pure JS, no Chrome needed)
+// =====================================================
+const BLUE = '#1A6DAF';
+const GRAY_BG = '#F3F4F6';
+const GRAY_BORDER = '#E5E7EB';
+const TEXT_DARK = '#1F2937';
+
+function generatePDF(folder, data, ref) {
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      const buffers = [];
+      doc.on('data', buffers.push.bind(buffers));
+      doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', reject);
+
+      const W = doc.page.width - 80;  // usable width
+      let y = 40;
+      const ts = new Date().toLocaleString('en-IN');
+
+      // HEADER
+      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(16);
+      doc.text('BHARAT STEEL (CHENNAI) PVT. LTD.', 40, y);
+      doc.fillColor('#666').font('Helvetica').fontSize(9);
+      const subtitle = folder === 'Inward' ? 'Coil Inward Inspection Report'
+                     : folder === 'Shearing' ? 'Shearing Quality Inspection Report · BSCQMS-PRD-008 REV 01'
+                     : 'CTL Quality Inspection Report · BSCQMS-PRD-008 REV 03';
+      doc.text(subtitle, 40, y + 22);
+      doc.fontSize(9).fillColor('#666');
+      doc.text('Ref: ' + ref, 40, y, { width: W, align: 'right' });
+      doc.text('Date: ' + ts, 40, y + 14, { width: W, align: 'right' });
+      y += 42;
+      doc.moveTo(40, y).lineTo(40 + W, y).strokeColor(BLUE).lineWidth(2).stroke();
+      y += 12;
+
+      const sectionHeader = (title) => {
+        if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
+        doc.rect(40, y, W, 22).fill(BLUE);
+        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11);
+        doc.text(title, 48, y + 6);
+        y += 28;
+      };
+
+      const row2 = (l1, v1, l2, v2) => {
+        if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
+        const colW = W / 2;
+        const labelW = 110;
+        // Left cell
+        doc.rect(40, y, labelW, 22).fillAndStroke(GRAY_BG, GRAY_BORDER);
+        doc.rect(40 + labelW, y, colW - labelW, 22).strokeColor(GRAY_BORDER).stroke();
+        // Right cell
+        doc.rect(40 + colW, y, labelW, 22).fillAndStroke(GRAY_BG, GRAY_BORDER);
+        doc.rect(40 + colW + labelW, y, colW - labelW, 22).strokeColor(GRAY_BORDER).stroke();
+        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').fontSize(9);
+        doc.text(l1, 44, y + 7, { width: labelW - 8 });
+        doc.text(l2, 44 + colW, y + 7, { width: labelW - 8 });
+        doc.font('Helvetica').fillColor('#111');
+        doc.text(String(v1 || '-'), 44 + labelW, y + 7, { width: colW - labelW - 8 });
+        doc.text(String(v2 || '-'), 44 + colW + labelW, y + 7, { width: colW - labelW - 8 });
+        y += 22;
+      };
+
+      const rowFull = (label, value) => {
+        if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
+        const labelW = 110;
+        doc.rect(40, y, labelW, 22).fillAndStroke(GRAY_BG, GRAY_BORDER);
+        doc.rect(40 + labelW, y, W - labelW, 22).strokeColor(GRAY_BORDER).stroke();
+        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').fontSize(9);
+        doc.text(label, 44, y + 7, { width: labelW - 8 });
+        doc.font('Helvetica').fillColor('#111');
+        doc.text(String(value || '-'), 44 + labelW, y + 7, { width: W - labelW - 8 });
+        y += 22;
+      };
+
+      const rowBlock = (label, value) => {
+        if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
+        const valStr = String(value || '-');
+        const lines = Math.max(1, Math.ceil(valStr.length / 90));
+        const h = Math.max(22, lines * 14 + 8);
+        doc.rect(40, y, W, h).strokeColor(GRAY_BORDER).stroke();
+        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').fontSize(9);
+        doc.text(label, 44, y + 7);
+        doc.font('Helvetica').fillColor('#111').fontSize(9);
+        doc.text(valStr, 44, y + 20, { width: W - 8 });
+        y += h;
+      };
+
+      // =================== INWARD ===================
+      if (folder === 'Inward') {
+        sectionHeader('Vehicle & Coil Identity');
+        row2('Vehicle Number', data.vehicle_number, 'Batch Number', data.batch_number);
+        row2('Make of Coil', data.make_of_coil, 'Grade', data.grade);
+        y += 8;
+
+        sectionHeader('Dimensions');
+        row2('Width (mm)', data.width, 'Thickness (mm)', data.thickness);
+        row2('Coil Weight (T)', data.coil_weight, 'Coil ID (mm)', data.coil_id);
+        row2('Actual Thickness', data.actual_thickness, 'Actual Width', data.actual_width);
+        y += 8;
+
+        sectionHeader('Physical Condition');
+        row2('ID Sticker', data.id_sticker, 'Edge Damage - Inner', data.edge_inner);
+        row2('Edge Damage - Outer', data.edge_outer, 'Scratch Mark', data.scratch);
+        row2('Strapping', data.strapping, 'Rust on Surface', data.rust);
+        rowFull('Other Damages', data.other_damages);
+        y += 8;
+
+        sectionHeader('Inspector');
+        row2('Inspected By', data.inspected_by, 'Remarks', data.remarks);
+        if (data.wheels_india) {
+          y += 4;
+          rowFull('Wheels India Coil', 'YES');
+        }
+      }
+
+      // =================== SHEARING ===================
+      else if (folder === 'Shearing') {
+        sectionHeader('Header Information');
+        rowFull('Customer Name', data.customer_name);
+        row2('Batch Number', data.batch_number, 'Grade', data.grade);
+        row2('Make', data.make, 'Type', data.type);
+        row2('Process', data.process, 'Input Size', data.input_size);
+        row2('Operator Name', data.operator, 'QC Name', data.qc_name);
+        y += 8;
+
+        sectionHeader('Sheet Measurements');
+        const rows = (data.measurements || []).filter(r => r.sheet_no || r.width1 || r.width2);
+        const colWidths = [W*0.10, W*0.15, W*0.15, W*0.15, W*0.15, W*0.30];
+        const headers = ['Sheet No.', 'Width 1', 'Width 2', 'Diag 1', 'Diag 2', 'Remarks'];
+        // Header row
+        doc.rect(40, y, W, 18).fill('#1F2937');
+        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8);
+        let x = 40;
+        headers.forEach((h, i) => { doc.text(h, x + 4, y + 5, { width: colWidths[i] - 8 }); x += colWidths[i]; });
+        y += 18;
+        // Data rows
+        doc.font('Helvetica').fontSize(8).fillColor('#111');
+        if (rows.length === 0) {
+          doc.rect(40, y, W, 18).strokeColor(GRAY_BORDER).stroke();
+          doc.fillColor('#9CA3AF').text('No measurements entered', 40, y + 5, { width: W, align: 'center' });
+          y += 18;
+        } else {
+          rows.forEach(r => {
+            if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
+            doc.rect(40, y, W, 18).strokeColor(GRAY_BORDER).stroke();
+            doc.fillColor('#111');
+            x = 40;
+            [r.sheet_no, r.width1, r.width2, r.diag1, r.diag2, r.remarks].forEach((v, i) => {
+              doc.text(String(v || ''), x + 4, y + 5, { width: colWidths[i] - 8 });
+              x += colWidths[i];
+            });
+            y += 18;
+          });
+        }
+        y += 8;
+
+        sectionHeader('Quality Checklist');
+        row2('Burr -/< 10%', data.burr, 'Blade Clearance', data.blade_clearance);
+        row2('Cutting Finish', data.cutting_finish, 'Surface Condition', data.surface_condition);
+        row2('Bow / Bend', data.bow_bend, 'QC Signature Date', data.sig_date);
+        y += 8;
+
+        sectionHeader('Overall Observation');
+        rowBlock('Observation', data.overall_observation);
+      }
+
+      // =================== CTL QUALITY ===================
+      else {
+        sectionHeader('Customer & Coil Info');
+        rowFull('Customer Name', data.customer_name);
+        row2('Date', data.date, 'Time', data.time);
+        row2('Coil Number', data.coil_number, 'Batch Number', data.batch_number);
+        row2('Make', data.make, 'Coil Thickness', data.coil_thickness);
+        row2('Grade', data.coil_grade, 'Width', data.coil_width);
+        rowFull('Coil Weight (T)', data.coil_weight);
+        y += 8;
+
+        sectionHeader('Processing Info');
+        row2('First Bit', data.first_bit, 'Last Bit', data.last_bit);
+        row2('Defective Bit', data.defective, 'Balance Weight', data.balance_wt);
+        row2('Coil Verified', data.coil_verified, 'Blade Clearance', data.blade_clearance);
+        row2('Operator', data.operator, 'Machine Name', data.machine_name);
+        row2('Inspector', data.inspector, 'Remarks', data.remarks);
+        y += 8;
+
+        sectionHeader('Quality Checklist');
+        row2('Burr', data.bur, 'Cutting Finish', data.cutting_finish);
+        row2('Scalling', data.scalling, 'Pit Marks', data.pit_marks);
+        row2('Waviness', data.waviness, 'Center Bow', data.center_bow);
+        row2('Cutting Bow', data.cutting_bow, 'Surface Defects', data.surface_defects);
+        y += 8;
+
+        sectionHeader('Processed Quantity');
+        const pq = data.processed_qty || {};
+        const sizeHeaders = ['Size #', 'Length', 'Nos', 'Weight (T)'];
+        const sizeCols = [W*0.15, W*0.30, W*0.25, W*0.30];
+        doc.rect(40, y, W, 18).fill('#1F2937');
+        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8);
+        let xs = 40;
+        sizeHeaders.forEach((h, i) => { doc.text(h, xs + 4, y + 5, { width: sizeCols[i] - 8 }); xs += sizeCols[i]; });
+        y += 18;
+        doc.font('Helvetica').fontSize(8).fillColor('#111');
+        for (let i = 1; i <= 10; i++) {
+          const s = pq['size_' + i] || {};
+          if (!s.length && !s.nos && !s.weight_t) continue;
+          if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
+          doc.rect(40, y, W, 18).strokeColor(GRAY_BORDER).stroke();
+          xs = 40;
+          ['Size ' + i, s.length, s.nos, s.weight_t].forEach((v, j) => {
+            doc.text(String(v || ''), xs + 4, y + 5, { width: sizeCols[j] - 8 });
+            xs += sizeCols[j];
+          });
+          y += 18;
+        }
+      }
+
+      // Footer
+      const footer = 'BHARAT STEEL (CHENNAI) PVT. LTD. · ' + (folder === 'Inward' ? 'Inward Inspection' : folder === 'Shearing' ? 'BSCQMS-PRD-008 REV 01' : 'BSCQMS-PRD-008 REV 03') + ' · ' + ref;
+      doc.fillColor('#9CA3AF').font('Helvetica').fontSize(8);
+      doc.text(footer, 40, doc.page.height - 30, { width: W, align: 'center' });
+
+      doc.end();
+    } catch(e) {
+      reject(e);
+    }
+  });
+}
+
 async function sendInwardEmail(pdfBuffer, fileName, data) {
   const wheelsIndia = data.wheels_india;
   const batchNo  = data.batch_number || '-';
   const vehicleNo = data.vehicle_number || '-';
-  const formDate = data.timestamp
-    ? new Date(data.timestamp).toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' })
-    : new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' });
+  const formDate = new Date(data.timestamp || Date.now()).toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' });
   const subject = wheelsIndia
     ? 'WHEELS INDIA (Mother Coil Inspection Report) - ' + formDate + ' - ' + vehicleNo + ' - ' + batchNo
     : 'MOTHER COIL INSPECTION REPORT - ' + formDate + ' - ' + vehicleNo + ' - ' + batchNo;
@@ -61,7 +288,7 @@ app.get('/health', (req, res) => {
   res.json({ status: 'BSC Inspection Server is running' });
 });
 
-// STATS endpoint — reads Excel logs and returns daily counts
+// STATS endpoint
 app.get('/stats', async (req, res) => {
   try {
     const token = await getToken();
@@ -77,7 +304,6 @@ app.get('/stats', async (req, res) => {
         const rowsResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/rows?$select=values&$top=500', { headers: { 'Authorization': 'Bearer ' + token } });
         if (!rowsResp.ok) { result[folder] = []; continue; }
         const rows = (await rowsResp.json()).value || [];
-        // Each row: values[0][0]=fileName, values[0][1]=timestamp, values[0][2]=vehicle/customer, values[0][3]=batch
         result[folder] = rows.map(r => ({
           fileName: r.values[0][0] || '',
           timestamp: r.values[0][1] || '',
@@ -88,7 +314,6 @@ app.get('/stats', async (req, res) => {
     }
     res.json(result);
   } catch(err) {
-    console.error('Stats error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
@@ -102,16 +327,16 @@ app.post('/submit', async (req, res) => {
     const suffix  = folder === 'Inward' ? 'Inward' : folder === 'Shearing' ? 'Shearing' : 'CTL_Inspection';
     const fileName = batchNo + '_(' + dateStr + ')_' + suffix;
     if (!folder) return res.status(400).json({ status: 'error', message: 'Missing form_type' });
+    
     const token = await getToken();
     
-    // Accept PDF as base64 from client (instant - no server-side rendering)
-    let pdfBuffer;
-    if (data.pdf_base64) {
-      pdfBuffer = Buffer.from(data.pdf_base64.split(',').pop(), 'base64');
-    } else {
-      throw new Error('Missing pdf_base64 in request');
-    }
+    // Generate PDF server-side (using pdfkit - pure JS, no Chrome)
+    const ref = data.ref || ('BSC-' + Math.random().toString(36).substr(2, 6).toUpperCase());
+    const pdfBuffer = await generatePDF(folder, data, ref);
+    console.log('PDF generated, size:', pdfBuffer.length, 'bytes');
+    
     await uploadFile(token, 'BSC Inspections/' + folder + '/PDF/' + fileName + '.pdf', pdfBuffer, 'application/pdf');
+    
     if (data.photos && data.photos.length > 0) {
       for (var i = 0; i < data.photos.length; i++) {
         var photo = data.photos[i];
@@ -120,84 +345,19 @@ app.post('/submit', async (req, res) => {
         await uploadFile(token, 'BSC Inspections/' + folder + '/Photos/' + fileName + '/' + photoName, photoBuffer, photo.type || 'image/jpeg');
       }
     }
+    
     await appendExcelRow(token, folder, data, fileName);
+    
     if (folder === 'Inward' && SMTP_PASS) {
       try { await sendInwardEmail(pdfBuffer, fileName, data); }
       catch (mailErr) { console.error('Email error (non-fatal):', mailErr.message); }
     }
-    res.json({ status: 'success', ref: data.ref, filename: fileName });
+    
+    res.json({ status: 'success', ref: ref, filename: fileName });
   } catch (err) {
     console.error('Submit error:', err.message);
     res.status(500).json({ status: 'error', message: err.message });
   }
-});
-
-app.get('/list/:folder', async (req, res) => {
-  try {
-    const folder = req.params.folder;
-    const token  = await getToken();
-    const folderPath = 'BSC Inspections/' + folder + '/PDF';
-    const listUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(folderPath) + ':/children?$select=name&$top=50';
-    const listResp = await fetch(listUrl, { headers: { 'Authorization': 'Bearer ' + token } });
-    if (!listResp.ok) return res.status(404).json({ error: 'Folder not found' });
-    const files = ((await listResp.json()).value || []).map(f => f.name);
-    res.json({ folder: folderPath, files });
-  } catch(err) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/download', async (req, res) => {
-  try {
-    const { folder, batch, date_str } = req.body;
-    if (!folder) return res.status(400).json({ status: 'error', message: 'Missing folder' });
-    if (!batch && !date_str) return res.status(400).json({ status: 'error', message: 'Provide batch or date' });
-    const token      = await getToken();
-    const folderPath = 'BSC Inspections/' + folder + '/PDF';
-    const listUrl    = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(folderPath) + ':/children?$select=name,id&$top=200';
-    const listResp   = await fetch(listUrl, { headers: { 'Authorization': 'Bearer ' + token } });
-    if (!listResp.ok) return res.status(404).json({ status: 'error', message: 'PDF folder not found' });
-    const files   = ((await listResp.json()).value || []).map(f => f.name);
-    const matches = files.filter(name => {
-      const matchBatch = batch    ? name.toLowerCase().includes(batch.toLowerCase()) : true;
-      const matchDate  = date_str ? name.includes(date_str) : true;
-      return matchBatch && matchDate && name.endsWith('.pdf');
-    });
-    if (matches.length === 0) return res.status(404).json({ status: 'error', message: 'No report found' });
-    const fileName = matches.sort().pop();
-    const fileUrl  = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(folderPath + '/' + fileName) + ':/content';
-    const fileResp = await fetch(fileUrl, { headers: { 'Authorization': 'Bearer ' + token } });
-    if (!fileResp.ok) return res.status(404).json({ status: 'error', message: 'File not found' });
-    const buffer = await fileResp.buffer();
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Disposition', 'attachment; filename="' + fileName + '"');
-    res.send(buffer);
-  } catch (err) {
-    res.status(500).json({ status: 'error', message: err.message });
-  }
-});
-
-app.post('/photos', async (req, res) => {
-  try {
-    const { folder, batch, date_str } = req.body;
-    if (!folder) return res.status(400).json({ status:'error', message:'Missing folder' });
-    const token      = await getToken();
-    const photosRoot = 'BSC Inspections/' + folder + '/Photos';
-    const listUrl  = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(photosRoot) + ':/children?$select=name,id&$top=200';
-    const listResp = await fetch(listUrl, { headers: { 'Authorization': 'Bearer ' + token } });
-    if (!listResp.ok) return res.json({ photos: [] });
-    const folders = ((await listResp.json()).value || []).filter(f => {
-      const matchBatch = batch    ? f.name.toLowerCase().includes(batch.toLowerCase()) : true;
-      const matchDate  = date_str ? f.name.includes(date_str) : true;
-      return matchBatch && matchDate;
-    });
-    if (folders.length === 0) return res.json({ photos: [] });
-    var allPhotos = [];
-    for (var fi of folders) {
-      const imgResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fi.id + '/children?$select=name,id,@microsoft.graph.downloadUrl', { headers: { 'Authorization': 'Bearer ' + token } });
-      if (!imgResp.ok) continue;
-      (await imgResp.json()).value.forEach(img => allPhotos.push({ name: img.name, url: img['@microsoft.graph.downloadUrl'] }));
-    }
-    res.json({ photos: allPhotos });
-  } catch(err) { res.status(500).json({ status:'error', message: err.message }); }
 });
 
 async function getToken() {
@@ -207,12 +367,14 @@ async function getToken() {
   if (!json.access_token) throw new Error('Token error: ' + JSON.stringify(json));
   return json.access_token;
 }
+
 async function uploadFile(token, filePath, content, contentType) {
   const resp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(filePath) + ':/content', {
     method:'PUT', headers:{ 'Authorization':'Bearer ' + token, 'Content-Type':contentType }, body:content
   });
   if (!resp.ok) throw new Error('Upload failed (' + resp.status + '): ' + await resp.text());
 }
+
 async function appendExcelRow(token, folder, data, fileName) {
   const filePath  = 'BSC Inspections/' + folder + '/' + folder + '_Log.xlsx';
   const tableName = folder === 'Inward' ? 'InwardLog' : folder === 'Shearing' ? 'ShearingLog' : 'QualityLog';

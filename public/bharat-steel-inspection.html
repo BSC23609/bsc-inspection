@@ -181,8 +181,6 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 .btn-green{padding:11px 22px;border-radius:var(--r);border:none;background:var(--green);color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer}
 .btn-outline{padding:11px 22px;border-radius:var(--r);border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -1221,15 +1219,6 @@ function runSubmit(btnId, spinId, lblId, data, folder) {
         : folder === 'Shearing' ? ['sh_photos'] : ['q_photos'];
       data.photos = await collectPhotosBase64(photoInputs);
 
-      // Build HTML
-      lb.textContent = 'Generating PDF...';
-      var pdfHtml = folder === 'Inward' ? buildInwardPDF(data, ref) : folder === 'Shearing' ? buildShearingPDF(data, ref) : buildQualityPDF(data, ref);
-
-      // Generate PDF in browser
-      data.pdf_base64 = await generatePDFInBrowser(pdfHtml);
-      
-      // DON'T send the HTML to server - too big
-
       lb.textContent = 'Submitting...';
       await sendToServer(data);
       showSuccess(ref, 'BSC Inspections / ' + folder, folder);
@@ -1493,92 +1482,6 @@ function buildShearingPDF(data, ref) {
   return '<!DOCTYPE html><html><head><meta charset="UTF-8">'+css+'</head><body>'+head+body+'</body></html>';
 }
 
-
-// ============================================================
-//  CLIENT-SIDE PDF GENERATION (instant - uses jsPDF + html2canvas)
-// ============================================================
-async function generatePDFInBrowser(htmlContent) {
-  // Verify libraries loaded
-  if (typeof html2canvas === 'undefined') {
-    throw new Error('html2canvas library not loaded. Check internet connection.');
-  }
-  if (typeof window.jspdf === 'undefined') {
-    throw new Error('jsPDF library not loaded. Check internet connection.');
-  }
-  
-  // Create a hidden iframe to render the HTML
-  var iframe = document.createElement('iframe');
-  iframe.style.cssText = 'position:fixed;top:-10000px;left:-10000px;width:800px;height:1200px;border:none';
-  document.body.appendChild(iframe);
-  
-  var doc = iframe.contentDocument || iframe.contentWindow.document;
-  doc.open();
-  doc.write(htmlContent);
-  doc.close();
-  
-  // Wait for images to load
-  await new Promise(function(resolve) {
-    setTimeout(function() {
-      var imgs = doc.querySelectorAll('img');
-      if (imgs.length === 0) { resolve(); return; }
-      var loaded = 0;
-      var total = imgs.length;
-      var done = function() { loaded++; if (loaded >= total) resolve(); };
-      imgs.forEach(function(img) {
-        if (img.complete && img.naturalWidth > 0) done();
-        else { img.onload = done; img.onerror = done; }
-      });
-      setTimeout(resolve, 5000); // safety timeout
-    }, 300);
-  });
-  
-  // Render the iframe body to canvas
-  var target = doc.body;
-  var canvas;
-  try {
-    canvas = await html2canvas(target, { 
-      scale: 1.2, 
-      useCORS: true, 
-      allowTaint: true, 
-      backgroundColor: '#ffffff',
-      logging: false,
-      width: 800,
-      windowWidth: 800
-    });
-  } catch(e) {
-    document.body.removeChild(iframe);
-    throw new Error('Canvas render failed: ' + e.message);
-  }
-  
-  // Convert canvas to PDF
-  var pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
-  var pageWidth = 210;
-  var pageHeight = 297;
-  var imgWidth = pageWidth;
-  var imgHeight = (canvas.height * pageWidth) / canvas.width;
-  var imgData = canvas.toDataURL('image/jpeg', 0.7);
-  
-  if (imgHeight <= pageHeight) {
-    pdf.addImage(imgData, 'JPEG', 0, 0, imgWidth, imgHeight);
-  } else {
-    var position = 0;
-    var heightLeft = imgHeight;
-    while (heightLeft > 0) {
-      if (position > 0) pdf.addPage();
-      pdf.addImage(imgData, 'JPEG', 0, -position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-      position += pageHeight;
-    }
-  }
-  
-  document.body.removeChild(iframe);
-  
-  // Output as base64 (not data URI)
-  var pdfDataUri = pdf.output('datauristring');
-  // Strip the data:application/pdf;filename=... prefix - keep only base64
-  var b64 = pdfDataUri.split(',').pop();
-  return b64;
-}
 
 // ============================================================
 //  INIT

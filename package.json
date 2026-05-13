@@ -1,7 +1,7 @@
 {
   "name": "bsc-inspection-server",
   "version": "1.0.0",
-  "description": "Bharat Steel Inspection API - saves PDF + Excel to OneDrive",
+  "description": "Bharat Steel Inspection API",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -10,7 +10,8 @@
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "node-fetch": "^2.7.0",
-    "nodemailer": "^6.9.9"
+    "nodemailer": "^6.9.9",
+    "pdfkit": "^0.15.0"
   },
   "engines": {
     "node": ">=18.0.0"
