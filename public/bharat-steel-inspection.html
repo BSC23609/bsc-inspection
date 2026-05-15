@@ -399,6 +399,17 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="fg fg-1">
           <div class="field"><label>Remarks</label><textarea id="i_remarks" placeholder="Any additional notes or observations..."></textarea></div>
         </div>
+        <div style="margin-top:14px">
+          <label style="display:flex;align-items:center;gap:12px;cursor:pointer;user-select:none;padding:14px 16px;border-radius:var(--r);border:1.5px solid var(--gray-200);background:var(--gray-50);transition:all 0.15s" id="wi_label">
+            <div id="wi_checkbox" onclick="toggleWheelsIndia()" style="width:24px;height:24px;border-radius:6px;border:2px solid var(--gray-400);background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s">
+              <span id="wi_tick" style="display:none;color:#fff;font-size:16px;font-weight:700;line-height:1">✓</span>
+            </div>
+            <div style="flex:1">
+              <div style="font-size:14px;font-weight:700;color:var(--gray-800)">Wheels India Coil</div>
+              <div style="font-size:12px;color:var(--gray-400);margin-top:2px">Check if this is a Wheels India coil. Report will also be emailed to Kannan.</div>
+            </div>
+          </label>
+        </div>
       </div>
     </div>
 
@@ -1135,6 +1146,7 @@ function collectInward() {
     strapping: ys['yn_strap']||'', rust: ys['yn_rust']||'',
     other_damages: rs['ig_damage']||'',
     inspected_by: rs['ig_inspector']||'', remarks: gv('i_remarks'),
+    wheels_india: wheelsIndia,
     timestamp: new Date().toISOString()
   };
 }
@@ -1358,6 +1370,13 @@ function clearForm(which) {
     document.getElementById('q_time').value=pad(now.getHours())+':'+pad(now.getMinutes());
   }
   ['ig_make','ig_grade','ig_width','ig_damage','ig_inspector','qg_make','qg_machine_name'].forEach(k=>delete rs[k]);
+  if (which === 'inward' && typeof wheelsIndia !== 'undefined') {
+    wheelsIndia = false;
+    var b=document.getElementById('wi_checkbox'); var t=document.getElementById('wi_tick'); var l=document.getElementById('wi_label');
+    if(b){b.style.background='#fff'; b.style.borderColor='var(--gray-400)';}
+    if(t) t.style.display='none';
+    if(l){l.style.background='var(--gray-50)'; l.style.borderColor='var(--gray-200)';}
+  }
   ['yn_sticker','yn_ei','yn_eo','yn_scratch','yn_strap','yn_rust','yn_verified','yn_cut_finish','yn_scalling','yn_pit_marks','yn_waviness','yn_surface_def'].forEach(k=>delete ys[k]);
   toast('inf','Form cleared');
 }
@@ -1482,6 +1501,31 @@ function buildShearingPDF(data, ref) {
   return '<!DOCTYPE html><html><head><meta charset="UTF-8">'+css+'</head><body>'+head+body+'</body></html>';
 }
 
+
+// ============================================================
+//  WHEELS INDIA TOGGLE
+// ============================================================
+var wheelsIndia = false;
+function toggleWheelsIndia(ev) {
+  if (ev) ev.stopPropagation();
+  wheelsIndia = !wheelsIndia;
+  var box = document.getElementById('wi_checkbox');
+  var tick = document.getElementById('wi_tick');
+  var label = document.getElementById('wi_label');
+  if (wheelsIndia) {
+    box.style.background = 'var(--brand)';
+    box.style.borderColor = 'var(--brand)';
+    tick.style.display = 'block';
+    label.style.background = '#e8f2fb';
+    label.style.borderColor = 'var(--brand)';
+  } else {
+    box.style.background = '#fff';
+    box.style.borderColor = 'var(--gray-400)';
+    tick.style.display = 'none';
+    label.style.background = 'var(--gray-50)';
+    label.style.borderColor = 'var(--gray-200)';
+  }
+}
 
 // ============================================================
 //  INIT

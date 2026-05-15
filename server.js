@@ -338,16 +338,36 @@ app.post('/submit', async (req, res) => {
     const pdfBuffer = await generatePDF(folder, data, ref);
     console.log('PDF generated, size:', pdfBuffer.length, 'bytes');
     
-    await uploadFile(token, 'BSC Inspections/' + folder + '/PDF/' + fileName + '.pdf', pdfBuffer, 'application/pdf');
+    // For CTL Quality forms, save into machine-specific subfolder (CTL-1 or CTL-2)
+    let pdfFolder = 'BSC Inspections/' + folder + '/PDF';
+    let photoBaseFolder = 'BSC Inspections/' + folder + '/Photos';
+    if (folder === 'Quality' && data.machine_name) {
+      const machine = String(data.machine_name).trim().toUpperCase().replace(/[^A-Z0-9\-]/g, '');
+      if (machine === 'CTL-1' || machine === 'CTL1') {
+        pdfFolder = 'BSC Inspections/' + folder + '/PDF/CTL-1';
+        photoBaseFolder = 'BSC Inspections/' + folder + '/Photos/CTL-1';
+      } else if (machine === 'CTL-2' || machine === 'CTL2') {
+        pdfFolder = 'BSC Inspections/' + folder + '/PDF/CTL-2';
+        photoBaseFolder = 'BSC Inspections/' + folder + '/Photos/CTL-2';
+      }
+    }
+    
+    // Upload PDF and photos IN PARALLEL for speed
+    const uploadTasks = [
+      uploadFile(token, pdfFolder + '/' + fileName + '.pdf', pdfBuffer, 'application/pdf')
+    ];
     
     if (data.photos && data.photos.length > 0) {
       for (var i = 0; i < data.photos.length; i++) {
         var photo = data.photos[i];
         var photoName = 'photo_' + (i+1) + '_' + (photo.name || 'image.jpg').replace(/[^a-zA-Z0-9\.\-_]/g,'_');
         var photoBuffer = Buffer.from(photo.data.split(',')[1], 'base64');
-        await uploadFile(token, 'BSC Inspections/' + folder + '/Photos/' + fileName + '/' + photoName, photoBuffer, photo.type || 'image/jpeg');
+        uploadTasks.push(uploadFile(token, photoBaseFolder + '/' + fileName + '/' + photoName, photoBuffer, photo.type || 'image/jpeg'));
       }
     }
+    
+    // Wait for all uploads in parallel
+    await Promise.all(uploadTasks);
     
     await appendExcelRow(token, folder, data, fileName);
     
