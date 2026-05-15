@@ -398,9 +398,11 @@ app.get('/migrate-quality', async (req, res) => {
         continue;
       }
       
+      // Normalize machine name: remove all whitespace and uppercase
+      const normalized = machine.replace(/\s+/g, '');
       let targetSub = null;
-      if (machine === 'CTL-1' || machine === 'CTL1') targetSub = 'CTL-1';
-      else if (machine === 'CTL-2' || machine === 'CTL2') targetSub = 'CTL-2';
+      if (normalized === 'CTL-1' || normalized === 'CTL1') targetSub = 'CTL-1';
+      else if (normalized === 'CTL-2' || normalized === 'CTL2') targetSub = 'CTL-2';
       
       if (!targetSub) {
         status.skipped++;
@@ -460,9 +462,11 @@ app.get('/migrate-quality', async (req, res) => {
           status.results.push({ folder: item.name, action: 'SKIPPED', reason: 'No machine in Excel' });
           continue;
         }
+        // Normalize machine name: remove all whitespace
+        const normalized = machine.replace(/\s+/g, '');
         let targetSub = null;
-        if (machine === 'CTL-1' || machine === 'CTL1') targetSub = 'CTL-1';
-        else if (machine === 'CTL-2' || machine === 'CTL2') targetSub = 'CTL-2';
+        if (normalized === 'CTL-1' || normalized === 'CTL1') targetSub = 'CTL-1';
+        else if (normalized === 'CTL-2' || normalized === 'CTL2') targetSub = 'CTL-2';
         if (!targetSub) {
           status.skipped++;
           status.results.push({ folder: item.name, action: 'SKIPPED', reason: 'Unknown machine: ' + machine });
@@ -532,10 +536,11 @@ app.post('/submit', async (req, res) => {
     let photoBaseFolder = 'BSC Inspections/' + folder + '/Photos';
     if (folder === 'Quality' && data.machine_name) {
       const machine = String(data.machine_name).trim().toUpperCase().replace(/[^A-Z0-9\-]/g, '');
-      if (machine === 'CTL-1' || machine === 'CTL1') {
+      const machineNorm = machine.replace(/\s+/g, '');
+      if (machineNorm === 'CTL-1' || machineNorm === 'CTL1') {
         pdfFolder = 'BSC Inspections/' + folder + '/PDF/CTL-1';
         photoBaseFolder = 'BSC Inspections/' + folder + '/Photos/CTL-1';
-      } else if (machine === 'CTL-2' || machine === 'CTL2') {
+      } else if (machineNorm === 'CTL-2' || machineNorm === 'CTL2') {
         pdfFolder = 'BSC Inspections/' + folder + '/PDF/CTL-2';
         photoBaseFolder = 'BSC Inspections/' + folder + '/Photos/CTL-2';
       }
