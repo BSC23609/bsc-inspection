@@ -326,12 +326,30 @@ app.get('/stats', async (req, res) => {
         const rowsResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/rows?$select=values&$top=500', { headers: { 'Authorization': 'Bearer ' + token } });
         if (!rowsResp.ok) { result[folder] = []; continue; }
         const rows = (await rowsResp.json()).value || [];
-        result[folder] = rows.map(r => ({
-          fileName: r.values[0][0] || '',
-          timestamp: r.values[0][1] || '',
-          name: r.values[0][2] || '',
-          batch: r.values[0][3] || ''
-        }));
+        result[folder] = rows.map(r => {
+          const v = r.values[0];
+          if (folder === 'Inward') {
+            return {
+              fileName: v[0] || '', timestamp: v[1] || '',
+              vehicle: v[2] || '', batch: v[3] || '', make: v[4] || '', grade: v[5] || '',
+              inspector: v[19] || '', remarks: v[20] || ''
+            };
+          } else if (folder === 'Shearing') {
+            return {
+              fileName: v[0] || '', timestamp: v[1] || '',
+              customer: v[2] || '', date: v[3] || '', batch: v[4] || '',
+              grade: v[5] || '', make: v[6] || '', qc: v[11] || ''
+            };
+          } else {
+            // Quality (CTL)
+            return {
+              fileName: v[0] || '', timestamp: v[1] || '',
+              customer: v[2] || '', date: v[3] || '', coil: v[5] || '',
+              batch: v[6] || '', make: v[7] || '', grade: v[9] || '',
+              machine: v[19] || '', inspector: v[20] || ''
+            };
+          }
+        });
       } catch(e) { result[folder] = []; }
     }
     res.json(result);

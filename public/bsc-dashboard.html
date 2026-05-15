@@ -15,6 +15,7 @@
     --gray-50: #f9fafb;
     --gray-100: #f3f4f6;
     --gray-200: #e5e7eb;
+    --gray-300: #d1d5db;
     --gray-400: #9ca3af;
     --gray-600: #4b5563;
     --gray-800: #1f2937;
@@ -22,31 +23,36 @@
     --shadow: 0 2px 12px rgba(0,0,0,0.08);
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: var(--gray-800); min-height: 100vh; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; background: #f0f4f8; color: var(--gray-800); min-height: 100vh; padding-bottom: 60px; }
 
-  /* HEADER */
   .topbar { background: var(--brand); color: #fff; padding: 0 20px; height: 56px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 8px rgba(0,0,0,0.15); }
   .topbar-left { display: flex; align-items: center; gap: 12px; }
   .topbar-logo { width: 36px; height: 36px; border-radius: 6px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; }
   .topbar-title { font-size: 16px; font-weight: 700; }
   .topbar-sub { font-size: 11px; opacity: 0.8; }
-  .topbar-right { font-size: 12px; opacity: 0.85; }
+  .topbar-right { font-size: 12px; opacity: 0.85; display: flex; align-items: center; gap: 14px; }
+  .back-link { color: #fff; text-decoration: none; background: rgba(255,255,255,0.15); padding: 6px 12px; border-radius: 6px; font-size: 12px; }
+  .back-link:hover { background: rgba(255,255,255,0.25); }
 
-  /* MAIN */
-  .main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 40px; }
+  .nav-tabs { display: flex; gap: 4px; background: #fff; border-bottom: 1px solid var(--gray-200); padding: 0 16px; position: sticky; top: 56px; z-index: 99; overflow-x: auto; }
+  .nav-tab { padding: 12px 18px; font-size: 13px; font-weight: 600; color: var(--gray-400); cursor: pointer; border-bottom: 3px solid transparent; white-space: nowrap; transition: all 0.15s; }
+  .nav-tab:hover { color: var(--gray-800); }
+  .nav-tab.active { color: var(--brand); border-bottom-color: var(--brand); }
 
-  /* DATE PICKER */
+  .main { max-width: 1200px; margin: 0 auto; padding: 20px 16px; }
+  .view { display: none; }
+  .view.active { display: block; }
+
   .date-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
   .date-bar label { font-size: 13px; font-weight: 600; color: var(--gray-600); }
   .date-bar input[type=date] { border: 1.5px solid var(--gray-200); border-radius: 8px; padding: 8px 12px; font-size: 14px; color: var(--gray-800); outline: none; background: #fff; }
   .date-bar input[type=date]:focus { border-color: var(--brand); }
   .btn-today { background: var(--brand); color: #fff; border: none; border-radius: 8px; padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; }
   .btn-today:hover { background: var(--brand-dark); }
-  .btn-refresh { background: #fff; color: var(--brand); border: 1.5px solid var(--brand); border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px; }
+  .btn-refresh { background: #fff; color: var(--brand); border: 1.5px solid var(--brand); border-radius: 8px; padding: 8px 14px; font-size: 13px; font-weight: 600; cursor: pointer; }
   .btn-refresh:hover { background: var(--brand-light); }
   .last-updated { font-size: 11px; color: var(--gray-400); margin-left: auto; }
 
-  /* STAT CARDS */
   .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 24px; }
   @media(max-width:600px) { .stats-grid { grid-template-columns: 1fr; } }
   .stat-card { background: #fff; border-radius: var(--r); padding: 20px; box-shadow: var(--shadow); border-top: 4px solid var(--brand); position: relative; overflow: hidden; }
@@ -62,14 +68,12 @@
   .stat-sub { font-size: 12px; color: var(--gray-400); }
   .stat-total { font-size: 11px; color: var(--gray-400); margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--gray-100); }
 
-  /* CHART */
   .chart-card { background: #fff; border-radius: var(--r); padding: 20px; box-shadow: var(--shadow); margin-bottom: 24px; }
   .chart-title { font-size: 14px; font-weight: 700; color: var(--gray-800); margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
-  .chart-wrap { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding-bottom: 24px; position: relative; overflow-x: auto; }
+  .chart-wrap { display: flex; align-items: flex-end; gap: 6px; height: 120px; padding-bottom: 24px; overflow-x: auto; }
   .chart-col { display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 36px; }
   .chart-bars { display: flex; align-items: flex-end; gap: 2px; height: 100px; }
-  .bar { width: 10px; border-radius: 3px 3px 0 0; transition: height 0.4s; cursor: pointer; position: relative; }
-  .bar:hover::after { content: attr(data-val); position: absolute; top: -20px; left: 50%; transform: translateX(-50%); background: var(--gray-800); color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 10px; white-space: nowrap; }
+  .bar { width: 10px; border-radius: 3px 3px 0 0; transition: height 0.4s; }
   .bar.inward { background: var(--inward); }
   .bar.quality { background: var(--quality); }
   .bar.shearing { background: var(--shearing); }
@@ -78,31 +82,71 @@
   .legend-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--gray-600); }
   .legend-dot { width: 10px; height: 10px; border-radius: 2px; }
 
-  /* TABLES */
-  .tables-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-  @media(max-width:900px) { .tables-grid { grid-template-columns: 1fr; } }
-  .table-card { background: #fff; border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
-  .table-head { padding: 14px 16px; font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; justify-content: space-between; }
-  .table-head.inward { background: var(--inward); }
-  .table-head.quality { background: var(--quality); }
-  .table-head.shearing { background: var(--shearing); }
-  .table-head-count { background: rgba(255,255,255,0.25); border-radius: 20px; padding: 2px 10px; font-size: 12px; }
-  .table-body { max-height: 320px; overflow-y: auto; }
-  .table-row { padding: 10px 16px; border-bottom: 1px solid var(--gray-100); display: flex; flex-direction: column; gap: 3px; }
-  .table-row:last-child { border-bottom: none; }
-  .table-row:hover { background: var(--gray-50); }
-  .row-batch { font-size: 13px; font-weight: 600; color: var(--gray-800); }
-  .row-meta { font-size: 11px; color: var(--gray-400); }
-  .row-time { font-size: 11px; color: var(--gray-400); }
-  .empty-state { padding: 30px; text-align: center; color: var(--gray-400); font-size: 13px; }
-  .empty-icon { font-size: 28px; margin-bottom: 6px; }
+  .recent-card { background: #fff; border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  .recent-head { padding: 14px 16px; font-size: 13px; font-weight: 700; color: #fff; display: flex; align-items: center; justify-content: space-between; }
+  .recent-head.inward { background: var(--inward); }
+  .recent-head.quality { background: var(--quality); }
+  .recent-head.shearing { background: var(--shearing); }
+  .recent-head-count { background: rgba(255,255,255,0.25); border-radius: 20px; padding: 2px 10px; font-size: 12px; }
+  .recent-body { max-height: 600px; overflow-y: auto; }
+  .recent-row { padding: 12px 16px; border-bottom: 1px solid var(--gray-100); cursor: pointer; transition: background 0.15s; }
+  .recent-row:hover { background: var(--gray-50); }
+  .recent-row:last-child { border-bottom: none; }
+  .recent-row-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 4px; }
+  .recent-row-batch { font-size: 14px; font-weight: 700; color: var(--gray-800); }
+  .recent-row-time { font-size: 11px; color: var(--gray-400); white-space: nowrap; }
+  .recent-row-meta { font-size: 12px; color: var(--gray-600); line-height: 1.5; }
+  .recent-row-tag { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 10px; font-weight: 600; margin-right: 4px; }
+  .tag-inward { background: var(--brand-light); color: var(--inward); }
+  .tag-quality { background: #d4f1e3; color: var(--quality); }
+  .tag-shearing { background: #fff3e0; color: var(--shearing); }
+  .tag-machine { background: #f3e8ff; color: #6d28d9; }
 
-  /* LOADING */
-  .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--gray-400); gap: 10px; }
+  .search-card { background: #fff; border-radius: var(--r); padding: 20px; box-shadow: var(--shadow); margin-bottom: 20px; }
+  .search-row { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 10px; align-items: end; }
+  @media(max-width:800px) { .search-row { grid-template-columns: 1fr 1fr; } }
+  @media(max-width:500px) { .search-row { grid-template-columns: 1fr; } }
+  .search-field label { display: block; font-size: 11px; font-weight: 600; color: var(--gray-600); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+  .search-field input, .search-field select { width: 100%; border: 1.5px solid var(--gray-200); border-radius: 8px; padding: 10px 12px; font-size: 14px; color: var(--gray-800); outline: none; background: #fff; }
+  .search-field input:focus, .search-field select:focus { border-color: var(--brand); }
+  .search-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .btn-search { background: var(--brand); color: #fff; border: none; border-radius: 8px; padding: 10px 22px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-search:hover { background: var(--brand-dark); }
+  .btn-clear { background: #fff; color: var(--gray-600); border: 1.5px solid var(--gray-200); border-radius: 8px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; }
+  .btn-clear:hover { border-color: var(--gray-400); }
+
+  .results-summary { padding: 10px 14px; background: var(--brand-light); border-radius: 8px; margin-bottom: 12px; font-size: 13px; color: var(--brand-dark); font-weight: 600; }
+
+  .results-table { background: #fff; border-radius: var(--r); box-shadow: var(--shadow); overflow: hidden; }
+  .results-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .results-table thead { background: var(--gray-50); }
+  .results-table th { padding: 12px 14px; text-align: left; font-size: 11px; font-weight: 700; color: var(--gray-600); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--gray-200); white-space: nowrap; }
+  .results-table td { padding: 12px 14px; border-bottom: 1px solid var(--gray-100); color: var(--gray-800); }
+  .results-table tbody tr { cursor: pointer; transition: background 0.15s; }
+  .results-table tbody tr:hover { background: var(--gray-50); }
+  .results-table tbody tr:last-child td { border-bottom: none; }
+  @media(max-width:700px) {
+    .results-table table { display: none; }
+  }
+
+  .empty-state { padding: 40px 20px; text-align: center; color: var(--gray-400); font-size: 13px; }
+  .empty-icon { font-size: 36px; margin-bottom: 8px; }
+  .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--gray-400); gap: 10px; font-size: 13px; }
   .spinner { width: 20px; height: 20px; border: 2px solid var(--gray-200); border-top-color: var(--brand); border-radius: 50%; animation: spin 0.7s linear infinite; }
   @keyframes spin { to { transform: rotate(360deg); } }
 
-  /* ERROR */
+  .modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: var(--r); max-width: 500px; width: 100%; max-height: 80vh; overflow: hidden; display: flex; flex-direction: column; }
+  .modal-head { padding: 16px 20px; border-bottom: 1px solid var(--gray-200); display: flex; justify-content: space-between; align-items: center; }
+  .modal-title { font-size: 15px; font-weight: 700; color: var(--gray-800); }
+  .modal-close { background: none; border: none; font-size: 22px; cursor: pointer; color: var(--gray-400); padding: 0 4px; }
+  .modal-body { padding: 16px 20px; overflow-y: auto; }
+  .detail-row { display: flex; padding: 8px 0; border-bottom: 1px solid var(--gray-100); font-size: 13px; }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-label { width: 130px; font-weight: 600; color: var(--gray-600); flex-shrink: 0; }
+  .detail-value { flex: 1; color: var(--gray-800); word-break: break-word; }
+
   .error-bar { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 8px; padding: 12px 16px; font-size: 13px; margin-bottom: 16px; display: none; }
 </style>
 </head>
@@ -116,108 +160,183 @@
       <div class="topbar-sub">BHARAT STEEL (CHENNAI) PVT. LTD.</div>
     </div>
   </div>
-  <div class="topbar-right" id="clock"></div>
+  <div class="topbar-right">
+    <a href="/" class="back-link">← Forms</a>
+    <span id="clock"></span>
+  </div>
+</div>
+
+<div class="nav-tabs">
+  <div class="nav-tab active" onclick="switchTab('overview', this)">📊 Overview</div>
+  <div class="nav-tab" onclick="switchTab('inward', this)">📦 Inward</div>
+  <div class="nav-tab" onclick="switchTab('quality', this)">✅ CTL Quality</div>
+  <div class="nav-tab" onclick="switchTab('shearing', this)">✂️ Shearing</div>
+  <div class="nav-tab" onclick="switchTab('search', this)">🔍 Search</div>
 </div>
 
 <div class="main">
-
-  <!-- DATE BAR -->
-  <div class="date-bar">
-    <label>📅 Viewing:</label>
-    <input type="date" id="datePicker" onchange="loadData()">
-    <button class="btn-today" onclick="setToday()">Today</button>
-    <button class="btn-refresh" onclick="loadData()">↻ Refresh</button>
-    <span class="last-updated" id="lastUpdated"></span>
-  </div>
-
   <div class="error-bar" id="errorBar"></div>
 
-  <!-- STAT CARDS -->
-  <div class="stats-grid">
-    <div class="stat-card inward">
-      <div class="stat-card-bg">📦</div>
-      <div class="stat-label">Inward Coil</div>
-      <div class="stat-count" id="cnt-inward">—</div>
-      <div class="stat-sub">entries today</div>
-      <div class="stat-total" id="total-inward"></div>
+  <div class="view active" id="view-overview">
+    <div class="date-bar">
+      <label>📅 Viewing:</label>
+      <input type="date" id="datePicker" onchange="loadData()">
+      <button class="btn-today" onclick="setToday()">Today</button>
+      <button class="btn-refresh" onclick="loadData()">↻ Refresh</button>
+      <span class="last-updated" id="lastUpdated"></span>
     </div>
-    <div class="stat-card quality">
-      <div class="stat-card-bg">✅</div>
-      <div class="stat-label">CTL Quality</div>
-      <div class="stat-count" id="cnt-quality">—</div>
-      <div class="stat-sub">entries today</div>
-      <div class="stat-total" id="total-quality"></div>
-    </div>
-    <div class="stat-card shearing">
-      <div class="stat-card-bg">✂️</div>
-      <div class="stat-label">Shearing</div>
-      <div class="stat-count" id="cnt-shearing">—</div>
-      <div class="stat-sub">entries today</div>
-      <div class="stat-total" id="total-shearing"></div>
-    </div>
-  </div>
-
-  <!-- CHART — last 7 days -->
-  <div class="chart-card">
-    <div class="chart-title">📊 Last 7 Days Activity</div>
-    <div class="chart-wrap" id="chartWrap">
-      <div class="loading"><div class="spinner"></div> Loading chart...</div>
-    </div>
-    <div class="chart-legend">
-      <div class="legend-item"><div class="legend-dot" style="background:var(--inward)"></div> Inward</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--quality)"></div> CTL Quality</div>
-      <div class="legend-item"><div class="legend-dot" style="background:var(--shearing)"></div> Shearing</div>
-    </div>
-  </div>
-
-  <!-- TABLES -->
-  <div class="tables-grid">
-    <!-- Inward -->
-    <div class="table-card">
-      <div class="table-head inward">
-        <span>📦 Inward Entries</span>
-        <span class="table-head-count" id="badge-inward">0</span>
+    <div class="stats-grid">
+      <div class="stat-card inward">
+        <div class="stat-card-bg">📦</div>
+        <div class="stat-label">Inward Coil</div>
+        <div class="stat-count" id="cnt-inward">—</div>
+        <div class="stat-sub">entries today</div>
+        <div class="stat-total" id="total-inward"></div>
       </div>
-      <div class="table-body" id="list-inward">
-        <div class="loading"><div class="spinner"></div></div>
+      <div class="stat-card quality">
+        <div class="stat-card-bg">✅</div>
+        <div class="stat-label">CTL Quality</div>
+        <div class="stat-count" id="cnt-quality">—</div>
+        <div class="stat-sub">entries today</div>
+        <div class="stat-total" id="total-quality"></div>
+      </div>
+      <div class="stat-card shearing">
+        <div class="stat-card-bg">✂️</div>
+        <div class="stat-label">Shearing</div>
+        <div class="stat-count" id="cnt-shearing">—</div>
+        <div class="stat-sub">entries today</div>
+        <div class="stat-total" id="total-shearing"></div>
       </div>
     </div>
-    <!-- Quality -->
-    <div class="table-card">
-      <div class="table-head quality">
-        <span>✅ CTL Quality Entries</span>
-        <span class="table-head-count" id="badge-quality">0</span>
+    <div class="chart-card">
+      <div class="chart-title">📊 Last 7 Days Activity</div>
+      <div class="chart-wrap" id="chartWrap">
+        <div class="loading"><div class="spinner"></div> Loading chart...</div>
       </div>
-      <div class="table-body" id="list-quality">
-        <div class="loading"><div class="spinner"></div></div>
-      </div>
-    </div>
-    <!-- Shearing -->
-    <div class="table-card">
-      <div class="table-head shearing">
-        <span>✂️ Shearing Entries</span>
-        <span class="table-head-count" id="badge-shearing">0</span>
-      </div>
-      <div class="table-body" id="list-shearing">
-        <div class="loading"><div class="spinner"></div></div>
+      <div class="chart-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--inward)"></div> Inward</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--quality)"></div> CTL Quality</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--shearing)"></div> Shearing</div>
       </div>
     </div>
   </div>
 
+  <div class="view" id="view-inward">
+    <h3 style="font-size:16px;font-weight:700;color:var(--gray-800);margin-bottom:14px">📦 Last 10 Inward Coil Reports</h3>
+    <div class="recent-card">
+      <div class="recent-head inward">
+        <span>Most Recent</span>
+        <span class="recent-head-count" id="badge-recent-inward">0</span>
+      </div>
+      <div class="recent-body" id="recent-inward-body">
+        <div class="loading"><div class="spinner"></div> Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="view-quality">
+    <h3 style="font-size:16px;font-weight:700;color:var(--gray-800);margin-bottom:14px">✅ Last 10 CTL Quality Reports</h3>
+    <div class="recent-card">
+      <div class="recent-head quality">
+        <span>Most Recent</span>
+        <span class="recent-head-count" id="badge-recent-quality">0</span>
+      </div>
+      <div class="recent-body" id="recent-quality-body">
+        <div class="loading"><div class="spinner"></div> Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="view-shearing">
+    <h3 style="font-size:16px;font-weight:700;color:var(--gray-800);margin-bottom:14px">✂️ Last 10 Shearing Reports</h3>
+    <div class="recent-card">
+      <div class="recent-head shearing">
+        <span>Most Recent</span>
+        <span class="recent-head-count" id="badge-recent-shearing">0</span>
+      </div>
+      <div class="recent-body" id="recent-shearing-body">
+        <div class="loading"><div class="spinner"></div> Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="view" id="view-search">
+    <div class="search-card">
+      <h3 style="font-size:16px;font-weight:700;color:var(--gray-800);margin-bottom:14px">🔍 Search Reports</h3>
+      <div class="search-row">
+        <div class="search-field">
+          <label>Search (coil / batch / vehicle / customer)</label>
+          <input type="text" id="searchText" placeholder="Type any keyword..." oninput="debouncedSearch()">
+        </div>
+        <div class="search-field">
+          <label>Form Type</label>
+          <select id="searchFormType" onchange="runSearch()">
+            <option value="all">All forms</option>
+            <option value="Inward">Inward</option>
+            <option value="Quality">CTL Quality</option>
+            <option value="Shearing">Shearing</option>
+          </select>
+        </div>
+        <div class="search-field">
+          <label>Machine (CTL only)</label>
+          <select id="searchMachine" onchange="runSearch()">
+            <option value="">All machines</option>
+            <option value="CTL-1">CTL-1</option>
+            <option value="CTL-2">CTL-2</option>
+          </select>
+        </div>
+        <div class="search-field">
+          <label>From date</label>
+          <input type="date" id="searchFrom" onchange="runSearch()">
+        </div>
+      </div>
+      <div class="search-row" style="margin-top:10px">
+        <div class="search-field">
+          <label>To date</label>
+          <input type="date" id="searchTo" onchange="runSearch()">
+        </div>
+        <div class="search-field" style="grid-column:span 3">
+          <div class="search-actions" style="margin-top:18px">
+            <button class="btn-search" onclick="runSearch()">Search</button>
+            <button class="btn-clear" onclick="clearSearch()">Clear Filters</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div id="searchSummary"></div>
+    <div id="searchResults"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modalOverlay" onclick="if(event.target===this)closeModal()">
+  <div class="modal">
+    <div class="modal-head">
+      <div class="modal-title" id="modalTitle">Report Details</div>
+      <button class="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
 </div>
 
 <script>
 var SERVER_URL = '';
-var allData = {};
+var allData = { Inward: [], Quality: [], Shearing: [] };
+var searchTimer;
 
-// Clock
 function updateClock() {
-  document.getElementById('clock').textContent = new Date().toLocaleString('en-IN', { weekday:'short', day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
+  document.getElementById('clock').textContent = new Date().toLocaleString('en-IN', { weekday:'short', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
 }
 setInterval(updateClock, 1000);
 updateClock();
 
-// Init
+function switchTab(name, el) {
+  document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('view-' + name).classList.add('active');
+  window.scrollTo(0, 0);
+}
+
 function setToday() {
   var d = new Date();
   document.getElementById('datePicker').value = d.toISOString().split('T')[0];
@@ -225,7 +344,7 @@ function setToday() {
 }
 
 function getSelectedDate() {
-  return document.getElementById('datePicker').value; // YYYY-MM-DD
+  return document.getElementById('datePicker').value;
 }
 
 function formatDateLabel(isoDate) {
@@ -233,101 +352,64 @@ function formatDateLabel(isoDate) {
   return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short' });
 }
 
-// Parse date from filename or timestamp
 function parseEntryDate(entry) {
-  // Try timestamp first
   if (entry.timestamp) {
     var d = new Date(entry.timestamp);
     if (!isNaN(d)) return d.toISOString().split('T')[0];
   }
-  // Try fileName pattern: BATCH_(DD-MM-YYYY)_suffix
-  var m = entry.fileName.match(/\((\d{2})-(\d{2})-(\d{4})\)/);
-  if (m) return m[3] + '-' + m[2] + '-' + m[1]; // YYYY-MM-DD
+  var m = (entry.fileName||'').match(/\((\d{2})-(\d{2})-(\d{4})\)/);
+  if (m) return m[3] + '-' + m[2] + '-' + m[1];
   return null;
 }
 
-function formatTime(entry) {
-  if (!entry.timestamp) return '';
-  var d = new Date(entry.timestamp);
+function formatDateTime(ts) {
+  if (!ts) return '';
+  var d = new Date(ts);
   if (isNaN(d)) return '';
-  return d.toLocaleTimeString('en-IN', { hour:'2-digit', minute:'2-digit' });
+  return d.toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' });
 }
 
 async function loadData() {
   var selectedDate = getSelectedDate();
   if (!selectedDate) { setToday(); return; }
-
   showError('');
-
-  // Show loading
   ['inward','quality','shearing'].forEach(f => {
     document.getElementById('cnt-' + f).textContent = '—';
-    document.getElementById('list-' + f).innerHTML = '<div class="loading"><div class="spinner"></div></div>';
   });
-  document.getElementById('chartWrap').innerHTML = '<div class="loading"><div class="spinner"></div> Loading chart...</div>';
+  document.getElementById('chartWrap').innerHTML = '<div class="loading"><div class="spinner"></div> Loading...</div>';
 
   try {
-    var resp = await fetch(SERVER_URL + '/stats', {
-      headers: { 'ngrok-skip-browser-warning': '1' }
-    });
+    var resp = await fetch(SERVER_URL + '/stats');
     if (!resp.ok) throw new Error('Server returned ' + resp.status);
     allData = await resp.json();
     document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString('en-IN');
-    renderAll(selectedDate);
+    renderOverview(selectedDate);
+    renderRecent('Inward', 'recent-inward-body', 'badge-recent-inward');
+    renderRecent('Quality', 'recent-quality-body', 'badge-recent-quality');
+    renderRecent('Shearing', 'recent-shearing-body', 'badge-recent-shearing');
   } catch(e) {
-    showError('Cannot connect to server: ' + e.message + '. Make sure the server is running.');
-    ['inward','quality','shearing'].forEach(f => {
-      document.getElementById('cnt-' + f).textContent = '0';
-      document.getElementById('list-' + f).innerHTML = '<div class="empty-state"><div class="empty-icon">⚠️</div>Server offline</div>';
-    });
-    document.getElementById('chartWrap').innerHTML = '<div class="empty-state">No data available</div>';
+    showError('Cannot connect to server: ' + e.message);
   }
 }
 
-function renderAll(selectedDate) {
+function renderOverview(selectedDate) {
   var folders = { inward: 'Inward', quality: 'Quality', shearing: 'Shearing' };
-  var todayCounts = {};
-
   Object.keys(folders).forEach(function(key) {
-    var folderKey = folders[key];
-    var rows = allData[folderKey] || [];
+    var rows = allData[folders[key]] || [];
     var todayRows = rows.filter(r => parseEntryDate(r) === selectedDate);
-    todayCounts[key] = todayRows.length;
-
-    // Update count card
     document.getElementById('cnt-' + key).textContent = todayRows.length;
-    document.getElementById('badge-' + key).textContent = todayRows.length;
     document.getElementById('total-' + key).textContent = 'Total all time: ' + rows.length;
-
-    // Render list
-    var listEl = document.getElementById('list-' + key);
-    if (todayRows.length === 0) {
-      listEl.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>No entries for this date</div>';
-    } else {
-      listEl.innerHTML = todayRows.map(function(r) {
-        var label = r.batch || r.name || r.fileName || '-';
-        var time  = formatTime(r);
-        return '<div class="table-row">'
-          + '<div class="row-batch">' + label + '</div>'
-          + '<div class="row-meta">' + (r.name && r.batch ? r.name : r.fileName) + '</div>'
-          + (time ? '<div class="row-time">⏰ ' + time + '</div>' : '')
-          + '</div>';
-      }).join('');
-    }
   });
-
   renderChart(selectedDate);
 }
 
 function renderChart(selectedDate) {
-  // Build last 7 days
   var days = [];
   for (var i = 6; i >= 0; i--) {
     var d = new Date(selectedDate + 'T00:00:00');
     d.setDate(d.getDate() - i);
     days.push(d.toISOString().split('T')[0]);
   }
-
   var folders = { inward: 'Inward', quality: 'Quality', shearing: 'Shearing' };
   var maxVal = 1;
   var dayCounts = days.map(function(day) {
@@ -338,21 +420,219 @@ function renderChart(selectedDate) {
     });
     return { day: day, counts: counts };
   });
-
-  var chartWrap = document.getElementById('chartWrap');
   var maxH = 90;
-  chartWrap.innerHTML = dayCounts.map(function(dc) {
+  document.getElementById('chartWrap').innerHTML = dayCounts.map(function(dc) {
     var label = formatDateLabel(dc.day);
     var isSelected = dc.day === selectedDate;
     return '<div class="chart-col">'
       + '<div class="chart-bars">'
-      + '<div class="bar inward" style="height:' + Math.max(2, Math.round(dc.counts.inward / maxVal * maxH)) + 'px" data-val="Inward: ' + dc.counts.inward + '" title="Inward: ' + dc.counts.inward + '"></div>'
-      + '<div class="bar quality" style="height:' + Math.max(2, Math.round(dc.counts.quality / maxVal * maxH)) + 'px" data-val="CTL: ' + dc.counts.quality + '" title="CTL: ' + dc.counts.quality + '"></div>'
-      + '<div class="bar shearing" style="height:' + Math.max(2, Math.round(dc.counts.shearing / maxVal * maxH)) + 'px" data-val="Shearing: ' + dc.counts.shearing + '" title="Shearing: ' + dc.counts.shearing + '"></div>'
+      + '<div class="bar inward" style="height:' + Math.max(2, Math.round(dc.counts.inward / maxVal * maxH)) + 'px" title="Inward: ' + dc.counts.inward + '"></div>'
+      + '<div class="bar quality" style="height:' + Math.max(2, Math.round(dc.counts.quality / maxVal * maxH)) + 'px" title="CTL: ' + dc.counts.quality + '"></div>'
+      + '<div class="bar shearing" style="height:' + Math.max(2, Math.round(dc.counts.shearing / maxVal * maxH)) + 'px" title="Shearing: ' + dc.counts.shearing + '"></div>'
       + '</div>'
       + '<div class="chart-label" style="font-weight:' + (isSelected?'700':'400') + ';color:' + (isSelected?'var(--brand)':'var(--gray-400)') + '">' + label + '</div>'
       + '</div>';
   }).join('');
+}
+
+function renderRecent(folder, bodyId, badgeId) {
+  var rows = (allData[folder] || []).slice();
+  rows.sort(function(a, b) {
+    var ta = new Date(a.timestamp || 0).getTime();
+    var tb = new Date(b.timestamp || 0).getTime();
+    return tb - ta;
+  });
+  var recent = rows.slice(0, 10);
+  document.getElementById(badgeId).textContent = recent.length;
+  var body = document.getElementById(bodyId);
+  if (recent.length === 0) {
+    body.innerHTML = '<div class="empty-state"><div class="empty-icon">📭</div>No reports yet</div>';
+    return;
+  }
+  body.innerHTML = recent.map(function(r) {
+    var when = formatDateTime(r.timestamp);
+    var primary = r.batch || r.coil || r.vehicle || r.customer || r.fileName || '-';
+    var meta = '';
+    if (folder === 'Inward') {
+      var bits = [];
+      if (r.vehicle) bits.push('🚚 ' + escapeHtml(r.vehicle));
+      if (r.make) bits.push(escapeHtml(r.make));
+      if (r.grade) bits.push(escapeHtml(r.grade));
+      if (r.inspector) bits.push('👤 ' + escapeHtml(r.inspector));
+      meta = bits.join(' · ');
+    } else if (folder === 'Quality') {
+      var bits2 = [];
+      if (r.machine) bits2.push('<span class="recent-row-tag tag-machine">' + escapeHtml(r.machine) + '</span>');
+      if (r.customer) bits2.push(escapeHtml(r.customer));
+      if (r.coil) bits2.push('Coil ' + escapeHtml(r.coil));
+      if (r.grade) bits2.push(escapeHtml(r.grade));
+      meta = bits2.join(' · ');
+    } else if (folder === 'Shearing') {
+      var bits3 = [];
+      if (r.customer) bits3.push(escapeHtml(r.customer));
+      if (r.grade) bits3.push(escapeHtml(r.grade));
+      if (r.make) bits3.push(escapeHtml(r.make));
+      if (r.qc) bits3.push('👤 ' + escapeHtml(r.qc));
+      meta = bits3.join(' · ');
+    }
+    var payload = encodeURIComponent(JSON.stringify(Object.assign({}, r, { _folder: folder })));
+    return '<div class="recent-row" data-row="' + payload + '" onclick="showDetail(decodeURIComponent(this.dataset.row))">'
+      + '<div class="recent-row-top">'
+      + '<div class="recent-row-batch">' + escapeHtml(primary) + '</div>'
+      + '<div class="recent-row-time">' + when + '</div>'
+      + '</div>'
+      + '<div class="recent-row-meta">' + meta + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){ return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]; });
+}
+
+function showDetail(rowJson) {
+  var data = JSON.parse(rowJson);
+  var folder = data._folder;
+  document.getElementById('modalTitle').textContent = folder + ' Report — ' + (data.batch || data.coil || data.fileName || '');
+  var rows = [];
+  var labels = {
+    Inward: [['File', 'fileName'],['Submitted', 'timestamp'],['Vehicle', 'vehicle'],['Batch', 'batch'],['Make', 'make'],['Grade', 'grade'],['Inspector', 'inspector'],['Remarks', 'remarks']],
+    Quality: [['File', 'fileName'],['Submitted', 'timestamp'],['Customer', 'customer'],['Date', 'date'],['Coil', 'coil'],['Batch', 'batch'],['Make', 'make'],['Grade', 'grade'],['Machine', 'machine'],['Inspector', 'inspector']],
+    Shearing: [['File', 'fileName'],['Submitted', 'timestamp'],['Customer', 'customer'],['Date', 'date'],['Batch', 'batch'],['Grade', 'grade'],['Make', 'make'],['QC', 'qc']]
+  };
+  labels[folder].forEach(function(pair) {
+    var v = data[pair[1]];
+    if (pair[1] === 'timestamp') v = formatDateTime(v);
+    if (v) rows.push('<div class="detail-row"><div class="detail-label">' + pair[0] + '</div><div class="detail-value">' + escapeHtml(v) + '</div></div>');
+  });
+  document.getElementById('modalBody').innerHTML = rows.join('');
+  document.getElementById('modalOverlay').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('modalOverlay').classList.remove('show');
+}
+
+function debouncedSearch() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 300);
+}
+
+function clearSearch() {
+  document.getElementById('searchText').value = '';
+  document.getElementById('searchFormType').value = 'all';
+  document.getElementById('searchMachine').value = '';
+  document.getElementById('searchFrom').value = '';
+  document.getElementById('searchTo').value = '';
+  runSearch();
+}
+
+function runSearch() {
+  var q = (document.getElementById('searchText').value || '').trim().toLowerCase();
+  var formType = document.getElementById('searchFormType').value;
+  var machine = document.getElementById('searchMachine').value;
+  var fromDate = document.getElementById('searchFrom').value;
+  var toDate = document.getElementById('searchTo').value;
+
+  // If all filters are empty, show empty state
+  if (!q && formType === 'all' && !machine && !fromDate && !toDate) {
+    document.getElementById('searchSummary').innerHTML = '';
+    document.getElementById('searchResults').innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div>Enter a search keyword or apply a filter to view reports</div>';
+    return;
+  }
+
+  var folders = formType === 'all' ? ['Inward','Quality','Shearing'] : [formType];
+  var results = [];
+
+  folders.forEach(function(folder) {
+    var rows = allData[folder] || [];
+    rows.forEach(function(r) {
+      var entryDate = parseEntryDate(r);
+      if (fromDate && entryDate && entryDate < fromDate) return;
+      if (toDate && entryDate && entryDate > toDate) return;
+
+      if (machine && folder === 'Quality') {
+        var rMachine = String(r.machine || '').replace(/\s+/g, '').toUpperCase();
+        var filterM = machine.replace(/\s+/g, '').toUpperCase();
+        if (rMachine !== filterM) return;
+      } else if (machine && folder !== 'Quality') {
+        return;
+      }
+
+      if (q) {
+        var hay = [r.fileName, r.batch, r.coil, r.vehicle, r.customer, r.make, r.grade, r.inspector, r.qc, r.machine, r.remarks].filter(Boolean).join(' ').toLowerCase();
+        if (hay.indexOf(q) === -1) return;
+      }
+
+      results.push(Object.assign({}, r, { _folder: folder }));
+    });
+  });
+
+  results.sort(function(a, b) {
+    var ta = new Date(a.timestamp || 0).getTime();
+    var tb = new Date(b.timestamp || 0).getTime();
+    return tb - ta;
+  });
+
+  renderSearchResults(results);
+}
+
+function renderSearchResults(results) {
+  var summary = document.getElementById('searchSummary');
+  var resultsEl = document.getElementById('searchResults');
+
+  if (results.length === 0) {
+    summary.innerHTML = '';
+    resultsEl.innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div>No reports match your filters</div>';
+    return;
+  }
+
+  summary.innerHTML = '<div class="results-summary">Found ' + results.length + ' report' + (results.length !== 1 ? 's' : '') + '</div>';
+
+  var tableHtml = '<div class="results-table"><table>'
+    + '<thead><tr>'
+    + '<th>Type</th><th>Batch / Coil</th><th>Make / Grade</th><th>Details</th><th>Machine</th><th>Submitted</th>'
+    + '</tr></thead><tbody>';
+
+  results.forEach(function(r) {
+    var folder = r._folder;
+    var tagClass = folder === 'Inward' ? 'tag-inward' : folder === 'Quality' ? 'tag-quality' : 'tag-shearing';
+    var primary = r.batch || r.coil || '-';
+    var detail = r.vehicle || r.customer || '-';
+    var makeGrade = [r.make, r.grade].filter(Boolean).join(' / ') || '-';
+    var payload = encodeURIComponent(JSON.stringify(r));
+    tableHtml += '<tr data-row="' + payload + '" onclick="showDetail(decodeURIComponent(this.dataset.row))">'
+      + '<td><span class="recent-row-tag ' + tagClass + '">' + folder + '</span></td>'
+      + '<td><strong>' + escapeHtml(primary) + '</strong></td>'
+      + '<td>' + escapeHtml(makeGrade) + '</td>'
+      + '<td>' + escapeHtml(detail) + '</td>'
+      + '<td>' + (r.machine ? '<span class="recent-row-tag tag-machine">' + escapeHtml(r.machine) + '</span>' : '-') + '</td>'
+      + '<td style="white-space:nowrap;color:var(--gray-400);font-size:12px">' + formatDateTime(r.timestamp) + '</td>'
+      + '</tr>';
+  });
+  tableHtml += '</tbody></table>';
+
+  // Mobile cards
+  tableHtml += '<div style="padding:10px">';
+  results.forEach(function(r) {
+    var folder = r._folder;
+    var tagClass = folder === 'Inward' ? 'tag-inward' : folder === 'Quality' ? 'tag-quality' : 'tag-shearing';
+    var primary = r.batch || r.coil || r.fileName || '-';
+    var meta = [r.vehicle, r.customer, r.make, r.grade].filter(Boolean).join(' · ');
+    var payload = encodeURIComponent(JSON.stringify(r));
+    tableHtml += '<div class="recent-row" style="background:#fff;border-radius:8px;margin-bottom:8px;border:1px solid var(--gray-200);display:block" data-row="' + payload + '" onclick="showDetail(decodeURIComponent(this.dataset.row))">'
+      + '<div class="recent-row-top">'
+      + '<div><span class="recent-row-tag ' + tagClass + '">' + folder + '</span> <strong>' + escapeHtml(primary) + '</strong></div>'
+      + '<div class="recent-row-time">' + formatDateTime(r.timestamp) + '</div>'
+      + '</div>'
+      + '<div class="recent-row-meta">' + escapeHtml(meta) + (r.machine ? ' · <span class="recent-row-tag tag-machine">' + escapeHtml(r.machine) + '</span>' : '') + '</div>'
+      + '</div>';
+  });
+  tableHtml += '</div></div>';
+
+  // Hide mobile cards on desktop, show only on small screens
+  var style = '<style>@media(min-width:701px){#searchResults .results-table > div:last-child{display:none}}@media(max-width:700px){#searchResults .results-table > div:last-child{display:block}}</style>';
+  resultsEl.innerHTML = style + tableHtml;
 }
 
 function showError(msg) {
@@ -361,11 +641,11 @@ function showError(msg) {
   el.style.display = msg ? 'block' : 'none';
 }
 
-// Auto-refresh every 2 minutes
+// Init
 setInterval(function() { if (getSelectedDate()) loadData(); }, 120000);
-
-// Init on load
 setToday();
+// Show empty state for search initially
+document.getElementById('searchResults').innerHTML = '<div class="empty-state"><div class="empty-icon">🔍</div>Enter a search keyword or apply a filter to view reports</div>';
 </script>
 </body>
 </html>

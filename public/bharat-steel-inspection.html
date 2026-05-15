@@ -296,7 +296,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         </div>
         <div class="fg fg-1">
           <div class="field">
-            <label>Make of Coil <span class="req">*</span></label>
+            <label>Make of Coil * <span class="req">*</span></label>
             <div class="pills" id="ig_make">
               <div class="pill" onclick="rp('ig_make',this,'SAIL')">SAIL</div>
               <div class="pill" onclick="rp('ig_make',this,'SAIL RSP')">SAIL RSP</div>
@@ -360,12 +360,12 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">🔍</span> Physical Condition</div>
       <div class="sec-body">
         <div class="cond-grid">
-          <div class="cond-row"><span class="cond-lbl">Identification Sticker</span><div class="yn" id="yn_sticker"><button class="yn-btn y" onclick="yn('yn_sticker','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_sticker','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Edge Damage – Inner</span><div class="yn" id="yn_ei"><button class="yn-btn y" onclick="yn('yn_ei','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_ei','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Edge Damage – Outer</span><div class="yn" id="yn_eo"><button class="yn-btn y" onclick="yn('yn_eo','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_eo','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Scratch Mark</span><div class="yn" id="yn_scratch"><button class="yn-btn y" onclick="yn('yn_scratch','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scratch','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Strapping</span><div class="yn" id="yn_strap"><button class="yn-btn y" onclick="yn('yn_strap','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_strap','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Rust on Surface</span><div class="yn" id="yn_rust"><button class="yn-btn y" onclick="yn('yn_rust','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_rust','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Identification Sticker *</span><div class="yn" id="yn_sticker"><button class="yn-btn y" onclick="yn('yn_sticker','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_sticker','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Edge Damage – Inner *</span><div class="yn" id="yn_ei"><button class="yn-btn y" onclick="yn('yn_ei','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_ei','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Edge Damage – Outer *</span><div class="yn" id="yn_eo"><button class="yn-btn y" onclick="yn('yn_eo','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_eo','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Scratch Mark *</span><div class="yn" id="yn_scratch"><button class="yn-btn y" onclick="yn('yn_scratch','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scratch','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Strapping *</span><div class="yn" id="yn_strap"><button class="yn-btn y" onclick="yn('yn_strap','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_strap','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Rust on Surface *</span><div class="yn" id="yn_rust"><button class="yn-btn y" onclick="yn('yn_rust','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_rust','N',this)">No</button></div></div>
         </div>
         <div class="fg fg-1" style="margin-top:14px">
           <div class="field">
@@ -399,18 +399,17 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="fg fg-1">
           <div class="field"><label>Remarks</label><textarea id="i_remarks" placeholder="Any additional notes or observations..."></textarea></div>
         </div>
-        <div style="margin-top:14px">
-          <label style="display:flex;align-items:center;gap:12px;cursor:pointer;user-select:none;padding:14px 16px;border-radius:var(--r);border:1.5px solid var(--gray-200);background:var(--gray-50);transition:all 0.15s" id="wi_label">
-            <div id="wi_checkbox" onclick="toggleWheelsIndia()" style="width:24px;height:24px;border-radius:6px;border:2px solid var(--gray-400);background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;transition:all 0.15s">
-              <span id="wi_tick" style="display:none;color:#fff;font-size:16px;font-weight:700;line-height:1">✓</span>
+        <div style="margin-top:14px;padding:14px 16px;border-radius:var(--r);border:1.5px solid var(--gray-200);background:var(--gray-50)">
+          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+            <div style="flex:1;min-width:200px">
+              <div style="font-size:14px;font-weight:700;color:var(--gray-800)">Wheels India Coil *</div>
+              <div style="font-size:12px;color:var(--gray-400);margin-top:2px">If Yes, report will also be emailed to Kannan</div>
             </div>
-            <div style="flex:1">
-              <div style="font-size:14px;font-weight:700;color:var(--gray-800)">Wheels India Coil</div>
-              <div style="font-size:12px;color:var(--gray-400);margin-top:2px">Check if this is a Wheels India coil. Report will also be emailed to Kannan.</div>
-            </div>
-          </label>
+            <div class="yn" id="yn_wheels"><button class="yn-btn y" onclick="yn('yn_wheels','Y',this); wheelsIndia=true">Yes</button><button class="yn-btn n" onclick="yn('yn_wheels','N',this); wheelsIndia=false">No</button></div>
+          </div>
         </div>
       </div>
+    </div>
     </div>
 
     <div class="sec-card">
@@ -419,21 +418,21 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="fg fg-2">
           <div class="field">
             <label>Coil Photo</label>
-            <div class="photo-upload" onclick="document.getElementById('i_coil_photo').click()">
-              <input type="file" id="i_coil_photo" accept="image/*" onchange="prevSingle(this,'i_cp')">
-              <div class="photo-upload-icon">📸</div>
-              <div class="photo-upload-text">Tap to upload</div>
-              <div class="photo-upload-sub">JPG, PNG up to 10MB</div>
+            <input type="file" id="i_coil_photo" accept="image/*" capture="environment" style="display:none" onchange="prevSingle(this,'i_cp')">
+            <input type="file" id="i_coil_photo_lib" accept="image/*" style="display:none" onchange="document.getElementById('i_coil_photo').files = this.files; prevSingle(document.getElementById('i_coil_photo'),'i_cp')">
+            <div style="display:flex;gap:8px">
+              <button type="button" onclick="document.getElementById('i_coil_photo').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">📸 Take Photo</button>
+              <button type="button" onclick="document.getElementById('i_coil_photo_lib').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">🖼️ Upload</button>
             </div>
             <div class="photo-previews" id="i_cp"></div>
           </div>
           <div class="field">
             <label>Sticker Photo</label>
-            <div class="photo-upload" onclick="document.getElementById('i_sticker_photo').click()">
-              <input type="file" id="i_sticker_photo" accept="image/*" onchange="prevSingle(this,'i_sp')">
-              <div class="photo-upload-icon">🏷️</div>
-              <div class="photo-upload-text">Tap to upload</div>
-              <div class="photo-upload-sub">JPG, PNG up to 10MB</div>
+            <input type="file" id="i_sticker_photo" accept="image/*" capture="environment" style="display:none" onchange="prevSingle(this,'i_sp')">
+            <input type="file" id="i_sticker_photo_lib" accept="image/*" style="display:none" onchange="document.getElementById('i_sticker_photo').files = this.files; prevSingle(document.getElementById('i_sticker_photo'),'i_sp')">
+            <div style="display:flex;gap:8px">
+              <button type="button" onclick="document.getElementById('i_sticker_photo').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">📸 Take Photo</button>
+              <button type="button" onclick="document.getElementById('i_sticker_photo_lib').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">🖼️ Upload</button>
             </div>
             <div class="photo-previews" id="i_sp"></div>
           </div>
@@ -483,7 +482,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         </div>
         <div class="fg fg-2">
           <div class="field"><label>Coil Number <span class="req">*</span></label><input type="text" id="q_coil_no" placeholder="Enter coil number" autocomplete="off"></div>
-          <div class="field"><label>Batch Number</label><input type="text" id="q_batch" placeholder="Batch / heat number" autocomplete="off"></div>
+          <div class="field"><label>Batch Number *</label><input type="text" id="q_batch" placeholder="Batch / heat number" autocomplete="off"></div>
         </div>
         <div class="fg fg-1">
           <div class="field">
@@ -505,12 +504,12 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           </div>
         </div>
         <div class="fg fg-3">
-          <div class="field"><label>Coil Thickness (mm)</label><input type="number" id="q_thick" placeholder="e.g. 3.15" step="0.01"></div>
-          <div class="field"><label>Coil Grade</label><input type="text" id="q_grade" placeholder="e.g. E250"></div>
-          <div class="field"><label>Coil Width (mm)</label><input type="number" id="q_width" placeholder="e.g. 1250"></div>
+          <div class="field"><label>Coil Thickness (mm) *</label><input type="number" id="q_thick" placeholder="e.g. 3.15" step="0.01"></div>
+          <div class="field"><label>Coil Grade *</label><input type="text" id="q_grade" placeholder="e.g. E250"></div>
+          <div class="field"><label>Coil Width (mm) *</label><input type="number" id="q_width" placeholder="e.g. 1250"></div>
         </div>
         <div class="fg fg-2">
-          <div class="field"><label>Coil Weight (T)</label><input type="number" id="q_weight" placeholder="e.g. 12.5" step="0.001"></div>
+          <div class="field"><label>Coil Weight (T) *</label><input type="number" id="q_weight" placeholder="e.g. 12.5" step="0.001"></div>
         </div>
       </div>
     </div>
@@ -546,12 +545,12 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">🔢</span> Final Measurements</div>
       <div class="sec-body">
         <div class="fg fg-3">
-          <div class="field"><label>First Bit Length</label><input type="text" id="q_first_bit" placeholder="mm or m"></div>
-          <div class="field"><label>Last Bit Length</label><input type="text" id="q_last_bit" placeholder="mm or m"></div>
-          <div class="field"><label>Defective Length</label><input type="text" id="q_defective" placeholder="mm or m"></div>
+          <div class="field"><label>First Bit Length *</label><input type="text" id="q_first_bit" placeholder="mm or m"></div>
+          <div class="field"><label>Last Bit Length *</label><input type="text" id="q_last_bit" placeholder="mm or m"></div>
+          <div class="field"><label>Defective Length *</label><input type="text" id="q_defective" placeholder="mm or m"></div>
         </div>
         <div class="fg fg-3">
-          <div class="field"><label>Balance Coil Weight (T)</label><input type="text" id="q_bal_wt" placeholder="e.g. 0.45"></div>
+          <div class="field"><label>Balance Coil Weight (T) *</label><input type="text" id="q_bal_wt" placeholder="e.g. 0.45"></div>
           <div class="field">
             <label>Coil No. Verified</label>
             <div class="yn" id="yn_verified">
@@ -559,7 +558,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
               <button class="yn-btn n" onclick="yn('yn_verified','N',this)">No</button>
             </div>
           </div>
-          <div class="field"><label>Blade Clearance</label><input type="text" id="q_blade" placeholder="e.g. 0.05 mm"></div>
+          <div class="field"><label>Blade Clearance *</label><input type="text" id="q_blade" placeholder="e.g. 0.05 mm"></div>
         </div>
       </div>
     </div>
@@ -568,14 +567,14 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">🔍</span> Quality Checklist</div>
       <div class="sec-body">
         <div class="cond-grid">
-          <div class="cond-row"><span class="cond-lbl">Bur</span><input type="text" id="q_bur" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
-          <div class="cond-row"><span class="cond-lbl">Cutting Finish</span><div class="yn" id="yn_cut_finish"><button class="yn-btn y" onclick="yn('yn_cut_finish','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_cut_finish','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Scalling</span><div class="yn" id="yn_scalling"><button class="yn-btn y" onclick="yn('yn_scalling','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scalling','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Pit Marks</span><div class="yn" id="yn_pit_marks"><button class="yn-btn y" onclick="yn('yn_pit_marks','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_pit_marks','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Waviness</span><div class="yn" id="yn_waviness"><button class="yn-btn y" onclick="yn('yn_waviness','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_waviness','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Center Bow</span><input type="text" id="q_center_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
-          <div class="cond-row"><span class="cond-lbl">Cutting Bow</span><input type="text" id="q_cutting_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
-          <div class="cond-row"><span class="cond-lbl">Surface Defects</span><div class="yn" id="yn_surface_def"><button class="yn-btn y" onclick="yn('yn_surface_def','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_surface_def','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Bur *</span><input type="text" id="q_bur" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
+          <div class="cond-row"><span class="cond-lbl">Cutting Finish *</span><div class="yn" id="yn_cut_finish"><button class="yn-btn y" onclick="yn('yn_cut_finish','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_cut_finish','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Scalling *</span><div class="yn" id="yn_scalling"><button class="yn-btn y" onclick="yn('yn_scalling','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scalling','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Pit Marks *</span><div class="yn" id="yn_pit_marks"><button class="yn-btn y" onclick="yn('yn_pit_marks','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_pit_marks','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Waviness *</span><div class="yn" id="yn_waviness"><button class="yn-btn y" onclick="yn('yn_waviness','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_waviness','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Center Bow *</span><input type="text" id="q_center_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
+          <div class="cond-row"><span class="cond-lbl">Cutting Bow *</span><input type="text" id="q_cutting_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
+          <div class="cond-row"><span class="cond-lbl">Surface Defects *</span><div class="yn" id="yn_surface_def"><button class="yn-btn y" onclick="yn('yn_surface_def','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_surface_def','N',this)">No</button></div></div>
         </div>
       </div>
     </div>
@@ -584,11 +583,11 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">✍️</span> Sign-off</div>
       <div class="sec-body">
         <div class="fg fg-1">
-          <div class="field"><label>Machine Operated By</label><input type="text" id="q_operator" placeholder="Operator name"></div>
+          <div class="field"><label>Machine Operated By *</label><input type="text" id="q_operator" placeholder="Operator name"></div>
         </div>
         <div class="fg fg-1">
           <div class="field">
-            <label>Machine Name</label>
+            <label>Machine Name *</label>
             <div class="pills" id="qg_machine_name">
               <div class="pill" onclick="rp('qg_machine_name',this,'CTL - 1')">CTL - 1</div>
               <div class="pill" onclick="rp('qg_machine_name',this,'CTL - 2')">CTL - 2</div>
@@ -607,12 +606,13 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📷</span> Pictures (if any)</div>
       <div class="sec-body">
-        <div class="photo-upload" onclick="document.getElementById('q_photos').click()">
-          <input type="file" id="q_photos" accept="image/*" multiple onchange="prevMulti(this,'q_photo_prev')">
-          <div class="photo-upload-icon">📸</div>
-          <div class="photo-upload-text">Tap to upload photos</div>
-          <div class="photo-upload-sub">Multiple files allowed · JPG, PNG up to 10MB each</div>
+        <input type="file" id="q_photos" accept="image/*" multiple capture="environment" style="display:none" onchange="prevMulti(this,'q_photo_prev')">
+        <input type="file" id="q_photos_lib" accept="image/*" multiple style="display:none" onchange="document.getElementById('q_photos').files = this.files; prevMulti(document.getElementById('q_photos'),'q_photo_prev')">
+        <div style="display:flex;gap:8px">
+          <button type="button" onclick="document.getElementById('q_photos').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">📸 Take Photos</button>
+          <button type="button" onclick="document.getElementById('q_photos_lib').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">🖼️ Upload</button>
         </div>
+        <div style="font-size:11px;color:var(--gray-400);margin-top:6px">Multiple files allowed · JPG, PNG up to 10MB each</div>
         <div class="photo-previews" id="q_photo_prev"></div>
       </div>
     </div>
@@ -743,26 +743,26 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">✅</span> Quality Checklist</div>
       <div class="sec-body">
         <div class="fg fg-2">
-          <div class="field"><label>Burr -/&lt; 10%</label><input type="number" id="sh_burr" step="0.01" placeholder="e.g. 12"></div>
-          <div class="field"><label>Blade Clearance</label><input type="number" id="sh_blade_clearance" step="0.01" placeholder="e.g. 12"></div>
+          <div class="field"><label>Burr -/&lt; 10% *</label><input type="number" id="sh_burr" step="0.01" placeholder="e.g. 12"></div>
+          <div class="field"><label>Blade Clearance *</label><input type="number" id="sh_blade_clearance" step="0.01" placeholder="e.g. 12"></div>
         </div>
         <div class="fg fg-3">
           <div class="field">
-            <label>Cutting Finish</label>
+            <label>Cutting Finish *</label>
             <div id="sg_cut_finish" class="pills">
               <div class="pill" onclick="rp('sg_cut_finish',this,'Ok')">Ok</div>
               <div class="pill" onclick="rp('sg_cut_finish',this,'Not Ok')">Not Ok</div>
             </div>
           </div>
           <div class="field">
-            <label>Surface Condition</label>
+            <label>Surface Condition *</label>
             <div id="sg_surface" class="pills">
               <div class="pill" onclick="rp('sg_surface',this,'Ok')">Ok</div>
               <div class="pill" onclick="rp('sg_surface',this,'Not Ok')">Not Ok</div>
             </div>
           </div>
           <div class="field">
-            <label>Bow / Bend</label>
+            <label>Bow / Bend *</label>
             <div id="sg_bow" class="pills">
               <div class="pill" onclick="rp('sg_bow',this,'Ok')">Ok</div>
               <div class="pill" onclick="rp('sg_bow',this,'Not Ok')">Not Ok</div>
@@ -786,8 +786,14 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">📷</span> Photos</div>
       <div class="sec-body">
         <div class="field">
-          <label>Upload Photos (up to 10)</label>
-          <input type="file" id="sh_photos" accept="image/*" multiple capture="environment">
+          <label>Photos (up to 10)</label>
+          <input type="file" id="sh_photos" accept="image/*" multiple capture="environment" style="display:none">
+          <input type="file" id="sh_photos_lib" accept="image/*" multiple style="display:none" onchange="document.getElementById('sh_photos').files = this.files">
+          <div style="display:flex;gap:8px">
+            <button type="button" onclick="document.getElementById('sh_photos').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">📸 Take Photos</button>
+            <button type="button" onclick="document.getElementById('sh_photos_lib').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">🖼️ Upload</button>
+          </div>
+          <div style="font-size:11px;color:var(--gray-400);margin-top:6px">Multiple files allowed</div>
         </div>
       </div>
     </div>
@@ -1146,7 +1152,7 @@ function collectInward() {
     strapping: ys['yn_strap']||'', rust: ys['yn_rust']||'',
     other_damages: rs['ig_damage']||'',
     inspected_by: rs['ig_inspector']||'', remarks: gv('i_remarks'),
-    wheels_india: wheelsIndia,
+    wheels_india: ys['yn_wheels'] === 'Y',
     timestamp: new Date().toISOString()
   };
 }
@@ -1200,15 +1206,46 @@ function submitInward() {
   if (!d.batch_number)   { toast('err','Batch number is required'); return; }
   if (!d.make_of_coil)   { toast('err','Please select make of coil'); return; }
   if (!d.grade)          { toast('err','Please select grade'); return; }
+  if (!d.actual_thickness){ toast('err','Actual thickness is required'); return; }
+  if (!d.actual_width)   { toast('err','Actual width is required'); return; }
+  if (!d.id_sticker)     { toast('err','Please answer: Identification Sticker'); return; }
+  if (!d.edge_inner)     { toast('err','Please answer: Edge Damage Inner'); return; }
+  if (!d.edge_outer)     { toast('err','Please answer: Edge Damage Outer'); return; }
+  if (!d.scratch)        { toast('err','Please answer: Scratch Mark'); return; }
+  if (!d.strapping)      { toast('err','Please answer: Strapping'); return; }
+  if (!d.rust)           { toast('err','Please answer: Rust on Surface'); return; }
   if (!d.inspected_by)   { toast('err','Please select inspector'); return; }
+  if (!ys['yn_wheels'])  { toast('err','Please answer: Wheels India Coil'); return; }
   runSubmit('i_submit','i_spin','i_lbl', d, 'Inward');
 }
 
 function submitQuality() {
   var d = collectQuality();
-  if (!d.date)       { toast('err','Date of inspection is required'); return; }
-  if (!d.coil_number){ toast('err','Coil number is required'); return; }
-  if (!d.inspector)  { toast('err','Inspected by is required'); return; }
+  if (!d.date)              { toast('err','Date of inspection is required'); return; }
+  if (!d.coil_number)       { toast('err','Coil number is required'); return; }
+  if (!d.batch_number)      { toast('err','Batch number is required'); return; }
+  if (!d.make)              { toast('err','Please select make of coil'); return; }
+  if (!d.coil_thickness)    { toast('err','Coil thickness is required'); return; }
+  if (!d.coil_grade)        { toast('err','Coil grade is required'); return; }
+  if (!d.coil_width)        { toast('err','Coil width is required'); return; }
+  if (!d.coil_weight)       { toast('err','Coil weight is required'); return; }
+  if (!d.first_bit)         { toast('err','First bit length is required'); return; }
+  if (!d.last_bit)          { toast('err','Last bit length is required'); return; }
+  if (!d.defective)         { toast('err','Defective length is required'); return; }
+  if (!d.balance_wt)        { toast('err','Balance coil weight is required'); return; }
+  if (!d.coil_verified)     { toast('err','Please answer: Coil Verified'); return; }
+  if (!d.blade_clearance)   { toast('err','Blade clearance is required'); return; }
+  if (!d.bur)               { toast('err','Bur value is required'); return; }
+  if (!d.cutting_finish)    { toast('err','Please answer: Cutting Finish'); return; }
+  if (!d.scalling)          { toast('err','Please answer: Scalling'); return; }
+  if (!d.pit_marks)         { toast('err','Please answer: Pit Marks'); return; }
+  if (!d.waviness)          { toast('err','Please answer: Waviness'); return; }
+  if (!d.center_bow)        { toast('err','Center bow is required'); return; }
+  if (!d.cutting_bow)       { toast('err','Cutting bow is required'); return; }
+  if (!d.surface_defects)   { toast('err','Please answer: Surface Defects'); return; }
+  if (!d.operator)          { toast('err','Machine operated by is required'); return; }
+  if (!d.machine_name)      { toast('err','Please select machine name (CTL-1/CTL-2)'); return; }
+  if (!d.inspector)         { toast('err','Inspected by is required'); return; }
   runSubmit('q_submit','q_spin','q_lbl', d, 'Quality');
 }
 
@@ -1372,12 +1409,8 @@ function clearForm(which) {
   ['ig_make','ig_grade','ig_width','ig_damage','ig_inspector','qg_make','qg_machine_name'].forEach(k=>delete rs[k]);
   if (which === 'inward' && typeof wheelsIndia !== 'undefined') {
     wheelsIndia = false;
-    var b=document.getElementById('wi_checkbox'); var t=document.getElementById('wi_tick'); var l=document.getElementById('wi_label');
-    if(b){b.style.background='#fff'; b.style.borderColor='var(--gray-400)';}
-    if(t) t.style.display='none';
-    if(l){l.style.background='var(--gray-50)'; l.style.borderColor='var(--gray-200)';}
   }
-  ['yn_sticker','yn_ei','yn_eo','yn_scratch','yn_strap','yn_rust','yn_verified','yn_cut_finish','yn_scalling','yn_pit_marks','yn_waviness','yn_surface_def'].forEach(k=>delete ys[k]);
+  ['yn_sticker','yn_ei','yn_eo','yn_scratch','yn_strap','yn_rust','yn_wheels','yn_verified','yn_cut_finish','yn_scalling','yn_pit_marks','yn_waviness','yn_surface_def'].forEach(k=>delete ys[k]);
   toast('inf','Form cleared');
 }
 
@@ -1443,11 +1476,16 @@ function collectShearing() {
 
 function submitShearing() {
   var d = collectShearing();
-  if (!d.customer_name) { toast('err','Customer name is required'); return; }
-  if (!d.batch_number)  { toast('err','Batch number is required'); return; }
-  if (!d.grade)         { toast('err','Please select grade'); return; }
-  if (!d.make)          { toast('err','Please select make'); return; }
-  if (!d.qc_name)       { toast('err','QC name is required'); return; }
+  if (!d.customer_name)      { toast('err','Customer name is required'); return; }
+  if (!d.batch_number)       { toast('err','Batch number is required'); return; }
+  if (!d.grade)              { toast('err','Please select grade'); return; }
+  if (!d.make)               { toast('err','Please select make'); return; }
+  if (!d.burr)               { toast('err','Burr value is required'); return; }
+  if (!d.blade_clearance)    { toast('err','Blade clearance is required'); return; }
+  if (!d.cutting_finish)     { toast('err','Please select cutting finish'); return; }
+  if (!d.surface_condition)  { toast('err','Please select surface condition'); return; }
+  if (!d.bow_bend)           { toast('err','Please select bow/bend'); return; }
+  if (!d.qc_name)            { toast('err','QC name is required'); return; }
   runSubmit('sh_submit','sh_spin','sh_lbl', d, 'Shearing');
 }
 
