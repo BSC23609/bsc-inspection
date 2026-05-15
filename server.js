@@ -343,22 +343,23 @@ app.get('/stats', async (req, res) => {
 
 // =====================================================
 // ONE-TIME MIGRATION: Sort existing Quality files into CTL-1 / CTL-2 subfolders
-// Hit this once: GET https://YOUR-URL/migrate-quality?key=BSC_MIGRATE_2026
+// Hit this URL repeatedly until done: GET /migrate-quality?key=BSC_MIGRATE_2026
 // =====================================================
 app.get('/migrate-quality', async (req, res) => {
-  // Simple safety key so random people can't trigger this
   if (req.query.key !== 'BSC_MIGRATE_2026') {
     return res.status(403).json({ error: 'Invalid key' });
   }
   
-  const log = [];
+  const BATCH_SIZE = 25;
+  const startTime = Date.now();
+  const MAX_TIME = 8000; // Stop at 8 seconds to be safe (Vercel limit is 10s)
+  
   const status = { moved: 0, skipped: 0, errors: 0, results: [] };
   
   try {
     const token = await getToken();
     
-    // 1. Read Quality_Log.xlsx to get machine name for each file
-    log.push('Reading Quality_Log.xlsx...');
+    // 1. Read Excel to build filename -> machine map
     const filePath = 'BSC Inspections/Quality/Quality_Log.xlsx';
     const fileResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(filePath), { headers: { 'Authorization': 'Bearer ' + token } });
     if (!fileResp.ok) throw new Error('Could not read Quality log');
@@ -367,150 +368,141 @@ app.get('/migrate-quality', async (req, res) => {
     const rowsResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/QualityLog/rows?$select=values&$top=2000', { headers: { 'Authorization': 'Bearer ' + token } });
     if (!rowsResp.ok) throw new Error('Could not read rows');
     const rows = (await rowsResp.json()).value || [];
-    log.push('Found ' + rows.length + ' rows in Excel');
     
-    // Build map: filename -> machine_name (column 19 = machine_name in CTL row)
-    // Columns: 0=fileName, 1=timestamp, 2=customer, 3=date, 4=time, 5=coil_number, 6=batch, 7=make, 8=thickness, 9=grade, 10=width, 11=weight, 12=first_bit, 13=last_bit, 14=defective, 15=balance_wt, 16=verified, 17=blade_clr, 18=operator, 19=machine_name, ...
     const fileToMachine = {};
     rows.forEach(r => {
       const fileName = r.values[0][0];
       const machine = String(r.values[0][19] || '').trim().toUpperCase();
       if (fileName && machine) fileToMachine[fileName] = machine;
     });
-    log.push('Built filename->machine map: ' + Object.keys(fileToMachine).length + ' entries');
     
-    // 2. List all PDFs in Quality/PDF/ (root level only - skip files already in CTL-1 / CTL-2)
+    // 2. Get folder IDs for CTL-1 and CTL-2 (pdf + photos)
     const pdfFolder = 'BSC Inspections/Quality/PDF';
-    const listUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(pdfFolder) + ':/children?$select=name,id,folder,file&$top=500';
-    const listResp = await fetch(listUrl, { headers: { 'Authorization': 'Bearer ' + token } });
-    if (!listResp.ok) throw new Error('Could not list PDF folder');
-    const items = ((await listResp.json()).value || []).filter(x => x.file && x.name.endsWith('.pdf'));
-    log.push('Found ' + items.length + ' PDFs at root level to sort');
+    const photoFolder = 'BSC Inspections/Quality/Photos';
     
-    // 3. Move each PDF
-    for (const item of items) {
+    async function ensureFolderId(parentPath, subName) {
+      const checkUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(parentPath + '/' + subName);
+      const checkResp = await fetch(checkUrl, { headers: { 'Authorization': 'Bearer ' + token } });
+      if (checkResp.ok) return (await checkResp.json()).id;
+      const parentResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(parentPath), { headers: { 'Authorization': 'Bearer ' + token } });
+      const parentId = (await parentResp.json()).id;
+      const createResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + parentId + '/children', {
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: subName, folder: {}, '@microsoft.graph.conflictBehavior': 'rename' })
+      });
+      return (await createResp.json()).id;
+    }
+    
+    const pdfCTL1 = await ensureFolderId(pdfFolder, 'CTL-1');
+    const pdfCTL2 = await ensureFolderId(pdfFolder, 'CTL-2');
+    const photosCTL1 = await ensureFolderId(photoFolder, 'CTL-1');
+    const photosCTL2 = await ensureFolderId(photoFolder, 'CTL-2');
+    
+    // 3. List PDFs at root level (only ones not yet in subfolders)
+    const pdfListUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(pdfFolder) + ':/children?$select=name,id,folder,file&$top=500';
+    const pdfListResp = await fetch(pdfListUrl, { headers: { 'Authorization': 'Bearer ' + token } });
+    const pdfItems = ((await pdfListResp.json()).value || []).filter(x => x.file && x.name.endsWith('.pdf'));
+    
+    // Process PDFs in batch (until time runs out)
+    let processedPdfs = 0;
+    for (const item of pdfItems) {
+      if (Date.now() - startTime > MAX_TIME) break;
+      processedPdfs++;
+      
       const baseName = item.name.replace(/\.pdf$/, '');
       const machine = fileToMachine[baseName];
       
       if (!machine) {
         status.skipped++;
-        status.results.push({ file: item.name, action: 'SKIPPED', reason: 'No machine name in Excel' });
         continue;
       }
       
-      // Normalize machine name: remove all whitespace and uppercase
       const normalized = machine.replace(/\s+/g, '');
-      let targetSub = null;
-      if (normalized === 'CTL-1' || normalized === 'CTL1') targetSub = 'CTL-1';
-      else if (normalized === 'CTL-2' || normalized === 'CTL2') targetSub = 'CTL-2';
+      let targetId = null;
+      if (normalized === 'CTL-1' || normalized === 'CTL1') targetId = pdfCTL1;
+      else if (normalized === 'CTL-2' || normalized === 'CTL2') targetId = pdfCTL2;
       
-      if (!targetSub) {
+      if (!targetId) {
         status.skipped++;
-        status.results.push({ file: item.name, action: 'SKIPPED', reason: 'Unknown machine: ' + machine });
         continue;
       }
       
-      // Move PDF: get target folder ID first
       try {
-        // Ensure target folder exists
-        const ensureFolder = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(pdfFolder + '/' + targetSub), { headers: { 'Authorization': 'Bearer ' + token } });
-        let targetFolderId;
-        if (ensureFolder.ok) {
-          targetFolderId = (await ensureFolder.json()).id;
-        } else {
-          // Create folder
-          const parentResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(pdfFolder), { headers: { 'Authorization': 'Bearer ' + token } });
-          const parentId = (await parentResp.json()).id;
-          const createResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + parentId + '/children', {
-            method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: targetSub, folder: {}, '@microsoft.graph.conflictBehavior': 'rename' })
-          });
-          targetFolderId = (await createResp.json()).id;
-        }
-        
-        // Move the file
         const moveResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + item.id, {
           method: 'PATCH', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ parentReference: { id: targetFolderId } })
+          body: JSON.stringify({ parentReference: { id: targetId } })
         });
-        
         if (moveResp.ok) {
           status.moved++;
-          status.results.push({ file: item.name, action: 'MOVED', to: targetSub });
         } else {
           status.errors++;
-          status.results.push({ file: item.name, action: 'ERROR', error: await moveResp.text() });
         }
       } catch(e) {
         status.errors++;
-        status.results.push({ file: item.name, action: 'ERROR', error: e.message });
       }
     }
     
-    // 4. Now do the same for Photos folders
-    log.push('Now moving photo folders...');
-    const photoFolder = 'BSC Inspections/Quality/Photos';
-    const photoList = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(photoFolder) + ':/children?$select=name,id,folder&$top=500', { headers: { 'Authorization': 'Bearer ' + token } });
-    if (photoList.ok) {
-      const photoItems = ((await photoList.json()).value || []).filter(x => x.folder && x.name !== 'CTL-1' && x.name !== 'CTL-2');
-      log.push('Found ' + photoItems.length + ' photo folders to sort');
+    // Process photo folders if we still have time
+    let processedPhotos = 0;
+    if (Date.now() - startTime < MAX_TIME) {
+      const photoListUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(photoFolder) + ':/children?$select=name,id,folder&$top=500';
+      const photoListResp = await fetch(photoListUrl, { headers: { 'Authorization': 'Bearer ' + token } });
+      const photoItems = ((await photoListResp.json()).value || []).filter(x => x.folder && x.name !== 'CTL-1' && x.name !== 'CTL-2');
       
       for (const item of photoItems) {
+        if (Date.now() - startTime > MAX_TIME) break;
+        processedPhotos++;
+        
         const machine = fileToMachine[item.name];
         if (!machine) {
           status.skipped++;
-          status.results.push({ folder: item.name, action: 'SKIPPED', reason: 'No machine in Excel' });
           continue;
         }
-        // Normalize machine name: remove all whitespace
+        
         const normalized = machine.replace(/\s+/g, '');
-        let targetSub = null;
-        if (normalized === 'CTL-1' || normalized === 'CTL1') targetSub = 'CTL-1';
-        else if (normalized === 'CTL-2' || normalized === 'CTL2') targetSub = 'CTL-2';
-        if (!targetSub) {
+        let targetId = null;
+        if (normalized === 'CTL-1' || normalized === 'CTL1') targetId = photosCTL1;
+        else if (normalized === 'CTL-2' || normalized === 'CTL2') targetId = photosCTL2;
+        
+        if (!targetId) {
           status.skipped++;
-          status.results.push({ folder: item.name, action: 'SKIPPED', reason: 'Unknown machine: ' + machine });
           continue;
         }
         
         try {
-          const ensureFolder = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(photoFolder + '/' + targetSub), { headers: { 'Authorization': 'Bearer ' + token } });
-          let targetFolderId;
-          if (ensureFolder.ok) {
-            targetFolderId = (await ensureFolder.json()).id;
-          } else {
-            const parentResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(photoFolder), { headers: { 'Authorization': 'Bearer ' + token } });
-            const parentId = (await parentResp.json()).id;
-            const createResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + parentId + '/children', {
-              method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name: targetSub, folder: {}, '@microsoft.graph.conflictBehavior': 'rename' })
-            });
-            targetFolderId = (await createResp.json()).id;
-          }
-          
           const moveResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + item.id, {
             method: 'PATCH', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-            body: JSON.stringify({ parentReference: { id: targetFolderId } })
+            body: JSON.stringify({ parentReference: { id: targetId } })
           });
-          
           if (moveResp.ok) {
             status.moved++;
-            status.results.push({ folder: item.name, action: 'MOVED', to: targetSub });
           } else {
             status.errors++;
-            status.results.push({ folder: item.name, action: 'ERROR', error: await moveResp.text() });
           }
         } catch(e) {
           status.errors++;
-          status.results.push({ folder: item.name, action: 'ERROR', error: e.message });
         }
       }
+      
+      res.json({
+        elapsed_seconds: ((Date.now() - startTime)/1000).toFixed(1),
+        pdfs_remaining_at_root: pdfItems.length - processedPdfs,
+        photo_folders_remaining_at_root: photoItems.length - processedPhotos,
+        this_run: { moved: status.moved, skipped: status.skipped, errors: status.errors },
+        message: (pdfItems.length - processedPdfs > 0 || photoItems.length - processedPhotos > 0) ? 'Run this URL AGAIN to continue.' : 'DONE - all items processed!'
+      });
+    } else {
+      res.json({
+        elapsed_seconds: ((Date.now() - startTime)/1000).toFixed(1),
+        pdfs_remaining_at_root: pdfItems.length - processedPdfs,
+        photo_folders_remaining_at_root: 'unknown - did not check yet',
+        this_run: { moved: status.moved, skipped: status.skipped, errors: status.errors },
+        message: 'Run this URL AGAIN to continue.'
+      });
     }
-    
-    res.json({ status: 'complete', summary: { moved: status.moved, skipped: status.skipped, errors: status.errors }, log: log, results: status.results });
   } catch(err) {
     console.error('Migration error:', err.message);
-    res.status(500).json({ error: err.message, log: log, partial: status });
+    res.status(500).json({ error: err.message, partial: status });
   }
 });
 
