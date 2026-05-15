@@ -1,7 +1,6 @@
 const express    = require('express');
 const cors       = require('cors');
 const fetch      = require('node-fetch');
-const nodemailer = require('nodemailer');
 const PDFDocument = require('pdfkit');
 
 const app = express();
@@ -24,15 +23,10 @@ const TENANT_ID     = process.env.TENANT_ID;
 const USER_ID       = process.env.USER_ID || 'pdqc@bharatsteels.in';
 const SMTP_USER     = process.env.SMTP_USER || 'pdqc@bharatsteels.in';
 const SMTP_PASS     = process.env.SMTP_PASS || '';
+const RESEND_API_KEY = process.env.RESEND_API_KEY || '';
+const MAIL_FROM      = 'BSC Inspection <qms@bharatsteels.in>';
 
-const transporter = nodemailer.createTransport({
-  host: 'smtp.office365.com', port: 587, secure: false,
-  auth: { user: SMTP_USER, pass: SMTP_PASS },
-  tls: { ciphers: 'SSLv3' },
-  connectionTimeout: 15000,
-  greetingTimeout: 15000,
-  socketTimeout: 30000
-});
+
 
 // =====================================================
 // PDF GENERATION using pdfkit (pure JS, no Chrome needed)
@@ -264,6 +258,10 @@ function generatePDF(folder, data, ref) {
 }
 
 async function sendInwardEmail(pdfBuffer, fileName, data) {
+  if (!RESEND_API_KEY) {
+    console.log('RESEND_API_KEY not set - skipping email');
+    return;
+  }
   const wheelsIndia = data.wheels_india;
   const batchNo  = data.batch_number || '-';
   const vehicleNo = data.vehicle_number || '-';
@@ -272,15 +270,36 @@ async function sendInwardEmail(pdfBuffer, fileName, data) {
     ? 'WHEELS INDIA (Mother Coil Inspection Report) - ' + formDate + ' - ' + vehicleNo + ' - ' + batchNo
     : 'MOTHER COIL INSPECTION REPORT - ' + formDate + ' - ' + vehicleNo + ' - ' + batchNo;
   const recipients = wheelsIndia
-    ? 'support@bharatsteels.in, kannan@bharatsteels.in'
-    : 'support@bharatsteels.in';
-  await transporter.sendMail({
-    from: '"BSC Inspection" <' + SMTP_USER + '>',
-    to: recipients, subject: subject,
+    ? ['support@bharatsteels.in', 'kannan@bharatsteels.in']
+    : ['support@bharatsteels.in'];
+  
+  const body = {
+    from: MAIL_FROM,
+    to: recipients,
+    subject: subject,
     text: 'Please find attached the Mother Coil Inspection Report.\n\nBatch No: ' + batchNo + '\nVehicle No: ' + vehicleNo + '\nDate: ' + formDate,
-    attachments: [{ filename: fileName + '.pdf', content: pdfBuffer, contentType: 'application/pdf' }]
+    attachments: [{
+      filename: fileName + '.pdf',
+      content: pdfBuffer.toString('base64')
+    }]
+  };
+  
+  const resp = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Bearer ' + RESEND_API_KEY,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(body)
   });
-  console.log('Email sent | Subject:', subject, '| To:', recipients);
+  
+  if (!resp.ok) {
+    const err = await resp.text();
+    throw new Error('Resend API error (' + resp.status + '): ' + err);
+  }
+  
+  const result = await resp.json();
+  console.log('Email sent via Resend | ID:', result.id, '| To:', recipients.join(', '));
 }
 
 app.get('/', (req, res) => {
@@ -374,7 +393,7 @@ app.post('/submit', async (req, res) => {
     // Send response FIRST, then send email in background (non-blocking)
     res.json({ status: 'success', ref: ref, filename: fileName });
     
-    if (folder === 'Inward' && SMTP_PASS) {
+    if (folder === 'Inward' && RESEND_API_KEY) {
       sendInwardEmail(pdfBuffer, fileName, data)
         .then(() => console.log('Email sent successfully'))
         .catch(err => console.error('Email error (non-fatal):', err.message));
