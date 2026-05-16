@@ -62,7 +62,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 .topbar-sub{font-size:10px;opacity:0.7}
 .topbar-badge{font-size:10px;background:rgba(255,255,255,0.15);padding:3px 9px;border-radius:4px;font-weight:600;letter-spacing:0.04em;white-space:nowrap;border:1px solid rgba(255,255,255,0.2)}
 
-.form-scroll{flex:1;overflow-y:auto;padding:20px 16px 110px;max-width:860px;margin:0 auto;width:100%}
+.form-scroll{flex:1;overflow-y:auto;padding:20px 16px 200px;max-width:860px;margin:0 auto;width:100%}
 
 /* SECTION CARDS */
 .sec-card{background:#fff;border-radius:var(--rlg);border:1px solid var(--gray-200);margin-bottom:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
@@ -400,16 +400,15 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           <div class="field"><label>Remarks</label><textarea id="i_remarks" placeholder="Any additional notes or observations..."></textarea></div>
         </div>
         <div style="margin-top:14px;padding:14px 16px;border-radius:var(--r);border:1.5px solid var(--gray-200);background:var(--gray-50)">
-          <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
-            <div style="flex:1;min-width:200px">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <div>
               <div style="font-size:14px;font-weight:700;color:var(--gray-800)">Wheels India Coil *</div>
               <div style="font-size:12px;color:var(--gray-400);margin-top:2px">If Yes, report will also be emailed to Kannan</div>
             </div>
-            <div class="yn" id="yn_wheels"><button class="yn-btn y" onclick="yn('yn_wheels','Y',this); wheelsIndia=true">Yes</button><button class="yn-btn n" onclick="yn('yn_wheels','N',this); wheelsIndia=false">No</button></div>
+            <div class="yn" id="yn_wheels" style="flex-shrink:0"><button class="yn-btn y" onclick="yn('yn_wheels','Y',this); wheelsIndia=true">Yes</button><button class="yn-btn n" onclick="yn('yn_wheels','N',this); wheelsIndia=false">No</button></div>
           </div>
         </div>
       </div>
-    </div>
     </div>
 
     <div class="sec-card">
@@ -418,21 +417,29 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="fg fg-2">
           <div class="field">
             <label>Coil Photo</label>
-            <input type="file" id="i_coil_photo" accept="image/*" capture="environment" style="display:none" onchange="prevSingle(this,'i_cp')">
-            <input type="file" id="i_coil_photo_lib" accept="image/*" style="display:none" onchange="document.getElementById('i_coil_photo').files = this.files; prevSingle(document.getElementById('i_coil_photo'),'i_cp')">
             <div style="display:flex;gap:8px">
-              <button type="button" onclick="document.getElementById('i_coil_photo').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">📸 Take Photo</button>
-              <button type="button" onclick="document.getElementById('i_coil_photo_lib').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">🖼️ Upload</button>
+              <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
+                📸 Take Photo
+                <input type="file" id="i_coil_photo" accept="image/*" capture="environment" hidden onchange="prevSingle(this,'i_cp')">
+              </label>
+              <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
+                🖼️ Upload
+                <input type="file" id="i_coil_photo_lib" accept="image/*" hidden onchange="document.getElementById('i_coil_photo').files = this.files; prevSingle(document.getElementById('i_coil_photo'),'i_cp')">
+              </label>
             </div>
             <div class="photo-previews" id="i_cp"></div>
           </div>
           <div class="field">
             <label>Sticker Photo</label>
-            <input type="file" id="i_sticker_photo" accept="image/*" capture="environment" style="display:none" onchange="prevSingle(this,'i_sp')">
-            <input type="file" id="i_sticker_photo_lib" accept="image/*" style="display:none" onchange="document.getElementById('i_sticker_photo').files = this.files; prevSingle(document.getElementById('i_sticker_photo'),'i_sp')">
             <div style="display:flex;gap:8px">
-              <button type="button" onclick="document.getElementById('i_sticker_photo').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">📸 Take Photo</button>
-              <button type="button" onclick="document.getElementById('i_sticker_photo_lib').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">🖼️ Upload</button>
+              <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
+                📸 Take Photo
+                <input type="file" id="i_sticker_photo" accept="image/*" capture="environment" hidden onchange="prevSingle(this,'i_sp')">
+              </label>
+              <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
+                🖼️ Upload
+                <input type="file" id="i_sticker_photo_lib" accept="image/*" hidden onchange="document.getElementById('i_sticker_photo').files = this.files; prevSingle(document.getElementById('i_sticker_photo'),'i_sp')">
+              </label>
             </div>
             <div class="photo-previews" id="i_sp"></div>
           </div>
@@ -606,11 +613,15 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📷</span> Pictures (if any)</div>
       <div class="sec-body">
-        <input type="file" id="q_photos" accept="image/*" multiple capture="environment" style="display:none" onchange="prevMulti(this,'q_photo_prev')">
-        <input type="file" id="q_photos_lib" accept="image/*" multiple style="display:none" onchange="document.getElementById('q_photos').files = this.files; prevMulti(document.getElementById('q_photos'),'q_photo_prev')">
         <div style="display:flex;gap:8px">
-          <button type="button" onclick="document.getElementById('q_photos').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">📸 Take Photos</button>
-          <button type="button" onclick="document.getElementById('q_photos_lib').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">🖼️ Upload</button>
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
+            📸 Take Photos
+            <input type="file" id="q_photos" accept="image/*" multiple capture="environment" hidden onchange="prevMulti(this,'q_photo_prev')">
+          </label>
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
+            🖼️ Upload
+            <input type="file" id="q_photos_lib" accept="image/*" multiple hidden onchange="document.getElementById('q_photos').files = this.files; prevMulti(document.getElementById('q_photos'),'q_photo_prev')">
+          </label>
         </div>
         <div style="font-size:11px;color:var(--gray-400);margin-top:6px">Multiple files allowed · JPG, PNG up to 10MB each</div>
         <div class="photo-previews" id="q_photo_prev"></div>
@@ -787,11 +798,15 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-body">
         <div class="field">
           <label>Photos (up to 10)</label>
-          <input type="file" id="sh_photos" accept="image/*" multiple capture="environment" style="display:none">
-          <input type="file" id="sh_photos_lib" accept="image/*" multiple style="display:none" onchange="document.getElementById('sh_photos').files = this.files">
           <div style="display:flex;gap:8px">
-            <button type="button" onclick="document.getElementById('sh_photos').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">📸 Take Photos</button>
-            <button type="button" onclick="document.getElementById('sh_photos_lib').click()" style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand)">🖼️ Upload</button>
+            <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
+              📸 Take Photos
+              <input type="file" id="sh_photos" accept="image/*" multiple capture="environment" hidden>
+            </label>
+            <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
+              🖼️ Upload
+              <input type="file" id="sh_photos_lib" accept="image/*" multiple hidden onchange="document.getElementById('sh_photos').files = this.files">
+            </label>
           </div>
           <div style="font-size:11px;color:var(--gray-400);margin-top:6px">Multiple files allowed</div>
         </div>
