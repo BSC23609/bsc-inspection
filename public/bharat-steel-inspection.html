@@ -1188,7 +1188,31 @@ async function collectPhotosBase64(inputIds) {
 function fileToBase64(file) {
   return new Promise(function(resolve) {
     var reader = new FileReader();
-    reader.onload = function(e) { resolve(e.target.result); };
+    // PDFs: read as-is (don't compress)
+    if (file.type === 'application/pdf' || (file.name || '').toLowerCase().endsWith('.pdf')) {
+      reader.onload = function(e) { resolve(e.target.result); };
+      reader.readAsDataURL(file);
+      return;
+    }
+    // Images: compress to max 900px, JPEG 60%
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        var MAX = 900;
+        var w = img.width, h = img.height;
+        if (w > h && w > MAX) { h = h * (MAX/w); w = MAX; }
+        else if (h > MAX) { w = w * (MAX/h); h = MAX; }
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+      img.onerror = function() { resolve(e.target.result); };
+      img.src = e.target.result;
+    };
     reader.readAsDataURL(file);
   });
 }
