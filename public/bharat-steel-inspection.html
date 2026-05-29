@@ -701,14 +701,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">📋</span> Header Information</div>
       <div class="sec-body">
         <div class="fg fg-2">
-          <div class="field"><label>Filed By *</label>
-            <div class="pills" id="cg_filed_by">
-              <div class="pill" onclick="rp('cg_filed_by',this,'Vignesh')">Vignesh</div>
-              <div class="pill" onclick="rp('cg_filed_by',this,'Sathya')">Sathya</div>
-              <div class="pill" onclick="rp('cg_filed_by',this,'Kumar')">Kumar</div>
-              <div class="pill" onclick="rp('cg_filed_by',this,'Mahendran')">Mahendran</div>
-            </div>
-          </div>
+          <div class="field"><label>Filed By *</label><input type="text" id="cmp_filed_by" placeholder="Your name"></div>
           <div class="field"><label>QC Date</label><input type="date" id="cmp_date"></div>
         </div>
         <div class="fg fg-1" id="cmp_customer_wrap">
@@ -764,6 +757,24 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📎</span> Attachments</div>
       <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field">
+            <label>PO (Purchase Order)</label>
+            <label style="display:block;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+              📄 Upload PO
+              <input type="file" id="cmp_po_file" accept=".pdf,.jpg,.jpeg,.png" hidden onchange="showFileName(this,'cmp_po_name')">
+            </label>
+            <div id="cmp_po_name" style="font-size:11px;color:var(--gray-600);margin-top:6px;text-align:center"></div>
+          </div>
+          <div class="field">
+            <label>SO (Sales Order)</label>
+            <label style="display:block;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+              📄 Upload SO
+              <input type="file" id="cmp_so_file" accept=".pdf,.jpg,.jpeg,.png" hidden onchange="showFileName(this,'cmp_so_name')">
+            </label>
+            <div id="cmp_so_name" style="font-size:11px;color:var(--gray-600);margin-top:6px;text-align:center"></div>
+          </div>
+        </div>
         <div class="fg fg-2">
           <div class="field">
             <label>TC (Test Certificate) *</label>
@@ -1506,16 +1517,16 @@ function showFileName(input, displayId) {
 }
 
 function clearComplaint() {
-  ['cmp_customer','cmp_grade','cmp_dim','cmp_batch','cmp_tc','cmp_inv','cmp_inv_date','cmp_qty','cmp_remarks','cmp_vendor_email','cmp_mill_other'].forEach(function(id) {
+  ['cmp_filed_by','cmp_customer','cmp_grade','cmp_dim','cmp_batch','cmp_tc','cmp_inv','cmp_inv_date','cmp_qty','cmp_remarks','cmp_vendor_email','cmp_mill_other'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
-  ['cmp_tc_file','cmp_inv_file','cmp_photos','cmp_photos_lib'].forEach(function(id) {
+  ['cmp_po_file','cmp_so_file','cmp_tc_file','cmp_inv_file','cmp_photos','cmp_photos_lib'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
-  ['cmp_tc_name','cmp_inv_name','cmp_photo_prev'].forEach(function(id) {
+  ['cmp_po_name','cmp_so_name','cmp_tc_name','cmp_inv_name','cmp_photo_prev'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.innerHTML = '';
   });
-  ['cg_filed_by','cg_mill','cg_vendor'].forEach(function(g) {
+  ['cg_mill','cg_vendor'].forEach(function(g) {
     document.querySelectorAll('#' + g + ' .pill').forEach(p => p.classList.remove('sel'));
     delete rs[g];
   });
@@ -1551,6 +1562,24 @@ async function submitComplaint() {
   lbl.textContent = 'Reading files...';
   
   try {
+    // Read PO file (optional)
+    var poInput = document.getElementById('cmp_po_file');
+    if (poInput.files[0]) {
+      d.po_file = {
+        name: poInput.files[0].name,
+        type: poInput.files[0].type,
+        data: await readFileAsDataURL(poInput.files[0])
+      };
+    }
+    // Read SO file (optional)
+    var soInput = document.getElementById('cmp_so_file');
+    if (soInput.files[0]) {
+      d.so_file = {
+        name: soInput.files[0].name,
+        type: soInput.files[0].type,
+        data: await readFileAsDataURL(soInput.files[0])
+      };
+    }
     // Read TC file
     var tcInput = document.getElementById('cmp_tc_file');
     if (tcInput.files[0]) {
@@ -1598,7 +1627,7 @@ async function submitComplaint() {
 function collectComplaint() {
   return {
     source: currentComplaintType,
-    filed_by: rs['cg_filed_by'] || '',
+    filed_by: gv('cmp_filed_by'),
     qc_date: gv('cmp_date'),
     customer_name: gv('cmp_customer'),
     grade: gv('cmp_grade'),

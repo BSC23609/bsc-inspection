@@ -650,6 +650,14 @@ app.post('/complaint/submit', async (req, res) => {
       const buf = Buffer.from(data.invoice_file.data.split(',')[1], 'base64');
       uploadTasks.push(uploadFile(token, attachmentsFolder + '/Invoice_' + (data.invoice_file.name || 'Invoice.pdf'), buf, data.invoice_file.type || 'application/pdf'));
     }
+    if (data.po_file && data.po_file.data) {
+      const buf = Buffer.from(data.po_file.data.split(',')[1], 'base64');
+      uploadTasks.push(uploadFile(token, attachmentsFolder + '/PO_' + (data.po_file.name || 'PO.pdf'), buf, data.po_file.type || 'application/pdf'));
+    }
+    if (data.so_file && data.so_file.data) {
+      const buf = Buffer.from(data.so_file.data.split(',')[1], 'base64');
+      uploadTasks.push(uploadFile(token, attachmentsFolder + '/SO_' + (data.so_file.name || 'SO.pdf'), buf, data.so_file.type || 'application/pdf'));
+    }
     if (data.photos && data.photos.length > 0) {
       for (let i = 0; i < data.photos.length; i++) {
         const p = data.photos[i];
@@ -694,6 +702,12 @@ app.post('/complaint/submit', async (req, res) => {
       }
       if (data.invoice_file && data.invoice_file.data) {
         attachments.push({ filename: 'Invoice_' + (data.invoice_file.name || 'Invoice.pdf'), content: data.invoice_file.data.split(',')[1] });
+      }
+      if (data.po_file && data.po_file.data) {
+        attachments.push({ filename: 'PO_' + (data.po_file.name || 'PO.pdf'), content: data.po_file.data.split(',')[1] });
+      }
+      if (data.so_file && data.so_file.data) {
+        attachments.push({ filename: 'SO_' + (data.so_file.name || 'SO.pdf'), content: data.so_file.data.split(',')[1] });
       }
 
       const subject = isInternal && data.vendor_email
