@@ -1547,8 +1547,10 @@ async function submitComplaint() {
   if (!d.quantity) { toast('err', 'Quantity is required'); return; }
   if (!d.mill) { toast('err', 'Please select mill'); return; }
   if (!d.remarks) { toast('err', 'Defect description is required'); return; }
-  if (!d.tc_file) { toast('err', 'TC file is required'); return; }
-  if (!d.invoice_file) { toast('err', 'Invoice file is required'); return; }
+  var tcInputCheck = document.getElementById('cmp_tc_file');
+  var invInputCheck = document.getElementById('cmp_inv_file');
+  if (!tcInputCheck.files || !tcInputCheck.files[0]) { toast('err', 'TC file is required'); return; }
+  if (!invInputCheck.files || !invInputCheck.files[0]) { toast('err', 'Invoice file is required'); return; }
   if (currentComplaintType === 'internal' && (!d.vendor_name || !d.vendor_email)) {
     toast('err', 'Vendor and vendor email required for internal finding');
     return;
