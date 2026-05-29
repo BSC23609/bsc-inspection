@@ -62,7 +62,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 .topbar-sub{font-size:10px;opacity:0.7}
 .topbar-badge{font-size:10px;background:rgba(255,255,255,0.15);padding:3px 9px;border-radius:4px;font-weight:600;letter-spacing:0.04em;white-space:nowrap;border:1px solid rgba(255,255,255,0.2)}
 
-.form-scroll{flex:1;overflow-y:auto;padding:20px 16px 200px;max-width:860px;margin:0 auto;width:100%}
+.form-scroll{flex:1;overflow-y:auto;padding:20px 16px 110px;max-width:860px;margin:0 auto;width:100%}
 
 /* SECTION CARDS */
 .sec-card{background:#fff;border-radius:var(--rlg);border:1px solid var(--gray-200);margin-bottom:14px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04)}
@@ -199,7 +199,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="section-label">Select a form to fill</div>
 
     <div class="form-card" onclick="openForm('inward')">
-      <div class="card-icon red"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><g fill="none" stroke="#1A6DAF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="20" width="22" height="14" rx="1" fill="#e8f2fb"/><path d="M25 24h10l5 6v4H25z" fill="#e8f2fb"/><circle cx="11" cy="37" r="3" fill="#1A6DAF"/><circle cx="33" cy="37" r="3" fill="#1A6DAF"/><circle cx="11" cy="37" r="1" fill="#fff"/><circle cx="33" cy="37" r="1" fill="#fff"/><circle cx="9" cy="27" r="4" fill="#fff"/><circle cx="9" cy="27" r="1.5" fill="#1A6DAF"/><circle cx="19" cy="27" r="4" fill="#fff"/><circle cx="19" cy="27" r="1.5" fill="#1A6DAF"/><path d="M28 28h5" stroke="#1A6DAF"/></g></svg></div>
+      <div class="card-icon red">📦</div>
       <div class="card-body">
         <div class="card-title">Coil Inward Inspection</div>
         <div class="card-desc">Vehicle arrival, coil identity, dimensions and physical condition check</div>
@@ -208,7 +208,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     </div>
 
     <div class="form-card" onclick="openForm('quality')">
-      <div class="card-icon green"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><g fill="none" stroke="#0e7c5b" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><rect x="6" y="28" width="24" height="4" rx="0.5" fill="#d4f1e3"/><rect x="6" y="22" width="24" height="4" rx="0.5" fill="#d4f1e3"/><rect x="6" y="16" width="24" height="4" rx="0.5" fill="#d4f1e3"/><circle cx="34" cy="18" r="7" fill="#fff" stroke="#0e7c5b" stroke-width="2.5"/><line x1="39" y1="23" x2="43" y2="27" stroke="#0e7c5b" stroke-width="3" stroke-linecap="round"/><line x1="31" y1="18" x2="37" y2="18" stroke="#0e7c5b" stroke-width="1.5"/><line x1="34" y1="15" x2="34" y2="21" stroke="#0e7c5b" stroke-width="1.5"/></g></svg></div>
+      <div class="card-icon green">🔬</div>
       <div class="card-body">
         <div class="card-title">CTL Quality Inspection</div>
         <div class="card-desc">Sheet measurements, processed quantity, final dimensions and sign-off · BSCQMS-PRD-008</div>
@@ -217,20 +217,28 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     </div>
 
     <div class="form-card" onclick="openForm('shearing')">
-      <div class="card-icon" style="background:#fff3e0"><svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg" width="32" height="32"><g fill="none" stroke="#b45309" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"><rect x="4" y="20" width="16" height="10" rx="0.5" fill="#fff3e0"/><rect x="24" y="20" width="16" height="10" rx="0.5" fill="#fff3e0"/><line x1="22" y1="14" x2="22" y2="36" stroke="#b45309" stroke-width="2.5" stroke-dasharray="2 2"/><path d="M19 12 L22 16 L25 12" fill="#b45309" stroke="none"/><path d="M19 38 L22 34 L25 38" fill="#b45309" stroke="none"/><circle cx="34" cy="36" r="5" fill="#fff" stroke="#b45309" stroke-width="2"/><line x1="38" y1="40" x2="42" y2="44" stroke="#b45309" stroke-width="2.5" stroke-linecap="round"/></g></svg></div>
+      <div class="card-icon" style="background:#fff3e0">✂️</div>
       <div class="card-body">
         <div class="card-title">Shearing Quality Inspection</div>
-        <div class="card-desc">Sheet measurements, quality checklist, cutting finish and bow/bend · BSCQMS-PRD-008</div>
+        <div class="card-desc">Sheet measurements, quality checklist, cutting finish · BSCQMS-PRD-008 REV 01</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
 
-    <!-- DASHBOARD BUTTON -->
-    <div onclick="window.open('bsc-dashboard.html','_blank')" style="display:flex;align-items:center;gap:14px;background:#fff;border-radius:var(--r);border:1px solid var(--gray-200);padding:16px;margin-bottom:2px;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,0.06)" onmousedown="this.style.background='#f0f4f8'" onmouseup="this.style.background='#fff'">
+    <div class="form-card" onclick="openComplaintMenu()" style="border-left:4px solid #dc2626">
+      <div class="card-icon" style="background:#fee2e2;color:#dc2626">🚫</div>
+      <div class="card-body">
+        <div class="card-title">Quality Complaint</div>
+        <div class="card-desc">Raise customer complaint, internal finding, or escalate to vendor</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+
+    <div onclick="window.open('bsc-dashboard.html','_blank')" style="display:flex;align-items:center;gap:14px;background:#fff;border-radius:var(--rlg);border:1px solid var(--gray-200);padding:18px;margin-bottom:12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.04)">
       <div style="width:44px;height:44px;border-radius:10px;background:#e8f2fb;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">📊</div>
       <div style="flex:1">
         <div style="font-size:14px;font-weight:700;color:var(--gray-800);margin-bottom:2px">Dashboard</div>
-        <div style="font-size:12px;color:var(--gray-400);line-height:1.4">View daily entry counts and activity for all forms</div>
+        <div style="font-size:12px;color:var(--gray-400);line-height:1.4">View daily entry counts and complaints</div>
       </div>
       <div style="font-size:20px;color:var(--gray-400)">›</div>
     </div>
@@ -296,7 +304,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         </div>
         <div class="fg fg-1">
           <div class="field">
-            <label>Make of Coil * <span class="req">*</span></label>
+            <label>Make of Coil <span class="req">*</span></label>
             <div class="pills" id="ig_make">
               <div class="pill" onclick="rp('ig_make',this,'SAIL')">SAIL</div>
               <div class="pill" onclick="rp('ig_make',this,'SAIL RSP')">SAIL RSP</div>
@@ -360,12 +368,12 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">🔍</span> Physical Condition</div>
       <div class="sec-body">
         <div class="cond-grid">
-          <div class="cond-row"><span class="cond-lbl">Identification Sticker *</span><div class="yn" id="yn_sticker"><button class="yn-btn y" onclick="yn('yn_sticker','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_sticker','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Edge Damage – Inner *</span><div class="yn" id="yn_ei"><button class="yn-btn y" onclick="yn('yn_ei','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_ei','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Edge Damage – Outer *</span><div class="yn" id="yn_eo"><button class="yn-btn y" onclick="yn('yn_eo','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_eo','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Scratch Mark *</span><div class="yn" id="yn_scratch"><button class="yn-btn y" onclick="yn('yn_scratch','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scratch','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Strapping *</span><div class="yn" id="yn_strap"><button class="yn-btn y" onclick="yn('yn_strap','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_strap','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Rust on Surface *</span><div class="yn" id="yn_rust"><button class="yn-btn y" onclick="yn('yn_rust','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_rust','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Identification Sticker</span><div class="yn" id="yn_sticker"><button class="yn-btn y" onclick="yn('yn_sticker','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_sticker','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Edge Damage – Inner</span><div class="yn" id="yn_ei"><button class="yn-btn y" onclick="yn('yn_ei','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_ei','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Edge Damage – Outer</span><div class="yn" id="yn_eo"><button class="yn-btn y" onclick="yn('yn_eo','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_eo','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Scratch Mark</span><div class="yn" id="yn_scratch"><button class="yn-btn y" onclick="yn('yn_scratch','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scratch','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Strapping</span><div class="yn" id="yn_strap"><button class="yn-btn y" onclick="yn('yn_strap','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_strap','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Rust on Surface</span><div class="yn" id="yn_rust"><button class="yn-btn y" onclick="yn('yn_rust','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_rust','N',this)">No</button></div></div>
         </div>
         <div class="fg fg-1" style="margin-top:14px">
           <div class="field">
@@ -399,15 +407,6 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="fg fg-1">
           <div class="field"><label>Remarks</label><textarea id="i_remarks" placeholder="Any additional notes or observations..."></textarea></div>
         </div>
-        <div style="margin-top:14px;padding:14px 16px;border-radius:var(--r);border:1.5px solid var(--gray-200);background:var(--gray-50)">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-            <div>
-              <div style="font-size:14px;font-weight:700;color:var(--gray-800)">Wheels India Coil *</div>
-              <div style="font-size:12px;color:var(--gray-400);margin-top:2px">If Yes, report will also be emailed to Kannan</div>
-            </div>
-            <div class="yn" id="yn_wheels" style="flex-shrink:0"><button class="yn-btn y" onclick="yn('yn_wheels','Y',this); wheelsIndia=true">Yes</button><button class="yn-btn n" onclick="yn('yn_wheels','N',this); wheelsIndia=false">No</button></div>
-          </div>
-        </div>
       </div>
     </div>
 
@@ -417,29 +416,21 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="fg fg-2">
           <div class="field">
             <label>Coil Photo</label>
-            <div style="display:flex;gap:8px">
-              <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
-                📸 Take Photo
-                <input type="file" id="i_coil_photo" accept="image/*" capture="environment" hidden onchange="prevSingle(this,'i_cp')">
-              </label>
-              <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
-                🖼️ Upload
-                <input type="file" id="i_coil_photo_lib" accept="image/*" hidden onchange="document.getElementById('i_coil_photo').files = this.files; prevSingle(document.getElementById('i_coil_photo'),'i_cp')">
-              </label>
+            <div class="photo-upload" onclick="document.getElementById('i_coil_photo').click()">
+              <input type="file" id="i_coil_photo" accept="image/*" onchange="prevSingle(this,'i_cp')">
+              <div class="photo-upload-icon">📸</div>
+              <div class="photo-upload-text">Tap to upload</div>
+              <div class="photo-upload-sub">JPG, PNG up to 10MB</div>
             </div>
             <div class="photo-previews" id="i_cp"></div>
           </div>
           <div class="field">
             <label>Sticker Photo</label>
-            <div style="display:flex;gap:8px">
-              <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
-                📸 Take Photo
-                <input type="file" id="i_sticker_photo" accept="image/*" capture="environment" hidden onchange="prevSingle(this,'i_sp')">
-              </label>
-              <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
-                🖼️ Upload
-                <input type="file" id="i_sticker_photo_lib" accept="image/*" hidden onchange="document.getElementById('i_sticker_photo').files = this.files; prevSingle(document.getElementById('i_sticker_photo'),'i_sp')">
-              </label>
+            <div class="photo-upload" onclick="document.getElementById('i_sticker_photo').click()">
+              <input type="file" id="i_sticker_photo" accept="image/*" onchange="prevSingle(this,'i_sp')">
+              <div class="photo-upload-icon">🏷️</div>
+              <div class="photo-upload-text">Tap to upload</div>
+              <div class="photo-upload-sub">JPG, PNG up to 10MB</div>
             </div>
             <div class="photo-previews" id="i_sp"></div>
           </div>
@@ -489,7 +480,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         </div>
         <div class="fg fg-2">
           <div class="field"><label>Coil Number <span class="req">*</span></label><input type="text" id="q_coil_no" placeholder="Enter coil number" autocomplete="off"></div>
-          <div class="field"><label>Batch Number *</label><input type="text" id="q_batch" placeholder="Batch / heat number" autocomplete="off"></div>
+          <div class="field"><label>Batch Number</label><input type="text" id="q_batch" placeholder="Batch / heat number" autocomplete="off"></div>
         </div>
         <div class="fg fg-1">
           <div class="field">
@@ -511,12 +502,12 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           </div>
         </div>
         <div class="fg fg-3">
-          <div class="field"><label>Coil Thickness (mm) *</label><input type="number" id="q_thick" placeholder="e.g. 3.15" step="0.01"></div>
-          <div class="field"><label>Coil Grade *</label><input type="text" id="q_grade" placeholder="e.g. E250"></div>
-          <div class="field"><label>Coil Width (mm) *</label><input type="number" id="q_width" placeholder="e.g. 1250"></div>
+          <div class="field"><label>Coil Thickness (mm)</label><input type="number" id="q_thick" placeholder="e.g. 3.15" step="0.01"></div>
+          <div class="field"><label>Coil Grade</label><input type="text" id="q_grade" placeholder="e.g. E250"></div>
+          <div class="field"><label>Coil Width (mm)</label><input type="number" id="q_width" placeholder="e.g. 1250"></div>
         </div>
         <div class="fg fg-2">
-          <div class="field"><label>Coil Weight (T) *</label><input type="number" id="q_weight" placeholder="e.g. 12.5" step="0.001"></div>
+          <div class="field"><label>Coil Weight (T)</label><input type="number" id="q_weight" placeholder="e.g. 12.5" step="0.001"></div>
         </div>
       </div>
     </div>
@@ -552,12 +543,12 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">🔢</span> Final Measurements</div>
       <div class="sec-body">
         <div class="fg fg-3">
-          <div class="field"><label>First Bit Length *</label><input type="text" id="q_first_bit" placeholder="mm or m"></div>
-          <div class="field"><label>Last Bit Length *</label><input type="text" id="q_last_bit" placeholder="mm or m"></div>
-          <div class="field"><label>Defective Length *</label><input type="text" id="q_defective" placeholder="mm or m"></div>
+          <div class="field"><label>First Bit Length</label><input type="text" id="q_first_bit" placeholder="mm or m"></div>
+          <div class="field"><label>Last Bit Length</label><input type="text" id="q_last_bit" placeholder="mm or m"></div>
+          <div class="field"><label>Defective Length</label><input type="text" id="q_defective" placeholder="mm or m"></div>
         </div>
         <div class="fg fg-3">
-          <div class="field"><label>Balance Coil Weight (T) *</label><input type="text" id="q_bal_wt" placeholder="e.g. 0.45"></div>
+          <div class="field"><label>Balance Coil Weight (T)</label><input type="text" id="q_bal_wt" placeholder="e.g. 0.45"></div>
           <div class="field">
             <label>Coil No. Verified</label>
             <div class="yn" id="yn_verified">
@@ -565,7 +556,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
               <button class="yn-btn n" onclick="yn('yn_verified','N',this)">No</button>
             </div>
           </div>
-          <div class="field"><label>Blade Clearance *</label><input type="text" id="q_blade" placeholder="e.g. 0.05 mm"></div>
+          <div class="field"><label>Blade Clearance</label><input type="text" id="q_blade" placeholder="e.g. 0.05 mm"></div>
         </div>
       </div>
     </div>
@@ -574,14 +565,14 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">🔍</span> Quality Checklist</div>
       <div class="sec-body">
         <div class="cond-grid">
-          <div class="cond-row"><span class="cond-lbl">Bur *</span><input type="text" id="q_bur" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
-          <div class="cond-row"><span class="cond-lbl">Cutting Finish *</span><div class="yn" id="yn_cut_finish"><button class="yn-btn y" onclick="yn('yn_cut_finish','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_cut_finish','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Scalling *</span><div class="yn" id="yn_scalling"><button class="yn-btn y" onclick="yn('yn_scalling','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scalling','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Pit Marks *</span><div class="yn" id="yn_pit_marks"><button class="yn-btn y" onclick="yn('yn_pit_marks','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_pit_marks','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Waviness *</span><div class="yn" id="yn_waviness"><button class="yn-btn y" onclick="yn('yn_waviness','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_waviness','N',this)">No</button></div></div>
-          <div class="cond-row"><span class="cond-lbl">Center Bow *</span><input type="text" id="q_center_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
-          <div class="cond-row"><span class="cond-lbl">Cutting Bow *</span><input type="text" id="q_cutting_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
-          <div class="cond-row"><span class="cond-lbl">Surface Defects *</span><div class="yn" id="yn_surface_def"><button class="yn-btn y" onclick="yn('yn_surface_def','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_surface_def','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Bur</span><input type="text" id="q_bur" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
+          <div class="cond-row"><span class="cond-lbl">Cutting Finish</span><div class="yn" id="yn_cut_finish"><button class="yn-btn y" onclick="yn('yn_cut_finish','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_cut_finish','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Scalling</span><div class="yn" id="yn_scalling"><button class="yn-btn y" onclick="yn('yn_scalling','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scalling','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Pit Marks</span><div class="yn" id="yn_pit_marks"><button class="yn-btn y" onclick="yn('yn_pit_marks','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_pit_marks','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Waviness</span><div class="yn" id="yn_waviness"><button class="yn-btn y" onclick="yn('yn_waviness','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_waviness','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Center Bow</span><input type="text" id="q_center_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
+          <div class="cond-row"><span class="cond-lbl">Cutting Bow</span><input type="text" id="q_cutting_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
+          <div class="cond-row"><span class="cond-lbl">Surface Defects</span><div class="yn" id="yn_surface_def"><button class="yn-btn y" onclick="yn('yn_surface_def','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_surface_def','N',this)">No</button></div></div>
         </div>
       </div>
     </div>
@@ -590,11 +581,11 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">✍️</span> Sign-off</div>
       <div class="sec-body">
         <div class="fg fg-1">
-          <div class="field"><label>Machine Operated By *</label><input type="text" id="q_operator" placeholder="Operator name"></div>
+          <div class="field"><label>Machine Operated By</label><input type="text" id="q_operator" placeholder="Operator name"></div>
         </div>
         <div class="fg fg-1">
           <div class="field">
-            <label>Machine Name *</label>
+            <label>Machine Name</label>
             <div class="pills" id="qg_machine_name">
               <div class="pill" onclick="rp('qg_machine_name',this,'CTL - 1')">CTL - 1</div>
               <div class="pill" onclick="rp('qg_machine_name',this,'CTL - 2')">CTL - 2</div>
@@ -613,17 +604,12 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📷</span> Pictures (if any)</div>
       <div class="sec-body">
-        <div style="display:flex;gap:8px">
-          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
-            📸 Take Photos
-            <input type="file" id="q_photos" accept="image/*" multiple capture="environment" hidden onchange="prevMulti(this,'q_photo_prev')">
-          </label>
-          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
-            🖼️ Upload
-            <input type="file" id="q_photos_lib" accept="image/*" multiple hidden onchange="document.getElementById('q_photos').files = this.files; prevMulti(document.getElementById('q_photos'),'q_photo_prev')">
-          </label>
+        <div class="photo-upload" onclick="document.getElementById('q_photos').click()">
+          <input type="file" id="q_photos" accept="image/*" multiple onchange="prevMulti(this,'q_photo_prev')">
+          <div class="photo-upload-icon">📸</div>
+          <div class="photo-upload-text">Tap to upload photos</div>
+          <div class="photo-upload-sub">Multiple files allowed · JPG, PNG up to 10MB each</div>
         </div>
-        <div style="font-size:11px;color:var(--gray-400);margin-top:6px">Multiple files allowed · JPG, PNG up to 10MB each</div>
         <div class="photo-previews" id="q_photo_prev"></div>
       </div>
     </div>
@@ -657,175 +643,234 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 </div>
 
 
-<!-- SHEARING FORM SCREEN -->
-<div class="screen" id="screen-shearing">
-  <div class="form-topbar">
+<!-- ============================
+     COMPLAINT MENU SCREEN
+     ============================ -->
+<div class="screen" id="screen-complaint-menu">
+  <div class="form-topbar" style="background:#dc2626">
     <button class="back-btn" onclick="goHome()">‹</button>
     <div class="topbar-info">
-      <div class="topbar-title">Shearing Quality Inspection</div>
-      <div class="topbar-sub">BSCQMS-PRD-008 REV 01</div>
+      <div class="topbar-title">Quality Complaint</div>
+      <div class="topbar-sub">Select an action</div>
     </div>
-    <div class="topbar-badge">SHEARING</div>
+    <div class="topbar-badge">QC</div>
   </div>
-
   <div class="form-scroll">
+    <div class="form-card" onclick="openComplaint('customer')">
+      <div class="card-icon" style="background:#fee2e2;color:#dc2626">📞</div>
+      <div class="card-body">
+        <div class="card-title">Customer Complaint</div>
+        <div class="card-desc">Sales team raises complaint received from customer. Notifies production team.</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+    <div class="form-card" onclick="openComplaint('internal')">
+      <div class="card-icon" style="background:#fef3c7;color:#b45309">🔍</div>
+      <div class="card-body">
+        <div class="card-title">Internal Finding</div>
+        <div class="card-desc">Issue found during inward/processing inspection. Directly escalate to vendor.</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+    <div class="form-card" onclick="openComplaintList()">
+      <div class="card-icon" style="background:#e8f2fb;color:#1A6DAF">📋</div>
+      <div class="card-body">
+        <div class="card-title">View All Cases</div>
+        <div class="card-desc">See status of all open and closed quality complaints</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     COMPLAINT FORM SCREEN
+     ============================ -->
+<div class="screen" id="screen-complaint">
+  <div class="form-topbar" style="background:#dc2626">
+    <button class="back-btn" onclick="showScreen('complaint-menu')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title" id="cmp_title">Quality Complaint</div>
+      <div class="topbar-sub" id="cmp_sub">Fill complaint details</div>
+    </div>
+    <div class="topbar-badge" id="cmp_badge">CUSTOMER</div>
+  </div>
+  <div class="form-scroll">
+
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📋</span> Header Information</div>
       <div class="sec-body">
         <div class="fg fg-2">
-          <div class="field"><label>Customer Name *</label><input type="text" id="sh_customer" placeholder="Customer name"></div>
-          <div class="field"><label>Date *</label><input type="date" id="sh_date"></div>
-        </div>
-        <div class="fg fg-2">
-          <div class="field"><label>Batch Number *</label><input type="text" id="sh_batch" placeholder="Batch number"></div>
-          <div class="field">
-            <label>Grade *</label>
-            <div id="sg_grade" class="pills">
-              <div class="pill" onclick="rp('sg_grade',this,'E250')">E250</div>
-              <div class="pill" onclick="rp('sg_grade',this,'E350')">E350</div>
-              <div class="pill" onclick="rp('sg_grade',this,'HSFQ450')">HSFQ450</div>
-              <div class="pill" onclick="rp('sg_grade',this,'HSFQ550')">HSFQ550</div>
-              <div class="pill" onclick="rpOther('sg_grade',this,'sh_grade_other_wrap')">Other</div>
-            </div>
-            <div id="sh_grade_other_wrap" style="display:none;margin-top:8px">
-              <input type="text" id="sg_grade_other" placeholder="Specify other" onchange="rs['sg_grade']=this.value">
+          <div class="field"><label>Filed By *</label>
+            <div class="pills" id="cg_filed_by">
+              <div class="pill" onclick="rp('cg_filed_by',this,'Vignesh')">Vignesh</div>
+              <div class="pill" onclick="rp('cg_filed_by',this,'Sathya')">Sathya</div>
+              <div class="pill" onclick="rp('cg_filed_by',this,'Kumar')">Kumar</div>
+              <div class="pill" onclick="rp('cg_filed_by',this,'Mahendran')">Mahendran</div>
             </div>
           </div>
+          <div class="field"><label>QC Date</label><input type="date" id="cmp_date"></div>
         </div>
-        <div class="fg fg-2">
-          <div class="field">
-            <label>Make *</label>
-            <div id="sg_make" class="pills">
-              <div class="pill" onclick="rp('sg_make',this,'SAIL')">SAIL</div>
-              <div class="pill" onclick="rp('sg_make',this,'SAIL RSP')">SAIL RSP</div>
-              <div class="pill" onclick="rp('sg_make',this,'SAIL BSP')">SAIL BSP</div>
-              <div class="pill" onclick="rp('sg_make',this,'JSW')">JSW</div>
-              <div class="pill" onclick="rp('sg_make',this,'TATA')">TATA</div>
-              <div class="pill" onclick="rp('sg_make',this,'AMNS')">AMNS</div>
-              <div class="pill" onclick="rp('sg_make',this,'NMDC')">NMDC</div>
-              <div class="pill" onclick="rp('sg_make',this,'JSPL')">JSPL</div>
-              <div class="pill" onclick="rpOther('sg_make',this,'sh_make_other_wrap')">Other</div>
-            </div>
-            <div id="sh_make_other_wrap" style="display:none;margin-top:8px">
-              <input type="text" id="sg_make_other" placeholder="Specify other" onchange="rs['sg_make']=this.value">
-            </div>
-          </div>
-          <div class="field">
-            <label>Type</label>
-            <div id="sg_type" class="pills">
-              <div class="pill" onclick="rp('sg_type',this,'HR')">HR</div>
-              <div class="pill" onclick="rp('sg_type',this,'CR')">CR</div>
-            </div>
-          </div>
-        </div>
-        <div class="fg fg-2">
-          <div class="field"><label>Process</label><input type="text" id="sh_process" value="Shearing" readonly></div>
-          <div class="field"><label>Input Size</label><input type="text" id="sh_input_size" placeholder="e.g. 1500x555"></div>
-        </div>
-        <div class="fg fg-2">
-          <div class="field"><label>Operator Name</label><input type="text" id="sh_operator" placeholder="Operator"></div>
-          <div class="field"><label>QC Name *</label><input type="text" id="sh_qc_name" value="Vignesh" placeholder="QC name"></div>
+        <div class="fg fg-1" id="cmp_customer_wrap">
+          <div class="field"><label>Customer Name *</label><input type="text" id="cmp_customer" placeholder="Customer company name"></div>
         </div>
       </div>
     </div>
 
     <div class="sec-card">
-      <div class="sec-head"><span class="sec-head-icon">📏</span> Sheet Measurements</div>
+      <div class="sec-head"><span class="sec-head-icon">📦</span> Material Details</div>
       <div class="sec-body">
-        <div style="overflow-x:auto">
-          <table id="sh_meas_table" style="width:100%;border-collapse:collapse;font-size:12px">
-            <thead><tr style="background:var(--gray-50)">
-              <th style="padding:8px;border:1px solid var(--gray-200)">Sheet No.</th>
-              <th style="padding:8px;border:1px solid var(--gray-200)">Width 1</th>
-              <th style="padding:8px;border:1px solid var(--gray-200)">Width 2</th>
-              <th style="padding:8px;border:1px solid var(--gray-200)">Diag 1</th>
-              <th style="padding:8px;border:1px solid var(--gray-200)">Diag 2</th>
-              <th style="padding:8px;border:1px solid var(--gray-200)">Remarks</th>
-              <th style="padding:8px;border:1px solid var(--gray-200);width:30px"></th>
-            </tr></thead>
-            <tbody id="sh_rows"></tbody>
-          </table>
+        <div class="fg fg-2">
+          <div class="field"><label>Grade *</label><input type="text" id="cmp_grade" placeholder="e.g. E250BR"></div>
+          <div class="field"><label>Dimensions *</label><input type="text" id="cmp_dim" placeholder="e.g. SAIL HR 4.8MMx1250"></div>
         </div>
-        <button type="button" class="btn-outline" style="margin-top:10px" onclick="addShRow()">+ Add Row</button>
+        <div class="fg fg-2">
+          <div class="field"><label>Batch Number *</label><input type="text" id="cmp_batch" placeholder="e.g. C105940205"></div>
+          <div class="field"><label>TC Number *</label><input type="text" id="cmp_tc" placeholder="e.g. 20251239871"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Invoice No *</label><input type="text" id="cmp_inv" placeholder="e.g. OS0020007759"></div>
+          <div class="field"><label>Invoice Date *</label><input type="date" id="cmp_inv_date"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Quantity (T) *</label><input type="number" step="0.01" id="cmp_qty" placeholder="e.g. 20.94"></div>
+          <div class="field"><label>Mill *</label>
+            <div class="pills" id="cg_mill">
+              <div class="pill" onclick="rp('cg_mill',this,'SAIL')">SAIL</div>
+              <div class="pill" onclick="rp('cg_mill',this,'NMDC')">NMDC</div>
+              <div class="pill" onclick="rp('cg_mill',this,'RINL')">RINL</div>
+              <div class="pill" onclick="rp('cg_mill',this,'JSW')">JSW</div>
+              <div class="pill" onclick="rpOther('cg_mill',this,'cmp_mill_wrap')">Other</div>
+            </div>
+            <div id="cmp_mill_wrap" style="display:none;margin-top:8px">
+              <input type="text" id="cmp_mill_other" placeholder="Specify other mill" onchange="rs['cg_mill']=this.value">
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="sec-card">
-      <div class="sec-head"><span class="sec-head-icon">✅</span> Quality Checklist</div>
+      <div class="sec-head"><span class="sec-head-icon">⚠️</span> Defect Description</div>
       <div class="sec-body">
-        <div class="fg fg-2">
-          <div class="field"><label>Burr -/&lt; 10% *</label><input type="number" id="sh_burr" step="0.01" placeholder="e.g. 12"></div>
-          <div class="field"><label>Blade Clearance *</label><input type="number" id="sh_blade_clearance" step="0.01" placeholder="e.g. 12"></div>
-        </div>
-        <div class="fg fg-3">
-          <div class="field">
-            <label>Cutting Finish *</label>
-            <div id="sg_cut_finish" class="pills">
-              <div class="pill" onclick="rp('sg_cut_finish',this,'Ok')">Ok</div>
-              <div class="pill" onclick="rp('sg_cut_finish',this,'Not Ok')">Not Ok</div>
-            </div>
-          </div>
-          <div class="field">
-            <label>Surface Condition *</label>
-            <div id="sg_surface" class="pills">
-              <div class="pill" onclick="rp('sg_surface',this,'Ok')">Ok</div>
-              <div class="pill" onclick="rp('sg_surface',this,'Not Ok')">Not Ok</div>
-            </div>
-          </div>
-          <div class="field">
-            <label>Bow / Bend *</label>
-            <div id="sg_bow" class="pills">
-              <div class="pill" onclick="rp('sg_bow',this,'Ok')">Ok</div>
-              <div class="pill" onclick="rp('sg_bow',this,'Not Ok')">Not Ok</div>
-            </div>
-          </div>
-        </div>
         <div class="fg fg-1">
-          <div class="field"><label>QC Signature Date</label><input type="date" id="sh_sig_date"></div>
+          <div class="field"><label>Remarks / Defect Description *</label>
+            <textarea id="cmp_remarks" placeholder="e.g. DESCALES OBSERVED ON COIL" rows="3"></textarea>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="sec-card">
-      <div class="sec-head"><span class="sec-head-icon">📝</span> Overall Observation</div>
+      <div class="sec-head"><span class="sec-head-icon">📎</span> Attachments</div>
       <div class="sec-body">
-        <div class="field"><textarea id="sh_observation" rows="4" placeholder="Overall observation and remarks..."></textarea></div>
+        <div class="fg fg-2">
+          <div class="field">
+            <label>TC (Test Certificate) *</label>
+            <label style="display:block;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+              📄 Upload TC
+              <input type="file" id="cmp_tc_file" accept=".pdf,.jpg,.jpeg,.png" hidden onchange="showFileName(this,'cmp_tc_name')">
+            </label>
+            <div id="cmp_tc_name" style="font-size:11px;color:var(--gray-600);margin-top:6px;text-align:center"></div>
+          </div>
+          <div class="field">
+            <label>Invoice *</label>
+            <label style="display:block;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+              📄 Upload Invoice
+              <input type="file" id="cmp_inv_file" accept=".pdf,.jpg,.jpeg,.png" hidden onchange="showFileName(this,'cmp_inv_name')">
+            </label>
+            <div id="cmp_inv_name" style="font-size:11px;color:var(--gray-600);margin-top:6px;text-align:center"></div>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="sec-card">
-      <div class="sec-head"><span class="sec-head-icon">📷</span> Photos</div>
+      <div class="sec-head"><span class="sec-head-icon">📷</span> Defect Photos</div>
       <div class="sec-body">
-        <div class="field">
-          <label>Photos (up to 10)</label>
-          <div style="display:flex;gap:8px">
-            <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
-              📸 Take Photos
-              <input type="file" id="sh_photos" accept="image/*" multiple capture="environment" hidden>
-            </label>
-            <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center;display:block">
-              🖼️ Upload
-              <input type="file" id="sh_photos_lib" accept="image/*" multiple hidden onchange="document.getElementById('sh_photos').files = this.files">
-            </label>
+        <div style="display:flex;gap:8px">
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            📸 Take Photos
+            <input type="file" id="cmp_photos" accept="image/*" multiple capture="environment" hidden onchange="prevMulti(this,'cmp_photo_prev')">
+          </label>
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            🖼️ Upload
+            <input type="file" id="cmp_photos_lib" accept="image/*" multiple hidden onchange="document.getElementById('cmp_photos').files = this.files; prevMulti(document.getElementById('cmp_photos'),'cmp_photo_prev')">
+          </label>
+        </div>
+        <div class="photo-previews" id="cmp_photo_prev"></div>
+      </div>
+    </div>
+
+    <!-- Vendor section only for Internal type -->
+    <div class="sec-card" id="cmp_vendor_section" style="display:none">
+      <div class="sec-head"><span class="sec-head-icon">🏭</span> Vendor Escalation</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>Vendor *</label>
+            <div class="pills" id="cg_vendor">
+              <div class="pill" onclick="rp('cg_vendor',this,'SAIL'); setVendorEmail('SAIL')">SAIL</div>
+              <div class="pill" onclick="rp('cg_vendor',this,'NMDC'); setVendorEmail('NMDC')">NMDC</div>
+              <div class="pill" onclick="rp('cg_vendor',this,'RINL'); setVendorEmail('RINL')">RINL</div>
+              <div class="pill" onclick="rp('cg_vendor',this,'JSW'); setVendorEmail('JSW')">JSW</div>
+              <div class="pill" onclick="rp('cg_vendor',this,'Other'); setVendorEmail('')">Other</div>
+            </div>
           </div>
-          <div style="font-size:11px;color:var(--gray-400);margin-top:6px">Multiple files allowed</div>
+          <div class="field"><label>Vendor Email *</label><input type="email" id="cmp_vendor_email" placeholder="vendor@example.com"></div>
         </div>
       </div>
     </div>
 
     <div style="padding:8px 4px;font-size:11px;color:var(--gray-400);text-align:center">
-      <strong>BHARAT STEEL (CHENNAI) · Shearing Inspection</strong><br>
-      All submissions are saved automatically
+      <strong>BHARAT STEEL (CHENNAI) · Quality Complaint</strong><br>
+      <span id="cmp_route_info"></span>
     </div>
   </div>
 
-  <div class="form-actions">
-    <button class="btn-outline" onclick="clearForm('shearing')">Clear</button>
-    <button class="btn-primary" id="sh_submit" onclick="submitShearing()">
-      <span class="spinner" id="sh_spin" style="display:none"></span>
-      <span id="sh_lbl">Submit</span>
-    </button>
+  <div class="submit-bar">
+    <div class="submit-info">
+      <strong>Quality Complaint</strong>
+      <span style="display:block;font-size:10px;margin-top:1px">PDF + TC + Invoice will be emailed</span>
+    </div>
+    <div class="submit-btns">
+      <button class="btn-sec" onclick="clearComplaint()">Clear</button>
+      <button class="btn-primary" id="cmp_submit" onclick="submitComplaint()" style="background:#dc2626">
+        <div class="spinner" id="cmp_spin"></div>
+        <span id="cmp_lbl">Submit Complaint</span>
+      </button>
+    </div>
   </div>
+</div>
+
+<!-- ============================
+     COMPLAINT LIST SCREEN
+     ============================ -->
+<div class="screen" id="screen-complaint-list">
+  <div class="form-topbar" style="background:#dc2626">
+    <button class="back-btn" onclick="showScreen('complaint-menu')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">All Quality Complaints</div>
+      <div class="topbar-sub" id="cmp_list_count">Loading...</div>
+    </div>
+    <button class="back-btn" onclick="loadComplaintList()" style="font-size:14px">↻</button>
+  </div>
+  <div class="form-scroll" id="cmp_list_body">
+    <div style="text-align:center;padding:40px;color:var(--gray-400)">Loading complaints...</div>
+  </div>
+</div>
+
+<!-- ============================
+     COMPLAINT DETAIL SCREEN
+     ============================ -->
+<div class="screen" id="screen-complaint-detail">
+  <div class="form-topbar" style="background:#dc2626">
+    <button class="back-btn" onclick="showScreen('complaint-list')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title" id="cmp_detail_title">Case Details</div>
+      <div class="topbar-sub" id="cmp_detail_status">—</div>
+    </div>
+  </div>
+  <div class="form-scroll" id="cmp_detail_body"></div>
 </div>
 
 <!-- PHOTO VIEWER SCREEN -->
@@ -858,7 +903,7 @@ var rs = {}, ys = {}, rowCount = 0;
 // ============================================================
 //  SERVER URL — auto-filled after Render deployment
 // ============================================================
-var SERVER_URL = '';
+var SERVER_URL = 'https://api.bharatsteels.in';
 
 async function sendToServer(payload) {
   var resp = await fetch(SERVER_URL + '/submit', {
@@ -1131,26 +1176,8 @@ async function collectPhotosBase64(inputIds) {
 
 function fileToBase64(file) {
   return new Promise(function(resolve) {
-    // Compress image before converting to base64
-    var img = new Image();
     var reader = new FileReader();
-    reader.onload = function(e) {
-      img.onload = function() {
-        var canvas = document.createElement('canvas');
-        var MAX = 900;
-        var w = img.width, h = img.height;
-        if (w > h && w > MAX) { h = h * (MAX/w); w = MAX; }
-        else if (h > MAX) { w = w * (MAX/h); h = MAX; }
-        canvas.width = w; canvas.height = h;
-        var ctx = canvas.getContext('2d');
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(0, 0, w, h);
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL('image/jpeg', 0.6));
-      };
-      img.onerror = function() { resolve(e.target.result); };
-      img.src = e.target.result;
-    };
+    reader.onload = function(e) { resolve(e.target.result); };
     reader.readAsDataURL(file);
   });
 }
@@ -1167,7 +1194,6 @@ function collectInward() {
     strapping: ys['yn_strap']||'', rust: ys['yn_rust']||'',
     other_damages: rs['ig_damage']||'',
     inspected_by: rs['ig_inspector']||'', remarks: gv('i_remarks'),
-    wheels_india: ys['yn_wheels'] === 'Y',
     timestamp: new Date().toISOString()
   };
 }
@@ -1221,46 +1247,15 @@ function submitInward() {
   if (!d.batch_number)   { toast('err','Batch number is required'); return; }
   if (!d.make_of_coil)   { toast('err','Please select make of coil'); return; }
   if (!d.grade)          { toast('err','Please select grade'); return; }
-  if (!d.actual_thickness){ toast('err','Actual thickness is required'); return; }
-  if (!d.actual_width)   { toast('err','Actual width is required'); return; }
-  if (!d.id_sticker)     { toast('err','Please answer: Identification Sticker'); return; }
-  if (!d.edge_inner)     { toast('err','Please answer: Edge Damage Inner'); return; }
-  if (!d.edge_outer)     { toast('err','Please answer: Edge Damage Outer'); return; }
-  if (!d.scratch)        { toast('err','Please answer: Scratch Mark'); return; }
-  if (!d.strapping)      { toast('err','Please answer: Strapping'); return; }
-  if (!d.rust)           { toast('err','Please answer: Rust on Surface'); return; }
   if (!d.inspected_by)   { toast('err','Please select inspector'); return; }
-  if (!ys['yn_wheels'])  { toast('err','Please answer: Wheels India Coil'); return; }
   runSubmit('i_submit','i_spin','i_lbl', d, 'Inward');
 }
 
 function submitQuality() {
   var d = collectQuality();
-  if (!d.date)              { toast('err','Date of inspection is required'); return; }
-  if (!d.coil_number)       { toast('err','Coil number is required'); return; }
-  if (!d.batch_number)      { toast('err','Batch number is required'); return; }
-  if (!d.make)              { toast('err','Please select make of coil'); return; }
-  if (!d.coil_thickness)    { toast('err','Coil thickness is required'); return; }
-  if (!d.coil_grade)        { toast('err','Coil grade is required'); return; }
-  if (!d.coil_width)        { toast('err','Coil width is required'); return; }
-  if (!d.coil_weight)       { toast('err','Coil weight is required'); return; }
-  if (!d.first_bit)         { toast('err','First bit length is required'); return; }
-  if (!d.last_bit)          { toast('err','Last bit length is required'); return; }
-  if (!d.defective)         { toast('err','Defective length is required'); return; }
-  if (!d.balance_wt)        { toast('err','Balance coil weight is required'); return; }
-  if (!d.coil_verified)     { toast('err','Please answer: Coil Verified'); return; }
-  if (!d.blade_clearance)   { toast('err','Blade clearance is required'); return; }
-  if (!d.bur)               { toast('err','Bur value is required'); return; }
-  if (!d.cutting_finish)    { toast('err','Please answer: Cutting Finish'); return; }
-  if (!d.scalling)          { toast('err','Please answer: Scalling'); return; }
-  if (!d.pit_marks)         { toast('err','Please answer: Pit Marks'); return; }
-  if (!d.waviness)          { toast('err','Please answer: Waviness'); return; }
-  if (!d.center_bow)        { toast('err','Center bow is required'); return; }
-  if (!d.cutting_bow)       { toast('err','Cutting bow is required'); return; }
-  if (!d.surface_defects)   { toast('err','Please answer: Surface Defects'); return; }
-  if (!d.operator)          { toast('err','Machine operated by is required'); return; }
-  if (!d.machine_name)      { toast('err','Please select machine name (CTL-1/CTL-2)'); return; }
-  if (!d.inspector)         { toast('err','Inspected by is required'); return; }
+  if (!d.date)       { toast('err','Date of inspection is required'); return; }
+  if (!d.coil_number){ toast('err','Coil number is required'); return; }
+  if (!d.inspector)  { toast('err','Inspected by is required'); return; }
   runSubmit('q_submit','q_spin','q_lbl', d, 'Quality');
 }
 
@@ -1280,8 +1275,11 @@ function runSubmit(btnId, spinId, lblId, data, folder) {
       lb.textContent = 'Reading photos...';
       var photoInputs = folder === 'Inward'
         ? ['i_coil_photo','i_sticker_photo']
-        : folder === 'Shearing' ? ['sh_photos'] : ['q_photos'];
+        : ['q_photos'];
       data.photos = await collectPhotosBase64(photoInputs);
+
+      // Build PDF with photos embedded
+      data.pdf_content = folder === 'Inward' ? buildInwardPDF(data, ref) : buildQualityPDF(data, ref);
 
       lb.textContent = 'Submitting...';
       await sendToServer(data);
@@ -1409,7 +1407,7 @@ function toast(type, msg) {
 
 function clearForm(which) {
   if(!confirm('Clear all fields in this form?')) return;
-  var prefix = which === 'inward' ? '#screen-inward' : which === 'shearing' ? '#screen-shearing' : '#screen-quality';
+  var prefix = which === 'inward' ? '#screen-inward' : '#screen-quality';
   document.querySelectorAll(prefix+' input, '+prefix+' textarea').forEach(i=>i.value='');
   document.querySelectorAll(prefix+' .pill').forEach(p=>p.classList.remove('sel'));
   document.querySelectorAll(prefix+' .yn-btn').forEach(b=>b.classList.remove('a'));
@@ -1422,175 +1420,438 @@ function clearForm(which) {
     document.getElementById('q_time').value=pad(now.getHours())+':'+pad(now.getMinutes());
   }
   ['ig_make','ig_grade','ig_width','ig_damage','ig_inspector','qg_make','qg_machine_name'].forEach(k=>delete rs[k]);
-  if (which === 'inward' && typeof wheelsIndia !== 'undefined') {
-    wheelsIndia = false;
-  }
-  ['yn_sticker','yn_ei','yn_eo','yn_scratch','yn_strap','yn_rust','yn_wheels','yn_verified','yn_cut_finish','yn_scalling','yn_pit_marks','yn_waviness','yn_surface_def'].forEach(k=>delete ys[k]);
+  ['yn_sticker','yn_ei','yn_eo','yn_scratch','yn_strap','yn_rust','yn_verified','yn_cut_finish','yn_scalling','yn_pit_marks','yn_waviness','yn_surface_def'].forEach(k=>delete ys[k]);
   toast('inf','Form cleared');
 }
 
 
 // ============================================================
-//  SHEARING FORM
+//  QUALITY COMPLAINT FUNCTIONS
 // ============================================================
-var shRowCount = 0;
-function addShRow() {
-  shRowCount++;
-  var tr = document.createElement('tr');
-  tr.id = 'sh_row_' + shRowCount;
-  var id = shRowCount;
-  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="sr'+id+'_sno" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
-    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_w1" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
-    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_w2" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
-    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_d1" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
-    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_d2" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
-    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="sr'+id+'_rm" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
-    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeShRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">×</button></td>';
-  document.getElementById('sh_rows').appendChild(tr);
-}
-function removeShRow(id) {
-  var el = document.getElementById('sh_row_' + id);
-  if (el) el.remove();
+var currentComplaintType = 'customer'; // 'customer' or 'internal'
+var complaintsList = [];
+var currentCaseId = null;
+
+var VENDOR_EMAILS = {
+  'SAIL': '',  // Add real emails here later or have user type
+  'NMDC': '',
+  'RINL': '',
+  'JSW':  ''
+};
+
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  var el = document.getElementById('screen-' + name);
+  if (el) el.classList.add('active');
+  window.scrollTo(0, 0);
 }
 
-function collectShearing() {
-  var rows = [];
-  document.querySelectorAll('#sh_rows tr').forEach(function(tr) {
-    var id = tr.id.replace('sh_row_','');
-    rows.push({
-      sheet_no: gv('sr'+id+'_sno'),
-      width1: gv('sr'+id+'_w1'),
-      width2: gv('sr'+id+'_w2'),
-      diag1: gv('sr'+id+'_d1'),
-      diag2: gv('sr'+id+'_d2'),
-      remarks: gv('sr'+id+'_rm')
-    });
+function openComplaintMenu() {
+  showScreen('complaint-menu');
+}
+
+function openComplaint(type) {
+  currentComplaintType = type;
+  currentCaseId = null;
+  clearComplaint();
+  
+  var title = document.getElementById('cmp_title');
+  var sub = document.getElementById('cmp_sub');
+  var badge = document.getElementById('cmp_badge');
+  var route = document.getElementById('cmp_route_info');
+  var customerWrap = document.getElementById('cmp_customer_wrap');
+  var vendorSection = document.getElementById('cmp_vendor_section');
+  
+  if (type === 'customer') {
+    title.textContent = 'Customer Complaint';
+    sub.textContent = 'From customer - notifies Production';
+    badge.textContent = 'CUSTOMER';
+    route.textContent = 'Email will be sent to pdqc@ and kannan@';
+    customerWrap.style.display = '';
+    vendorSection.style.display = 'none';
+  } else {
+    title.textContent = 'Internal Finding';
+    sub.textContent = 'Found internally - direct to vendor';
+    badge.textContent = 'INTERNAL';
+    route.textContent = 'Email will be sent directly to selected vendor (CC pdqc, kannan, gourav)';
+    customerWrap.style.display = 'none';
+    vendorSection.style.display = '';
+  }
+  
+  // Auto-fill date
+  var today = new Date().toISOString().split('T')[0];
+  var dateEl = document.getElementById('cmp_date');
+  if (dateEl && !dateEl.value) dateEl.value = today;
+  
+  showScreen('complaint');
+}
+
+function setVendorEmail(vendor) {
+  var emailField = document.getElementById('cmp_vendor_email');
+  if (vendor && VENDOR_EMAILS[vendor]) {
+    emailField.value = VENDOR_EMAILS[vendor];
+  } else {
+    emailField.value = '';
+  }
+}
+
+function showFileName(input, displayId) {
+  var display = document.getElementById(displayId);
+  if (input.files && input.files[0]) {
+    display.innerHTML = '✓ ' + input.files[0].name + ' (' + (input.files[0].size / 1024).toFixed(0) + ' KB)';
+    display.style.color = 'var(--green)';
+  } else {
+    display.innerHTML = '';
+  }
+}
+
+function clearComplaint() {
+  ['cmp_customer','cmp_grade','cmp_dim','cmp_batch','cmp_tc','cmp_inv','cmp_inv_date','cmp_qty','cmp_remarks','cmp_vendor_email','cmp_mill_other'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
   });
+  ['cmp_tc_file','cmp_inv_file','cmp_photos','cmp_photos_lib'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['cmp_tc_name','cmp_inv_name','cmp_photo_prev'].forEach(function(id) {
+    var el = document.getElementById(id); if (el) el.innerHTML = '';
+  });
+  ['cg_filed_by','cg_mill','cg_vendor'].forEach(function(g) {
+    document.querySelectorAll('#' + g + ' .pill').forEach(p => p.classList.remove('sel'));
+    delete rs[g];
+  });
+  var mw = document.getElementById('cmp_mill_wrap');
+  if (mw) mw.style.display = 'none';
+}
+
+async function submitComplaint() {
+  var d = collectComplaint();
+  if (!d.filed_by) { toast('err', 'Please select who filed this'); return; }
+  if (currentComplaintType === 'customer' && !d.customer_name) { toast('err', 'Customer name is required'); return; }
+  if (!d.grade) { toast('err', 'Grade is required'); return; }
+  if (!d.dimensions) { toast('err', 'Dimensions are required'); return; }
+  if (!d.batch_number) { toast('err', 'Batch number is required'); return; }
+  if (!d.tc_number) { toast('err', 'TC number is required'); return; }
+  if (!d.invoice_no) { toast('err', 'Invoice number is required'); return; }
+  if (!d.invoice_date) { toast('err', 'Invoice date is required'); return; }
+  if (!d.quantity) { toast('err', 'Quantity is required'); return; }
+  if (!d.mill) { toast('err', 'Please select mill'); return; }
+  if (!d.remarks) { toast('err', 'Defect description is required'); return; }
+  if (!d.tc_file) { toast('err', 'TC file is required'); return; }
+  if (!d.invoice_file) { toast('err', 'Invoice file is required'); return; }
+  if (currentComplaintType === 'internal' && (!d.vendor_name || !d.vendor_email)) {
+    toast('err', 'Vendor and vendor email required for internal finding');
+    return;
+  }
+  
+  var btn = document.getElementById('cmp_submit');
+  var spin = document.getElementById('cmp_spin');
+  var lbl = document.getElementById('cmp_lbl');
+  btn.disabled = true;
+  spin.style.display = 'inline-block';
+  lbl.textContent = 'Reading files...';
+  
+  try {
+    // Read TC file
+    var tcInput = document.getElementById('cmp_tc_file');
+    if (tcInput.files[0]) {
+      d.tc_file = {
+        name: tcInput.files[0].name,
+        type: tcInput.files[0].type,
+        data: await readFileAsDataURL(tcInput.files[0])
+      };
+    }
+    // Read Invoice file
+    var invInput = document.getElementById('cmp_inv_file');
+    if (invInput.files[0]) {
+      d.invoice_file = {
+        name: invInput.files[0].name,
+        type: invInput.files[0].type,
+        data: await readFileAsDataURL(invInput.files[0])
+      };
+    }
+    // Read photos
+    lbl.textContent = 'Reading photos...';
+    d.photos = await collectPhotosBase64(['cmp_photos']);
+    
+    lbl.textContent = 'Submitting...';
+    var resp = await fetch(SERVER_URL + '/complaint/submit', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(d)
+    });
+    if (!resp.ok) throw new Error('Server returned ' + resp.status);
+    var result = await resp.json();
+    if (result.status !== 'success') throw new Error(result.message || 'Submission failed');
+    
+    toast('ok', 'Complaint ' + result.case_id + ' submitted successfully');
+    clearComplaint();
+    setTimeout(function() { showScreen('complaint-menu'); }, 2000);
+  } catch(e) {
+    toast('err', 'Submission failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    spin.style.display = 'none';
+    lbl.textContent = 'Submit Complaint';
+  }
+}
+
+function collectComplaint() {
   return {
-    customer_name: gv('sh_customer'),
-    date: gv('sh_date'),
-    batch_number: gv('sh_batch'),
-    grade: rs['sg_grade']||'',
-    make: rs['sg_make']||'',
-    type: rs['sg_type']||'',
-    process: gv('sh_process'),
-    input_size: gv('sh_input_size'),
-    operator: gv('sh_operator'),
-    qc_name: gv('sh_qc_name'),
-    measurements: rows,
-    burr: gv('sh_burr'),
-    blade_clearance: gv('sh_blade_clearance'),
-    cutting_finish: rs['sg_cut_finish']||'',
-    surface_condition: rs['sg_surface']||'',
-    bow_bend: rs['sg_bow']||'',
-    sig_date: gv('sh_sig_date'),
-    overall_observation: gv('sh_observation'),
-    timestamp: new Date().toISOString()
+    source: currentComplaintType,
+    filed_by: rs['cg_filed_by'] || '',
+    qc_date: gv('cmp_date'),
+    customer_name: gv('cmp_customer'),
+    grade: gv('cmp_grade'),
+    dimensions: gv('cmp_dim'),
+    batch_number: gv('cmp_batch'),
+    tc_number: gv('cmp_tc'),
+    invoice_no: gv('cmp_inv'),
+    invoice_date: gv('cmp_inv_date'),
+    quantity: gv('cmp_qty'),
+    mill: rs['cg_mill'] || '',
+    remarks: gv('cmp_remarks'),
+    vendor_name: rs['cg_vendor'] || '',
+    vendor_email: gv('cmp_vendor_email')
   };
 }
 
-function submitShearing() {
-  var d = collectShearing();
-  if (!d.customer_name)      { toast('err','Customer name is required'); return; }
-  if (!d.batch_number)       { toast('err','Batch number is required'); return; }
-  if (!d.grade)              { toast('err','Please select grade'); return; }
-  if (!d.make)               { toast('err','Please select make'); return; }
-  if (!d.burr)               { toast('err','Burr value is required'); return; }
-  if (!d.blade_clearance)    { toast('err','Blade clearance is required'); return; }
-  if (!d.cutting_finish)     { toast('err','Please select cutting finish'); return; }
-  if (!d.surface_condition)  { toast('err','Please select surface condition'); return; }
-  if (!d.bow_bend)           { toast('err','Please select bow/bend'); return; }
-  if (!d.qc_name)            { toast('err','QC name is required'); return; }
-  runSubmit('sh_submit','sh_spin','sh_lbl', d, 'Shearing');
+function readFileAsDataURL(file) {
+  return new Promise(function(resolve, reject) {
+    var reader = new FileReader();
+    reader.onload = function(e) { resolve(e.target.result); };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
 
-function buildShearingPDF(data, ref) {
-  var ts = new Date().toLocaleString('en-IN');
-  var rowsHtml = (data.measurements||[]).filter(r=>r.sheet_no||r.width1||r.width2).map(function(r){
-    return '<tr><td>'+r.sheet_no+'</td><td>'+r.width1+'</td><td>'+r.width2+'</td><td>'+r.diag1+'</td><td>'+r.diag2+'</td><td>'+r.remarks+'</td></tr>';
-  }).join('');
-  var photosHtml = buildPhotosHTML(data.photos);
-  var logoImg = document.querySelector('#screen-home img') ? document.querySelector('#screen-home img').src : '';
-  var css = '<style>'
-    + 'body{font-family:Arial,sans-serif;font-size:11px;color:#111;margin:0;padding:20px}'
-    + '.hdr{display:flex;align-items:center;justify-content:space-between;border-bottom:2px solid #1A6DAF;padding-bottom:12px;margin-bottom:16px}'
-    + '.cn{font-size:16px;font-weight:700;color:#1A6DAF}'
-    + '.cs{font-size:10px;color:#666}'
-    + '.dr{text-align:right;font-size:10px;color:#666}'
-    + 'h2{font-size:13px;font-weight:700;background:#1A6DAF;color:#fff;padding:6px 10px;border-radius:3px;margin:12px 0 8px}'
-    + 'table{width:100%;border-collapse:collapse;margin-bottom:10px}'
-    + 'td{padding:6px 8px;border:1px solid #E5E7EB;vertical-align:top}'
-    + 'td.l{background:#F3F4F6;font-weight:700;width:35%;color:#374151}'
-    + 'th{padding:6px 8px;border:1px solid #E5E7EB;background:#1F2937;color:#fff;font-size:10px;text-align:left}'
-    + '.y{color:#15803D;font-weight:700}.n{color:#B91C1C;font-weight:700}'
-    + '.ft{margin-top:20px;border-top:1px solid #E5E7EB;padding-top:10px;font-size:9px;color:#9CA3AF;text-align:center}'
-    + '</style>';
-  var head = '<div class="hdr"><div style="display:flex;align-items:center;gap:10px">'
-    + '<img src="'+logoImg+'" style="width:48px;height:48px;border-radius:6px">'
-    + '<div><div class="cn">BHARAT STEEL (CHENNAI) PVT. LTD.</div>'
-    + '<div class="cs">Shearing Quality Inspection Report \u00b7 BSCQMS-PRD-008 REV 01</div></div></div>'
-    + '<div class="dr">Ref: '+ref+'<br>Date: '+ts+'</div></div>';
-  var body = '<h2>Header Information</h2>'
-    + '<table>'
-    + '<tr><td class="l">Customer Name</td><td colspan="3">'+(data.customer_name||'-')+'</td></tr>'
-    + '<tr><td class="l">Batch Number</td><td>'+(data.batch_number||'-')+'</td><td class="l">Grade</td><td>'+(data.grade||'-')+'</td></tr>'
-    + '<tr><td class="l">Make</td><td>'+(data.make||'-')+'</td><td class="l">Type</td><td>'+(data.type||'-')+'</td></tr>'
-    + '<tr><td class="l">Process</td><td>'+(data.process||'-')+'</td><td class="l">Input Size</td><td>'+(data.input_size||'-')+'</td></tr>'
-    + '<tr><td class="l">Operator Name</td><td>'+(data.operator||'-')+'</td><td class="l">QC Name</td><td>'+(data.qc_name||'-')+'</td></tr>'
-    + '</table>'
-    + '<h2>Sheet Measurements</h2>'
-    + '<table><thead><tr><th>Sheet No.</th><th>Width 1</th><th>Width 2</th><th>Diag 1</th><th>Diag 2</th><th>Remarks</th></tr></thead>'
-    + '<tbody>'+(rowsHtml||'<tr><td colspan="6" style="text-align:center;color:#9CA3AF">No measurements entered</td></tr>')+'</tbody></table>'
-    + '<h2>Quality Checklist</h2>'
-    + '<table>'
-    + '<tr><td class="l">Burr -/&lt; 10%</td><td>'+(data.burr||'-')+'</td><td class="l">Blade Clearance</td><td>'+(data.blade_clearance||'-')+'</td></tr>'
-    + '<tr><td class="l">Cutting Finish</td><td class="'+(data.cutting_finish==='Ok'?'y':'n')+'">'+(data.cutting_finish||'-')+'</td><td class="l">Surface Condition</td><td class="'+(data.surface_condition==='Ok'?'y':'n')+'">'+(data.surface_condition||'-')+'</td></tr>'
-    + '<tr><td class="l">Bow / Bend</td><td class="'+(data.bow_bend==='Ok'?'y':'n')+'">'+(data.bow_bend||'-')+'</td><td class="l">QC Signature Date</td><td>'+(data.sig_date||'-')+'</td></tr>'
-    + '</table>'
-    + '<h2>Overall Observation</h2>'
-    + '<table><tr><td>'+(data.overall_observation||'-')+'</td></tr></table>'
-    + photosHtml
-    + '<div class="ft">BHARAT STEEL (CHENNAI) PVT. LTD. \u00b7 BSCQMS-PRD-008 REV 01 \u00b7 '+ref+'</div>';
-  return '<!DOCTYPE html><html><head><meta charset="UTF-8">'+css+'</head><body>'+head+body+'</body></html>';
+// ===== LIST & DETAIL =====
+async function openComplaintList() {
+  showScreen('complaint-list');
+  await loadComplaintList();
 }
 
-
-// ============================================================
-//  WHEELS INDIA TOGGLE
-// ============================================================
-var wheelsIndia = false;
-function toggleWheelsIndia(ev) {
-  if (ev) ev.stopPropagation();
-  wheelsIndia = !wheelsIndia;
-  var box = document.getElementById('wi_checkbox');
-  var tick = document.getElementById('wi_tick');
-  var label = document.getElementById('wi_label');
-  if (wheelsIndia) {
-    box.style.background = 'var(--brand)';
-    box.style.borderColor = 'var(--brand)';
-    tick.style.display = 'block';
-    label.style.background = '#e8f2fb';
-    label.style.borderColor = 'var(--brand)';
-  } else {
-    box.style.background = '#fff';
-    box.style.borderColor = 'var(--gray-400)';
-    tick.style.display = 'none';
-    label.style.background = 'var(--gray-50)';
-    label.style.borderColor = 'var(--gray-200)';
+async function loadComplaintList() {
+  var body = document.getElementById('cmp_list_body');
+  var countEl = document.getElementById('cmp_list_count');
+  body.innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400)">Loading complaints...</div>';
+  
+  try {
+    var resp = await fetch(SERVER_URL + '/stats');
+    var data = await resp.json();
+    complaintsList = data.Complaints || [];
+    
+    if (complaintsList.length === 0) {
+      countEl.textContent = '0 complaints';
+      body.innerHTML = '<div style="text-align:center;padding:60px 20px;color:var(--gray-400)"><div style="font-size:48px;margin-bottom:12px">📋</div><div style="font-size:14px;font-weight:600">No complaints yet</div><div style="font-size:12px;margin-top:6px">Raise a new complaint to get started</div></div>';
+      return;
+    }
+    
+    // Sort by timestamp desc
+    complaintsList.sort(function(a, b) {
+      return new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
+    });
+    
+    var openCount = complaintsList.filter(c => c.status === 'Open').length;
+    var reviewCount = complaintsList.filter(c => c.status === 'Under Review').length;
+    var escalatedCount = complaintsList.filter(c => c.status === 'Vendor Notified').length;
+    var completedCount = complaintsList.filter(c => (c.status || '').indexOf('Completed') >= 0).length;
+    
+    countEl.textContent = complaintsList.length + ' total · ' + openCount + ' open';
+    
+    var statusFilter = '<div style="padding:12px 16px;background:#fff;border-bottom:1px solid var(--gray-100);display:flex;gap:8px;flex-wrap:wrap;overflow-x:auto">'
+      + '<button onclick="filterComplaintList(\'all\')" class="cmp-filter-btn active" data-filter="all" style="padding:6px 12px;border-radius:14px;border:1px solid var(--gray-200);background:var(--brand);color:#fff;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">All ' + complaintsList.length + '</button>'
+      + '<button onclick="filterComplaintList(\'Open\')" class="cmp-filter-btn" data-filter="Open" style="padding:6px 12px;border-radius:14px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">🔵 Open ' + openCount + '</button>'
+      + '<button onclick="filterComplaintList(\'Under Review\')" class="cmp-filter-btn" data-filter="Under Review" style="padding:6px 12px;border-radius:14px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">🟡 Review ' + reviewCount + '</button>'
+      + '<button onclick="filterComplaintList(\'Vendor Notified\')" class="cmp-filter-btn" data-filter="Vendor Notified" style="padding:6px 12px;border-radius:14px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">🟠 Vendor ' + escalatedCount + '</button>'
+      + '<button onclick="filterComplaintList(\'Completed\')" class="cmp-filter-btn" data-filter="Completed" style="padding:6px 12px;border-radius:14px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap">✅ Done ' + completedCount + '</button>'
+      + '</div>'
+      + '<div id="cmp_list_items" style="padding:0"></div>';
+    
+    body.innerHTML = statusFilter;
+    renderComplaintList(complaintsList);
+  } catch(e) {
+    body.innerHTML = '<div style="text-align:center;padding:40px;color:#dc2626">Error loading: ' + e.message + '</div>';
   }
 }
+
+function filterComplaintList(status) {
+  document.querySelectorAll('.cmp-filter-btn').forEach(b => {
+    if (b.dataset.filter === status) {
+      b.style.background = 'var(--brand)'; b.style.color = '#fff';
+    } else {
+      b.style.background = '#fff'; b.style.color = 'var(--gray-800)';
+    }
+  });
+  var filtered = status === 'all' ? complaintsList :
+    status === 'Completed' ? complaintsList.filter(c => (c.status || '').indexOf('Completed') >= 0) :
+    complaintsList.filter(c => c.status === status);
+  renderComplaintList(filtered);
+}
+
+function renderComplaintList(list) {
+  var itemsEl = document.getElementById('cmp_list_items');
+  if (!itemsEl) return;
+  if (list.length === 0) {
+    itemsEl.innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400);font-size:13px">No matching complaints</div>';
+    return;
+  }
+  itemsEl.innerHTML = list.map(function(c) {
+    var statusColor = '#3b82f6'; // blue Open
+    if (c.status === 'Under Review') statusColor = '#eab308';
+    else if (c.status === 'Vendor Notified') statusColor = '#f97316';
+    else if ((c.status || '').indexOf('Completed') >= 0) statusColor = '#10b981';
+    var when = c.timestamp ? new Date(c.timestamp).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '';
+    return '<div onclick="openComplaintDetail(\'' + c.case_id + '\')" style="background:#fff;border-bottom:1px solid var(--gray-100);padding:14px 16px;cursor:pointer">'
+      + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">'
+      + '<div style="flex:1"><div style="font-weight:700;font-size:14px;color:var(--gray-800)">' + (c.case_id || '-') + '</div>'
+      + '<div style="font-size:12px;color:var(--gray-600);margin-top:2px">' + escHtml(c.customer_name || c.batch_number || '-') + '</div></div>'
+      + '<div style="padding:3px 10px;border-radius:12px;background:' + statusColor + '20;color:' + statusColor + ';font-size:11px;font-weight:700;white-space:nowrap">' + (c.status || 'Open') + '</div>'
+      + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400)">' + escHtml(c.mill || '') + (c.mill && c.batch_number ? ' · ' : '') + escHtml(c.batch_number || '') + ' · ' + when + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function escHtml(s) {
+  return String(s == null ? '' : s).replace(/[&<>"\']/g, function(c){
+    return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "\'":'&#39;' })[c];
+  });
+}
+
+async function openComplaintDetail(caseId) {
+  currentCaseId = caseId;
+  var c = complaintsList.find(x => x.case_id === caseId);
+  if (!c) { toast('err', 'Case not found'); return; }
+  
+  showScreen('complaint-detail');
+  document.getElementById('cmp_detail_title').textContent = caseId;
+  document.getElementById('cmp_detail_status').textContent = c.status || 'Open';
+  
+  var statusColor = '#3b82f6';
+  if (c.status === 'Under Review') statusColor = '#eab308';
+  else if (c.status === 'Vendor Notified') statusColor = '#f97316';
+  else if ((c.status || '').indexOf('Completed') >= 0) statusColor = '#10b981';
+  
+  var when = c.timestamp ? new Date(c.timestamp).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
+  
+  var nextActions = '';
+  if (c.status === 'Open' || c.status === 'Under Review') {
+    nextActions = '<div style="padding:14px 16px;display:flex;gap:8px;flex-direction:column">'
+      + '<button onclick="showAnalysisDialog()" style="padding:14px;background:#1A6DAF;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Add Production Analysis & Close</button>'
+      + '<button onclick="showEscalateDialog()" style="padding:14px;background:#f97316;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Escalate to Vendor</button>'
+      + '</div>';
+  } else if (c.status === 'Vendor Notified') {
+    nextActions = '<div style="padding:14px 16px"><button onclick="showResolveDialog()" style="width:100%;padding:14px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Mark Resolved</button></div>';
+  }
+  
+  document.getElementById('cmp_detail_body').innerHTML = 
+    '<div style="padding:16px">'
+    + '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
+    + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'
+    + '<div style="font-size:12px;color:var(--gray-400);font-weight:600">CASE OVERVIEW</div>'
+    + '<div style="padding:3px 10px;border-radius:12px;background:' + statusColor + '20;color:' + statusColor + ';font-size:11px;font-weight:700">' + (c.status || 'Open') + '</div>'
+    + '</div>'
+    + detailRow('Filed By', c.filed_by) + detailRow('Source', c.source) + detailRow('Raised On', when)
+    + (c.customer_name ? detailRow('Customer', c.customer_name) : '')
+    + detailRow('Mill', c.mill) + detailRow('Batch', c.batch_number) + detailRow('Grade', c.grade)
+    + detailRow('Dimensions', c.dimensions) + detailRow('TC Number', c.tc_number)
+    + detailRow('Invoice', c.invoice_no) + detailRow('Invoice Date', c.invoice_date)
+    + detailRow('Quantity (T)', c.quantity)
+    + '</div>'
+    + '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
+    + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">DEFECT</div>'
+    + '<div style="font-size:14px;line-height:1.5">' + escHtml(c.remarks || '-') + '</div>'
+    + '</div>'
+    + (c.reviewed_by || c.root_cause ? '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
+        + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">PRODUCTION ANALYSIS</div>'
+        + detailRow('Reviewed By', c.reviewed_by) + detailRow('Root Cause', c.root_cause) + detailRow('Decision', c.decision)
+        + '</div>' : '')
+    + (c.vendor_name ? '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
+        + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">VENDOR ESCALATION</div>'
+        + detailRow('Vendor', c.vendor_name) + detailRow('Vendor Email', c.vendor_email)
+        + '</div>' : '')
+    + (c.resolution ? '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
+        + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">RESOLUTION</div>'
+        + detailRow('Resolution', c.resolution) + detailRow('Resolved On', c.resolved_date)
+        + '</div>' : '')
+    + nextActions
+    + '</div>';
+}
+
+function detailRow(label, value) {
+  return '<div style="display:flex;padding:6px 0;border-bottom:1px solid var(--gray-100);font-size:13px"><div style="width:120px;font-weight:600;color:var(--gray-600);flex-shrink:0">' + label + '</div><div style="flex:1;color:var(--gray-800);word-break:break-word">' + escHtml(value || '-') + '</div></div>';
+}
+
+function showAnalysisDialog() {
+  var reviewer = prompt('Reviewed by (Vignesh / Sathya / Kumar / Mahendran):');
+  if (!reviewer) return;
+  var rootCause = prompt('Root cause / analysis notes:');
+  if (!rootCause) return;
+  var resolution = prompt('Resolution notes:');
+  if (!resolution) return;
+  updateComplaint({
+    case_id: currentCaseId,
+    reviewed_by: reviewer,
+    root_cause: rootCause,
+    decision: 'Closed Internally',
+    resolution: resolution,
+    status: 'Completed (Internal)',
+    resolved_date: new Date().toLocaleDateString('en-IN')
+  });
+}
+
+function showEscalateDialog() {
+  var reviewer = prompt('Reviewed by:');
+  if (!reviewer) return;
+  var rootCause = prompt('Root cause / analysis:');
+  if (!rootCause) return;
+  var vendor = prompt('Vendor name (SAIL / NMDC / RINL / JSW / Other):');
+  if (!vendor) return;
+  var vendorEmail = prompt('Vendor email:');
+  if (!vendorEmail) return;
+  updateComplaint({
+    case_id: currentCaseId,
+    reviewed_by: reviewer,
+    root_cause: rootCause,
+    decision: 'Escalated to Vendor',
+    vendor_name: vendor,
+    vendor_email: vendorEmail,
+    status: 'Vendor Notified'
+  });
+}
+
+function showResolveDialog() {
+  var resolution = prompt('Resolution notes (vendor response / outcome):');
+  if (!resolution) return;
+  updateComplaint({
+    case_id: currentCaseId,
+    resolution: resolution,
+    status: 'Completed (Vendor)',
+    resolved_date: new Date().toLocaleDateString('en-IN')
+  });
+}
+
+async function updateComplaint(payload) {
+  try {
+    var resp = await fetch(SERVER_URL + '/complaint/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error('Update failed');
+    var r = await resp.json();
+    if (r.status !== 'success') throw new Error(r.message || 'Update failed');
+    toast('ok', 'Case updated');
+    await loadComplaintList();
+    showScreen('complaint-list');
+  } catch(e) {
+    toast('err', 'Update failed: ' + e.message);
+  }
+}
+
 
 // ============================================================
 //  INIT
 // ============================================================
 buildPQ();
 addRow(); addRow(); addRow();
-var now = new Date(), pad = n=>n.toString().padStart(2,'0');
-document.getElementById('q_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
-document.getElementById('q_time').value = pad(now.getHours())+':'+pad(now.getMinutes());
-addShRow(); addShRow(); addShRow();
-document.getElementById('sh_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
-document.getElementById('sh_sig_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
-</script>
-</body>
-</html>
+var now = new Date(), pad = n=>n.toString().padStart(2
