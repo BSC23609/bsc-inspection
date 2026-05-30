@@ -53,29 +53,41 @@ const MUTED = '#6B7280';
 function drawBrandedHeader(doc, opts) {
   const pageW = doc.page.width;
   const opts2 = opts || {};
-  // Top strip
-  doc.rect(0, 0, pageW, 88).fill(BRAND_BLUE);
-  // Logo
+  const headerH = 90;
+  
+  // White header band
+  doc.rect(0, 0, pageW, headerH).fill('#FFFFFF');
+  
+  // Logo on the left (white bg, no overlap)
   if (LOGO_BUFFER) {
-    try { doc.image(LOGO_BUFFER, 30, 14, { fit: [180, 58] }); } catch(e) {}
+    try { doc.image(LOGO_BUFFER, 30, 18, { fit: [200, 56] }); } catch(e) {}
   } else {
-    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(18);
-    doc.text('BHARAT STEEL', 30, 30);
-    doc.fontSize(10).text('(CHENNAI) PVT. LTD.', 30, 54);
+    doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(16);
+    doc.text('BHARAT STEEL', 30, 28);
+    doc.fontSize(10).text('(CHENNAI) PVT. LTD.', 30, 52);
   }
-  // Right side - report type box
-  const boxX = pageW - 220;
-  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(15);
-  doc.text(opts2.title || 'INSPECTION REPORT', boxX, 22, { width: 190, align: 'right' });
-  doc.font('Helvetica').fontSize(9);
-  doc.text(opts2.subtitle || '', boxX, 46, { width: 190, align: 'right' });
+  
+  // Right side - report title (dark text on white bg)
+  const boxW = 240;
+  const boxX = pageW - boxW - 30;
+  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(15);
+  doc.text(opts2.title || 'INSPECTION REPORT', boxX, 22, { width: boxW, align: 'right' });
+  
+  if (opts2.subtitle) {
+    doc.fillColor(MUTED).font('Helvetica').fontSize(9);
+    doc.text(opts2.subtitle, boxX, 48, { width: boxW, align: 'right' });
+  }
   if (opts2.refLabel) {
-    doc.fontSize(8).fillColor('#cce4f3');
-    doc.text(opts2.refLabel, boxX, 64, { width: 190, align: 'right' });
+    doc.fillColor(BRAND_BLUE).font('Helvetica-Bold').fontSize(9);
+    doc.text(opts2.refLabel, boxX, 64, { width: boxW, align: 'right' });
   }
+  
+  // Thick brand-blue bottom border
+  doc.rect(0, headerH - 4, pageW, 4).fill(BRAND_BLUE);
+  
   // Reset
   doc.fillColor(TEXT).font('Helvetica');
-  return 100; // y position after header
+  return headerH + 10;
 }
 
 // Section title bar
@@ -615,10 +627,14 @@ function buildComplaintEmailBody(data, stage, baseUrl) {
     + tableRows.map(r => '<tr><td style="border:1px solid #555;padding:6px 12px;background:#f4f4f4;font-weight:bold;width:140px">' + escHtml(r[0]) + '</td><td style="border:1px solid #555;padding:6px 12px">' + escHtml(r[1] || '-') + '</td></tr>').join('')
     + '</table>';
 
-  const caseBtn = '<div style="margin:20px 0">'
-    + '<a href="' + caseLink + '" style="display:inline-block;background:#1A6DAF;color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:600;font-size:14px">View Case in App →</a>'
-    + '<div style="font-size:11px;color:#888;margin-top:6px">Case ID: ' + escHtml(data.case_id || '-') + '</div>'
-    + '</div>';
+  // Only include "View Case" button for internal stages, NOT for vendor-bound emails
+  const includeCaseBtn = stage !== 'to_vendor';
+  const caseBtn = includeCaseBtn
+    ? '<div style="margin:20px 0">'
+      + '<a href="' + caseLink + '" style="display:inline-block;background:#1A6DAF;color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:600;font-size:14px">View Case in App →</a>'
+      + '<div style="font-size:11px;color:#888;margin-top:6px">Case ID: ' + escHtml(data.case_id || '-') + '</div>'
+      + '</div>'
+    : '';
 
   const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">'
     + intro
@@ -996,7 +1012,19 @@ app.post('/complaint/update', async (req, res) => {
     if (data.eightd_file && data.eightd_file.data) {
       const buf = Buffer.from(data.eightd_file.data.split(',')[1], 'base64');
       const fname = '8D_Report_' + (data.eightd_file.name || 'report.pdf');
-      await uploadFile(token, 'BSC Inspections/Complaints/Attachments/' + data.case_id + '/' + fname, buf, data.eightd_file.type || 'application/pdf');
+      try {
+        await uploadFile(token, 'BSC Inspections/Complaints/Attachments/' + data.case_id + '/' + fname, buf, data.eightd_file.type || 'application/pdf');
+        console.log('[upload] 8D Report uploaded:', fname);
+      } catch(e) { console.error('[upload] 8D failed:', e.message); }
+    }
+    // Upload RM Invoice if provided (for vendor escalation)
+    if (data.rm_invoice_file && data.rm_invoice_file.data) {
+      const buf = Buffer.from(data.rm_invoice_file.data.split(',')[1], 'base64');
+      const fname = 'Invoice_RM_' + (data.rm_invoice_file.name || 'invoice.pdf');
+      try {
+        await uploadFile(token, 'BSC Inspections/Complaints/Attachments/' + data.case_id + '/' + fname, buf, data.rm_invoice_file.type || 'application/pdf');
+        console.log('[upload] RM Invoice uploaded:', fname);
+      } catch(e) { console.error('[upload] RM Invoice failed:', e.message); }
     }
 
     res.json({ status: 'success' });
@@ -1034,7 +1062,7 @@ app.post('/complaint/update', async (req, res) => {
         }
         // List attachments folder
         console.log('[attach] listing folder:', attachFolder);
-        const listResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(attachFolder) + ':/children?$select=name,@microsoft.graph.downloadUrl,size&$top=20', { headers: { 'Authorization': 'Bearer ' + token } });
+        const listResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(attachFolder) + ':/children?$top=20', { headers: { 'Authorization': 'Bearer ' + token } });
         if (listResp.ok) {
           const items = (await listResp.json()).value || [];
           console.log('[attach] folder has', items.length, 'items');

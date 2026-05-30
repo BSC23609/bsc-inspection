@@ -1114,6 +1114,14 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
             </div>
             <div class="field"><label>Vendor Email *</label><input type="email" id="anl_vendor_email" placeholder="vendor@example.com"></div>
           </div>
+          <div class="field" style="margin-top:12px">
+            <label>Invoice (RM) — Raw Material Invoice for Vendor</label>
+            <label style="display:block;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+              📄 Upload RM Invoice
+              <input type="file" id="anl_rm_invoice" accept=".pdf,.jpg,.jpeg,.png" hidden onchange="showFileName(this,'anl_rm_invoice_name')">
+            </label>
+            <div id="anl_rm_invoice_name" style="font-size:11px;color:var(--gray-600);margin-top:6px;text-align:center"></div>
+          </div>
           <div class="field" style="margin-top:8px"><label>Message to Vendor (optional)</label>
             <textarea id="anl_vendor_msg" rows="3" placeholder="Additional notes for vendor..."></textarea>
           </div>
@@ -2280,11 +2288,13 @@ function showAnalysisDialog() {
   // Combined screen for analysis: user picks Close or Escalate
   document.getElementById('anl_case_id').textContent = currentCaseId;
   // Clear form
-  ['anl_reviewer','anl_root_cause','anl_resolution','anl_vendor_email','anl_vendor_msg'].forEach(function(id){
+  ['anl_reviewer','anl_root_cause','anl_resolution','anl_vendor_email','anl_vendor_msg','anl_rm_invoice','anl_rm_invoice_name'].forEach(function(id){
     var el = document.getElementById(id); if (el) el.value = '';
   });
   var f = document.getElementById('anl_8d_file'); if (f) f.value = '';
   var fn = document.getElementById('anl_8d_name'); if (fn) fn.innerHTML = '';
+  var fr = document.getElementById('anl_rm_invoice'); if (fr) fr.value = '';
+  var frn = document.getElementById('anl_rm_invoice_name'); if (frn) frn.innerHTML = '';
   ['anl_decision','anl_vendor'].forEach(function(g){
     document.querySelectorAll('#' + g + ' .pill').forEach(p => p.classList.remove('sel'));
     delete rs[g];
@@ -2365,6 +2375,15 @@ async function submitAnalysis() {
       name: f8d.files[0].name,
       type: f8d.files[0].type,
       data: await readFileAsDataURL(f8d.files[0])
+    };
+  }
+  // Add Invoice (RM) if uploaded (only when escalating to vendor)
+  var frm = document.getElementById('anl_rm_invoice');
+  if (frm && frm.files[0]) {
+    payload.rm_invoice_file = {
+      name: frm.files[0].name,
+      type: frm.files[0].type,
+      data: await readFileAsDataURL(frm.files[0])
     };
   }
   
