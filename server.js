@@ -690,9 +690,9 @@ app.post('/complaint/submit', async (req, res) => {
       recipients = ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in'];
       cc = null;
     } else {
-      // Customer complaint
+      // Customer complaint - to pdqc, kannan, gourav
       status = 'Open';
-      recipients = ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in'];
+      recipients = ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'];
       cc = null;
     }
     data.status = status;
@@ -779,6 +779,7 @@ app.post('/complaint/update', async (req, res) => {
     if (!patchResp.ok) throw new Error('Excel update failed: ' + await patchResp.text());
 
     // Upload 8D report if provided
+    if (data.file_8d && data.file_8d.data) { data.eightd_file = data.file_8d; }
     if (data.eightd_file && data.eightd_file.data) {
       const buf = Buffer.from(data.eightd_file.data.split(',')[1], 'base64');
       const fname = '8D_Report_' + (data.eightd_file.name || 'report.pdf');
@@ -830,29 +831,58 @@ app.post('/complaint/update', async (req, res) => {
         }
       } catch(e) { console.error('Attachment fetch error:', e.message); }
 
-      if (data.decision === 'escalate' && data.vendor_email) {
-        // Escalate to vendor
+      const isEscalateToVendor = data.decision === 'Escalate to Vendor' && data.vendor_email;
+      const isInternalClose = data.decision === 'Close Internally' || data.status === 'Completed (Internal)';
+      const isVendorResolved = data.status === 'Completed (Vendor)';
+      
+      // Add resolved info to email payload
+      dataForEmail.vendor_message = data.vendor_message || '';
+      dataForEmail.resolved_by = data.resolved_by || '';
+      
+      if (isEscalateToVendor) {
+        // Stage: Escalate to vendor
         const subject = 'Quality Complaint - Action Required - ' + data.case_id;
-        const html = buildComplaintEmailBody(dataForEmail, 'to_vendor');
+        let html = buildComplaintEmailBody(dataForEmail, 'to_vendor');
+        // Add vendor message if provided
+        if (data.vendor_message) {
+          html = html.replace('</p><table', '</p><p><b>Additional notes:</b> ' + escHtml(data.vendor_message) + '</p><table');
+        }
         sendEmail({
           to: [data.vendor_email],
-          cc: ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in', 'info@bharatsteels.in'],
+          cc: ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'],
           subject: subject, html: html, attachments: attachments
         }).then(() => console.log('Vendor email sent for', data.case_id)).catch(err => console.error('Vendor email error:', err.message));
-      } else if (data.status === 'Completed') {
-        // Resolution notification
-        const subject = 'Quality Complaint Resolved - ' + data.case_id;
-        const html = '<div style="font-family:Arial,sans-serif;font-size:14px">'
-          + '<p>Dear Team,</p>'
-          + '<p>The quality complaint <b>' + data.case_id + '</b> has been resolved.</p>'
+      } else if (isInternalClose) {
+        // Stage: Closed internally - notify sales + CC gourav
+        const subject = 'Quality Complaint Resolved (Internal) - ' + data.case_id;
+        let html = buildComplaintEmailBody(dataForEmail, 'resolved_to_sales');
+        // Add root cause and resolution
+        const extra = '<p><b>Root Cause:</b> ' + escHtml(data.root_cause || '-') + '</p>'
           + '<p><b>Resolution:</b> ' + escHtml(data.resolution || '-') + '</p>'
+          + '<p><b>Reviewed By:</b> ' + escHtml(data.reviewed_by || '-') + '</p>';
+        html = html.replace('<table', extra + '<table');
+        sendEmail({
+          to: ['info@bharatsteels.in', 'gourav@bharatsteels.in', 'kannan@bharatsteels.in'],
+          cc: null,
+          subject: subject, html: html
+        }).then(() => console.log('Internal-close email sent for', data.case_id)).catch(err => console.error('Internal-close email error:', err.message));
+      } else if (isVendorResolved) {
+        // Stage: Vendor case resolved
+        const subject = 'Quality Complaint Closed - ' + data.case_id;
+        const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">'
+          + '<p>Dear Team,</p>'
+          + '<p>The quality complaint case <b>' + escHtml(data.case_id) + '</b> has now been closed.</p>'
+          + '<p><b>Resolution:</b> ' + escHtml(data.resolution || '-') + '</p>'
+          + (data.resolved_by ? '<p><b>Resolved By:</b> ' + escHtml(data.resolved_by) + '</p>' : '')
           + '<p>Regards,<br><b>Bharat Steel (Chennai) Pvt. Ltd.</b></p>'
           + '</div>';
         sendEmail({
-          to: ['info@bharatsteels.in'],
-          cc: ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'],
+          to: ['info@bharatsteels.in', 'pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'],
+          cc: null,
           subject: subject, html: html
         }).then(() => console.log('Resolution email sent for', data.case_id)).catch(err => console.error('Resolution email error:', err.message));
+      } else {
+        console.log('No email triggered for status:', data.status, 'decision:', data.decision);
       }
     }
   } catch (err) {
