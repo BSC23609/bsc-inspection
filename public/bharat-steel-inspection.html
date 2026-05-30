@@ -245,6 +245,9 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 
     <div class="home-footer">
       Submissions saved as Excel log + PDF<br>OneDrive: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="79091d081a391b11180b180d0a0d1c1c150a571017">[email&#160;protected]</a> / BSC Inspections
+      <div style="margin-top:18px">
+        <button onclick="openAdminLogin()" style="background:none;border:none;color:var(--gray-300);font-size:11px;cursor:pointer;opacity:0.5" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.5">⚙️ Admin</button>
+      </div>
     </div>
 
     <!-- DOWNLOAD REPORT SECTION -->
@@ -1177,6 +1180,135 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <button class="btn-primary" id="rsv_submit" onclick="submitResolve()" style="background:#10b981">
         <div class="spinner" id="rsv_spin"></div>
         <span id="rsv_lbl">Mark Resolved</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================
+     ADMIN LOGIN SCREEN
+     ============================ -->
+<div class="screen" id="screen-admin-login">
+  <div class="form-topbar" style="background:#374151">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Admin Login</div>
+      <div class="topbar-sub">Enter password to continue</div>
+    </div>
+    <div class="topbar-badge">🔒</div>
+  </div>
+  <div class="form-scroll">
+    <div class="sec-card" style="max-width:400px;margin:40px auto">
+      <div class="sec-head"><span class="sec-head-icon">🔐</span> Admin Access</div>
+      <div class="sec-body">
+        <div class="field"><label>Password</label>
+          <input type="password" id="adm_password" placeholder="Enter admin password" onkeydown="if(event.key==='Enter')adminLogin()">
+        </div>
+        <button class="btn-primary" onclick="adminLogin()" style="width:100%;margin-top:14px;background:#374151">
+          <span id="adm_login_lbl">Login</span>
+        </button>
+        <div id="adm_login_err" style="margin-top:10px;color:#dc2626;font-size:12px;text-align:center;display:none"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     ADMIN PANEL SCREEN
+     ============================ -->
+<div class="screen" id="screen-admin">
+  <div class="form-topbar" style="background:#374151">
+    <button class="back-btn" onclick="goHome()">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Admin Panel</div>
+      <div class="topbar-sub">Manage app settings</div>
+    </div>
+    <div class="topbar-badge">ADMIN</div>
+  </div>
+  <div class="form-scroll">
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">👥</span> Inspectors & QC</div>
+      <div class="sec-body">
+        <div class="field"><label>Inspector Names (Inward, comma separated)</label>
+          <input type="text" id="adm_insp_inward" placeholder="Sathya, Kumar, Mahendran, Dhanush">
+        </div>
+        <div class="field" style="margin-top:10px"><label>Inspector Names (CTL Quality)</label>
+          <input type="text" id="adm_insp_quality" placeholder="Sathya, Kumar, Mahendran, Dhanush, Vignesh">
+        </div>
+        <div class="field" style="margin-top:10px"><label>Default QC Name (Shearing)</label>
+          <input type="text" id="adm_qc_default" placeholder="Vignesh">
+        </div>
+      </div>
+    </div>
+    
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🏭</span> Mills & Grades</div>
+      <div class="sec-body">
+        <div class="field"><label>Mill / Make Options (comma separated)</label>
+          <input type="text" id="adm_mills" placeholder="SAIL, SAIL RSP, SAIL BSP, JSW, TATA, AMNS, NMDC, JSPL">
+        </div>
+        <div class="field" style="margin-top:10px"><label>Grade Options (comma separated)</label>
+          <input type="text" id="adm_grades" placeholder="E250, E350 / ST52, HSFQ450 / 450 / EQV, HSFQ550 / 550 / EQV">
+        </div>
+      </div>
+    </div>
+    
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📧</span> Vendor Emails</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>SAIL Email</label><input type="email" id="adm_vendor_sail" placeholder="sail@..."></div>
+          <div class="field"><label>NMDC Email</label><input type="email" id="adm_vendor_nmdc" placeholder="nmdc@..."></div>
+        </div>
+        <div class="fg fg-2" style="margin-top:10px">
+          <div class="field"><label>RINL Email</label><input type="email" id="adm_vendor_rinl" placeholder="rinl@..."></div>
+          <div class="field"><label>JSW Email</label><input type="email" id="adm_vendor_jsw" placeholder="jsw@..."></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">✉️</span> Complaint Email Routing</div>
+      <div class="sec-body">
+        <div class="field"><label>Stage 1 — Sales raises complaint TO (comma separated)</label>
+          <input type="text" id="adm_em_sales_raise" placeholder="pdqc@bharatsteels.in, kannan@bharatsteels.in, gourav@bharatsteels.in">
+        </div>
+        <div class="field" style="margin-top:10px"><label>Stage 2A — Close Internally TO</label>
+          <input type="text" id="adm_em_internal_close" placeholder="info@, gourav@, kannan@">
+        </div>
+        <div class="field" style="margin-top:10px"><label>Stage 2B — Vendor Escalation CC</label>
+          <input type="text" id="adm_em_vendor_cc" placeholder="pdqc@, kannan@, gourav@">
+        </div>
+        <div class="field" style="margin-top:10px"><label>Stage 3 — Resolved TO</label>
+          <input type="text" id="adm_em_resolved" placeholder="info@, pdqc@, kannan@, gourav@">
+        </div>
+      </div>
+    </div>
+    
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📦</span> Inward Email Routing</div>
+      <div class="sec-body">
+        <div class="field"><label>Default Inward Recipients</label>
+          <input type="text" id="adm_em_inward_default" placeholder="support@bharatsteels.in">
+        </div>
+        <div class="field" style="margin-top:10px"><label>Wheels India Inward Recipients</label>
+          <input type="text" id="adm_em_inward_wi" placeholder="support@, kannan@">
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="submit-bar">
+    <div class="submit-info">
+      <strong>Admin Panel</strong>
+      <span style="display:block;font-size:10px;margin-top:1px">Changes save to OneDrive</span>
+    </div>
+    <div class="submit-btns">
+      <button class="btn-sec" onclick="goHome()">Cancel</button>
+      <button class="btn-primary" id="adm_save" onclick="saveAdminSettings()" style="background:#374151">
+        <div class="spinner" id="adm_spin"></div>
+        <span id="adm_save_lbl">Save Settings</span>
       </button>
     </div>
   </div>
@@ -2402,6 +2534,167 @@ function submitShearing() {
   runSubmit('sh_submit','sh_spin','sh_lbl', d, 'Shearing');
 }
 
+
+// ============================================================
+//  ADMIN PANEL
+// ============================================================
+var APP_SETTINGS = null;
+
+function openAdminLogin() {
+  document.getElementById('adm_password').value = '';
+  document.getElementById('adm_login_err').style.display = 'none';
+  showScreen('admin-login');
+  setTimeout(function(){ document.getElementById('adm_password').focus(); }, 200);
+}
+
+async function adminLogin() {
+  var pwd = document.getElementById('adm_password').value;
+  var errEl = document.getElementById('adm_login_err');
+  errEl.style.display = 'none';
+  if (!pwd) { errEl.textContent = 'Enter password'; errEl.style.display = 'block'; return; }
+  
+  try {
+    var resp = await fetch(SERVER_URL + '/admin/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: pwd })
+    });
+    if (!resp.ok) { errEl.textContent = 'Invalid password'; errEl.style.display = 'block'; return; }
+    // Cache password for save call
+    window._adminPwd = pwd;
+    await loadAdminSettings();
+    showScreen('admin');
+  } catch(e) {
+    errEl.textContent = 'Error: ' + e.message;
+    errEl.style.display = 'block';
+  }
+}
+
+async function loadAdminSettings() {
+  try {
+    var resp = await fetch(SERVER_URL + '/settings');
+    if (!resp.ok) throw new Error('Failed to load');
+    var s = await resp.json();
+    APP_SETTINGS = s;
+    // Populate fields
+    document.getElementById('adm_insp_inward').value = (s.inspectors_inward || []).join(', ');
+    document.getElementById('adm_insp_quality').value = (s.inspectors_quality || []).join(', ');
+    document.getElementById('adm_qc_default').value = s.qc_shearing_default || '';
+    document.getElementById('adm_mills').value = (s.mills || []).join(', ');
+    document.getElementById('adm_grades').value = (s.grades || []).join(', ');
+    var v = s.vendors || {};
+    document.getElementById('adm_vendor_sail').value = v.SAIL || '';
+    document.getElementById('adm_vendor_nmdc').value = v.NMDC || '';
+    document.getElementById('adm_vendor_rinl').value = v.RINL || '';
+    document.getElementById('adm_vendor_jsw').value = v.JSW || '';
+    var ce = s.complaint_emails || {};
+    document.getElementById('adm_em_sales_raise').value = (ce.sales_raise_to || []).join(', ');
+    document.getElementById('adm_em_internal_close').value = (ce.internal_close_to || []).join(', ');
+    document.getElementById('adm_em_vendor_cc').value = (ce.vendor_escalation_cc || []).join(', ');
+    document.getElementById('adm_em_resolved').value = (ce.resolved_to || []).join(', ');
+    var ie = s.inward_emails || {};
+    document.getElementById('adm_em_inward_default').value = (ie.default_to || []).join(', ');
+    document.getElementById('adm_em_inward_wi').value = (ie.wheels_india_to || []).join(', ');
+  } catch(e) {
+    toast('err', 'Failed to load settings: ' + e.message);
+  }
+}
+
+function parseCsv(str) {
+  return (str || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
+async function saveAdminSettings() {
+  if (!window._adminPwd) { showScreen('admin-login'); return; }
+  
+  var settings = {
+    inspectors_inward: parseCsv(document.getElementById('adm_insp_inward').value),
+    inspectors_quality: parseCsv(document.getElementById('adm_insp_quality').value),
+    qc_shearing_default: document.getElementById('adm_qc_default').value.trim() || 'Vignesh',
+    mills: parseCsv(document.getElementById('adm_mills').value),
+    grades: parseCsv(document.getElementById('adm_grades').value),
+    vendors: {
+      SAIL: document.getElementById('adm_vendor_sail').value.trim(),
+      NMDC: document.getElementById('adm_vendor_nmdc').value.trim(),
+      RINL: document.getElementById('adm_vendor_rinl').value.trim(),
+      JSW: document.getElementById('adm_vendor_jsw').value.trim()
+    },
+    complaint_emails: {
+      sales_raise_to: parseCsv(document.getElementById('adm_em_sales_raise').value),
+      internal_close_to: parseCsv(document.getElementById('adm_em_internal_close').value),
+      vendor_escalation_cc: parseCsv(document.getElementById('adm_em_vendor_cc').value),
+      resolved_to: parseCsv(document.getElementById('adm_em_resolved').value)
+    },
+    inward_emails: {
+      default_to: parseCsv(document.getElementById('adm_em_inward_default').value),
+      wheels_india_to: parseCsv(document.getElementById('adm_em_inward_wi').value)
+    }
+  };
+  
+  var btn = document.getElementById('adm_save');
+  var spin = document.getElementById('adm_spin');
+  var lbl = document.getElementById('adm_save_lbl');
+  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Saving...';
+  
+  try {
+    var resp = await fetch(SERVER_URL + '/admin/settings', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: window._adminPwd, settings: settings })
+    });
+    if (!resp.ok) {
+      var t = await resp.text();
+      throw new Error('Server ' + resp.status + ': ' + t.substring(0, 100));
+    }
+    toast('ok', 'Settings saved');
+    APP_SETTINGS = settings;
+    setTimeout(function(){ goHome(); }, 1000);
+  } catch(e) {
+    toast('err', 'Save failed: ' + e.message);
+  } finally {
+    btn.disabled = false; spin.style.display = 'none'; lbl.textContent = 'Save Settings';
+  }
+}
+
+// On app load, fetch settings to apply them where possible
+async function loadAppSettings() {
+  try {
+    var resp = await fetch(SERVER_URL + '/settings');
+    if (resp.ok) {
+      APP_SETTINGS = await resp.json();
+      applyAppSettings();
+    }
+  } catch(e) {}
+}
+
+function applyAppSettings() {
+  if (!APP_SETTINGS) return;
+  var s = APP_SETTINGS;
+  
+  // Update Inward inspector pills
+  var inwardPills = document.getElementById('ig_inspected_by');
+  if (inwardPills && s.inspectors_inward) {
+    inwardPills.innerHTML = (s.inspectors_inward || []).map(function(n) {
+      return '<div class="pill" onclick="rp(\'ig_inspected_by\',this,\'' + n.replace(/'/g,"\\'") + '\')">' + n + '</div>';
+    }).join('');
+  }
+  
+  // Update CTL Quality inspector pills (if present)
+  var qPills = document.getElementById('qg_inspector');
+  if (qPills && s.inspectors_quality) {
+    qPills.innerHTML = (s.inspectors_quality || []).map(function(n) {
+      return '<div class="pill" onclick="rp(\'qg_inspector\',this,\'' + n.replace(/'/g,"\\'") + '\')">' + n + '</div>';
+    }).join('');
+  }
+  
+  // Shearing QC default
+  var shQc = document.getElementById('sh_qc_name');
+  if (shQc && s.qc_shearing_default && !shQc.value) shQc.value = s.qc_shearing_default;
+  
+  // Vendor emails
+  if (s.vendors) {
+    window.VENDOR_EMAILS = Object.assign({}, window.VENDOR_EMAILS || {}, s.vendors);
+  }
+}
+
 // ============================================================
 //  INIT
 // ============================================================
@@ -2413,6 +2706,7 @@ document.getElementById('q_time').value = pad(now.getHours())+':'+pad(now.getMin
 addShRow(); addShRow(); addShRow();
 document.getElementById('sh_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
 document.getElementById('sh_sig_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+loadAppSettings();
 
 // Deep link: if URL has ?case=XXX, open that case directly
 (async function handleDeepLink() {

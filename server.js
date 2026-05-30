@@ -33,290 +33,488 @@ const GRAY_BG = '#F3F4F6';
 const GRAY_BORDER = '#E5E7EB';
 const TEXT_DARK = '#1F2937';
 
+// =====================================================
+// BRANDED PDF HELPERS - Bharat Steel style
+// =====================================================
+const fs = require('fs');
+const logoPath = path.join(__dirname, 'public', 'bsc-logo.png');
+let LOGO_BUFFER = null;
+try { LOGO_BUFFER = fs.readFileSync(logoPath); } catch(e) { console.log('Logo not loaded:', e.message); }
+
+const BRAND_BLUE = '#1A6DAF';
+const BRAND_DARK = '#0F4C75';
+const BRAND_LIGHT = '#E8F2FB';
+const ROW_ALT = '#F9FAFB';
+const BORDER = '#D1D5DB';
+const TEXT = '#1F2937';
+const MUTED = '#6B7280';
+
+// Draw the standard branded header on current page (top ~95px)
+function drawBrandedHeader(doc, opts) {
+  const pageW = doc.page.width;
+  const opts2 = opts || {};
+  // Top strip
+  doc.rect(0, 0, pageW, 88).fill(BRAND_BLUE);
+  // Logo
+  if (LOGO_BUFFER) {
+    try { doc.image(LOGO_BUFFER, 30, 14, { fit: [180, 58] }); } catch(e) {}
+  } else {
+    doc.fillColor('#fff').font('Helvetica-Bold').fontSize(18);
+    doc.text('BHARAT STEEL', 30, 30);
+    doc.fontSize(10).text('(CHENNAI) PVT. LTD.', 30, 54);
+  }
+  // Right side - report type box
+  const boxX = pageW - 220;
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(15);
+  doc.text(opts2.title || 'INSPECTION REPORT', boxX, 22, { width: 190, align: 'right' });
+  doc.font('Helvetica').fontSize(9);
+  doc.text(opts2.subtitle || '', boxX, 46, { width: 190, align: 'right' });
+  if (opts2.refLabel) {
+    doc.fontSize(8).fillColor('#cce4f3');
+    doc.text(opts2.refLabel, boxX, 64, { width: 190, align: 'right' });
+  }
+  // Reset
+  doc.fillColor(TEXT).font('Helvetica');
+  return 100; // y position after header
+}
+
+// Section title bar
+function drawSectionTitle(doc, y, text) {
+  const pageW = doc.page.width;
+  doc.rect(40, y, pageW - 80, 22).fill(BRAND_BLUE);
+  doc.fillColor('#fff').font('Helvetica-Bold').fontSize(10);
+  doc.text(text, 50, y + 6);
+  doc.fillColor(TEXT).font('Helvetica');
+  return y + 28;
+}
+
+// Draw a 2-column key/value table (4 cells per row)
+function drawDataTable(doc, y, rows) {
+  const pageW = doc.page.width;
+  const startX = 40;
+  const tblW = pageW - 80;
+  const cellH = 22;
+  const lblW = 110;
+  const valW = (tblW - lblW * 2) / 2;
+  
+  for (let i = 0; i < rows.length; i += 2) {
+    const r1 = rows[i];
+    const r2 = rows[i + 1];
+    // Background alternating
+    if ((i / 2) % 2 === 1) {
+      doc.rect(startX, y, tblW, cellH).fill(ROW_ALT);
+    }
+    // Borders
+    doc.lineWidth(0.5).strokeColor(BORDER);
+    doc.rect(startX, y, tblW, cellH).stroke();
+    if (r2) doc.moveTo(startX + lblW + valW, y).lineTo(startX + lblW + valW, y + cellH).stroke();
+    doc.moveTo(startX + lblW, y).lineTo(startX + lblW, y + cellH).stroke();
+    if (r2) doc.moveTo(startX + lblW + valW + lblW, y).lineTo(startX + lblW + valW + lblW, y + cellH).stroke();
+    
+    // Label backgrounds (light blue)
+    doc.rect(startX, y, lblW, cellH).fill(BRAND_LIGHT);
+    if (r2) doc.rect(startX + lblW + valW, y, lblW, cellH).fill(BRAND_LIGHT);
+    // Re-stroke borders after fill
+    doc.lineWidth(0.5).strokeColor(BORDER);
+    doc.rect(startX, y, tblW, cellH).stroke();
+    doc.moveTo(startX + lblW, y).lineTo(startX + lblW, y + cellH).stroke();
+    if (r2) {
+      doc.moveTo(startX + lblW + valW, y).lineTo(startX + lblW + valW, y + cellH).stroke();
+      doc.moveTo(startX + lblW + valW + lblW, y).lineTo(startX + lblW + valW + lblW, y + cellH).stroke();
+    }
+    
+    // Text
+    doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+    doc.text(r1[0] || '', startX + 5, y + 7, { width: lblW - 10 });
+    doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+    doc.text(String(r1[1] || '-'), startX + lblW + 5, y + 6, { width: valW - 10 });
+    if (r2) {
+      doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+      doc.text(r2[0] || '', startX + lblW + valW + 5, y + 7, { width: lblW - 10 });
+      doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+      doc.text(String(r2[1] || '-'), startX + lblW + valW + lblW + 5, y + 6, { width: valW - 10 });
+    }
+    y += cellH;
+  }
+  return y + 8;
+}
+
+// Draw footer on every page
+function drawFooter(doc, pageNum, totalPages) {
+  const pageW = doc.page.width;
+  const pageH = doc.page.height;
+  doc.rect(0, pageH - 30, pageW, 30).fill(BRAND_LIGHT);
+  doc.fillColor(MUTED).font('Helvetica').fontSize(8);
+  doc.text('Bharat Steel (Chennai) Pvt. Ltd.', 40, pageH - 22);
+  doc.text('Generated: ' + new Date().toLocaleString('en-IN'), 0, pageH - 22, { width: pageW - 40, align: 'right' });
+  doc.fillColor(TEXT);
+}
+
+// Ensure space on page; create new page with header if not enough
+function ensureSpace(doc, y, need, headerOpts) {
+  const limit = doc.page.height - 50;
+  if (y + need > limit) {
+    doc.addPage();
+    return drawBrandedHeader(doc, headerOpts);
+  }
+  return y;
+}
+
+
 function generatePDF(folder, data, ref) {
   return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });
       const buffers = [];
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', reject);
-      const W = doc.page.width - 80;
-      let y = 40;
-      const ts = new Date().toLocaleString('en-IN');
 
-      doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(16);
-      doc.text('BHARAT STEEL (CHENNAI) PVT. LTD.', 40, y);
-      doc.fillColor('#666').font('Helvetica').fontSize(9);
-      const subtitle = folder === 'Inward' ? 'Coil Inward Inspection Report'
-                     : folder === 'Shearing' ? 'Shearing Quality Inspection Report · BSCQMS-PRD-008 REV 01'
-                     : 'CTL Quality Inspection Report · BSCQMS-PRD-008 REV 03';
-      doc.text(subtitle, 40, y + 22);
-      doc.fontSize(9).fillColor('#666');
-      doc.text('Ref: ' + ref, 40, y, { width: W, align: 'right' });
-      doc.text('Date: ' + ts, 40, y + 14, { width: W, align: 'right' });
-      y += 42;
-      doc.moveTo(40, y).lineTo(40 + W, y).strokeColor(BLUE).lineWidth(2).stroke();
-      y += 12;
-
-      const sectionHeader = (title) => {
-        if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
-        doc.rect(40, y, W, 22).fill(BLUE);
-        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(11);
-        doc.text(title, 48, y + 6);
-        y += 28;
+      const titles = {
+        'Inward': { title: 'COIL INWARD INSPECTION', subtitle: 'Mother Coil Inspection Report' },
+        'Quality': { title: 'CTL QUALITY INSPECTION', subtitle: 'Cut-to-Length Inspection · BSCQMS-PRD-008 REV 03' },
+        'Shearing': { title: 'SHEARING QUALITY INSPECTION', subtitle: 'Shearing Inspection · BSCQMS-PRD-008 REV 01' }
       };
-      const row2 = (l1, v1, l2, v2) => {
-        if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
-        const colW = W / 2, labelW = 110;
-        doc.rect(40, y, labelW, 22).fillAndStroke(GRAY_BG, GRAY_BORDER);
-        doc.rect(40 + labelW, y, colW - labelW, 22).strokeColor(GRAY_BORDER).stroke();
-        doc.rect(40 + colW, y, labelW, 22).fillAndStroke(GRAY_BG, GRAY_BORDER);
-        doc.rect(40 + colW + labelW, y, colW - labelW, 22).strokeColor(GRAY_BORDER).stroke();
-        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').fontSize(9);
-        doc.text(l1, 44, y + 7, { width: labelW - 8 });
-        doc.text(l2, 44 + colW, y + 7, { width: labelW - 8 });
-        doc.font('Helvetica').fillColor('#111');
-        doc.text(String(v1 || '-'), 44 + labelW, y + 7, { width: colW - labelW - 8 });
-        doc.text(String(v2 || '-'), 44 + colW + labelW, y + 7, { width: colW - labelW - 8 });
-        y += 22;
-      };
-      const rowFull = (label, value) => {
-        if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
-        const labelW = 110;
-        doc.rect(40, y, labelW, 22).fillAndStroke(GRAY_BG, GRAY_BORDER);
-        doc.rect(40 + labelW, y, W - labelW, 22).strokeColor(GRAY_BORDER).stroke();
-        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').fontSize(9);
-        doc.text(label, 44, y + 7, { width: labelW - 8 });
-        doc.font('Helvetica').fillColor('#111');
-        doc.text(String(value || '-'), 44 + labelW, y + 7, { width: W - labelW - 8 });
-        y += 22;
-      };
-      const rowBlock = (label, value) => {
-        if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
-        const valStr = String(value || '-');
-        const lines = Math.max(1, Math.ceil(valStr.length / 90));
-        const h = Math.max(22, lines * 14 + 8);
-        doc.rect(40, y, W, h).strokeColor(GRAY_BORDER).stroke();
-        doc.fillColor(TEXT_DARK).font('Helvetica-Bold').fontSize(9);
-        doc.text(label, 44, y + 7);
-        doc.font('Helvetica').fillColor('#111').fontSize(9);
-        doc.text(valStr, 44, y + 20, { width: W - 8 });
-        y += h;
-      };
+      const hdr = titles[folder] || { title: 'INSPECTION REPORT', subtitle: '' };
+      hdr.refLabel = 'Ref: ' + (ref || '-');
+      
+      let y = drawBrandedHeader(doc, hdr);
+      y += 10;
+      
+      // Submission summary strip
+      const submitDate = new Date(data.timestamp || Date.now()).toLocaleString('en-IN', { 
+        day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' 
+      });
+      doc.fillColor(MUTED).font('Helvetica').fontSize(9);
+      doc.text('Submitted: ' + submitDate, 40, y);
+      doc.fillColor(TEXT);
+      y += 18;
 
       if (folder === 'Inward') {
-        sectionHeader('Vehicle & Coil Identity');
-        row2('Vehicle Number', data.vehicle_number, 'Batch Number', data.batch_number);
-        row2('Make of Coil', data.make_of_coil, 'Grade', data.grade);
-        y += 8;
-        sectionHeader('Dimensions');
-        row2('Width (mm)', data.width, 'Thickness (mm)', data.thickness);
-        row2('Coil Weight (T)', data.coil_weight, 'Coil ID (mm)', data.coil_id);
-        row2('Actual Thickness', data.actual_thickness, 'Actual Width', data.actual_width);
-        y += 8;
-        sectionHeader('Physical Condition');
-        row2('ID Sticker', data.id_sticker, 'Edge Damage - Inner', data.edge_inner);
-        row2('Edge Damage - Outer', data.edge_outer, 'Scratch Mark', data.scratch);
-        row2('Strapping', data.strapping, 'Rust on Surface', data.rust);
-        rowFull('Other Damages', data.other_damages);
-        y += 8;
-        sectionHeader('Inspector');
-        row2('Inspected By', data.inspected_by, 'Remarks', data.remarks);
-        if (data.wheels_india) { y += 4; rowFull('Wheels India Coil', 'YES'); }
-      } else if (folder === 'Shearing') {
-        sectionHeader('Header Information');
-        rowFull('Customer Name', data.customer_name);
-        row2('Batch Number', data.batch_number, 'Grade', data.grade);
-        row2('Make', data.make, 'Type', data.type);
-        row2('Process', data.process, 'Input Size', data.input_size);
-        row2('Operator Name', data.operator, 'QC Name', data.qc_name);
-        y += 8;
-        sectionHeader('Sheet Measurements');
-        const rows = (data.measurements || []).filter(r => r.sheet_no || r.width1 || r.width2);
-        const colWidths = [W*0.10, W*0.15, W*0.15, W*0.15, W*0.15, W*0.30];
-        const headers = ['Sheet No.', 'Width 1', 'Width 2', 'Diag 1', 'Diag 2', 'Remarks'];
-        doc.rect(40, y, W, 18).fill('#1F2937');
-        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8);
-        let x = 40;
-        headers.forEach((h, i) => { doc.text(h, x + 4, y + 5, { width: colWidths[i] - 8 }); x += colWidths[i]; });
-        y += 18;
-        doc.font('Helvetica').fontSize(8).fillColor('#111');
-        if (rows.length === 0) {
-          doc.rect(40, y, W, 18).strokeColor(GRAY_BORDER).stroke();
-          doc.fillColor('#9CA3AF').text('No measurements entered', 40, y + 5, { width: W, align: 'center' });
-          y += 18;
-        } else {
-          rows.forEach(r => {
-            if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
-            doc.rect(40, y, W, 18).strokeColor(GRAY_BORDER).stroke();
-            doc.fillColor('#111');
-            x = 40;
-            [r.sheet_no, r.width1, r.width2, r.diag1, r.diag2, r.remarks].forEach((v, i) => {
-              doc.text(String(v || ''), x + 4, y + 5, { width: colWidths[i] - 8 });
-              x += colWidths[i];
-            });
-            y += 18;
-          });
+        y = drawSectionTitle(doc, y, 'VEHICLE & COIL IDENTITY');
+        y = drawDataTable(doc, y, [
+          ['Vehicle No.', data.vehicle_number],
+          ['Batch No.', data.batch_number],
+          ['Make of Coil', data.make_of_coil],
+          ['Grade', data.grade],
+          ['Coil ID', data.coil_id || '-'],
+          ['Coil Weight (T)', data.coil_weight]
+        ]);
+        
+        y = drawSectionTitle(doc, y, 'DIMENSIONS');
+        y = drawDataTable(doc, y, [
+          ['Width (mm)', data.width],
+          ['Thickness (mm)', data.thickness],
+          ['Actual Thickness', data.actual_thickness],
+          ['Actual Width', data.actual_width]
+        ]);
+        
+        y = drawSectionTitle(doc, y, 'PHYSICAL CONDITION');
+        y = drawDataTable(doc, y, [
+          ['ID Sticker', data.id_sticker],
+          ['Edge Damage Inner', data.edge_inner],
+          ['Edge Damage Outer', data.edge_outer],
+          ['Scratch Mark', data.scratch],
+          ['Strapping', data.strapping],
+          ['Rust on Surface', data.rust],
+          ['Other Damages', data.other_damages || '-'],
+          ['Wheels India', data.wheels_india ? 'Yes' : 'No']
+        ]);
+        
+        y = drawSectionTitle(doc, y, 'INSPECTION');
+        y = drawDataTable(doc, y, [
+          ['Inspected By', data.inspected_by],
+          ['Inspection Date', submitDate]
+        ]);
+        
+        if (data.remarks) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'REMARKS');
+          const tblW = doc.page.width - 80;
+          doc.rect(40, y, tblW, 50).stroke(BORDER);
+          doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+          doc.text(data.remarks, 48, y + 6, { width: tblW - 16 });
+          y += 58;
         }
-        y += 8;
-        sectionHeader('Quality Checklist');
-        row2('Burr -/< 10%', data.burr, 'Blade Clearance', data.blade_clearance);
-        row2('Cutting Finish', data.cutting_finish, 'Surface Condition', data.surface_condition);
-        row2('Bow / Bend', data.bow_bend, 'QC Signature Date', data.sig_date);
-        y += 8;
-        sectionHeader('Overall Observation');
-        rowBlock('Observation', data.overall_observation);
-      } else {
-        sectionHeader('Customer & Coil Info');
-        rowFull('Customer Name', data.customer_name);
-        row2('Date', data.date, 'Time', data.time);
-        row2('Coil Number', data.coil_number, 'Batch Number', data.batch_number);
-        row2('Make', data.make, 'Coil Thickness', data.coil_thickness);
-        row2('Grade', data.coil_grade, 'Width', data.coil_width);
-        rowFull('Coil Weight (T)', data.coil_weight);
-        y += 8;
-        sectionHeader('Processing Info');
-        row2('First Bit', data.first_bit, 'Last Bit', data.last_bit);
-        row2('Defective Bit', data.defective, 'Balance Weight', data.balance_wt);
-        row2('Coil Verified', data.coil_verified, 'Blade Clearance', data.blade_clearance);
-        row2('Operator', data.operator, 'Machine Name', data.machine_name);
-        row2('Inspector', data.inspector, 'Remarks', data.remarks);
-        y += 8;
-        sectionHeader('Quality Checklist');
-        row2('Burr', data.bur, 'Cutting Finish', data.cutting_finish);
-        row2('Scalling', data.scalling, 'Pit Marks', data.pit_marks);
-        row2('Waviness', data.waviness, 'Center Bow', data.center_bow);
-        row2('Cutting Bow', data.cutting_bow, 'Surface Defects', data.surface_defects);
-        y += 8;
-        sectionHeader('Processed Quantity');
-        const pq = data.processed_qty || {};
-        const sizeHeaders = ['Size #', 'Length', 'Nos', 'Weight (T)'];
-        const sizeCols = [W*0.15, W*0.30, W*0.25, W*0.30];
-        doc.rect(40, y, W, 18).fill('#1F2937');
-        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8);
-        let xs = 40;
-        sizeHeaders.forEach((h, i) => { doc.text(h, xs + 4, y + 5, { width: sizeCols[i] - 8 }); xs += sizeCols[i]; });
-        y += 18;
-        doc.font('Helvetica').fontSize(8).fillColor('#111');
-        for (let i = 1; i <= 10; i++) {
-          const s = pq['size_' + i] || {};
-          if (!s.length && !s.nos && !s.weight_t) continue;
-          if (y > doc.page.height - 60) { doc.addPage(); y = 40; }
-          doc.rect(40, y, W, 18).strokeColor(GRAY_BORDER).stroke();
-          xs = 40;
-          ['Size ' + i, s.length, s.nos, s.weight_t].forEach((v, j) => {
-            doc.text(String(v || ''), xs + 4, y + 5, { width: sizeCols[j] - 8 });
-            xs += sizeCols[j];
+      } else if (folder === 'Quality') {
+        y = drawSectionTitle(doc, y, 'HEADER');
+        y = drawDataTable(doc, y, [
+          ['Customer', data.customer_name],
+          ['Date', data.date],
+          ['Time', data.time],
+          ['Machine', data.machine_name],
+          ['Coil Number', data.coil_number],
+          ['Batch Number', data.batch_number]
+        ]);
+        
+        y = drawSectionTitle(doc, y, 'COIL DETAILS');
+        y = drawDataTable(doc, y, [
+          ['Make', data.make],
+          ['Grade', data.coil_grade],
+          ['Thickness', data.coil_thickness],
+          ['Width', data.coil_width],
+          ['Weight (T)', data.coil_weight],
+          ['', '']
+        ]);
+        
+        y = drawSectionTitle(doc, y, 'FINAL MEASUREMENTS');
+        y = drawDataTable(doc, y, [
+          ['First Bit Length', data.first_bit],
+          ['Last Bit Length', data.last_bit],
+          ['Defective Length', data.defective],
+          ['Balance Coil Wt', data.balance_wt],
+          ['Coil Verified', data.coil_verified],
+          ['Blade Clearance', data.blade_clearance]
+        ]);
+        
+        y = drawSectionTitle(doc, y, 'QUALITY CHECKLIST');
+        y = drawDataTable(doc, y, [
+          ['Bur', data.bur],
+          ['Cutting Finish', data.cutting_finish],
+          ['Scalling', data.scalling],
+          ['Pit Marks', data.pit_marks],
+          ['Waviness', data.waviness],
+          ['Center Bow', data.center_bow],
+          ['Cutting Bow', data.cutting_bow],
+          ['Surface Defects', data.surface_defects]
+        ]);
+        
+        y = ensureSpace(doc, y, 80, hdr);
+        y = drawSectionTitle(doc, y, 'SIGN-OFF');
+        y = drawDataTable(doc, y, [
+          ['Operator', data.operator],
+          ['Inspector', data.inspector]
+        ]);
+      } else if (folder === 'Shearing') {
+        y = drawSectionTitle(doc, y, 'HEADER');
+        y = drawDataTable(doc, y, [
+          ['Customer', data.customer_name],
+          ['Date', data.date],
+          ['Batch Number', data.batch_number],
+          ['Grade', data.grade],
+          ['Make', data.make],
+          ['Type', data.type]
+        ]);
+        
+        y = drawSectionTitle(doc, y, 'INPUT');
+        y = drawDataTable(doc, y, [
+          ['Process', data.process],
+          ['Input Size', data.input_size],
+          ['Operator', data.operator],
+          ['QC', data.qc_name]
+        ]);
+        
+        // Sheet measurements table
+        if (data.measurements && data.measurements.length > 0) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'SHEET MEASUREMENTS');
+          const tblW = doc.page.width - 80;
+          const colW = tblW / 6;
+          
+          // Header row
+          doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
+          doc.lineWidth(0.5).strokeColor(BORDER);
+          doc.rect(40, y, tblW, 18).stroke();
+          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+          const headers = ['Sheet No', 'Width 1', 'Width 2', 'Diag 1', 'Diag 2', 'Remarks'];
+          headers.forEach((h, idx) => {
+            doc.text(h, 40 + colW * idx + 4, y + 5, { width: colW - 8 });
+            if (idx > 0) doc.moveTo(40 + colW * idx, y).lineTo(40 + colW * idx, y + 18).stroke();
           });
           y += 18;
+          
+          // Data rows
+          doc.font('Helvetica').fontSize(8).fillColor(TEXT);
+          data.measurements.forEach((row, idx) => {
+            y = ensureSpace(doc, y, 16, hdr);
+            if (idx % 2 === 1) {
+              doc.rect(40, y, tblW, 16).fill(ROW_ALT);
+            }
+            doc.rect(40, y, tblW, 16).stroke();
+            const cells = [row.sheet_no, row.width1, row.width2, row.diag1, row.diag2, row.remarks];
+            cells.forEach((c, i) => {
+              doc.fillColor(TEXT).text(String(c || '-'), 40 + colW * i + 4, y + 4, { width: colW - 8 });
+              if (i > 0) doc.moveTo(40 + colW * i, y).lineTo(40 + colW * i, y + 16).stroke();
+            });
+            y += 16;
+          });
+          y += 6;
+        }
+        
+        y = ensureSpace(doc, y, 100, hdr);
+        y = drawSectionTitle(doc, y, 'QUALITY CHECKLIST');
+        y = drawDataTable(doc, y, [
+          ['Burr (<10%)', data.burr],
+          ['Blade Clearance', data.blade_clearance],
+          ['Cutting Finish', data.cutting_finish],
+          ['Surface Condition', data.surface_condition],
+          ['Bow / Bend', data.bow_bend],
+          ['QC Sign Date', data.sig_date]
+        ]);
+        
+        if (data.overall_observation) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'OVERALL OBSERVATION');
+          const tblW = doc.page.width - 80;
+          doc.rect(40, y, tblW, 50).stroke(BORDER);
+          doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+          doc.text(data.overall_observation, 48, y + 6, { width: tblW - 16 });
+          y += 58;
         }
       }
 
-      const footer = 'BHARAT STEEL (CHENNAI) PVT. LTD. · ' + (folder === 'Inward' ? 'Inward Inspection' : folder === 'Shearing' ? 'BSCQMS-PRD-008 REV 01' : 'BSCQMS-PRD-008 REV 03') + ' · ' + ref;
-      doc.fillColor('#9CA3AF').font('Helvetica').fontSize(8);
-      doc.text(footer, 40, doc.page.height - 30, { width: W, align: 'center' });
+      // Footer on all pages
+      const range = doc.bufferedPageRange();
+      for (let i = 0; i < range.count; i++) {
+        doc.switchToPage(i);
+        drawFooter(doc, i + 1, range.count);
+      }
+      
       doc.end();
-    } catch(e) { reject(e); }
+    } catch(err) { reject(err); }
   });
 }
 
-// =====================================================
-// COMPLAINT / DEFECT REPORT PDF (matches old template)
-// =====================================================
 async function generateComplaintPDF(data, photos) {
-  return new Promise(async (resolve, reject) => {
+  return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size: 'A4', margin: 40 });
+      const doc = new PDFDocument({ size: 'A4', margin: 0, bufferPages: true });
       const buffers = [];
       doc.on('data', buffers.push.bind(buffers));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
       doc.on('error', reject);
-
-      const W = doc.page.width - 80;
-      let y = 40;
-
-      // Centered title
-      doc.fillColor('#000').font('Helvetica-Bold').fontSize(13);
-      doc.text('BHARAT STEEL (CHENNAI) PRIVATE LIMITED', 40, y, { width: W, align: 'center' });
-      y += 16;
-      doc.fontSize(11);
-      doc.text('QUALITY / DEFECT REPORT', 40, y, { width: W, align: 'center' });
-      y += 22;
-
-      // Date and internal no row
-      doc.font('Helvetica').fontSize(9);
-      doc.text('QC Date: ' + (data.qc_date || new Date().toLocaleDateString('en-IN')), 40, y);
-      doc.text('Internal No. : ' + (data.case_id || '-'), 40, y, { width: W, align: 'right' });
-      y += 16;
-
-      // Info table (2 col x 4 rows)
-      const drawBoxRow = (l1, v1, l2, v2) => {
-        const colW = W / 2, labelW = 90;
-        doc.rect(40, y, labelW, 20).fillAndStroke('#fff', '#000');
-        doc.rect(40 + labelW, y, colW - labelW, 20).fillAndStroke('#fff', '#000');
-        doc.rect(40 + colW, y, labelW, 20).fillAndStroke('#fff', '#000');
-        doc.rect(40 + colW + labelW, y, colW - labelW, 20).fillAndStroke('#fff', '#000');
-        doc.fillColor('#000').font('Helvetica-Bold').fontSize(9);
-        doc.text(l1, 44, y + 6, { width: labelW - 8 });
-        doc.text(l2, 44 + colW, y + 6, { width: labelW - 8 });
-        doc.font('Helvetica');
-        doc.text(String(v1 || '-'), 44 + labelW, y + 6, { width: colW - labelW - 8 });
-        doc.text(String(v2 || '-'), 44 + colW + labelW, y + 6, { width: colW - labelW - 8 });
-        y += 20;
+      
+      const hdr = {
+        title: 'QUALITY / DEFECT REPORT',
+        subtitle: data.source === 'internal' ? 'Internal Finding' : 'Customer Complaint',
+        refLabel: data.case_id ? 'Case: ' + data.case_id : ''
       };
-
-      drawBoxRow('Grade', data.grade, 'Invoice No', data.invoice_no);
-      drawBoxRow('Dimensions', data.dimensions, 'Invoice date', data.invoice_date);
-      drawBoxRow('Batch no', data.batch_number, 'Qty', data.quantity);
-      drawBoxRow('TC Number', data.tc_number, 'Mill', data.mill);
-      y += 16;
-
-      // DEFECT PHOTOS heading
-      doc.font('Helvetica-Bold').fontSize(10);
-      doc.text('DEFECT PHOTOS', 40, y);
-      y += 14;
-
-      // Embed photos in 2-column grid
-      if (photos && photos.length > 0) {
-        const photoW = (W - 10) / 2;
-        const photoH = 180;
-        for (let i = 0; i < photos.length; i++) {
-          if (y + photoH > doc.page.height - 60) { doc.addPage(); y = 40; }
-          const col = i % 2;
-          const xPos = 40 + col * (photoW + 10);
-          try {
-            const photoBuf = Buffer.from(photos[i].data.split(',')[1], 'base64');
-            doc.image(photoBuf, xPos, y, { fit: [photoW, photoH], align: 'center', valign: 'center' });
-            doc.rect(xPos, y, photoW, photoH).strokeColor('#000').stroke();
-          } catch(e) {
-            doc.rect(xPos, y, photoW, photoH).strokeColor('#ccc').stroke();
-          }
-          if (col === 1 || i === photos.length - 1) y += photoH + 10;
-        }
+      
+      let y = drawBrandedHeader(doc, hdr);
+      y += 10;
+      
+      // QC Date | Internal No strip
+      const pageW = doc.page.width;
+      const tblW = pageW - 80;
+      doc.fillColor(MUTED).font('Helvetica').fontSize(9);
+      doc.text('QC Date: ' + (data.qc_date || new Date().toLocaleDateString('en-IN')), 40, y);
+      doc.text('Internal No.: ' + (data.case_id || '-'), 0, y, { width: pageW - 40, align: 'right' });
+      doc.fillColor(TEXT);
+      y += 20;
+      
+      if (data.customer_name) {
+        y = drawSectionTitle(doc, y, 'CUSTOMER');
+        y = drawDataTable(doc, y, [
+          ['Customer Name', data.customer_name],
+          ['Filed By', data.filed_by]
+        ]);
       } else {
-        doc.rect(40, y, W, 60).strokeColor('#ccc').stroke();
-        doc.fillColor('#999').font('Helvetica').fontSize(9);
-        doc.text('No photos attached', 40, y + 25, { width: W, align: 'center' });
-        y += 70;
+        y = drawSectionTitle(doc, y, 'FILED BY');
+        y = drawDataTable(doc, y, [
+          ['Filed By', data.filed_by],
+          ['Source', 'Internal Finding']
+        ]);
       }
-
-      // REMARKS
-      if (y > doc.page.height - 80) { doc.addPage(); y = 40; }
-      y += 6;
-      doc.fillColor('#000').font('Helvetica-Bold').fontSize(10);
-      doc.text('REMARKS:', 40, y, { continued: true });
-      doc.font('Helvetica').fontSize(10);
-      doc.text(' ' + (data.remarks || data.description || '-'), { width: W - 70 });
-
+      
+      y = drawSectionTitle(doc, y, 'MATERIAL DETAILS');
+      y = drawDataTable(doc, y, [
+        ['Grade', data.grade],
+        ['Dimensions', data.dimensions],
+        ['Batch Number', data.batch_number],
+        ['TC Number', data.tc_number],
+        ['Invoice No', data.invoice_no],
+        ['Invoice Date', data.invoice_date],
+        ['Quantity (T)', data.quantity],
+        ['Mill', data.mill]
+      ]);
+      
+      y = drawSectionTitle(doc, y, 'REMARKS / DEFECT DESCRIPTION');
+      doc.rect(40, y, tblW, 60).stroke(BORDER);
+      doc.fillColor(TEXT).font('Helvetica').fontSize(10);
+      doc.text(data.remarks || '-', 48, y + 8, { width: tblW - 16 });
+      y += 68;
+      
+      // Defect photos - 2 columns
+      if (photos && photos.length > 0) {
+        y = ensureSpace(doc, y, 240, hdr);
+        y = drawSectionTitle(doc, y, 'DEFECT PHOTOS');
+        
+        const photoW = (tblW - 12) / 2;
+        const photoH = 180;
+        let col = 0;
+        let rowY = y;
+        
+        for (let i = 0; i < photos.length; i++) {
+          const p = photos[i];
+          if (!p) continue;
+          if (col === 0 && i > 0) {
+            rowY = ensureSpace(doc, rowY, photoH + 12, hdr);
+          }
+          try {
+            // Extract base64
+            let imgBuf;
+            if (typeof p === 'string') {
+              imgBuf = Buffer.from(p.split(',')[1] || p, 'base64');
+            } else if (p.data) {
+              imgBuf = Buffer.from(p.data.split(',')[1] || p.data, 'base64');
+            }
+            if (imgBuf) {
+              const x = 40 + col * (photoW + 12);
+              doc.rect(x, rowY, photoW, photoH).stroke(BORDER);
+              doc.image(imgBuf, x + 2, rowY + 2, { fit: [photoW - 4, photoH - 4], align: 'center', valign: 'center' });
+            }
+          } catch(e) { console.log('Image embed error:', e.message); }
+          col++;
+          if (col >= 2) {
+            col = 0;
+            rowY += photoH + 12;
+          }
+        }
+        if (col > 0) rowY += photoH + 12;
+        y = rowY;
+      }
+      
+      // Production analysis section (if filled)
+      if (data.reviewed_by || data.root_cause) {
+        y = ensureSpace(doc, y, 100, hdr);
+        y = drawSectionTitle(doc, y, 'PRODUCTION ANALYSIS');
+        y = drawDataTable(doc, y, [
+          ['Reviewed By', data.reviewed_by],
+          ['Decision', data.decision]
+        ]);
+        if (data.root_cause) {
+          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+          doc.text('ROOT CAUSE', 40, y);
+          y += 12;
+          doc.rect(40, y, tblW, 50).stroke(BORDER);
+          doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+          doc.text(data.root_cause, 48, y + 6, { width: tblW - 16 });
+          y += 58;
+        }
+      }
+      
+      // Resolution
+      if (data.resolution) {
+        y = ensureSpace(doc, y, 80, hdr);
+        y = drawSectionTitle(doc, y, 'RESOLUTION');
+        doc.rect(40, y, tblW, 50).stroke(BORDER);
+        doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+        doc.text(data.resolution, 48, y + 6, { width: tblW - 16 });
+        y += 58;
+      }
+      
+      // Footer on all pages
+      const range = doc.bufferedPageRange();
+      for (let i = 0; i < range.count; i++) {
+        doc.switchToPage(i);
+        drawFooter(doc, i + 1, range.count);
+      }
+      
       doc.end();
-    } catch(e) { reject(e); }
+    } catch(err) { reject(err); }
   });
 }
 
-// =====================================================
-// EMAIL FUNCTIONS
-// =====================================================
 const transporter = null; // not used - using Resend HTTP API
 
 async function sendInwardEmail(pdfBuffer, fileName, data) {
@@ -328,9 +526,21 @@ async function sendInwardEmail(pdfBuffer, fileName, data) {
   const subject = wheelsIndia
     ? 'WHEELS INDIA (Mother Coil Inspection Report) - ' + formDate + ' - ' + vehicleNo + ' - ' + batchNo
     : 'MOTHER COIL INSPECTION REPORT - ' + formDate + ' - ' + vehicleNo + ' - ' + batchNo;
-  const recipients = wheelsIndia
-    ? ['support@bharatsteels.in', 'kannan@bharatsteels.in']
-    : ['support@bharatsteels.in'];
+  // Try to use settings from OneDrive
+  let recipients;
+  try {
+    const tokenForSettings = await getToken();
+    const settings = await loadSettings(tokenForSettings);
+    if (wheelsIndia) {
+      recipients = (settings.inward_emails && settings.inward_emails.wheels_india_to) || ['support@bharatsteels.in', 'kannan@bharatsteels.in'];
+    } else {
+      recipients = (settings.inward_emails && settings.inward_emails.default_to) || ['support@bharatsteels.in'];
+    }
+  } catch(e) {
+    recipients = wheelsIndia
+      ? ['support@bharatsteels.in', 'kannan@bharatsteels.in']
+      : ['support@bharatsteels.in'];
+  }
   await sendEmail({
     to: recipients,
     subject: subject,
@@ -690,9 +900,12 @@ app.post('/complaint/submit', async (req, res) => {
       recipients = ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in'];
       cc = null;
     } else {
-      // Customer complaint - to pdqc, kannan, gourav
+      // Customer complaint - use settings
       status = 'Open';
-      recipients = ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'];
+      let settings;
+      try { settings = await loadSettings(token); } catch(e) {}
+      recipients = (settings && settings.complaint_emails && settings.complaint_emails.sales_raise_to)
+        || ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'];
       cc = null;
     }
     data.status = status;
@@ -805,31 +1018,46 @@ app.post('/complaint/update', async (req, res) => {
         resolution: data.resolution || ''
       };
 
-      // Re-fetch PDF + TC + Invoice for re-attaching
+      // Re-fetch PDF + PO + SO + TC + Invoice + 8D for re-attaching to email
       let attachments = [];
       try {
         const attachFolder = 'BSC Inspections/Complaints/Attachments/' + data.case_id;
         const pdfPath = 'BSC Inspections/Complaints/PDF/' + data.case_id + '_Defect_Report.pdf';
+        console.log('[attach] fetching PDF:', pdfPath);
         const pdfFetch = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(pdfPath) + ':/content', { headers: { 'Authorization': 'Bearer ' + token } });
         if (pdfFetch.ok) {
           const buf = await pdfFetch.buffer();
           attachments.push({ filename: data.case_id + '_Defect_Report.pdf', content: buf.toString('base64') });
+          console.log('[attach] PDF added,', buf.length, 'bytes');
+        } else {
+          console.log('[attach] PDF NOT FOUND:', pdfFetch.status);
         }
         // List attachments folder
-        const listResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(attachFolder) + ':/children?$select=name,@microsoft.graph.downloadUrl&$top=20', { headers: { 'Authorization': 'Bearer ' + token } });
+        console.log('[attach] listing folder:', attachFolder);
+        const listResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(attachFolder) + ':/children?$select=name,@microsoft.graph.downloadUrl,size&$top=20', { headers: { 'Authorization': 'Bearer ' + token } });
         if (listResp.ok) {
           const items = (await listResp.json()).value || [];
-          for (const item of items.slice(0, 8)) { // max 8 attachments
+          console.log('[attach] folder has', items.length, 'items');
+          for (const item of items.slice(0, 8)) {
             try {
+              console.log('[attach] downloading', item.name, '(' + item.size + ' bytes)');
               const dl = await fetch(item['@microsoft.graph.downloadUrl']);
               if (dl.ok) {
                 const buf = await dl.buffer();
                 attachments.push({ filename: item.name, content: buf.toString('base64') });
+                console.log('[attach] added', item.name);
+              } else {
+                console.log('[attach] download failed:', item.name, dl.status);
               }
-            } catch(e) {}
+            } catch(e) {
+              console.log('[attach] item error:', item.name, e.message);
+            }
           }
+        } else {
+          console.log('[attach] folder list FAILED:', listResp.status, await listResp.text());
         }
-      } catch(e) { console.error('Attachment fetch error:', e.message); }
+        console.log('[attach] TOTAL attachments to send:', attachments.length);
+      } catch(e) { console.error('[attach] fatal error:', e.message); }
 
       const isEscalateToVendor = data.decision === 'Escalate to Vendor' && data.vendor_email;
       const isInternalClose = data.decision === 'Close Internally' || data.status === 'Completed (Internal)';
@@ -847,11 +1075,16 @@ app.post('/complaint/update', async (req, res) => {
         if (data.vendor_message) {
           html = html.replace('</p><table', '</p><p><b>Additional notes:</b> ' + escHtml(data.vendor_message) + '</p><table');
         }
+        let st2b_cc;
+        try {
+          const s = await loadSettings(token);
+          st2b_cc = (s.complaint_emails && s.complaint_emails.vendor_escalation_cc) || ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'];
+        } catch(e) { st2b_cc = ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in']; }
         sendEmail({
           to: [data.vendor_email],
-          cc: ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'],
+          cc: st2b_cc,
           subject: subject, html: html, attachments: attachments
-        }).then(() => console.log('Vendor email sent for', data.case_id)).catch(err => console.error('Vendor email error:', err.message));
+        }).then(() => console.log('Vendor email sent for', data.case_id, 'with', attachments.length, 'attachments')).catch(err => console.error('Vendor email error:', err.message));
       } else if (isInternalClose) {
         // Stage: Closed internally - notify sales + CC gourav
         const subject = 'Quality Complaint Resolved (Internal) - ' + data.case_id;
@@ -861,8 +1094,13 @@ app.post('/complaint/update', async (req, res) => {
           + '<p><b>Resolution:</b> ' + escHtml(data.resolution || '-') + '</p>'
           + '<p><b>Reviewed By:</b> ' + escHtml(data.reviewed_by || '-') + '</p>';
         html = html.replace('<table', extra + '<table');
+        let st2a_to;
+        try {
+          const s = await loadSettings(token);
+          st2a_to = (s.complaint_emails && s.complaint_emails.internal_close_to) || ['info@bharatsteels.in', 'gourav@bharatsteels.in', 'kannan@bharatsteels.in'];
+        } catch(e) { st2a_to = ['info@bharatsteels.in', 'gourav@bharatsteels.in', 'kannan@bharatsteels.in']; }
         sendEmail({
-          to: ['info@bharatsteels.in', 'gourav@bharatsteels.in', 'kannan@bharatsteels.in'],
+          to: st2a_to,
           cc: null,
           subject: subject, html: html
         }).then(() => console.log('Internal-close email sent for', data.case_id)).catch(err => console.error('Internal-close email error:', err.message));
@@ -876,8 +1114,13 @@ app.post('/complaint/update', async (req, res) => {
           + (data.resolved_by ? '<p><b>Resolved By:</b> ' + escHtml(data.resolved_by) + '</p>' : '')
           + '<p>Regards,<br><b>Bharat Steel (Chennai) Pvt. Ltd.</b></p>'
           + '</div>';
+        let st3_to;
+        try {
+          const s = await loadSettings(token);
+          st3_to = (s.complaint_emails && s.complaint_emails.resolved_to) || ['info@bharatsteels.in', 'pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'];
+        } catch(e) { st3_to = ['info@bharatsteels.in', 'pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in']; }
         sendEmail({
-          to: ['info@bharatsteels.in', 'pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'],
+          to: st3_to,
           cc: null,
           subject: subject, html: html
         }).then(() => console.log('Resolution email sent for', data.case_id)).catch(err => console.error('Resolution email error:', err.message));
@@ -970,6 +1213,98 @@ async function appendExcelRow(token, folder, data, fileName) {
   });
   if (!rowResp.ok) throw new Error('Excel row failed: ' + JSON.stringify(await rowResp.json()));
 }
+
+
+// =====================================================
+// ADMIN: Settings storage on OneDrive
+// =====================================================
+const ADMIN_PASSWORD = 'Bsc@123';
+const SETTINGS_PATH = 'BSC Inspections/Config/settings.json';
+
+const DEFAULT_SETTINGS = {
+  inspectors_inward: ['Sathya', 'Kumar', 'Mahendran', 'Dhanush'],
+  inspectors_quality: ['Sathya', 'Kumar', 'Mahendran', 'Dhanush', 'Vignesh'],
+  qc_shearing_default: 'Vignesh',
+  mills: ['SAIL', 'SAIL RSP', 'SAIL BSP', 'JSW', 'TATA', 'AMNS', 'NMDC', 'JSPL'],
+  vendors: { 'SAIL': '', 'NMDC': '', 'RINL': '', 'JSW': '' },
+  grades: ['E250', 'E350 / ST52', 'HSFQ450 / 450 / EQV', 'HSFQ550 / 550 / EQV'],
+  complaint_emails: {
+    sales_raise_to: ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'],
+    internal_close_to: ['info@bharatsteels.in', 'gourav@bharatsteels.in', 'kannan@bharatsteels.in'],
+    vendor_escalation_cc: ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in'],
+    resolved_to: ['info@bharatsteels.in', 'pdqc@bharatsteels.in', 'kannan@bharatsteels.in', 'gourav@bharatsteels.in']
+  },
+  inward_emails: {
+    default_to: ['support@bharatsteels.in'],
+    wheels_india_to: ['support@bharatsteels.in', 'kannan@bharatsteels.in']
+  }
+};
+
+async function loadSettings(token) {
+  try {
+    const resp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(SETTINGS_PATH) + ':/content', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (resp.ok) {
+      const text = await resp.text();
+      return Object.assign({}, DEFAULT_SETTINGS, JSON.parse(text));
+    }
+  } catch(e) { console.log('Settings load error:', e.message); }
+  return DEFAULT_SETTINGS;
+}
+
+async function saveSettings(token, settings) {
+  // Ensure Config folder exists
+  try {
+    const checkResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent('BSC Inspections/Config'), { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!checkResp.ok) {
+      const parentResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent('BSC Inspections'), { headers: { 'Authorization': 'Bearer ' + token } });
+      const parentId = (await parentResp.json()).id;
+      await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + parentId + '/children', {
+        method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Config', folder: {}, '@microsoft.graph.conflictBehavior': 'rename' })
+      });
+    }
+  } catch(e) { console.log('Config folder ensure error:', e.message); }
+  
+  // Upload settings.json
+  const buf = Buffer.from(JSON.stringify(settings, null, 2));
+  return uploadFile(token, SETTINGS_PATH, buf, 'application/json');
+}
+
+// GET /settings - public read of allowed config
+app.get('/settings', async (req, res) => {
+  try {
+    const token = await getToken();
+    const s = await loadSettings(token);
+    // Public can read everything (no secrets here)
+    res.json(s);
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /admin/settings - update settings (password required)
+app.post('/admin/settings', async (req, res) => {
+  const { password, settings } = req.body;
+  if (password !== ADMIN_PASSWORD) return res.status(403).json({ error: 'Invalid password' });
+  if (!settings || typeof settings !== 'object') return res.status(400).json({ error: 'Invalid settings' });
+  try {
+    const token = await getToken();
+    const current = await loadSettings(token);
+    const merged = Object.assign({}, current, settings);
+    await saveSettings(token, merged);
+    res.json({ status: 'success', settings: merged });
+  } catch(e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /admin/verify - just check password
+app.post('/admin/verify', (req, res) => {
+  if (req.body && req.body.password === ADMIN_PASSWORD) {
+    return res.json({ status: 'success' });
+  }
+  res.status(403).json({ error: 'Invalid password' });
+});
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('BSC Server running on port ' + PORT));
