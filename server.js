@@ -367,7 +367,9 @@ async function sendEmail({ to, cc, subject, text, html, attachments }) {
 // =====================================================
 // COMPLAINT EMAIL TEMPLATES
 // =====================================================
-function buildComplaintEmailBody(data, stage) {
+function buildComplaintEmailBody(data, stage, baseUrl) {
+  baseUrl = baseUrl || 'https://qms.bharatsteels.in';
+  const caseLink = baseUrl + '/?case=' + encodeURIComponent(data.case_id || '');
   const tableRows = [
     ['Grade', data.grade],
     ['Material', data.dimensions],
@@ -403,9 +405,15 @@ function buildComplaintEmailBody(data, stage) {
     + tableRows.map(r => '<tr><td style="border:1px solid #555;padding:6px 12px;background:#f4f4f4;font-weight:bold;width:140px">' + escHtml(r[0]) + '</td><td style="border:1px solid #555;padding:6px 12px">' + escHtml(r[1] || '-') + '</td></tr>').join('')
     + '</table>';
 
+  const caseBtn = '<div style="margin:20px 0">'
+    + '<a href="' + caseLink + '" style="display:inline-block;background:#1A6DAF;color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:600;font-size:14px">View Case in App →</a>'
+    + '<div style="font-size:11px;color:#888;margin-top:6px">Case ID: ' + escHtml(data.case_id || '-') + '</div>'
+    + '</div>';
+
   const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">'
     + intro
     + tableHtml
+    + caseBtn
     + '<p>Regards,<br><b>Bharat Steel (Chennai) Pvt. Ltd.</b></p>'
     + '</div>';
 

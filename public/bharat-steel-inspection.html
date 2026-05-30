@@ -1046,6 +1046,142 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   <div class="form-scroll" id="cmp_detail_body"></div>
 </div>
 
+
+<!-- ============================
+     PRODUCTION ANALYSIS SCREEN
+     ============================ -->
+<div class="screen" id="screen-analysis">
+  <div class="form-topbar" style="background:#1A6DAF">
+    <button class="back-btn" onclick="showScreen('complaint-detail')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Production Analysis</div>
+      <div class="topbar-sub" id="anl_case_id">—</div>
+    </div>
+    <div class="topbar-badge">REVIEW</div>
+  </div>
+  <div class="form-scroll">
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">👤</span> Reviewer</div>
+      <div class="sec-body">
+        <div class="field"><label>Reviewed By *</label><input type="text" id="anl_reviewer" placeholder="Your name"></div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🔍</span> Root Cause Analysis</div>
+      <div class="sec-body">
+        <div class="field"><label>Root Cause / Analysis Notes *</label>
+          <textarea id="anl_root_cause" rows="4" placeholder="Detailed root cause analysis..."></textarea>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label>8D / CAPA Report (optional)</label>
+          <label style="display:block;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            📄 Upload 8D Report
+            <input type="file" id="anl_8d_file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" hidden onchange="showFileName(this,'anl_8d_name')">
+          </label>
+          <div id="anl_8d_name" style="font-size:11px;color:var(--gray-600);margin-top:6px;text-align:center"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📋</span> Decision</div>
+      <div class="sec-body">
+        <div class="field">
+          <label>Decision *</label>
+          <div class="pills" id="anl_decision">
+            <div class="pill" onclick="rp('anl_decision',this,'Close Internally'); toggleAnlVendor(false)">✅ Close Internally</div>
+            <div class="pill" onclick="rp('anl_decision',this,'Escalate to Vendor'); toggleAnlVendor(true)">🚀 Escalate to Vendor</div>
+          </div>
+        </div>
+        <div class="field" id="anl_resolution_wrap" style="margin-top:12px;display:none">
+          <label>Resolution Notes *</label>
+          <textarea id="anl_resolution" rows="3" placeholder="How the issue was resolved internally..."></textarea>
+        </div>
+        <div id="anl_vendor_section" style="display:none;margin-top:12px">
+          <div class="fg fg-2">
+            <div class="field"><label>Vendor *</label>
+              <div class="pills" id="anl_vendor">
+                <div class="pill" onclick="rp('anl_vendor',this,'SAIL'); setAnlVendorEmail('SAIL')">SAIL</div>
+                <div class="pill" onclick="rp('anl_vendor',this,'NMDC'); setAnlVendorEmail('NMDC')">NMDC</div>
+                <div class="pill" onclick="rp('anl_vendor',this,'RINL'); setAnlVendorEmail('RINL')">RINL</div>
+                <div class="pill" onclick="rp('anl_vendor',this,'JSW'); setAnlVendorEmail('JSW')">JSW</div>
+                <div class="pill" onclick="rp('anl_vendor',this,'Other')">Other</div>
+              </div>
+            </div>
+            <div class="field"><label>Vendor Email *</label><input type="email" id="anl_vendor_email" placeholder="vendor@example.com"></div>
+          </div>
+          <div class="field" style="margin-top:8px"><label>Message to Vendor (optional)</label>
+            <textarea id="anl_vendor_msg" rows="3" placeholder="Additional notes for vendor..."></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="submit-bar">
+    <div class="submit-info">
+      <strong>Production Analysis</strong>
+      <span style="display:block;font-size:10px;margin-top:1px">Updates case + sends email</span>
+    </div>
+    <div class="submit-btns">
+      <button class="btn-sec" onclick="showScreen('complaint-detail')">Cancel</button>
+      <button class="btn-primary" id="anl_submit" onclick="submitAnalysis()">
+        <div class="spinner" id="anl_spin"></div>
+        <span id="anl_lbl">Submit</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     MARK RESOLVED SCREEN
+     ============================ -->
+<div class="screen" id="screen-resolve">
+  <div class="form-topbar" style="background:#10b981">
+    <button class="back-btn" onclick="showScreen('complaint-detail')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Mark Resolved</div>
+      <div class="topbar-sub" id="rsv_case_id">—</div>
+    </div>
+    <div class="topbar-badge">RESOLVE</div>
+  </div>
+  <div class="form-scroll">
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">✅</span> Resolution Details</div>
+      <div class="sec-body">
+        <div class="field"><label>Resolved By *</label><input type="text" id="rsv_by" placeholder="Your name"></div>
+        <div class="field" style="margin-top:12px"><label>Resolution Notes *</label>
+          <textarea id="rsv_notes" rows="5" placeholder="Vendor response, final outcome, actions taken..."></textarea>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label>Outcome</label>
+          <div class="pills" id="rsv_outcome">
+            <div class="pill" onclick="rp('rsv_outcome',this,'Vendor Accepted')">Vendor Accepted</div>
+            <div class="pill" onclick="rp('rsv_outcome',this,'Vendor Declined')">Vendor Declined</div>
+            <div class="pill" onclick="rp('rsv_outcome',this,'Customer Satisfied')">Customer Satisfied</div>
+            <div class="pill" onclick="rp('rsv_outcome',this,'Replacement Issued')">Replacement Issued</div>
+            <div class="pill" onclick="rp('rsv_outcome',this,'Concession Granted')">Concession Granted</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="submit-bar">
+    <div class="submit-info">
+      <strong>Mark Resolved</strong>
+    </div>
+    <div class="submit-btns">
+      <button class="btn-sec" onclick="showScreen('complaint-detail')">Cancel</button>
+      <button class="btn-primary" id="rsv_submit" onclick="submitResolve()" style="background:#10b981">
+        <div class="spinner" id="rsv_spin"></div>
+        <span id="rsv_lbl">Mark Resolved</span>
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- PHOTO VIEWER SCREEN -->
 <div class="screen" id="screen-photos">
   <div class="form-topbar">
@@ -2009,52 +2145,168 @@ function detailRow(label, value) {
 }
 
 function showAnalysisDialog() {
-  var reviewer = prompt('Reviewed by (Vignesh / Sathya / Kumar / Mahendran):');
-  if (!reviewer) return;
-  var rootCause = prompt('Root cause / analysis notes:');
-  if (!rootCause) return;
-  var resolution = prompt('Resolution notes:');
-  if (!resolution) return;
-  updateComplaint({
-    case_id: currentCaseId,
-    reviewed_by: reviewer,
-    root_cause: rootCause,
-    decision: 'Closed Internally',
-    resolution: resolution,
-    status: 'Completed (Internal)',
-    resolved_date: new Date().toLocaleDateString('en-IN')
+  // Combined screen for analysis: user picks Close or Escalate
+  document.getElementById('anl_case_id').textContent = currentCaseId;
+  // Clear form
+  ['anl_reviewer','anl_root_cause','anl_resolution','anl_vendor_email','anl_vendor_msg'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
   });
+  var f = document.getElementById('anl_8d_file'); if (f) f.value = '';
+  var fn = document.getElementById('anl_8d_name'); if (fn) fn.innerHTML = '';
+  ['anl_decision','anl_vendor'].forEach(function(g){
+    document.querySelectorAll('#' + g + ' .pill').forEach(p => p.classList.remove('sel'));
+    delete rs[g];
+  });
+  document.getElementById('anl_resolution_wrap').style.display = 'none';
+  document.getElementById('anl_vendor_section').style.display = 'none';
+  showScreen('analysis');
 }
 
 function showEscalateDialog() {
-  var reviewer = prompt('Reviewed by:');
-  if (!reviewer) return;
-  var rootCause = prompt('Root cause / analysis:');
-  if (!rootCause) return;
-  var vendor = prompt('Vendor name (SAIL / NMDC / RINL / JSW / Other):');
-  if (!vendor) return;
-  var vendorEmail = prompt('Vendor email:');
-  if (!vendorEmail) return;
-  updateComplaint({
-    case_id: currentCaseId,
-    reviewed_by: reviewer,
-    root_cause: rootCause,
-    decision: 'Escalated to Vendor',
-    vendor_name: vendor,
-    vendor_email: vendorEmail,
-    status: 'Vendor Notified'
-  });
+  // Same screen as analysis - just pre-select Escalate decision
+  showAnalysisDialog();
+  setTimeout(function() {
+    var escalateBtn = document.querySelectorAll('#anl_decision .pill')[1];
+    if (escalateBtn) escalateBtn.click();
+  }, 100);
 }
 
 function showResolveDialog() {
-  var resolution = prompt('Resolution notes (vendor response / outcome):');
-  if (!resolution) return;
-  updateComplaint({
+  document.getElementById('rsv_case_id').textContent = currentCaseId;
+  ['rsv_by','rsv_notes'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  document.querySelectorAll('#rsv_outcome .pill').forEach(p => p.classList.remove('sel'));
+  delete rs['rsv_outcome'];
+  showScreen('resolve');
+}
+
+function toggleAnlVendor(showVendor) {
+  document.getElementById('anl_vendor_section').style.display = showVendor ? '' : 'none';
+  document.getElementById('anl_resolution_wrap').style.display = showVendor ? 'none' : '';
+}
+
+function setAnlVendorEmail(vendor) {
+  var ee = document.getElementById('anl_vendor_email');
+  if (vendor && VENDOR_EMAILS[vendor]) ee.value = VENDOR_EMAILS[vendor];
+  else ee.value = '';
+}
+
+async function submitAnalysis() {
+  var reviewer = gv('anl_reviewer');
+  var rootCause = gv('anl_root_cause');
+  var decision = rs['anl_decision'] || '';
+  
+  if (!reviewer) { toast('err', 'Reviewer name is required'); return; }
+  if (!rootCause) { toast('err', 'Root cause is required'); return; }
+  if (!decision) { toast('err', 'Please select a decision'); return; }
+  
+  var payload = {
     case_id: currentCaseId,
-    resolution: resolution,
+    reviewed_by: reviewer,
+    root_cause: rootCause,
+    decision: decision
+  };
+  
+  if (decision === 'Close Internally') {
+    var resolution = gv('anl_resolution');
+    if (!resolution) { toast('err', 'Resolution notes required'); return; }
+    payload.resolution = resolution;
+    payload.status = 'Completed (Internal)';
+    payload.resolved_date = new Date().toLocaleDateString('en-IN');
+  } else {
+    // Escalate to Vendor
+    var vendor = rs['anl_vendor'] || '';
+    var vendorEmail = gv('anl_vendor_email');
+    if (!vendor) { toast('err', 'Please select vendor'); return; }
+    if (!vendorEmail) { toast('err', 'Vendor email is required'); return; }
+    payload.vendor_name = vendor;
+    payload.vendor_email = vendorEmail;
+    payload.vendor_message = gv('anl_vendor_msg');
+    payload.status = 'Vendor Notified';
+  }
+  
+  // Add 8D file if uploaded
+  var f8d = document.getElementById('anl_8d_file');
+  if (f8d.files[0]) {
+    payload.file_8d = {
+      name: f8d.files[0].name,
+      type: f8d.files[0].type,
+      data: await readFileAsDataURL(f8d.files[0])
+    };
+  }
+  
+  var btn = document.getElementById('anl_submit');
+  var spin = document.getElementById('anl_spin');
+  var lbl = document.getElementById('anl_lbl');
+  btn.disabled = true;
+  spin.style.display = 'inline-block';
+  lbl.textContent = 'Submitting...';
+  
+  try {
+    var resp = await fetch(SERVER_URL + '/complaint/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+      var t = await resp.text();
+      throw new Error('Server ' + resp.status + ': ' + t.substring(0, 150));
+    }
+    var r = await resp.json();
+    if (r.status !== 'success') throw new Error(r.message || 'Update failed');
+    toast('ok', 'Analysis saved');
+    await loadComplaintList();
+    showScreen('complaint-list');
+  } catch(e) {
+    toast('err', 'Save failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    spin.style.display = 'none';
+    lbl.textContent = 'Submit';
+  }
+}
+
+async function submitResolve() {
+  var by = gv('rsv_by');
+  var notes = gv('rsv_notes');
+  var outcome = rs['rsv_outcome'] || '';
+  
+  if (!by) { toast('err', 'Your name is required'); return; }
+  if (!notes) { toast('err', 'Resolution notes required'); return; }
+  
+  var payload = {
+    case_id: currentCaseId,
+    resolved_by: by,
+    resolution: notes + (outcome ? ' (Outcome: ' + outcome + ')' : ''),
     status: 'Completed (Vendor)',
     resolved_date: new Date().toLocaleDateString('en-IN')
-  });
+  };
+  
+  var btn = document.getElementById('rsv_submit');
+  var spin = document.getElementById('rsv_spin');
+  var lbl = document.getElementById('rsv_lbl');
+  btn.disabled = true;
+  spin.style.display = 'inline-block';
+  lbl.textContent = 'Saving...';
+  
+  try {
+    var resp = await fetch(SERVER_URL + '/complaint/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) throw new Error('Update failed');
+    var r = await resp.json();
+    if (r.status !== 'success') throw new Error(r.message || 'Update failed');
+    toast('ok', 'Case resolved');
+    await loadComplaintList();
+    showScreen('complaint-list');
+  } catch(e) {
+    toast('err', 'Save failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    spin.style.display = 'none';
+    lbl.textContent = 'Mark Resolved';
+  }
 }
 
 async function updateComplaint(payload) {
@@ -2161,6 +2413,30 @@ document.getElementById('q_time').value = pad(now.getHours())+':'+pad(now.getMin
 addShRow(); addShRow(); addShRow();
 document.getElementById('sh_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
 document.getElementById('sh_sig_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
+
+// Deep link: if URL has ?case=XXX, open that case directly
+(async function handleDeepLink() {
+  var params = new URLSearchParams(window.location.search);
+  var caseId = params.get('case');
+  if (!caseId) return;
+  try {
+    // Show menu briefly while loading
+    showScreen('complaint-menu');
+    // Wait a moment for UI to settle
+    await new Promise(r => setTimeout(r, 200));
+    // Load complaints list (populates complaintsList variable)
+    await loadComplaintList();
+    // Now open the specific case
+    if (complaintsList && complaintsList.find(c => c.case_id === caseId)) {
+      openComplaintDetail(caseId);
+    } else {
+      toast('err', 'Case ' + caseId + ' not found');
+      showScreen('complaint-list');
+    }
+  } catch(e) {
+    console.error('Deep link error:', e);
+  }
+})();
 </script>
 </body>
 </html>
