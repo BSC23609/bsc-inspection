@@ -824,16 +824,16 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="form-card" onclick="openComplaint('customer')">
       <div class="card-icon" style="background:#fee2e2;color:#dc2626">📞</div>
       <div class="card-body">
-        <div class="card-title">Customer Complaint</div>
-        <div class="card-desc">Sales team raises complaint received from customer. Notifies production team.</div>
+        <div class="card-title">Sales Quality Complaint</div>
+        <div class="card-desc">Sales team logs complaint received from customer. Goes through Production for analysis and response.</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
     <div class="form-card" onclick="openComplaint('internal')">
       <div class="card-icon" style="background:#fef3c7;color:#b45309">🔍</div>
       <div class="card-body">
-        <div class="card-title">Internal Finding</div>
-        <div class="card-desc">Issue found during inward/processing inspection. Directly escalate to vendor.</div>
+        <div class="card-title">Purchase Quality Complaint</div>
+        <div class="card-desc">Issue found internally during inward/processing. Direct escalation to vendor.</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
@@ -869,8 +869,9 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           <div class="field"><label>Filed By *</label><input type="text" id="cmp_filed_by" placeholder="Your name"></div>
           <div class="field"><label>QC Date</label><input type="date" id="cmp_date"></div>
         </div>
-        <div class="fg fg-1" id="cmp_customer_wrap">
+        <div class="fg fg-2" id="cmp_customer_wrap">
           <div class="field"><label>Customer Name *</label><input type="text" id="cmp_customer" placeholder="Customer company name"></div>
+          <div class="field"><label>Customer Email *</label><input type="email" id="cmp_customer_email" placeholder="customer@example.com"></div>
         </div>
       </div>
     </div>
@@ -1193,6 +1194,165 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   </div>
 </div>
 
+
+
+<!-- ============================
+     SALES QC: PRODUCTION ANALYSIS SCREEN
+     ============================ -->
+<div class="screen" id="screen-sales-analysis">
+  <div class="form-topbar" style="background:#1A6DAF">
+    <button class="back-btn" onclick="showScreen('complaint-detail')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Production Analysis</div>
+      <div class="topbar-sub" id="sanl_case_id">—</div>
+    </div>
+    <div class="topbar-badge">REVIEW</div>
+  </div>
+  <div class="form-scroll">
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">👤</span> Reviewer</div>
+      <div class="sec-body">
+        <div class="field"><label>Reviewed By *</label><input type="text" id="sanl_reviewer" placeholder="Your name"></div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🔍</span> Root Cause & Analysis</div>
+      <div class="sec-body">
+        <div class="field"><label>Root Cause Analysis *</label>
+          <textarea id="sanl_root_cause" rows="3" placeholder="What caused this issue..."></textarea>
+        </div>
+        <div class="field" style="margin-top:12px"><label>Production Comments / Response to Customer *</label>
+          <textarea id="sanl_comments" rows="4" placeholder="Production team's response that will be shared with the customer..."></textarea>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label>8D / CAPA Report (optional)</label>
+          <label style="display:block;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            📄 Upload 8D Report
+            <input type="file" id="sanl_8d_file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" hidden onchange="showFileName(this,'sanl_8d_name')">
+          </label>
+          <div id="sanl_8d_name" style="font-size:11px;color:var(--gray-600);margin-top:6px;text-align:center"></div>
+        </div>
+        <div class="field" style="margin-top:12px">
+          <label>Additional Attachments (optional)</label>
+          <label style="display:block;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            📎 Upload File
+            <input type="file" id="sanl_extra_file" accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png" hidden onchange="showFileName(this,'sanl_extra_name')">
+          </label>
+          <div id="sanl_extra_name" style="font-size:11px;color:var(--gray-600);margin-top:6px;text-align:center"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="submit-bar">
+    <div class="submit-info">
+      <strong>Submit to Sales Team</strong>
+      <span style="display:block;font-size:10px;margin-top:1px">Email: info@ (CC: kannan@, pdqc@)</span>
+    </div>
+    <div class="submit-btns">
+      <button class="btn-sec" onclick="showScreen('complaint-detail')">Cancel</button>
+      <button class="btn-primary" id="sanl_submit" onclick="submitSalesAnalysis()">
+        <div class="spinner" id="sanl_spin"></div>
+        <span id="sanl_lbl">Submit to Sales</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     SALES QC: SEND TO CUSTOMER SCREEN
+     ============================ -->
+<div class="screen" id="screen-send-customer">
+  <div class="form-topbar" style="background:#7c3aed">
+    <button class="back-btn" onclick="showScreen('complaint-detail')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Send Response to Customer</div>
+      <div class="topbar-sub" id="stoc_case_id">—</div>
+    </div>
+    <div class="topbar-badge">SALES</div>
+  </div>
+  <div class="form-scroll">
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📧</span> Customer Details</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>Customer Email *</label><input type="email" id="stoc_email" placeholder="customer@example.com"></div>
+          <div class="field"><label>Reviewed By (Sales) *</label><input type="text" id="stoc_sales_reviewer" placeholder="Your name"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🔍</span> Production Analysis (for reference)</div>
+      <div class="sec-body">
+        <div id="stoc_prod_analysis" style="background:var(--gray-50);padding:12px;border-radius:6px;font-size:13px;line-height:1.5;color:var(--gray-700)">Loading...</div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">✏️</span> Message to Customer</div>
+      <div class="sec-body">
+        <div class="field"><label>Message (will be sent to customer)</label>
+          <textarea id="stoc_message" rows="10" placeholder="Compose your message to the customer..."></textarea>
+          <div style="font-size:11px;color:var(--gray-400);margin-top:4px">A professional template is auto-loaded. Edit as needed before sending.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="submit-bar">
+    <div class="submit-info">
+      <strong>Send to Customer</strong>
+      <span style="display:block;font-size:10px;margin-top:1px">CC: info@bharatsteels.in</span>
+    </div>
+    <div class="submit-btns">
+      <button class="btn-sec" onclick="showScreen('complaint-detail')">Cancel</button>
+      <button class="btn-primary" id="stoc_submit" onclick="submitSendToCustomer()" style="background:#7c3aed">
+        <div class="spinner" id="stoc_spin"></div>
+        <span id="stoc_lbl">Send Email</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================
+     SALES QC: CUSTOMER OUTCOME SCREEN
+     ============================ -->
+<div class="screen" id="screen-customer-outcome">
+  <div class="form-topbar" id="cout_topbar" style="background:#10b981">
+    <button class="back-btn" onclick="showScreen('complaint-detail')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title" id="cout_title">Customer Outcome</div>
+      <div class="topbar-sub" id="cout_case_id">—</div>
+    </div>
+    <div class="topbar-badge" id="cout_badge">CLOSE</div>
+  </div>
+  <div class="form-scroll">
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📝</span> Customer Response Details</div>
+      <div class="sec-body">
+        <div class="field"><label>Marked By *</label><input type="text" id="cout_by" placeholder="Your name"></div>
+        <div class="field" style="margin-top:12px"><label>Customer Response Notes *</label>
+          <textarea id="cout_notes" rows="5" placeholder="Customer's response..."></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="submit-bar">
+    <div class="submit-info">
+      <strong id="cout_action_lbl">Mark Closed</strong>
+    </div>
+    <div class="submit-btns">
+      <button class="btn-sec" onclick="showScreen('complaint-detail')">Cancel</button>
+      <button class="btn-primary" id="cout_submit" onclick="submitCustomerOutcome()">
+        <div class="spinner" id="cout_spin"></div>
+        <span id="cout_lbl">Submit</span>
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- ============================
      ADMIN LOGIN SCREEN
@@ -1936,16 +2096,16 @@ function openComplaint(type) {
   var vendorSection = document.getElementById('cmp_vendor_section');
   
   if (type === 'customer') {
-    title.textContent = 'Customer Complaint';
-    sub.textContent = 'From customer - notifies Production';
-    badge.textContent = 'CUSTOMER';
+    title.textContent = 'Sales Quality Complaint';
+    sub.textContent = 'Customer complaint - routes through Production';
+    badge.textContent = 'SALES QC';
     route.textContent = 'Email will be sent to pdqc@ and kannan@';
     customerWrap.style.display = '';
     vendorSection.style.display = 'none';
   } else {
-    title.textContent = 'Internal Finding';
-    sub.textContent = 'Found internally - direct to vendor';
-    badge.textContent = 'INTERNAL';
+    title.textContent = 'Purchase Quality Complaint';
+    sub.textContent = 'Internal finding - direct to vendor';
+    badge.textContent = 'PURCHASE QC';
     route.textContent = 'Email will be sent directly to selected vendor (CC pdqc, kannan, gourav)';
     customerWrap.style.display = 'none';
     vendorSection.style.display = '';
@@ -1979,7 +2139,7 @@ function showFileName(input, displayId) {
 }
 
 function clearComplaint() {
-  ['cmp_filed_by','cmp_customer','cmp_grade','cmp_dim','cmp_batch','cmp_tc','cmp_inv','cmp_inv_date','cmp_qty','cmp_remarks','cmp_vendor_email','cmp_mill_other'].forEach(function(id) {
+  ['cmp_filed_by','cmp_customer','cmp_customer_email','cmp_grade','cmp_dim','cmp_batch','cmp_tc','cmp_inv','cmp_inv_date','cmp_qty','cmp_remarks','cmp_vendor_email','cmp_mill_other'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
   ['cmp_po_file','cmp_so_file','cmp_tc_file','cmp_inv_file','cmp_photos','cmp_photos_lib'].forEach(function(id) {
@@ -2000,6 +2160,7 @@ async function submitComplaint() {
   var d = collectComplaint();
   if (!d.filed_by) { toast('err', 'Please select who filed this'); return; }
   if (currentComplaintType === 'customer' && !d.customer_name) { toast('err', 'Customer name is required'); return; }
+  if (currentComplaintType === 'customer' && !d.customer_email) { toast('err', 'Customer email is required'); return; }
   if (!d.grade) { toast('err', 'Grade is required'); return; }
   if (!d.dimensions) { toast('err', 'Dimensions are required'); return; }
   if (!d.batch_number) { toast('err', 'Batch number is required'); return; }
@@ -2103,6 +2264,7 @@ function collectComplaint() {
     filed_by: gv('cmp_filed_by'),
     qc_date: gv('cmp_date'),
     customer_name: gv('cmp_customer'),
+    customer_email: gv('cmp_customer_email'),
     grade: gv('cmp_grade'),
     dimensions: gv('cmp_dim'),
     batch_number: gv('cmp_batch'),
@@ -2153,10 +2315,11 @@ async function loadComplaintList() {
       return new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
     });
     
-    var openCount = complaintsList.filter(c => c.status === 'Open').length;
-    var reviewCount = complaintsList.filter(c => c.status === 'Under Review').length;
+    var openCount = complaintsList.filter(c => c.status === 'Open' || c.status === 'Under Review' || c.status === 'Escalated for Re-review').length;
+    var salesReviewCount = complaintsList.filter(c => c.status === 'Pending Sales Review').length;
+    var customerResponseCount = complaintsList.filter(c => c.status === 'Awaiting Customer Response').length;
     var escalatedCount = complaintsList.filter(c => c.status === 'Vendor Notified').length;
-    var completedCount = complaintsList.filter(c => (c.status || '').indexOf('Completed') >= 0).length;
+    var completedCount = complaintsList.filter(c => (c.status || '').indexOf('Completed') >= 0 || (c.status || '').indexOf('Closed') >= 0).length;
     
     countEl.textContent = complaintsList.length + ' total · ' + openCount + ' open';
     
@@ -2185,7 +2348,8 @@ function filterComplaintList(status) {
     }
   });
   var filtered = status === 'all' ? complaintsList :
-    status === 'Completed' ? complaintsList.filter(c => (c.status || '').indexOf('Completed') >= 0) :
+    status === 'Completed' ? complaintsList.filter(c => (c.status || '').indexOf('Completed') >= 0 || (c.status || '').indexOf('Closed') >= 0) :
+    status === 'Open' ? complaintsList.filter(c => c.status === 'Open' || c.status === 'Under Review' || c.status === 'Escalated for Re-review') :
     complaintsList.filter(c => c.status === status);
   renderComplaintList(filtered);
 }
@@ -2198,20 +2362,30 @@ function renderComplaintList(list) {
     return;
   }
   itemsEl.innerHTML = list.map(function(c) {
-    var statusColor = '#3b82f6'; // blue Open
-    if (c.status === 'Under Review') statusColor = '#eab308';
-    else if (c.status === 'Vendor Notified') statusColor = '#f97316';
-    else if ((c.status || '').indexOf('Completed') >= 0) statusColor = '#10b981';
+    var statusColor = getStatusColor(c.status);
     var when = c.timestamp ? new Date(c.timestamp).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '';
+    var sourceLabel = c.source === 'customer' ? '💼 Sales' : c.source === 'internal' ? '🏭 Purchase' : '';
     return '<div onclick="openComplaintDetail(\'' + c.case_id + '\')" style="background:#fff;border-bottom:1px solid var(--gray-100);padding:14px 16px;cursor:pointer">'
       + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">'
       + '<div style="flex:1"><div style="font-weight:700;font-size:14px;color:var(--gray-800)">' + (c.case_id || '-') + '</div>'
       + '<div style="font-size:12px;color:var(--gray-600);margin-top:2px">' + escHtml(c.customer_name || c.batch_number || '-') + '</div></div>'
       + '<div style="padding:3px 10px;border-radius:12px;background:' + statusColor + '20;color:' + statusColor + ';font-size:11px;font-weight:700;white-space:nowrap">' + (c.status || 'Open') + '</div>'
       + '</div>'
-      + '<div style="font-size:11px;color:var(--gray-400)">' + escHtml(c.mill || '') + (c.mill && c.batch_number ? ' · ' : '') + escHtml(c.batch_number || '') + ' · ' + when + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400)">' + sourceLabel + (sourceLabel && (c.mill || c.batch_number) ? ' · ' : '') + escHtml(c.mill || '') + (c.mill && c.batch_number ? ' · ' : '') + escHtml(c.batch_number || '') + ' · ' + when + '</div>'
       + '</div>';
   }).join('');
+}
+
+function getStatusColor(status) {
+  if (!status) return '#3b82f6';
+  if (status === 'Open') return '#3b82f6';
+  if (status === 'Under Review') return '#eab308';
+  if (status === 'Pending Sales Review') return '#7c3aed';
+  if (status === 'Awaiting Customer Response') return '#06b6d4';
+  if (status === 'Escalated for Re-review') return '#f97316';
+  if (status === 'Vendor Notified') return '#f97316';
+  if (status.indexOf('Completed') >= 0 || status.indexOf('Closed') >= 0) return '#10b981';
+  return '#6b7280';
 }
 
 function escHtml(s) {
@@ -2229,21 +2403,47 @@ async function openComplaintDetail(caseId) {
   document.getElementById('cmp_detail_title').textContent = caseId;
   document.getElementById('cmp_detail_status').textContent = c.status || 'Open';
   
-  var statusColor = '#3b82f6';
-  if (c.status === 'Under Review') statusColor = '#eab308';
-  else if (c.status === 'Vendor Notified') statusColor = '#f97316';
-  else if ((c.status || '').indexOf('Completed') >= 0) statusColor = '#10b981';
+  var statusColor = getStatusColor(c.status);
   
   var when = c.timestamp ? new Date(c.timestamp).toLocaleString('en-IN', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' }) : '';
   
   var nextActions = '';
-  if (c.status === 'Open' || c.status === 'Under Review') {
-    nextActions = '<div style="padding:14px 16px;display:flex;gap:8px;flex-direction:column">'
-      + '<button onclick="showAnalysisDialog()" style="padding:14px;background:#1A6DAF;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Add Production Analysis & Close</button>'
-      + '<button onclick="showEscalateDialog()" style="padding:14px;background:#f97316;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Escalate to Vendor</button>'
-      + '</div>';
-  } else if (c.status === 'Vendor Notified') {
-    nextActions = '<div style="padding:14px 16px"><button onclick="showResolveDialog()" style="width:100%;padding:14px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Mark Resolved</button></div>';
+  var isSalesQC = c.source === 'customer';
+  var isPurchaseQC = c.source === 'internal';
+  
+  if (isPurchaseQC) {
+    // Purchase QC: Internal -> Vendor flow
+    if (c.status === 'Open' || c.status === 'Under Review') {
+      nextActions = '<div style="padding:14px 16px;display:flex;gap:8px;flex-direction:column">'
+        + '<button onclick="showAnalysisDialog()" style="padding:14px;background:#1A6DAF;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Add Production Analysis & Close</button>'
+        + '<button onclick="showEscalateDialog()" style="padding:14px;background:#f97316;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Escalate to Vendor</button>'
+        + '</div>';
+    } else if (c.status === 'Vendor Notified') {
+      nextActions = '<div style="padding:14px 16px"><button onclick="showResolveDialog()" style="width:100%;padding:14px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Mark Resolved</button></div>';
+    }
+  } else if (isSalesQC) {
+    // Sales QC: 5-stage workflow
+    if (c.status === 'Open' || c.status === 'Under Review' || c.status === 'Escalated for Re-review') {
+      // Stage 2: Production analyzes and sends to Sales
+      nextActions = '<div style="padding:14px 16px;display:flex;gap:8px;flex-direction:column">'
+        + '<div style="font-size:12px;color:var(--gray-400);text-align:center;margin-bottom:4px">For Production team:</div>'
+        + '<button onclick="showSalesAnalysisDialog()" style="padding:14px;background:#1A6DAF;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Submit Production Analysis → Sales</button>'
+        + '</div>';
+    } else if (c.status === 'Pending Sales Review') {
+      // Stage 3: Sales reviews + sends to customer
+      nextActions = '<div style="padding:14px 16px;display:flex;gap:8px;flex-direction:column">'
+        + '<div style="font-size:12px;color:var(--gray-400);text-align:center;margin-bottom:4px">For Sales team:</div>'
+        + '<button onclick="showSendToCustomerDialog()" style="padding:14px;background:#7c3aed;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">Review & Send to Customer</button>'
+        + '</div>';
+    } else if (c.status === 'Awaiting Customer Response') {
+      // Stage 4: Sales marks customer outcome
+      nextActions = '<div style="padding:14px 16px;display:flex;gap:8px;flex-direction:column">'
+        + '<div style="font-size:12px;color:var(--gray-400);text-align:center;margin-bottom:4px">Customer responded:</div>'
+        + '<button onclick="showCustomerAcceptedDialog()" style="padding:14px;background:#10b981;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">✅ Customer Accepted → Close</button>'
+        + '<button onclick="showCustomerEscalateDialog()" style="padding:14px;background:#f97316;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">🔁 Customer Wants Re-review</button>'
+        + '<button onclick="showStillUnderReviewDialog()" style="padding:14px;background:#6b7280;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">⏳ Still Under Review</button>'
+        + '</div>';
+    }
   }
   
   document.getElementById('cmp_detail_body').innerHTML = 
@@ -2266,7 +2466,20 @@ async function openComplaintDetail(caseId) {
     + '</div>'
     + (c.reviewed_by || c.root_cause ? '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
         + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">PRODUCTION ANALYSIS</div>'
-        + detailRow('Reviewed By', c.reviewed_by) + detailRow('Root Cause', c.root_cause) + detailRow('Decision', c.decision)
+        + detailRow('Reviewed By', c.reviewed_by) + detailRow('Root Cause', c.root_cause)
+        + (c.production_comments ? detailRow('Comments', c.production_comments) : '')
+        + detailRow('Decision', c.decision)
+        + '</div>' : '')
+    + (c.sales_reviewer || c.customer_message ? '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
+        + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">SENT TO CUSTOMER</div>'
+        + detailRow('Sales Reviewer', c.sales_reviewer)
+        + detailRow('Customer Email', c.customer_email)
+        + (c.customer_message ? detailRow('Message', c.customer_message.substring(0, 200) + (c.customer_message.length > 200 ? '...' : '')) : '')
+        + '</div>' : '')
+    + (c.customer_outcome_by ? '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
+        + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">CUSTOMER RESPONSE</div>'
+        + detailRow('Marked By', c.customer_outcome_by)
+        + detailRow('Customer Notes', c.customer_outcome_notes)
         + '</div>' : '')
     + (c.vendor_name ? '<div style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
         + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">VENDOR ESCALATION</div>'
@@ -2457,6 +2670,246 @@ async function submitResolve() {
     btn.disabled = false;
     spin.style.display = 'none';
     lbl.textContent = 'Mark Resolved';
+  }
+}
+
+
+// ============================================================
+//  SALES QC: PRODUCTION ANALYSIS (Stage 2)
+// ============================================================
+function showSalesAnalysisDialog() {
+  document.getElementById('sanl_case_id').textContent = currentCaseId;
+  ['sanl_reviewer','sanl_root_cause','sanl_comments'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['sanl_8d_file','sanl_extra_file'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.value = '';
+  });
+  ['sanl_8d_name','sanl_extra_name'].forEach(function(id){
+    var el = document.getElementById(id); if (el) el.innerHTML = '';
+  });
+  showScreen('sales-analysis');
+}
+
+async function submitSalesAnalysis() {
+  var reviewer = gv('sanl_reviewer');
+  var rootCause = gv('sanl_root_cause');
+  var comments = gv('sanl_comments');
+  
+  if (!reviewer) { toast('err', 'Reviewer name is required'); return; }
+  if (!rootCause) { toast('err', 'Root cause is required'); return; }
+  if (!comments) { toast('err', 'Production comments are required'); return; }
+  
+  var payload = {
+    case_id: currentCaseId,
+    reviewed_by: reviewer,
+    root_cause: rootCause,
+    production_comments: comments,
+    decision: 'Sent to Sales',
+    status: 'Pending Sales Review'
+  };
+  
+  var f8d = document.getElementById('sanl_8d_file');
+  if (f8d.files[0]) {
+    payload.file_8d = {
+      name: f8d.files[0].name,
+      type: f8d.files[0].type,
+      data: await readFileAsDataURL(f8d.files[0])
+    };
+  }
+  var fex = document.getElementById('sanl_extra_file');
+  if (fex.files[0]) {
+    payload.file_extra = {
+      name: fex.files[0].name,
+      type: fex.files[0].type,
+      data: await readFileAsDataURL(fex.files[0])
+    };
+  }
+  
+  var btn = document.getElementById('sanl_submit');
+  var spin = document.getElementById('sanl_spin');
+  var lbl = document.getElementById('sanl_lbl');
+  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Submitting...';
+  
+  try {
+    var resp = await fetch(SERVER_URL + '/complaint/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+      var t = await resp.text();
+      throw new Error('Server ' + resp.status + ': ' + t.substring(0, 150));
+    }
+    var r = await resp.json();
+    if (r.status !== 'success') throw new Error(r.message || 'Update failed');
+    toast('ok', 'Submitted to Sales');
+    await loadComplaintList();
+    showScreen('complaint-list');
+  } catch(e) {
+    toast('err', 'Save failed: ' + e.message);
+  } finally {
+    btn.disabled = false; spin.style.display = 'none'; lbl.textContent = 'Submit to Sales';
+  }
+}
+
+// ============================================================
+//  SALES QC: SEND TO CUSTOMER (Stage 3)
+// ============================================================
+function showSendToCustomerDialog() {
+  var c = complaintsList.find(x => x.case_id === currentCaseId);
+  if (!c) { toast('err', 'Case not found'); return; }
+  document.getElementById('stoc_case_id').textContent = currentCaseId;
+  document.getElementById('stoc_email').value = c.customer_email || '';
+  document.getElementById('stoc_sales_reviewer').value = '';
+  
+  // Show production analysis for reference
+  var prodHtml = (c.root_cause ? '<div style="margin-bottom:8px"><b>Root Cause:</b> ' + escHtml(c.root_cause) + '</div>' : '')
+    + (c.production_comments ? '<div><b>Production Comments:</b> ' + escHtml(c.production_comments) + '</div>' : '');
+  if (!prodHtml) prodHtml = '<i>No production analysis yet</i>';
+  document.getElementById('stoc_prod_analysis').innerHTML = prodHtml;
+  
+  // Auto-fill template message to customer
+  var template = 'Dear ' + (c.customer_name || 'Sir/Madam') + ',\n\n'
+    + 'Greetings from Bharat Steel (Chennai) Pvt. Ltd.\n\n'
+    + 'Thank you for bringing the quality concern regarding Invoice No: ' + (c.invoice_no || '-')
+    + ' (Batch: ' + (c.batch_number || '-') + ') to our attention.\n\n'
+    + 'We have conducted a thorough internal investigation of the reported issue. '
+    + 'Please find below our findings and the corrective measures we have taken:\n\n'
+    + (c.production_comments || '[Production response goes here]') + '\n\n'
+    + 'Attached please find the formal Quality / Defect Report along with our 8D analysis '
+    + 'for your reference and records.\n\n'
+    + 'We deeply value our relationship with you and assure you that we are committed to '
+    + 'maintaining the highest standards of quality. Should you require any further clarification '
+    + 'or have additional concerns, please do not hesitate to reach out to us.\n\n'
+    + 'We look forward to your continued trust and partnership.\n\n'
+    + 'Warm Regards,\n'
+    + 'Sales Team\n'
+    + 'Bharat Steel (Chennai) Pvt. Ltd.';
+  document.getElementById('stoc_message').value = template;
+  showScreen('send-customer');
+}
+
+async function submitSendToCustomer() {
+  var custEmail = gv('stoc_email');
+  var reviewer = gv('stoc_sales_reviewer');
+  var message = gv('stoc_message');
+  
+  if (!custEmail) { toast('err', 'Customer email is required'); return; }
+  if (!reviewer) { toast('err', 'Your name is required'); return; }
+  if (!message) { toast('err', 'Message is required'); return; }
+  
+  var payload = {
+    case_id: currentCaseId,
+    customer_email: custEmail,
+    sales_reviewer: reviewer,
+    customer_message: message,
+    status: 'Awaiting Customer Response',
+    stage_action: 'send_to_customer'
+  };
+  
+  var btn = document.getElementById('stoc_submit');
+  var spin = document.getElementById('stoc_spin');
+  var lbl = document.getElementById('stoc_lbl');
+  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Sending...';
+  
+  try {
+    var resp = await fetch(SERVER_URL + '/complaint/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+      var t = await resp.text();
+      throw new Error('Server ' + resp.status + ': ' + t.substring(0, 150));
+    }
+    var r = await resp.json();
+    if (r.status !== 'success') throw new Error(r.message || 'Update failed');
+    toast('ok', 'Email sent to customer');
+    await loadComplaintList();
+    showScreen('complaint-list');
+  } catch(e) {
+    toast('err', 'Send failed: ' + e.message);
+  } finally {
+    btn.disabled = false; spin.style.display = 'none'; lbl.textContent = 'Send Email';
+  }
+}
+
+// ============================================================
+//  SALES QC: CUSTOMER OUTCOME (Stage 4)
+// ============================================================
+function showCustomerAcceptedDialog() {
+  setupCustomerOutcome('accepted', 'Complaint Closed', '#10b981', 'CLOSED');
+}
+function showCustomerEscalateDialog() {
+  setupCustomerOutcome('escalate', 'Complaint Escalated for Re-review', '#f97316', 'RE-REVIEW');
+}
+function showStillUnderReviewDialog() {
+  setupCustomerOutcome('review', 'Still Under Review', '#6b7280', 'REVIEW');
+}
+
+function setupCustomerOutcome(action, label, color, badge) {
+  window._coutAction = action;
+  document.getElementById('cout_case_id').textContent = currentCaseId;
+  document.getElementById('cout_title').textContent = label;
+  document.getElementById('cout_topbar').style.background = color;
+  document.getElementById('cout_action_lbl').textContent = label;
+  document.getElementById('cout_badge').textContent = badge;
+  document.getElementById('cout_submit').style.background = color;
+  document.getElementById('cout_by').value = '';
+  document.getElementById('cout_notes').value = '';
+  showScreen('customer-outcome');
+}
+
+async function submitCustomerOutcome() {
+  var by = gv('cout_by');
+  var notes = gv('cout_notes');
+  var action = window._coutAction;
+  
+  if (!by) { toast('err', 'Your name is required'); return; }
+  if (!notes) { toast('err', 'Customer response notes required'); return; }
+  
+  var payload = {
+    case_id: currentCaseId,
+    customer_outcome_by: by,
+    customer_outcome_notes: notes
+  };
+  
+  if (action === 'accepted') {
+    payload.status = 'Completed (Customer Accepted)';
+    payload.resolved_by = by;
+    payload.resolution = notes;
+    payload.resolved_date = new Date().toLocaleDateString('en-IN');
+    payload.stage_action = 'customer_accepted';
+  } else if (action === 'escalate') {
+    payload.status = 'Escalated for Re-review';
+    payload.stage_action = 'customer_escalated';
+  } else {
+    payload.status = 'Under Review';
+    payload.stage_action = 'still_under_review';
+  }
+  
+  var btn = document.getElementById('cout_submit');
+  var spin = document.getElementById('cout_spin');
+  var lbl = document.getElementById('cout_lbl');
+  btn.disabled = true; spin.style.display = 'inline-block'; lbl.textContent = 'Submitting...';
+  
+  try {
+    var resp = await fetch(SERVER_URL + '/complaint/update', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    if (!resp.ok) {
+      var t = await resp.text();
+      throw new Error('Server ' + resp.status + ': ' + t.substring(0, 150));
+    }
+    var r = await resp.json();
+    if (r.status !== 'success') throw new Error(r.message || 'Update failed');
+    toast('ok', 'Status updated');
+    await loadComplaintList();
+    showScreen('complaint-list');
+  } catch(e) {
+    toast('err', 'Update failed: ' + e.message);
+  } finally {
+    btn.disabled = false; spin.style.display = 'none'; lbl.textContent = 'Submit';
   }
 }
 

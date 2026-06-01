@@ -702,7 +702,9 @@ app.get('/stats', async (req, res) => {
               status: v[15]||'Open',
               reviewed_by: v[16]||'', root_cause: v[17]||'', decision: v[18]||'',
               vendor_name: v[19]||'', vendor_email: v[20]||'',
-              resolution: v[21]||'', resolved_date: v[22]||''
+              resolution: v[21]||'', resolved_date: v[22]||'',
+              customer_email: v[23]||'', production_comments: v[24]||'', sales_reviewer: v[25]||'',
+              customer_message: v[26]||'', customer_outcome_by: v[27]||'', customer_outcome_notes: v[28]||''
             };
           });
         } else result.Complaints = [];
@@ -842,7 +844,7 @@ app.get('/init-complaints', async (req, res) => {
       // Easiest: create blank xlsx using PDFKit isn't possible; use SheetJS
       // For now, return instructions to user
       result.todo = 'Excel file does not exist. Please create it manually in OneDrive at: ' + xlsxPath;
-      result.excel_headers = ['Case ID','Timestamp','Source','Filed By','Customer Name','Batch Number','Grade','Dimensions','TC Number','Invoice No','Invoice Date','Quantity','Mill','Defect Type','Remarks','Status','Reviewed By','Root Cause','Decision','Vendor Name','Vendor Email','Resolution','Resolved Date'];
+      result.excel_headers = ['Case ID','Timestamp','Source','Filed By','Customer Name','Batch Number','Grade','Dimensions','TC Number','Invoice No','Invoice Date','Quantity','Mill','Defect Type','Remarks','Status','Reviewed By','Root Cause','Decision','Vendor Name','Vendor Email','Resolution','Resolved Date','Customer Email','Production Comments','Sales Reviewer','Customer Message','Customer Outcome By','Customer Outcome Notes'];
       result.instructions = '1) Open OneDrive 2) Go to BSC Inspections/Complaints/ 3) Create new Excel file named Complaints_Log.xlsx 4) Add the 23 column headers shown in excel_headers in row 1 5) Select all data (Ctrl+A in row 1) 6) Insert > Table (check "My table has headers") 7) Click the table > Table Design tab > Table Name: "ComplaintsLog" 8) Save and close.';
     }
     
@@ -989,6 +991,8 @@ app.post('/complaint/update', async (req, res) => {
 
     // Merge new fields into existing row
     const updated = [...existing];
+    // Make sure we have 29 columns
+    while (updated.length < 29) updated.push('');
     if (data.status)        updated[15] = data.status;
     if (data.reviewed_by)   updated[16] = data.reviewed_by;
     if (data.root_cause)    updated[17] = data.root_cause;
@@ -997,6 +1001,12 @@ app.post('/complaint/update', async (req, res) => {
     if (data.vendor_email)  updated[20] = data.vendor_email;
     if (data.resolution)    updated[21] = data.resolution;
     if (data.resolved_date) updated[22] = data.resolved_date;
+    if (data.customer_email)        updated[23] = data.customer_email;
+    if (data.production_comments)   updated[24] = data.production_comments;
+    if (data.sales_reviewer)        updated[25] = data.sales_reviewer;
+    if (data.customer_message)      updated[26] = data.customer_message;
+    if (data.customer_outcome_by)   updated[27] = data.customer_outcome_by;
+    if (data.customer_outcome_notes) updated[28] = data.customer_outcome_notes;
 
     // Update via Graph API patch on the table row
     const patchUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/ComplaintsLog/rows/itemAt(index=' + rowIndex + ')';
@@ -1090,12 +1100,101 @@ app.post('/complaint/update', async (req, res) => {
       const isEscalateToVendor = data.decision === 'Escalate to Vendor' && data.vendor_email;
       const isInternalClose = data.decision === 'Close Internally' || data.status === 'Completed (Internal)';
       const isVendorResolved = data.status === 'Completed (Vendor)';
+      // Sales QC flow
+      const isSalesProdAnalysis = data.stage_action === 'production_analysis_to_sales' || (data.decision === 'Sent to Sales' && data.status === 'Pending Sales Review');
+      const isSendToCustomer = data.stage_action === 'send_to_customer';
+      const isCustomerAccepted = data.stage_action === 'customer_accepted';
+      const isCustomerEscalated = data.stage_action === 'customer_escalated';
       
       // Add resolved info to email payload
       dataForEmail.vendor_message = data.vendor_message || '';
       dataForEmail.resolved_by = data.resolved_by || '';
+      // Sales QC extra fields for email body
+      dataForEmail.production_comments = data.production_comments || existing[24] || '';
+      dataForEmail.customer_email = data.customer_email || existing[23] || '';
+      dataForEmail.customer_outcome_notes = data.customer_outcome_notes || '';
       
-      if (isEscalateToVendor) {
+      // ----- SALES QC EMAIL BRANCHES -----
+      if (isSalesProdAnalysis) {
+        // Stage 2: Production submits analysis -> sales
+        const subject = 'Production Analysis Ready for Review - ' + data.case_id + ' - ' + (existing[4] || '');
+        const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">'
+          + '<p>Dear Sales Team,</p>'
+          + '<p>Production team has completed analysis for case <b>' + escHtml(data.case_id) + '</b>.</p>'
+          + '<p>Please review the analysis and prepare the response to be sent to the customer.</p>'
+          + '<p><b>Customer:</b> ' + escHtml(existing[4] || '-') + '</p>'
+          + '<p><b>Batch:</b> ' + escHtml(existing[5] || '-') + ' | <b>Invoice:</b> ' + escHtml(existing[9] || '-') + '</p>'
+          + '<p><b>Root Cause:</b><br>' + escHtml(data.root_cause || '-') + '</p>'
+          + '<p><b>Production Comments / Response Draft:</b><br>' + escHtml(data.production_comments || '-').replace(/\n/g,'<br>') + '</p>'
+          + '<div style="margin:20px 0">'
+          + '<a href="https://qms.bharatsteels.in/?case=' + encodeURIComponent(data.case_id) + '" style="display:inline-block;background:#1A6DAF;color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:600;font-size:14px">Review & Send to Customer →</a>'
+          + '</div>'
+          + '<p>Regards,<br><b>Bharat Steel (Chennai) Pvt. Ltd.</b></p>'
+          + '</div>';
+        sendEmail({
+          to: ['info@bharatsteels.in'],
+          cc: ['kannan@bharatsteels.in', 'pdqc@bharatsteels.in'],
+          subject: subject, html: html, attachments: attachments
+        }).then(() => console.log('Sales-prod-analysis email sent for', data.case_id)).catch(err => console.error('Sales-prod-analysis email error:', err.message));
+      } else if (isSendToCustomer) {
+        // Stage 3: Sales sends response to customer
+        const custEmail = data.customer_email;
+        if (!custEmail) {
+          console.log('No customer email available for', data.case_id);
+        } else {
+          const subject = 'Quality Complaint Response - ' + (existing[4] || '') + ' - ' + (existing[9] || data.case_id);
+          // Filter attachments: include PDF + 8D only, NOT TC/Invoice/PO/SO
+          const customerAttachments = attachments.filter(a => {
+            const n = (a.filename || '').toLowerCase();
+            return n.indexOf('defect_report') >= 0 || n.indexOf('8d') >= 0;
+          });
+          const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#222;white-space:pre-wrap">'
+            + escHtml(data.customer_message || '').replace(/\n/g, '<br>')
+            + '</div>';
+          sendEmail({
+            to: [custEmail],
+            cc: ['info@bharatsteels.in'],
+            subject: subject, html: html, attachments: customerAttachments
+          }).then(() => console.log('Customer email sent for', data.case_id, 'to', custEmail)).catch(err => console.error('Customer email error:', err.message));
+        }
+      } else if (isCustomerAccepted) {
+        // Stage 4a: Customer accepted -> closed
+        const subject = 'Sales Quality Complaint Closed - ' + (existing[4] || '') + ' - ' + (existing[9] || '') + ' - ' + data.case_id;
+        const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">'
+          + '<p>Dear Team,</p>'
+          + '<p>The sales quality complaint <b>' + escHtml(data.case_id) + '</b> has been closed.</p>'
+          + '<p><b>Customer:</b> ' + escHtml(existing[4] || '-') + '</p>'
+          + '<p><b>Invoice No:</b> ' + escHtml(existing[9] || '-') + '</p>'
+          + '<p><b>Customer Response:</b><br>' + escHtml(data.customer_outcome_notes || '-').replace(/\n/g,'<br>') + '</p>'
+          + '<p><b>Closed By:</b> ' + escHtml(data.customer_outcome_by || '-') + '</p>'
+          + '<p>Regards,<br><b>Bharat Steel (Chennai) Pvt. Ltd.</b></p>'
+          + '</div>';
+        sendEmail({
+          to: ['info@bharatsteels.in'],
+          cc: ['pdqc@bharatsteels.in', 'kannan@bharatsteels.in'],
+          subject: subject, html: html
+        }).then(() => console.log('Customer-accepted email sent for', data.case_id)).catch(err => console.error('Customer-accepted email error:', err.message));
+      } else if (isCustomerEscalated) {
+        // Stage 4b: Customer wants re-review -> back to production
+        const subject = 'Complaint Escalated for Re-review - ' + (existing[4] || '') + ' - ' + data.case_id;
+        const html = '<div style="font-family:Arial,sans-serif;font-size:14px;color:#222">'
+          + '<p>Dear PDQC Team,</p>'
+          + '<p>Customer has requested further review for case <b>' + escHtml(data.case_id) + '</b>.</p>'
+          + '<p><b>Customer:</b> ' + escHtml(existing[4] || '-') + '</p>'
+          + '<p><b>Batch:</b> ' + escHtml(existing[5] || '-') + ' | <b>Invoice:</b> ' + escHtml(existing[9] || '-') + '</p>'
+          + '<p><b>Customer Response:</b><br>' + escHtml(data.customer_outcome_notes || '-').replace(/\n/g,'<br>') + '</p>'
+          + '<p><b>Marked By (Sales):</b> ' + escHtml(data.customer_outcome_by || '-') + '</p>'
+          + '<div style="margin:20px 0">'
+          + '<a href="https://qms.bharatsteels.in/?case=' + encodeURIComponent(data.case_id) + '" style="display:inline-block;background:#1A6DAF;color:#fff;text-decoration:none;padding:12px 22px;border-radius:6px;font-weight:600;font-size:14px">Review Case →</a>'
+          + '</div>'
+          + '<p>Regards,<br><b>Bharat Steel (Chennai) Pvt. Ltd.</b></p>'
+          + '</div>';
+        sendEmail({
+          to: ['pdqc@bharatsteels.in'],
+          cc: ['info@bharatsteels.in', 'kannan@bharatsteels.in'],
+          subject: subject, html: html
+        }).then(() => console.log('Customer-escalated email sent for', data.case_id)).catch(err => console.error('Customer-escalated email error:', err.message));
+      } else if (isEscalateToVendor) {
         // Stage: Escalate to vendor
         const subject = 'Quality Complaint - Action Required - ' + data.case_id;
         let html = buildComplaintEmailBody(dataForEmail, 'to_vendor');
@@ -1175,7 +1274,13 @@ async function appendComplaintRow(token, data) {
     data.remarks||'', data.status||'Open',
     data.reviewed_by||'', data.root_cause||'', data.decision||'',
     data.vendor_name||'', data.vendor_email||'',
-    data.resolution||'', data.resolved_date||''
+    data.resolution||'', data.resolved_date||'',
+    data.customer_email||'',          // col 23
+    data.production_comments||'',     // col 24
+    data.sales_reviewer||'',          // col 25
+    data.customer_message||'',        // col 26
+    data.customer_outcome_by||'',     // col 27
+    data.customer_outcome_notes||''   // col 28
   ]];
   const rowResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/ComplaintsLog/rows/add', {
     method:'POST', headers:{ 'Authorization':'Bearer ' + token, 'Content-Type':'application/json' }, body:JSON.stringify({ values })
