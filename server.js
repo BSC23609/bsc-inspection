@@ -1348,6 +1348,100 @@ async function appendExcelRow(token, folder, data, fileName) {
 }
 
 
+
+// =====================================================
+// COMPLAINT FILES - list & stream for in-app PDF viewer
+// =====================================================
+
+// GET /complaint/files?caseId=BSC-QC-021-2026 → list of files for that case
+app.get('/complaint/files', async (req, res) => {
+  const caseId = req.query.caseId;
+  if (!caseId) return res.status(400).json({ error: 'caseId required' });
+  try {
+    const token = await getToken();
+    const files = [];
+    
+    // 1. The Defect Report PDF
+    const pdfPath = 'BSC Inspections/Complaints/PDF/' + caseId + '_Defect_Report.pdf';
+    try {
+      const pdfMeta = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(pdfPath), { headers: { 'Authorization': 'Bearer ' + token } });
+      if (pdfMeta.ok) {
+        const m = await pdfMeta.json();
+        files.push({
+          name: caseId + '_Defect_Report.pdf',
+          path: pdfPath,
+          size: m.size || 0,
+          type: 'application/pdf',
+          category: 'report'
+        });
+      }
+    } catch(e) {}
+    
+    // 2. All files in the Attachments folder
+    const attachFolder = 'BSC Inspections/Complaints/Attachments/' + caseId;
+    try {
+      const listResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(attachFolder) + ':/children?$top=50', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (listResp.ok) {
+        const items = (await listResp.json()).value || [];
+        items.forEach(it => {
+          if (it.folder) return; // skip subfolders
+          const name = it.name || '';
+          let category = 'other';
+          if (/^PO_/i.test(name)) category = 'po';
+          else if (/^SO_/i.test(name)) category = 'so';
+          else if (/^TC_/i.test(name)) category = 'tc';
+          else if (/^Invoice_RM_/i.test(name)) category = 'invoice_rm';
+          else if (/^Invoice_/i.test(name)) category = 'invoice';
+          else if (/^8D_Report/i.test(name)) category = '8d';
+          else if (/\.(jpe?g|png|gif|webp)$/i.test(name)) category = 'photo';
+          files.push({
+            name: name,
+            path: attachFolder + '/' + name,
+            size: it.size || 0,
+            type: (it.file && it.file.mimeType) || 'application/octet-stream',
+            category: category
+          });
+        });
+      }
+    } catch(e) {}
+    
+    res.json({ caseId: caseId, files: files });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /complaint/file?path=<path>&download=1 → stream file from OneDrive
+app.get('/complaint/file', async (req, res) => {
+  const filePath = req.query.path;
+  const download = req.query.download === '1';
+  if (!filePath) return res.status(400).send('path required');
+  // Security: only allow paths under BSC Inspections/Complaints/
+  if (!filePath.startsWith('BSC Inspections/Complaints/')) {
+    return res.status(403).send('Access denied');
+  }
+  try {
+    const token = await getToken();
+    const upstream = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(filePath) + ':/content', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!upstream.ok) {
+      return res.status(upstream.status).send('File not found');
+    }
+    // Forward content type
+    const ct = upstream.headers.get('content-type') || 'application/octet-stream';
+    res.setHeader('Content-Type', ct);
+    // Inline vs attachment
+    const fname = filePath.split('/').pop();
+    res.setHeader('Content-Disposition', (download ? 'attachment' : 'inline') + '; filename="' + fname + '"');
+    // Allow embedding in iframe from same origin
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    // Stream the response
+    const buf = await upstream.buffer();
+    res.send(buf);
+  } catch(err) {
+    res.status(500).send('Error: ' + err.message);
+  }
+});
+
 // =====================================================
 // ADMIN: Settings storage on OneDrive
 // =====================================================

@@ -837,11 +837,31 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       </div>
       <div class="card-arrow">›</div>
     </div>
-    <div class="form-card" onclick="openComplaintList()">
-      <div class="card-icon" style="background:#e8f2fb;color:#1A6DAF">📋</div>
+    <div style="height:1px;background:var(--gray-200);margin:10px 0"></div>
+    
+    <div class="form-card" onclick="openPendingProduction()">
+      <div class="card-icon" style="background:#dbeafe;color:#1A6DAF">🔧</div>
       <div class="card-body">
-        <div class="card-title">View All Cases</div>
-        <div class="card-desc">See status of all open and closed quality complaints</div>
+        <div class="card-title">Pending Actions (Production) <span id="badge_pending_prod" style="display:none;background:#1A6DAF;color:#fff;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-left:6px"></span></div>
+        <div class="card-desc">Cases awaiting Production team's analysis or vendor follow-up</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+    
+    <div class="form-card" onclick="openPendingSales()">
+      <div class="card-icon" style="background:#ede9fe;color:#7c3aed">💼</div>
+      <div class="card-body">
+        <div class="card-title">Pending Actions (Sales) <span id="badge_pending_sales" style="display:none;background:#7c3aed;color:#fff;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-left:6px"></span></div>
+        <div class="card-desc">Cases awaiting Sales team's review or customer follow-up</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+    
+    <div class="form-card" onclick="openOverallDashboard()">
+      <div class="card-icon" style="background:#f3f4f6;color:#374151">🗂️</div>
+      <div class="card-body">
+        <div class="card-title">Overall Dashboard <span id="badge_total" style="background:#374151;color:#fff;padding:1px 8px;border-radius:10px;font-size:11px;font-weight:700;margin-left:6px">0</span></div>
+        <div class="card-desc">All cases (open & closed), search, date filter, view all uploaded files</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
@@ -1195,6 +1215,87 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 </div>
 
 
+
+
+<!-- ============================
+     PENDING PRODUCTION SCREEN
+     ============================ -->
+<div class="screen" id="screen-pending-prod">
+  <div class="form-topbar" style="background:#1A6DAF">
+    <button class="back-btn" onclick="showScreen('complaint-menu')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Pending — Production</div>
+      <div class="topbar-sub" id="pp_count">Loading...</div>
+    </div>
+    <button class="back-btn" onclick="loadPendingProduction()" style="font-size:14px">↻</button>
+  </div>
+  <div class="form-scroll" id="pp_body">
+    <div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div>
+  </div>
+</div>
+
+<!-- ============================
+     PENDING SALES SCREEN
+     ============================ -->
+<div class="screen" id="screen-pending-sales">
+  <div class="form-topbar" style="background:#7c3aed">
+    <button class="back-btn" onclick="showScreen('complaint-menu')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Pending — Sales</div>
+      <div class="topbar-sub" id="ps_count">Loading...</div>
+    </div>
+    <button class="back-btn" onclick="loadPendingSales()" style="font-size:14px">↻</button>
+  </div>
+  <div class="form-scroll" id="ps_body">
+    <div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div>
+  </div>
+</div>
+
+<!-- ============================
+     OVERALL DASHBOARD SCREEN
+     ============================ -->
+<div class="screen" id="screen-overall-dashboard">
+  <div class="form-topbar" style="background:#374151">
+    <button class="back-btn" onclick="showScreen('complaint-menu')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">Overall Dashboard</div>
+      <div class="topbar-sub" id="od_count">Loading...</div>
+    </div>
+    <button class="back-btn" onclick="loadOverallDashboard()" style="font-size:14px">↻</button>
+  </div>
+  <div style="background:#fff;padding:12px 16px;border-bottom:1px solid var(--gray-200);position:sticky;top:0;z-index:5">
+    <div class="fg fg-1">
+      <input type="text" id="od_search" placeholder="Search by case ID, customer, batch, invoice, TC, filed by..." oninput="renderOverallDashboard()" style="width:100%;padding:10px 14px;border:1.5px solid var(--gray-200);border-radius:8px;font-size:14px">
+    </div>
+    <div class="fg fg-3" style="margin-top:10px">
+      <input type="date" id="od_from" onchange="renderOverallDashboard()" placeholder="From">
+      <input type="date" id="od_to" onchange="renderOverallDashboard()" placeholder="To">
+      <select id="od_date_mode" onchange="renderOverallDashboard()">
+        <option value="raised">Raised date</option>
+        <option value="closed">Closed date</option>
+      </select>
+    </div>
+    <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;overflow-x:auto" id="od_filter_chips"></div>
+  </div>
+  <div class="form-scroll" id="od_body" style="padding-top:0">
+    <div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div>
+  </div>
+</div>
+
+<!-- ============================
+     PDF VIEWER MODAL (in-app)
+     ============================ -->
+<div id="pdf_modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:10000;flex-direction:column">
+  <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#1A6DAF;color:#fff">
+    <div style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600" id="pdf_modal_title">Document</div>
+    <a id="pdf_modal_download" href="#" download style="background:rgba(255,255,255,0.2);color:#fff;text-decoration:none;padding:6px 12px;border-radius:6px;font-size:13px;font-weight:600;margin-right:8px">⬇ Download</a>
+    <button onclick="closePdfModal()" style="background:rgba(255,255,255,0.2);border:none;color:#fff;font-size:20px;width:36px;height:36px;border-radius:18px;cursor:pointer">×</button>
+  </div>
+  <div style="flex:1;background:#222;display:flex;align-items:center;justify-content:center;overflow:hidden">
+    <div id="pdf_modal_loading" style="color:#fff;font-size:14px">Loading...</div>
+    <iframe id="pdf_modal_iframe" style="width:100%;height:100%;border:none;background:#fff;display:none" allowfullscreen></iframe>
+  </div>
+</div>
 
 <!-- ============================
      SALES QC: PRODUCTION ANALYSIS SCREEN
@@ -2081,6 +2182,51 @@ function showScreen(name) {
 
 function openComplaintMenu() {
   showScreen('complaint-menu');
+  // Auto-refresh badges
+  loadComplaintBadges();
+}
+
+async function loadComplaintBadges() {
+  try {
+    var resp = await fetch(SERVER_URL + '/stats');
+    if (!resp.ok) return;
+    var data = await resp.json();
+    var list = data.Complaints || [];
+    
+    var prodPending = list.filter(c => isProductionPending(c)).length;
+    var salesPending = list.filter(c => isSalesPending(c)).length;
+    
+    var bp = document.getElementById('badge_pending_prod');
+    var bs = document.getElementById('badge_pending_sales');
+    var bt = document.getElementById('badge_total');
+    if (bp) {
+      bp.textContent = prodPending;
+      bp.style.display = prodPending > 0 ? 'inline-block' : 'none';
+    }
+    if (bs) {
+      bs.textContent = salesPending;
+      bs.style.display = salesPending > 0 ? 'inline-block' : 'none';
+    }
+    if (bt) bt.textContent = list.length;
+  } catch(e) {}
+}
+
+function isProductionPending(c) {
+  // Sales QC: Open / Under Review / Escalated for Re-review
+  // Purchase QC: Open / Under Review / Vendor Notified
+  if (c.source === 'customer') {
+    return c.status === 'Open' || c.status === 'Under Review' || c.status === 'Escalated for Re-review';
+  }
+  if (c.source === 'internal') {
+    return c.status === 'Open' || c.status === 'Under Review' || c.status === 'Vendor Notified';
+  }
+  return false;
+}
+
+function isSalesPending(c) {
+  // Only Sales QC, statuses where Sales needs to act
+  if (c.source !== 'customer') return false;
+  return c.status === 'Pending Sales Review' || c.status === 'Awaiting Customer Response';
 }
 
 function openComplaint(type) {
@@ -2289,6 +2435,268 @@ function readFileAsDataURL(file) {
 }
 
 // ===== LIST & DETAIL =====
+
+// ============================================================
+//  3-ROLE LIST VIEWS (Production, Sales, Overall)
+// ============================================================
+var allCases = []; // shared cache
+
+async function fetchAllCases() {
+  try {
+    var resp = await fetch(SERVER_URL + '/stats');
+    var data = await resp.json();
+    allCases = data.Complaints || [];
+    // Sort by timestamp desc
+    allCases.sort(function(a, b) {
+      return new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime();
+    });
+    complaintsList = allCases; // keep legacy var in sync for openComplaintDetail
+    return allCases;
+  } catch(e) {
+    toast('err', 'Failed to load cases: ' + e.message);
+    return [];
+  }
+}
+
+// ---------- PENDING PRODUCTION ----------
+async function openPendingProduction() {
+  showScreen('pending-prod');
+  await loadPendingProduction();
+}
+
+async function loadPendingProduction() {
+  document.getElementById('pp_body').innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div>';
+  await fetchAllCases();
+  var list = allCases.filter(isProductionPending);
+  document.getElementById('pp_count').textContent = list.length + ' pending';
+  if (list.length === 0) {
+    document.getElementById('pp_body').innerHTML = emptyState('🎉', 'All caught up!', 'No cases pending for Production');
+    return;
+  }
+  document.getElementById('pp_body').innerHTML = list.map(function(c) {
+    return renderCaseCard(c, 'pp');
+  }).join('');
+}
+
+// ---------- PENDING SALES ----------
+async function openPendingSales() {
+  showScreen('pending-sales');
+  await loadPendingSales();
+}
+
+async function loadPendingSales() {
+  document.getElementById('ps_body').innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div>';
+  await fetchAllCases();
+  var list = allCases.filter(isSalesPending);
+  document.getElementById('ps_count').textContent = list.length + ' pending';
+  if (list.length === 0) {
+    document.getElementById('ps_body').innerHTML = emptyState('🎉', 'All caught up!', 'No cases pending for Sales');
+    return;
+  }
+  document.getElementById('ps_body').innerHTML = list.map(function(c) {
+    return renderCaseCard(c, 'ps');
+  }).join('');
+}
+
+// ---------- OVERALL DASHBOARD ----------
+var ODFilterStatus = 'all';
+
+async function openOverallDashboard() {
+  showScreen('overall-dashboard');
+  await loadOverallDashboard();
+}
+
+async function loadOverallDashboard() {
+  document.getElementById('od_body').innerHTML = '<div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div>';
+  await fetchAllCases();
+  buildOdFilterChips();
+  renderOverallDashboard();
+}
+
+function buildOdFilterChips() {
+  var statuses = ['all','Open','Under Review','Pending Sales Review','Awaiting Customer Response','Escalated for Re-review','Vendor Notified','Completed'];
+  var counts = {};
+  allCases.forEach(function(c) {
+    var key = c.status || 'Open';
+    if ((key.indexOf('Completed') >= 0) || (key.indexOf('Closed') >= 0)) key = 'Completed';
+    counts[key] = (counts[key] || 0) + 1;
+  });
+  counts['all'] = allCases.length;
+  
+  var labels = {
+    'all': 'All',
+    'Open': '🔵 Open',
+    'Under Review': '🟡 Review',
+    'Pending Sales Review': '🟣 Sales Review',
+    'Awaiting Customer Response': '🟢 Customer',
+    'Escalated for Re-review': '🟠 Re-review',
+    'Vendor Notified': '🟠 Vendor',
+    'Completed': '✅ Done'
+  };
+  
+  var html = '';
+  statuses.forEach(function(s) {
+    if (counts[s] || s === 'all') {
+      var active = s === ODFilterStatus;
+      html += '<button onclick="odSetFilter(\'' + s.replace(/\'/g, "\\\'") + '\')" style="padding:5px 11px;border-radius:14px;border:1px solid var(--gray-200);background:' + (active ? '#374151' : '#fff') + ';color:' + (active ? '#fff' : 'var(--gray-700)') + ';font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap">' + labels[s] + ' ' + (counts[s] || 0) + '</button>';
+    }
+  });
+  document.getElementById('od_filter_chips').innerHTML = html;
+}
+
+function odSetFilter(s) {
+  ODFilterStatus = s;
+  buildOdFilterChips();
+  renderOverallDashboard();
+}
+
+function renderOverallDashboard() {
+  var q = (document.getElementById('od_search').value || '').toLowerCase().trim();
+  var fromD = document.getElementById('od_from').value;
+  var toD = document.getElementById('od_to').value;
+  var mode = document.getElementById('od_date_mode').value;
+  
+  var filtered = allCases.filter(function(c) {
+    // Status filter
+    if (ODFilterStatus !== 'all') {
+      if (ODFilterStatus === 'Completed') {
+        if ((c.status || '').indexOf('Completed') < 0 && (c.status || '').indexOf('Closed') < 0) return false;
+      } else if (c.status !== ODFilterStatus) return false;
+    }
+    
+    // Date filter
+    var dateStr = mode === 'closed' ? c.resolved_date : c.timestamp;
+    if (fromD || toD) {
+      if (!dateStr) return false;
+      // Parse the date - handle ISO timestamp or DD/MM/YYYY
+      var d;
+      if (dateStr.indexOf('T') >= 0) {
+        d = new Date(dateStr);
+      } else if (dateStr.indexOf('/') >= 0) {
+        var parts = dateStr.split('/');
+        if (parts.length === 3) d = new Date(parts[2], parts[1]-1, parts[0]);
+      } else {
+        d = new Date(dateStr);
+      }
+      if (!d || isNaN(d.getTime())) return false;
+      var iso = d.toISOString().split('T')[0];
+      if (fromD && iso < fromD) return false;
+      if (toD && iso > toD) return false;
+    }
+    
+    // Text search
+    if (q) {
+      var hay = (
+        (c.case_id || '') + ' ' + (c.customer_name || '') + ' ' + (c.batch_number || '') + ' ' +
+        (c.invoice_no || '') + ' ' + (c.tc_number || '') + ' ' + (c.filed_by || '') + ' ' +
+        (c.grade || '') + ' ' + (c.mill || '') + ' ' + (c.vendor_name || '')
+      ).toLowerCase();
+      if (hay.indexOf(q) < 0) return false;
+    }
+    
+    return true;
+  });
+  
+  document.getElementById('od_count').textContent = filtered.length + ' of ' + allCases.length + ' cases';
+  
+  if (filtered.length === 0) {
+    document.getElementById('od_body').innerHTML = emptyState('🔍', 'No cases found', 'Try changing filters');
+    return;
+  }
+  
+  document.getElementById('od_body').innerHTML = filtered.map(function(c) {
+    return renderCaseCard(c, 'od');
+  }).join('');
+}
+
+// ---------- SHARED CARD RENDERER ----------
+function renderCaseCard(c, ctx) {
+  var statusColor = getStatusColor(c.status);
+  var when = c.timestamp ? new Date(c.timestamp).toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' }) : '';
+  var sourceLabel = c.source === 'customer' ? '💼 Sales QC' : c.source === 'internal' ? '🏭 Purchase QC' : '';
+  var sourceColor = c.source === 'customer' ? '#7c3aed' : '#b45309';
+  var nextHint = nextActionHint(c);
+  
+  return '<div onclick="openComplaintDetail(\'' + c.case_id + '\')" style="background:#fff;border-bottom:1px solid var(--gray-100);padding:14px 16px;cursor:pointer">'
+    + '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px">'
+    + '<div style="flex:1;min-width:0">'
+    + '<div style="font-weight:700;font-size:14px;color:var(--gray-800)">' + (c.case_id || '-') + '</div>'
+    + '<div style="font-size:12px;color:var(--gray-600);margin-top:2px">' + escHtml(c.customer_name || c.vendor_name || c.batch_number || '-') + '</div>'
+    + '</div>'
+    + '<div style="padding:3px 10px;border-radius:12px;background:' + statusColor + '20;color:' + statusColor + ';font-size:10px;font-weight:700;white-space:nowrap">' + (c.status || 'Open') + '</div>'
+    + '</div>'
+    + '<div style="font-size:11px;color:var(--gray-400);display:flex;flex-wrap:wrap;gap:8px;align-items:center">'
+    + '<span style="color:' + sourceColor + ';font-weight:600">' + sourceLabel + '</span>'
+    + (c.batch_number ? '<span>· Batch: ' + escHtml(c.batch_number) + '</span>' : '')
+    + (c.invoice_no ? '<span>· Inv: ' + escHtml(c.invoice_no) + '</span>' : '')
+    + '<span>· ' + when + '</span>'
+    + '</div>'
+    + (nextHint && (ctx === 'pp' || ctx === 'ps') ? '<div style="margin-top:8px;font-size:11px;color:var(--brand);font-weight:600">→ ' + nextHint + '</div>' : '')
+    + '</div>';
+}
+
+function nextActionHint(c) {
+  if (c.source === 'customer') {
+    if (c.status === 'Open' || c.status === 'Under Review') return 'Submit Production Analysis';
+    if (c.status === 'Escalated for Re-review') return 'Re-analyze and re-submit';
+    if (c.status === 'Pending Sales Review') return 'Review & send to customer';
+    if (c.status === 'Awaiting Customer Response') return 'Mark customer response';
+  } else if (c.source === 'internal') {
+    if (c.status === 'Open' || c.status === 'Under Review') return 'Close internally or escalate';
+    if (c.status === 'Vendor Notified') return 'Awaiting vendor response';
+  }
+  return '';
+}
+
+function emptyState(icon, title, sub) {
+  return '<div style="text-align:center;padding:60px 20px;color:var(--gray-400)"><div style="font-size:48px;margin-bottom:12px">' + icon + '</div><div style="font-size:14px;font-weight:600;color:var(--gray-600)">' + title + '</div><div style="font-size:12px;margin-top:6px">' + sub + '</div></div>';
+}
+
+// ============================================================
+//  PDF VIEWER MODAL
+// ============================================================
+async function viewCaseFile(caseId, filename, filePath) {
+  document.getElementById('pdf_modal_title').textContent = filename;
+  document.getElementById('pdf_modal_loading').style.display = 'block';
+  document.getElementById('pdf_modal_loading').textContent = 'Loading ' + filename + '...';
+  document.getElementById('pdf_modal_iframe').style.display = 'none';
+  document.getElementById('pdf_modal_iframe').src = 'about:blank';
+  document.getElementById('pdf_modal').style.display = 'flex';
+  
+  try {
+    var streamUrl = SERVER_URL + '/complaint/file?path=' + encodeURIComponent(filePath);
+    document.getElementById('pdf_modal_download').href = streamUrl + '&download=1';
+    document.getElementById('pdf_modal_iframe').src = streamUrl;
+    document.getElementById('pdf_modal_iframe').onload = function() {
+      document.getElementById('pdf_modal_loading').style.display = 'none';
+      document.getElementById('pdf_modal_iframe').style.display = 'block';
+    };
+    document.getElementById('pdf_modal_iframe').onerror = function() {
+      document.getElementById('pdf_modal_loading').textContent = 'Failed to load file';
+    };
+  } catch(e) {
+    document.getElementById('pdf_modal_loading').textContent = 'Error: ' + e.message;
+  }
+}
+
+function closePdfModal() {
+  document.getElementById('pdf_modal').style.display = 'none';
+  document.getElementById('pdf_modal_iframe').src = 'about:blank';
+}
+
+// ============================================================
+//  CASE DETAIL — FETCH FILES LIST
+// ============================================================
+async function loadCaseFiles(caseId) {
+  try {
+    var resp = await fetch(SERVER_URL + '/complaint/files?caseId=' + encodeURIComponent(caseId));
+    if (!resp.ok) return [];
+    var data = await resp.json();
+    return data.files || [];
+  } catch(e) { return []; }
+}
+
+
 async function openComplaintList() {
   showScreen('complaint-list');
   await loadComplaintList();
@@ -2489,8 +2897,69 @@ async function openComplaintDetail(caseId) {
         + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">RESOLUTION</div>'
         + detailRow('Resolution', c.resolution) + detailRow('Resolved On', c.resolved_date)
         + '</div>' : '')
+    + '<div id="cmp_files_card" style="background:#fff;border-radius:10px;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,0.06);margin-bottom:14px">'
+    + '<div style="font-size:12px;color:var(--gray-400);font-weight:600;margin-bottom:10px">📎 FILES & DOCUMENTS</div>'
+    + '<div id="cmp_files_list" style="font-size:13px;color:var(--gray-400)">Loading files...</div>'
+    + '</div>'
     + nextActions
     + '</div>';
+  
+  // Async load files
+  renderCaseFiles(caseId);
+}
+
+async function renderCaseFiles(caseId) {
+  var files = await loadCaseFiles(caseId);
+  var container = document.getElementById('cmp_files_list');
+  if (!container) return;
+  if (files.length === 0) {
+    container.innerHTML = '<div style="color:var(--gray-400);font-style:italic">No files uploaded yet</div>';
+    return;
+  }
+  
+  // Group by category
+  var labels = {
+    'report': '📄 Defect Report',
+    'po': '📑 PO (Purchase Order)',
+    'so': '📑 SO (Sales Order)',
+    'tc': '📑 TC (Test Certificate)',
+    'invoice': '🧾 Invoice',
+    'invoice_rm': '🧾 Invoice (Raw Material)',
+    '8d': '🛠️ 8D Report',
+    'photo': '📷 Photo',
+    'other': '📎 File'
+  };
+  var order = ['report','8d','po','so','tc','invoice','invoice_rm','photo','other'];
+  
+  files.sort(function(a, b) {
+    return order.indexOf(a.category) - order.indexOf(b.category);
+  });
+  
+  var html = files.map(function(f) {
+    var sizeKb = f.size ? Math.ceil(f.size / 1024) + ' KB' : '';
+    var isPdf = f.name.toLowerCase().endsWith('.pdf');
+    var isImg = /\.(jpe?g|png|gif|webp)$/i.test(f.name);
+    var pathEsc = f.path.replace(/'/g, "\\'");
+    var nameEsc = f.name.replace(/'/g, "\\'");
+    var label = labels[f.category] || labels.other;
+    
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px;border:1px solid var(--gray-100);border-radius:8px;margin-bottom:6px;background:var(--gray-50)">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="font-size:13px;font-weight:600;color:var(--gray-800);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + label + '</div>'
+      + '<div style="font-size:11px;color:var(--gray-400);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(f.name) + (sizeKb ? ' · ' + sizeKb : '') + '</div>'
+      + '</div>'
+      + '<div style="display:flex;gap:6px;flex-shrink:0">'
+      + ((isPdf || isImg) ? '<button onclick="viewCaseFile(\''+ currentCaseId.replace(/\'/g, "\\\'") + '\', \''+ nameEsc + '\', \''+ pathEsc + '\')" style="padding:6px 12px;background:var(--brand);color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">👁 View</button>' : '')
+      + '<a href="' + SERVER_URL + '/complaint/file?path=' + encodeURIComponent(f.path) + '&download=1" download="' + escHtml(f.name) + '" style="padding:6px 12px;background:#fff;color:var(--gray-700);border:1px solid var(--gray-200);border-radius:6px;font-size:12px;font-weight:600;text-decoration:none">⬇</a>'
+      + '</div>'
+      + '</div>';
+  }).join('');
+  
+  container.innerHTML = html;
+}
+
+function detailRow_unused() {
+  // dummy to ensure function block above is closed properly
 }
 
 function detailRow(label, value) {
