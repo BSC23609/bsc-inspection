@@ -1335,11 +1335,7 @@ async function appendExcelRow(token, folder, data, fileName) {
     data.operator||'', data.machine_name||'', data.inspector||'', data.remarks||'',
     data.bur||'', data.cutting_finish||'', data.scalling||'', data.pit_marks||'',
     data.waviness||'', data.center_bow||'', data.cutting_bow||'', data.surface_defects||'',
-    s(1).length||'', s(1).nos||'', s(1).weight_t||'', s(2).length||'', s(2).nos||'', s(2).weight_t||'',
-    s(3).length||'', s(3).nos||'', s(3).weight_t||'', s(4).length||'', s(4).nos||'', s(4).weight_t||'',
-    s(5).length||'', s(5).nos||'', s(5).weight_t||'', s(6).length||'', s(6).nos||'', s(6).weight_t||'',
-    s(7).length||'', s(7).nos||'', s(7).weight_t||'', s(8).length||'', s(8).nos||'', s(8).weight_t||'',
-    s(9).length||'', s(9).nos||'', s(9).weight_t||'', s(10).length||'', s(10).nos||'', s(10).weight_t||''
+    ...[...Array(20)].flatMap((_,i) => [s(i+1).length||'', s(i+1).nos||'', s(i+1).weight_t||''])
   ]];
   const rowResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/rows/add', {
     method:'POST', headers:{ 'Authorization':'Bearer ' + token, 'Content-Type':'application/json' }, body:JSON.stringify({ values })
