@@ -752,7 +752,11 @@ app.post('/submit', async (req, res) => {
       }
     }
     await Promise.all(uploadTasks);
-    await appendExcelRow(token, folder, data, fileName);
+    
+    // Excel row append - non-blocking so submission succeeds even if Excel times out
+    appendExcelRow(token, folder, data, fileName)
+      .then(() => console.log('[xlsx] row appended for', fileName))
+      .catch(e => console.error('[xlsx] row append FAILED for', fileName, '-', e.message));
 
     res.json({ status: 'success', ref: ref, filename: fileName });
 
@@ -1337,10 +1341,52 @@ async function appendExcelRow(token, folder, data, fileName) {
     data.waviness||'', data.center_bow||'', data.cutting_bow||'', data.surface_defects||'',
     ...[...Array(20)].flatMap((_,i) => [s(i+1).length||'', s(i+1).nos||'', s(i+1).weight_t||''])
   ]];
-  const rowResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/rows/add', {
-    method:'POST', headers:{ 'Authorization':'Bearer ' + token, 'Content-Type':'application/json' }, body:JSON.stringify({ values })
-  });
-  if (!rowResp.ok) throw new Error('Excel row failed: ' + JSON.stringify(await rowResp.json()));
+  // Use workbook session for faster writes on large tables. Retry on timeout.
+  const addUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/rows/add';
+  let lastErr = null;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      // Open a non-persistent session for this write
+      let sessionId = null;
+      try {
+        const sessResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/createSession', {
+          method:'POST',
+          headers:{ 'Authorization':'Bearer ' + token, 'Content-Type':'application/json' },
+          body: JSON.stringify({ persistChanges: true })
+        });
+        if (sessResp.ok) {
+          const sData = await sessResp.json();
+          sessionId = sData.id;
+        }
+      } catch(e) { console.log('[xlsx] session create failed:', e.message); }
+      
+      const headers = { 'Authorization':'Bearer ' + token, 'Content-Type':'application/json' };
+      if (sessionId) headers['workbook-session-id'] = sessionId;
+      
+      const rowResp = await fetch(addUrl, { method:'POST', headers, body:JSON.stringify({ values }) });
+      
+      // Close session
+      if (sessionId) {
+        fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/closeSession', {
+          method:'POST', headers: { 'Authorization':'Bearer ' + token, 'workbook-session-id': sessionId }
+        }).catch(()=>{});
+      }
+      
+      if (rowResp.ok) { lastErr = null; break; }
+      const errBody = await rowResp.json();
+      lastErr = new Error('Excel row failed: ' + JSON.stringify(errBody));
+      // Only retry on timeout/transient errors
+      const code = errBody && errBody.error && errBody.error.code;
+      if (code !== 'MaxRequestDurationExceeded' && code !== 'gatewayTimeoutUncategorized' && code !== 'InternalServerError') break;
+      console.log('[xlsx] attempt', attempt+1, 'failed with', code, '- retrying');
+      await new Promise(r => setTimeout(r, 1000 * (attempt+1)));
+    } catch(e) {
+      lastErr = e;
+      console.log('[xlsx] attempt', attempt+1, 'exception:', e.message);
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  }
+  if (lastErr) throw lastErr;
 }
 
 
