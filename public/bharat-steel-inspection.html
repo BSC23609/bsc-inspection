@@ -2112,19 +2112,43 @@ function addRow() {
 }
 function delRow(id) { var e=document.getElementById('row_'+id); if(e) e.remove(); }
 
+var pqVisibleRows = 0;
+var PQ_MAX_ROWS = 20;
+
+function pqRowHtml(i) {
+  return '<tr id="pq_row_'+i+'">'
+    + '<td class="pq-size-lbl">Size '+i+'</td>'
+    + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_len" placeholder="0" step="0.01"></td>'
+    + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_nos" placeholder="0" step="1"></td>'
+    + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_wt" placeholder="0.000" step="0.001"></td>'
+    + '</tr>';
+}
+
 function buildPQ() {
   var g = document.getElementById('pq_grid');
-  var html = '<thead><tr><th style="min-width:64px">Size</th><th>Length (mm)</th><th>No. of Sheets</th><th>Weight (T)</th></tr></thead><tbody>';
-  for(var i=1;i<=20;i++) {
-    html += '<tr>'
-      + '<td class="pq-size-lbl">Size '+i+'</td>'
-      + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_len" placeholder="0" step="0.01"></td>'
-      + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_nos" placeholder="0" step="1"></td>'
-      + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_wt" placeholder="0.000" step="0.001"></td>'
-      + '</tr>';
+  g.innerHTML = '<thead><tr><th style="min-width:64px">Size</th><th>Length (mm)</th><th>No. of Sheets</th><th>Weight (T)</th></tr></thead><tbody id="pq_tbody"></tbody>';
+  pqVisibleRows = 0;
+  for(var i=1;i<=3;i++) addPQRow();
+}
+
+function addPQRow() {
+  if (pqVisibleRows >= PQ_MAX_ROWS) return;
+  pqVisibleRows++;
+  var tbody = document.getElementById('pq_tbody');
+  if (!tbody) return;
+  tbody.insertAdjacentHTML('beforeend', pqRowHtml(pqVisibleRows));
+  updatePQAddBtn();
+}
+
+function updatePQAddBtn() {
+  var btn = document.getElementById('pq_add_btn');
+  if (!btn) return;
+  if (pqVisibleRows >= PQ_MAX_ROWS) {
+    btn.style.display = 'none';
+  } else {
+    btn.style.display = '';
+    btn.textContent = '+ Add Row (' + pqVisibleRows + '/' + PQ_MAX_ROWS + ')';
   }
-  html += '</tbody>';
-  g.innerHTML = html;
 }
 
 function prevSingle(inp, pid) {
