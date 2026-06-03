@@ -539,6 +539,9 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div style="overflow-x:auto">
           <table class="pq-table" id="pq_grid"></table>
         </div>
+        <div style="padding:12px 14px;border-top:1px solid var(--gray-100)">
+          <button type="button" id="pq_add_btn" class="btn-sec" onclick="addPQRow()" style="width:100%">+ Add Row</button>
+        </div>
       </div>
     </div>
 
@@ -1805,7 +1808,7 @@ function buildQualityPDF(data, ref) {
   }).join('');
   var pqHtml = '';
   var pqRows = '';
-  for(var i=1;i<=10;i++) {
+  for(var i=1;i<=20;i++) {
     var s = (data.processed_qty||{})['size_'+i]||{};
     if(s.length||s.nos||s.weight_t) {
       pqRows += '<tr><td class="lbl">Size '+i+'</td><td>'+( s.length||'-')+'</td><td>'+(s.nos||'-')+'</td><td>'+(s.weight_t||'-')+' T</td></tr>';
@@ -1944,7 +1947,7 @@ function collectQuality() {
     });
   });
   var pq = {};
-  for(var i=1;i<=10;i++) {
+  for(var i=1;i<=20;i++) {
     pq['size_'+i] = {
       length: gv('pq_s'+i+'_len'),
       nos: gv('pq_s'+i+'_nos'),
@@ -2112,7 +2115,7 @@ function delRow(id) { var e=document.getElementById('row_'+id); if(e) e.remove()
 function buildPQ() {
   var g = document.getElementById('pq_grid');
   var html = '<thead><tr><th style="min-width:64px">Size</th><th>Length (mm)</th><th>No. of Sheets</th><th>Weight (T)</th></tr></thead><tbody>';
-  for(var i=1;i<=10;i++) {
+  for(var i=1;i<=20;i++) {
     html += '<tr>'
       + '<td class="pq-size-lbl">Size '+i+'</td>'
       + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_len" placeholder="0" step="0.01"></td>'
