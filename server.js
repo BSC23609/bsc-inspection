@@ -316,14 +316,79 @@ function generatePDF(folder, data, ref) {
           ['QC', data.qc_name]
         ]);
         
+        // Output Sizes table
+        const outputSizes = (data.output_sizes || []).filter(s => s && String(s).trim() !== '');
+        if (outputSizes.length > 0) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'OUTPUT SIZES');
+          const tblW = doc.page.width - 80;
+          doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
+          doc.lineWidth(0.5).strokeColor(BORDER);
+          doc.rect(40, y, tblW, 18).stroke();
+          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+          doc.text('#', 44, y + 5, { width: 30 });
+          doc.text('Output Size', 80, y + 5);
+          doc.moveTo(74, y).lineTo(74, y + 18).stroke();
+          y += 18;
+          doc.font('Helvetica').fontSize(9).fillColor(TEXT);
+          outputSizes.forEach((s, i) => {
+            y = ensureSpace(doc, y, 16, hdr);
+            if (i % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
+            doc.rect(40, y, tblW, 16).stroke();
+            doc.moveTo(74, y).lineTo(74, y + 16).stroke();
+            doc.fillColor(TEXT).text(String(i + 1), 44, y + 4, { width: 30 });
+            doc.text(String(s), 80, y + 4);
+            y += 16;
+          });
+          y += 6;
+        }
+        
+        // Processed Quantity table
+        const pq = data.processed_qty || {};
+        const pqSizes = [];
+        for (let i = 1; i <= 20; i++) {
+          const s = pq['size_' + i] || {};
+          if (s.length || s.nos || s.weight_t) pqSizes.push({ size: 'Size ' + i, len: s.length, nos: s.nos, wt: s.weight_t });
+        }
+        if (pqSizes.length > 0) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'PROCESSED QUANTITY');
+          const tblW = doc.page.width - 80;
+          const cw = [70, (tblW - 70) / 3, (tblW - 70) / 3, (tblW - 70) / 3];
+          doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
+          doc.lineWidth(0.5).strokeColor(BORDER);
+          doc.rect(40, y, tblW, 18).stroke();
+          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+          let xc = 40;
+          ['Size', 'Dimension (mm)', 'No. of Sheets', 'Weight (T)'].forEach((h, idx) => {
+            doc.text(h, xc + 4, y + 5, { width: cw[idx] - 8 });
+            if (idx > 0) doc.moveTo(xc, y).lineTo(xc, y + 18).stroke();
+            xc += cw[idx];
+          });
+          y += 18;
+          doc.font('Helvetica').fontSize(9).fillColor(TEXT);
+          pqSizes.forEach((r, i) => {
+            y = ensureSpace(doc, y, 16, hdr);
+            if (i % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
+            doc.rect(40, y, tblW, 16).stroke();
+            const vals = [r.size, r.len || '-', r.nos || '-', r.wt || '-'];
+            let xv = 40;
+            vals.forEach((v, idx) => {
+              if (idx > 0) doc.moveTo(xv, y).lineTo(xv, y + 16).stroke();
+              doc.fillColor(TEXT).text(String(v), xv + 4, y + 4, { width: cw[idx] - 8 });
+              xv += cw[idx];
+            });
+            y += 16;
+          });
+          y += 6;
+        }
+        
         // Sheet measurements table
         if (data.measurements && data.measurements.length > 0) {
           y = ensureSpace(doc, y, 60, hdr);
           y = drawSectionTitle(doc, y, 'SHEET MEASUREMENTS');
           const tblW = doc.page.width - 80;
           const colW = tblW / 6;
-          
-          // Header row
           doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
           doc.lineWidth(0.5).strokeColor(BORDER);
           doc.rect(40, y, tblW, 18).stroke();
@@ -334,14 +399,10 @@ function generatePDF(folder, data, ref) {
             if (idx > 0) doc.moveTo(40 + colW * idx, y).lineTo(40 + colW * idx, y + 18).stroke();
           });
           y += 18;
-          
-          // Data rows
           doc.font('Helvetica').fontSize(8).fillColor(TEXT);
           data.measurements.forEach((row, idx) => {
             y = ensureSpace(doc, y, 16, hdr);
-            if (idx % 2 === 1) {
-              doc.rect(40, y, tblW, 16).fill(ROW_ALT);
-            }
+            if (idx % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
             doc.rect(40, y, tblW, 16).stroke();
             const cells = [row.sheet_no, row.width1, row.width2, row.diag1, row.diag2, row.remarks];
             cells.forEach((c, i) => {
@@ -353,7 +414,7 @@ function generatePDF(folder, data, ref) {
           y += 6;
         }
         
-        y = ensureSpace(doc, y, 100, hdr);
+        y = ensureSpace(doc, y, 130, hdr);
         y = drawSectionTitle(doc, y, 'QUALITY CHECKLIST');
         y = drawDataTable(doc, y, [
           ['Burr (<10%)', data.burr],
@@ -361,8 +422,46 @@ function generatePDF(folder, data, ref) {
           ['Cutting Finish', data.cutting_finish],
           ['Surface Condition', data.surface_condition],
           ['Bow / Bend', data.bow_bend],
-          ['QC Sign Date', data.sig_date]
+          ['Taper Cutting', data.taper_cutting]
         ]);
+        
+        // Rejection table
+        const rejList = (data.rejections || []).filter(r => r && (r.size || r.qty));
+        if (data.rejection_flag === 'Yes' && rejList.length > 0) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'REJECTION QUANTITY');
+          const tblW = doc.page.width - 80;
+          const cw2 = [tblW / 2, tblW / 2];
+          doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
+          doc.lineWidth(0.5).strokeColor(BORDER);
+          doc.rect(40, y, tblW, 18).stroke();
+          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+          doc.text('Size', 44, y + 5);
+          doc.text('Quantity', 40 + cw2[0] + 4, y + 5);
+          doc.moveTo(40 + cw2[0], y).lineTo(40 + cw2[0], y + 18).stroke();
+          y += 18;
+          doc.font('Helvetica').fontSize(9).fillColor(TEXT);
+          rejList.forEach((r, i) => {
+            y = ensureSpace(doc, y, 16, hdr);
+            if (i % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
+            doc.rect(40, y, tblW, 16).stroke();
+            doc.moveTo(40 + cw2[0], y).lineTo(40 + cw2[0], y + 16).stroke();
+            doc.fillColor(TEXT).text(String(r.size || '-'), 44, y + 4);
+            doc.text(String(r.qty || '-'), 40 + cw2[0] + 4, y + 4);
+            y += 16;
+          });
+          y += 6;
+        }
+        
+        if (data.remarks) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'REMARKS');
+          const tblW = doc.page.width - 80;
+          doc.rect(40, y, tblW, 50).stroke(BORDER);
+          doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+          doc.text(data.remarks, 48, y + 6, { width: tblW - 16 });
+          y += 58;
+        }
         
         if (data.overall_observation) {
           y = ensureSpace(doc, y, 60, hdr);
@@ -1323,14 +1422,27 @@ async function appendExcelRow(token, folder, data, fileName) {
     data.width||'', data.thickness||'', data.coil_weight||'', data.coil_id||'', data.actual_thickness||'', data.actual_width||'',
     data.id_sticker||'', data.edge_inner||'', data.edge_outer||'', data.scratch||'', data.strapping||'', data.rust||'',
     data.other_damages||'', data.inspected_by||'', data.remarks||''
-  ]] : folder === 'Shearing' ? [[
-    fileName, data.timestamp||'', data.customer_name||'', data.date||'',
-    data.batch_number||'', data.grade||'', data.make||'', data.type||'',
-    data.process||'', data.operator||'', data.input_size||'', data.qc_name||'',
-    data.burr||'', data.blade_clearance||'', data.cutting_finish||'', data.surface_condition||'', data.bow_bend||'',
-    data.overall_observation||'', data.sig_date||'',
-    ...[...Array(30)].flatMap((_,i) => [sr(i).sheet_no||'', sr(i).width1||'', sr(i).width2||'', sr(i).diag1||'', sr(i).diag2||'', sr(i).remarks||''])
-  ]] : [[
+  ]] : folder === 'Shearing' ? (() => {
+    const os = data.output_sizes || [];
+    const spq = data.processed_qty || {};
+    const spqGet = n => (spq['size_' + n] || {});
+    const rj = data.rejections || [];
+    const rjGet = n => (rj[n] || {});
+    return [[
+      fileName, data.timestamp||'', data.customer_name||'', data.date||'',
+      data.batch_number||'', data.grade||'', data.make||'', data.type||'',
+      data.process||'', data.operator||'', data.input_size||'', data.qc_name||'',
+      data.burr||'', data.blade_clearance||'', data.cutting_finish||'', data.surface_condition||'', data.bow_bend||'',
+      data.taper_cutting||'',
+      data.rejection_flag||'No',
+      data.remarks||'',
+      data.overall_observation||'',
+      ...[...Array(30)].flatMap((_,i) => [sr(i).sheet_no||'', sr(i).width1||'', sr(i).width2||'', sr(i).diag1||'', sr(i).diag2||'', sr(i).remarks||'']),
+      ...[...Array(20)].map((_,i) => os[i] || ''),
+      ...[...Array(20)].flatMap((_,i) => [spqGet(i+1).length||'', spqGet(i+1).nos||'', spqGet(i+1).weight_t||'']),
+      ...[...Array(10)].flatMap((_,i) => [rjGet(i).size||'', rjGet(i).qty||''])
+    ]];
+  })() : [[
     fileName, data.timestamp||'', data.customer_name||'', data.date||'', data.time||'',
     data.coil_number||'', data.batch_number||'', data.make||'', data.coil_thickness||'',
     data.coil_grade||'', data.coil_width||'', data.coil_weight||'',

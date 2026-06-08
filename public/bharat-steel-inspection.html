@@ -610,13 +610,17 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📷</span> Pictures (if any)</div>
       <div class="sec-body">
-        <div class="photo-upload" onclick="document.getElementById('q_photos').click()">
-          <input type="file" id="q_photos" accept="image/*" multiple onchange="prevMulti(this,'q_photo_prev')">
-          <div class="photo-upload-icon">📸</div>
-          <div class="photo-upload-text">Tap to upload photos</div>
-          <div class="photo-upload-sub">Multiple files allowed · JPG, PNG up to 10MB each</div>
+        <div style="display:flex;gap:8px">
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            📸 Take Photos
+            <input type="file" id="q_photos" accept="image/*" multiple capture="environment" hidden onchange="prevMulti(this,'q_photo_prev')">
+          </label>
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            🖼️ Upload
+            <input type="file" id="q_photos_lib" accept="image/*" multiple hidden onchange="document.getElementById('q_photos').files = this.files; prevMulti(document.getElementById('q_photos'),'q_photo_prev')">
+          </label>
         </div>
-        <div class="photo-previews" id="q_photo_prev"></div>
+        <div class="photo-previews" id="q_photo_prev" style="margin-top:10px"></div>
       </div>
     </div>
 
@@ -720,6 +724,22 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     </div>
 
     <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📐</span> Output Sizes</div>
+      <div class="sec-body">
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px" id="sh_osz_table">
+            <thead><tr style="background:var(--gray-50)">
+              <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Output Size</th>
+              <th style="padding:10px;border:1px solid var(--gray-200);width:40px"></th>
+            </tr></thead>
+            <tbody id="sh_osz_rows"></tbody>
+          </table>
+        </div>
+        <button type="button" id="sh_osz_add_btn" class="btn-sec" style="margin-top:10px;width:100%" onclick="addShOszRow()">+ Add Row</button>
+      </div>
+    </div>
+
+    <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📏</span> Sheet Measurements</div>
       <div class="sec-body">
         <div style="overflow-x:auto">
@@ -747,7 +767,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           <div class="field"><label>Burr -/&lt; 10% *</label><input type="number" id="sh_burr" step="0.01" placeholder="e.g. 12"></div>
           <div class="field"><label>Blade Clearance *</label><input type="number" id="sh_blade_clearance" step="0.01" placeholder="e.g. 12"></div>
         </div>
-        <div class="fg fg-3">
+        <div class="fg fg-2">
           <div class="field"><label>Cutting Finish *</label>
             <div class="pills" id="sg_cut_finish">
               <div class="pill" onclick="rp('sg_cut_finish',this,'Ok')">Ok</div>
@@ -760,23 +780,62 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
               <div class="pill" onclick="rp('sg_surface',this,'Not Ok')">Not Ok</div>
             </div>
           </div>
-          <div class="field"><label>Bow / Bend *</label>
-            <div class="pills" id="sg_bow">
-              <div class="pill" onclick="rp('sg_bow',this,'Ok')">Ok</div>
-              <div class="pill" onclick="rp('sg_bow',this,'Not Ok')">Not Ok</div>
-            </div>
+        </div>
+        <div class="fg fg-2" style="margin-top:10px">
+          <div class="field"><label>Bow / Bend</label><input type="text" id="sh_bow" placeholder="e.g. 2mm / Ok"></div>
+          <div class="field"><label>Taper Cutting</label><input type="text" id="sh_taper" placeholder="e.g. 1mm / Ok / Nil"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📦</span> Processed Quantity</div>
+      <div class="sec-body" style="padding:0">
+        <div style="overflow-x:auto">
+          <table class="pq-table" id="sh_pq_grid"></table>
+        </div>
+        <div style="padding:12px 14px;border-top:1px solid var(--gray-100)">
+          <button type="button" id="sh_pq_add_btn" class="btn-sec" onclick="addShPqRow()" style="width:100%">+ Add Row</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">⚠️</span> Rejection Quantity (if any)</div>
+      <div class="sec-body">
+        <div class="field"><label>Any Rejections?</label>
+          <div class="pills" id="sg_rejection">
+            <div class="pill" onclick="rp('sg_rejection',this,'No'); toggleShRejection(false)">No</div>
+            <div class="pill" onclick="rp('sg_rejection',this,'Yes'); toggleShRejection(true)">Yes</div>
           </div>
         </div>
-        <div class="fg fg-1">
-          <div class="field"><label>QC Signature Date</label><input type="date" id="sh_sig_date"></div>
+        <div id="sh_rejection_wrap" style="display:none;margin-top:14px">
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr style="background:var(--gray-50)">
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Size</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Quantity</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);width:40px"></th>
+              </tr></thead>
+              <tbody id="sh_rej_rows"></tbody>
+            </table>
+          </div>
+          <button type="button" id="sh_rej_add_btn" class="btn-sec" style="margin-top:10px;width:100%" onclick="addShRejRow()">+ Add Row</button>
         </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📝</span> Remarks</div>
+      <div class="sec-body">
+        <div class="field"><textarea id="sh_remarks" rows="4" placeholder="Additional remarks..."></textarea></div>
       </div>
     </div>
 
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📝</span> Overall Observation</div>
       <div class="sec-body">
-        <div class="field"><textarea id="sh_observation" rows="4" placeholder="Overall observation and remarks..."></textarea></div>
+        <div class="field"><textarea id="sh_observation" rows="4" placeholder="Overall observation..."></textarea></div>
       </div>
     </div>
 
@@ -3451,6 +3510,96 @@ function removeShRow(id) {
   if (el) el.remove();
 }
 
+// ----- Output Size table (max 20) -----
+var shOszCount = 0;
+function addShOszRow() {
+  if (shOszCount >= 20) return;
+  shOszCount++;
+  var id = shOszCount;
+  var tr = document.createElement('tr');
+  tr.id = 'sh_osz_row_' + id;
+  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="osz'+id+'_size" placeholder="e.g. 1500x500" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeShOszRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">×</button></td>';
+  document.getElementById('sh_osz_rows').appendChild(tr);
+  updateShOszAddBtn();
+}
+function removeShOszRow(id) {
+  var el = document.getElementById('sh_osz_row_' + id);
+  if (el) el.remove();
+  updateShOszAddBtn();
+}
+function updateShOszAddBtn() {
+  var visible = document.querySelectorAll('#sh_osz_rows tr').length;
+  var btn = document.getElementById('sh_osz_add_btn');
+  if (!btn) return;
+  if (visible >= 20) { btn.style.display = 'none'; }
+  else { btn.style.display = ''; btn.textContent = '+ Add Row (' + visible + '/20)'; }
+}
+
+// ----- Processed Quantity table (max 20, starts with 3) -----
+var shPqVisibleRows = 0;
+function shPqRowHtml(i) {
+  return '<tr id="sh_pq_row_'+i+'">'
+    + '<td class="pq-size-lbl">Size '+i+'</td>'
+    + '<td><input class="pq-inp" type="number" id="sh_pq_s'+i+'_len" placeholder="0" step="0.01"></td>'
+    + '<td><input class="pq-inp" type="number" id="sh_pq_s'+i+'_nos" placeholder="0" step="1"></td>'
+    + '<td><input class="pq-inp" type="number" id="sh_pq_s'+i+'_wt" placeholder="0.000" step="0.001"></td>'
+    + '</tr>';
+}
+function buildShPQ() {
+  var g = document.getElementById('sh_pq_grid');
+  if (!g) return;
+  g.innerHTML = '<thead><tr><th style="min-width:64px">Size</th><th>Dimension (mm)</th><th>No. of Sheets</th><th>Weight (T)</th></tr></thead><tbody id="sh_pq_tbody"></tbody>';
+  shPqVisibleRows = 0;
+  for(var i=1;i<=3;i++) addShPqRow();
+}
+function addShPqRow() {
+  if (shPqVisibleRows >= 20) return;
+  shPqVisibleRows++;
+  var tbody = document.getElementById('sh_pq_tbody');
+  if (!tbody) return;
+  tbody.insertAdjacentHTML('beforeend', shPqRowHtml(shPqVisibleRows));
+  updateShPqAddBtn();
+}
+function updateShPqAddBtn() {
+  var btn = document.getElementById('sh_pq_add_btn');
+  if (!btn) return;
+  if (shPqVisibleRows >= 20) { btn.style.display = 'none'; }
+  else { btn.style.display = ''; btn.textContent = '+ Add Row (' + shPqVisibleRows + '/20)'; }
+}
+
+// ----- Rejection table (max 10) -----
+var shRejCount = 0;
+function toggleShRejection(show) {
+  var w = document.getElementById('sh_rejection_wrap');
+  if (w) w.style.display = show ? '' : 'none';
+  if (show && shRejCount === 0) addShRejRow();
+}
+function addShRejRow() {
+  if (shRejCount >= 10) return;
+  shRejCount++;
+  var id = shRejCount;
+  var tr = document.createElement('tr');
+  tr.id = 'sh_rej_row_' + id;
+  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="rej'+id+'_size" placeholder="Size" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="rej'+id+'_qty" placeholder="Quantity" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeShRejRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">×</button></td>';
+  document.getElementById('sh_rej_rows').appendChild(tr);
+  updateShRejAddBtn();
+}
+function removeShRejRow(id) {
+  var el = document.getElementById('sh_rej_row_' + id);
+  if (el) el.remove();
+  updateShRejAddBtn();
+}
+function updateShRejAddBtn() {
+  var visible = document.querySelectorAll('#sh_rej_rows tr').length;
+  var btn = document.getElementById('sh_rej_add_btn');
+  if (!btn) return;
+  if (visible >= 10) { btn.style.display = 'none'; }
+  else { btn.style.display = ''; btn.textContent = '+ Add Row (' + visible + '/10)'; }
+}
+
 function collectShearing() {
   var rows = [];
   document.querySelectorAll('#sh_rows tr').forEach(function(tr) {
@@ -3464,6 +3613,27 @@ function collectShearing() {
       remarks: gv('sr'+id+'_rm')
     });
   });
+  var outputSizes = [];
+  document.querySelectorAll('#sh_osz_rows tr').forEach(function(tr) {
+    var id = tr.id.replace('sh_osz_row_','');
+    outputSizes.push(gv('osz'+id+'_size'));
+  });
+  var pq = {};
+  for(var i=1;i<=20;i++) {
+    pq['size_'+i] = {
+      length: gv('sh_pq_s'+i+'_len'),
+      nos: gv('sh_pq_s'+i+'_nos'),
+      weight_t: gv('sh_pq_s'+i+'_wt')
+    };
+  }
+  var rejections = [];
+  document.querySelectorAll('#sh_rej_rows tr').forEach(function(tr) {
+    var id = tr.id.replace('sh_rej_row_','');
+    rejections.push({
+      size: gv('rej'+id+'_size'),
+      qty: gv('rej'+id+'_qty')
+    });
+  });
   return {
     customer_name: gv('sh_customer'),
     date: gv('sh_date'),
@@ -3473,6 +3643,8 @@ function collectShearing() {
     type: rs['sg_type']||'',
     process: gv('sh_process'),
     input_size: gv('sh_input_size'),
+    output_sizes: outputSizes,
+    processed_qty: pq,
     operator: gv('sh_operator'),
     qc_name: gv('sh_qc_name'),
     measurements: rows,
@@ -3480,8 +3652,11 @@ function collectShearing() {
     blade_clearance: gv('sh_blade_clearance'),
     cutting_finish: rs['sg_cut_finish']||'',
     surface_condition: rs['sg_surface']||'',
-    bow_bend: rs['sg_bow']||'',
-    sig_date: gv('sh_sig_date'),
+    bow_bend: gv('sh_bow'),
+    taper_cutting: gv('sh_taper'),
+    rejection_flag: rs['sg_rejection']||'No',
+    rejections: rejections,
+    remarks: gv('sh_remarks'),
     overall_observation: gv('sh_observation'),
     timestamp: new Date().toISOString()
   };
@@ -3497,7 +3672,6 @@ function submitShearing() {
   if (!d.blade_clearance)    { toast('err','Blade clearance is required'); return; }
   if (!d.cutting_finish)     { toast('err','Please select cutting finish'); return; }
   if (!d.surface_condition)  { toast('err','Please select surface condition'); return; }
-  if (!d.bow_bend)           { toast('err','Please select bow/bend'); return; }
   if (!d.qc_name)            { toast('err','QC name is required'); return; }
   runSubmit('sh_submit','sh_spin','sh_lbl', d, 'Shearing');
 }
@@ -3672,8 +3846,9 @@ var now = new Date(), pad = n=>n.toString().padStart(2,'0');
 document.getElementById('q_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
 document.getElementById('q_time').value = pad(now.getHours())+':'+pad(now.getMinutes());
 addShRow(); addShRow(); addShRow();
+if (document.getElementById('sh_osz_rows')) addShOszRow();
+if (document.getElementById('sh_pq_grid')) buildShPQ();
 document.getElementById('sh_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
-document.getElementById('sh_sig_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
 loadAppSettings();
 
 // Deep link: if URL has ?case=XXX, open that case directly
