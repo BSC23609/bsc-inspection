@@ -545,24 +545,38 @@ async function generateComplaintPDF(data, photos) {
       doc.text(data.remarks || '-', 48, y + 8, { width: tblW - 16 });
       y += 68;
       
-      // Defect photos - 2 columns
-      if (photos && photos.length > 0) {
-        y = ensureSpace(doc, y, 240, hdr);
-        y = drawSectionTitle(doc, y, 'DEFECT PHOTOS');
+      // Defect photos - adaptive grid keeping report within 2 pages
+      const validPhotos = (photos || []).filter(p => p);
+      if (validPhotos.length > 0) {
+        y = drawSectionTitle(doc, y, 'DEFECT PHOTOS (' + validPhotos.length + ')');
         
-        const photoW = (tblW - 12) / 2;
-        const photoH = 180;
+        // Adaptive grid sizing based on photo count - keeps everything compact
+        let cols, photoH;
+        const n = validPhotos.length;
+        if (n === 1) {           cols = 1; photoH = 240; }
+        else if (n === 2) {      cols = 2; photoH = 200; }
+        else if (n <= 4) {       cols = 2; photoH = 160; }
+        else if (n <= 6) {       cols = 3; photoH = 130; }
+        else if (n <= 9) {       cols = 3; photoH = 110; }
+        else {                   cols = 4; photoH =  95; } // 10 photos
+        
+        const gap = 8;
+        const photoW = (tblW - gap * (cols - 1)) / cols;
         let col = 0;
         let rowY = y;
+        const pageBottomLimit = doc.page.height - 50;
         
-        for (let i = 0; i < photos.length; i++) {
-          const p = photos[i];
-          if (!p) continue;
+        for (let i = 0; i < validPhotos.length; i++) {
+          const p = validPhotos[i];
           if (col === 0 && i > 0) {
-            rowY = ensureSpace(doc, rowY, photoH + 12, hdr);
+            // Check if next row fits on current page; if not, new page
+            if (rowY + photoH > pageBottomLimit) {
+              doc.addPage();
+              rowY = drawBrandedHeader(doc, hdr) + 10;
+              rowY = drawSectionTitle(doc, rowY, 'DEFECT PHOTOS (continued)');
+            }
           }
           try {
-            // Extract base64
             let imgBuf;
             if (typeof p === 'string') {
               imgBuf = Buffer.from(p.split(',')[1] || p, 'base64');
@@ -570,19 +584,24 @@ async function generateComplaintPDF(data, photos) {
               imgBuf = Buffer.from(p.data.split(',')[1] || p.data, 'base64');
             }
             if (imgBuf) {
-              const x = 40 + col * (photoW + 12);
-              doc.rect(x, rowY, photoW, photoH).stroke(BORDER);
+              const x = 40 + col * (photoW + gap);
+              doc.rect(x, rowY, photoW, photoH).lineWidth(0.5).strokeColor(BORDER).stroke();
               doc.image(imgBuf, x + 2, rowY + 2, { fit: [photoW - 4, photoH - 4], align: 'center', valign: 'center' });
+              // photo number badge
+              doc.rect(x + 2, rowY + photoH - 14, 18, 12).fill(BRAND_BLUE);
+              doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7);
+              doc.text(String(i + 1), x + 2, rowY + photoH - 12, { width: 18, align: 'center' });
+              doc.fillColor(TEXT).font('Helvetica');
             }
           } catch(e) { console.log('Image embed error:', e.message); }
           col++;
-          if (col >= 2) {
+          if (col >= cols) {
             col = 0;
-            rowY += photoH + 12;
+            rowY += photoH + gap;
           }
         }
-        if (col > 0) rowY += photoH + 12;
-        y = rowY;
+        if (col > 0) rowY += photoH + gap;
+        y = rowY + 4;
       }
       
       // Production analysis section (if filled)

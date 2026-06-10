@@ -1049,15 +1049,16 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-body">
         <div style="display:flex;gap:8px">
           <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
-            📸 Take Photos
-            <input type="file" id="cmp_photos" accept="image/*" multiple capture="environment" hidden onchange="prevMulti(this,'cmp_photo_prev')">
+            📸 Take Photo
+            <input type="file" id="cmp_photo_cam" accept="image/*" capture="environment" hidden onchange="addCmpPhotos(this); this.value=''">
           </label>
           <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
             🖼️ Upload
-            <input type="file" id="cmp_photos_lib" accept="image/*" multiple hidden onchange="document.getElementById('cmp_photos').files = this.files; prevMulti(document.getElementById('cmp_photos'),'cmp_photo_prev')">
+            <input type="file" id="cmp_photo_lib" accept="image/*" multiple hidden onchange="addCmpPhotos(this); this.value=''">
           </label>
         </div>
-        <div class="photo-previews" id="cmp_photo_prev"></div>
+        <div id="cmp_photo_count" style="font-size:11px;color:var(--gray-500);margin-top:8px;text-align:center"></div>
+        <div id="cmp_photo_prev" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:10px"></div>
       </div>
     </div>
 
@@ -1932,6 +1933,56 @@ ${buildPhotosHTML(data.photos)}
 // ============================================================
 function gv(id){ return (document.getElementById(id)||{}).value||''; }
 
+
+// ========== Complaint Photos - accumulating up to 10 ==========
+var cmpPhotos = []; // array of File objects
+
+function addCmpPhotos(input) {
+  if (!input || !input.files || input.files.length === 0) return;
+  var remaining = 10 - cmpPhotos.length;
+  if (remaining <= 0) {
+    toast('err', 'Maximum 10 photos allowed');
+    return;
+  }
+  var files = Array.from(input.files);
+  if (files.length > remaining) {
+    toast('err', 'Only ' + remaining + ' more photo(s) can be added');
+    files = files.slice(0, remaining);
+  }
+  for (var f of files) cmpPhotos.push(f);
+  renderCmpPhotos();
+}
+
+function removeCmpPhoto(idx) {
+  cmpPhotos.splice(idx, 1);
+  renderCmpPhotos();
+}
+
+function renderCmpPhotos() {
+  var prev = document.getElementById('cmp_photo_prev');
+  var cnt = document.getElementById('cmp_photo_count');
+  if (!prev || !cnt) return;
+  
+  if (cmpPhotos.length === 0) {
+    prev.innerHTML = '';
+    cnt.textContent = 'No photos selected (max 10)';
+    cnt.style.color = 'var(--gray-500)';
+    return;
+  }
+  
+  cnt.textContent = cmpPhotos.length + ' / 10 photos selected';
+  cnt.style.color = cmpPhotos.length >= 10 ? '#dc2626' : 'var(--gray-700)';
+  
+  prev.innerHTML = cmpPhotos.map(function(f, idx) {
+    var url = URL.createObjectURL(f);
+    return '<div style="position:relative;width:90px;height:90px;border-radius:6px;overflow:hidden;border:1px solid var(--gray-200);background:#000">'
+      + '<img src="' + url + '" style="width:100%;height:100%;object-fit:cover">'
+      + '<button type="button" onclick="removeCmpPhoto(' + idx + ')" style="position:absolute;top:2px;right:2px;width:22px;height:22px;border-radius:11px;background:rgba(0,0,0,0.7);color:#fff;border:none;font-size:14px;font-weight:bold;cursor:pointer;line-height:1">×</button>'
+      + '<div style="position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,0.6);color:#fff;font-size:9px;padding:2px;text-align:center">' + (idx + 1) + '</div>'
+      + '</div>';
+  }).join('');
+}
+
 async function collectPhotosBase64(inputIds) {
   var photos = [];
   for (var id of inputIds) {
@@ -2374,10 +2425,10 @@ function clearComplaint() {
   ['cmp_filed_by','cmp_customer','cmp_customer_email','cmp_grade','cmp_dim','cmp_batch','cmp_tc','cmp_inv','cmp_inv_date','cmp_qty','cmp_remarks','cmp_vendor_email','cmp_mill_other'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
-  ['cmp_po_file','cmp_so_file','cmp_tc_file','cmp_inv_file','cmp_photos','cmp_photos_lib'].forEach(function(id) {
+  ['cmp_po_file','cmp_so_file','cmp_tc_file','cmp_inv_file','cmp_photo_cam','cmp_photo_lib'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.value = '';
   });
-  ['cmp_po_name','cmp_so_name','cmp_tc_name','cmp_inv_name','cmp_photo_prev'].forEach(function(id) {
+  cmpPhotos = []; renderCmpPhotos(); ['cmp_po_name','cmp_so_name','cmp_tc_name','cmp_inv_name'].forEach(function(id) {
     var el = document.getElementById(id); if (el) el.innerHTML = '';
   });
   ['cg_mill','cg_vendor'].forEach(function(g) {
@@ -2457,7 +2508,12 @@ async function submitComplaint() {
     }
     // Read photos
     lbl.textContent = 'Reading photos...';
-    d.photos = await collectPhotosBase64(['cmp_photos']);
+    // Convert accumulated complaint photo files to base64
+    d.photos = [];
+    for (var pf of cmpPhotos) {
+      var b64 = await fileToBase64(pf);
+      d.photos.push({ name: pf.name || 'photo.jpg', data: b64, type: pf.type || 'image/jpeg' });
+    }
     
     lbl.textContent = 'Submitting...';
     var resp;
