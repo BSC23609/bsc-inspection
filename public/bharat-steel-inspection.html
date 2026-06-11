@@ -408,6 +408,15 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           </div>
         </div>
         <div class="fg fg-1">
+          <div class="field">
+            <label>Wheels India Coil?</label>
+            <div class="pills" id="yn_wheels">
+              <div class="pill" onclick="yn('yn_wheels','No',this)">No</div>
+              <div class="pill" onclick="yn('yn_wheels','Yes',this)">Yes</div>
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-1">
           <div class="field"><label>Remarks</label><textarea id="i_remarks" placeholder="Any additional notes or observations..."></textarea></div>
         </div>
       </div>
@@ -2040,6 +2049,7 @@ function collectInward() {
     edge_outer: ys['yn_eo']||'', scratch: ys['yn_scratch']||'',
     strapping: ys['yn_strap']||'', rust: ys['yn_rust']||'',
     other_damages: rs['ig_damage']||'',
+    wheels_india: ys['yn_wheels'] === 'Yes',
     inspected_by: rs['ig_inspector']||'', remarks: gv('i_remarks'),
     timestamp: new Date().toISOString()
   };
@@ -3868,20 +3878,16 @@ function applyAppSettings() {
   var s = APP_SETTINGS;
   
   // Update Inward inspector pills
-  var inwardPills = document.getElementById('ig_inspected_by');
-  if (inwardPills && s.inspectors_inward) {
+  var inwardPills = document.getElementById('ig_inspector');
+  if (inwardPills && s.inspectors_inward && s.inspectors_inward.length) {
     inwardPills.innerHTML = (s.inspectors_inward || []).map(function(n) {
-      return '<div class="pill" onclick="rp(\'ig_inspected_by\',this,\'' + n.replace(/'/g,"\\'") + '\')">' + n + '</div>';
+      var safe = n.replace(/'/g, "\\'");
+      return '<div class="pill" onclick="rp(\'ig_inspector\',this,\'' + safe + '\')">' + n + '</div>';
     }).join('');
   }
   
-  // Update CTL Quality inspector pills (if present)
-  var qPills = document.getElementById('qg_inspector');
-  if (qPills && s.inspectors_quality) {
-    qPills.innerHTML = (s.inspectors_quality || []).map(function(n) {
-      return '<div class="pill" onclick="rp(\'qg_inspector\',this,\'' + n.replace(/'/g,"\\'") + '\')">' + n + '</div>';
-    }).join('');
-  }
+  // CTL Quality inspector is a free-text input; just set a default placeholder hint
+  // (Form uses text field, not pills, so nothing to rebuild)
   
   // Shearing QC default
   var shQc = document.getElementById('sh_qc_name');

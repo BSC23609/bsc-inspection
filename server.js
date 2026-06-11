@@ -162,6 +162,74 @@ function drawFooter(doc, pageNum, totalPages) {
   doc.fillColor(TEXT);
 }
 
+
+// Embed photos in an adaptive grid - keeps to 1 extra page max
+function drawPhotosGrid(doc, y, photos, hdr, sizeMode) {
+  const valid = (photos || []).filter(p => p && (p.data || typeof p === 'string'));
+  if (valid.length === 0) return y;
+  
+  const tblW = doc.page.width - 80;
+  y = ensureSpace(doc, y, 80, hdr);
+  y = drawSectionTitle(doc, y, 'PHOTOS (' + valid.length + ')');
+  
+  // sizeMode: 'compact' for inspections (Inward/CTL/Shearing - small tiles, fits 1 page), 'complaint' for adaptive grid
+  let cols, photoH;
+  const n = valid.length;
+  if (sizeMode === 'compact') {
+    // Inspection PDFs - 3 cols x small height, fits ~9 in 1 page extension
+    cols = 3;
+    photoH = 110;
+  } else {
+    if (n === 1) {           cols = 1; photoH = 240; }
+    else if (n === 2) {      cols = 2; photoH = 200; }
+    else if (n <= 4) {       cols = 2; photoH = 160; }
+    else if (n <= 6) {       cols = 3; photoH = 130; }
+    else if (n <= 9) {       cols = 3; photoH = 110; }
+    else {                   cols = 4; photoH =  95; }
+  }
+  
+  const gap = 8;
+  const photoW = (tblW - gap * (cols - 1)) / cols;
+  let col = 0;
+  let rowY = y;
+  const pageBottomLimit = doc.page.height - 50;
+  
+  for (let i = 0; i < valid.length; i++) {
+    const p = valid[i];
+    if (col === 0 && i > 0) {
+      if (rowY + photoH > pageBottomLimit) {
+        doc.addPage();
+        rowY = drawBrandedHeader(doc, hdr) + 10;
+        rowY = drawSectionTitle(doc, rowY, 'PHOTOS (continued)');
+      }
+    }
+    try {
+      let imgBuf;
+      if (typeof p === 'string') {
+        imgBuf = Buffer.from(p.split(',')[1] || p, 'base64');
+      } else if (p.data) {
+        imgBuf = Buffer.from(p.data.split(',')[1] || p.data, 'base64');
+      }
+      if (imgBuf) {
+        const x = 40 + col * (photoW + gap);
+        doc.rect(x, rowY, photoW, photoH).lineWidth(0.5).strokeColor(BORDER).stroke();
+        doc.image(imgBuf, x + 2, rowY + 2, { fit: [photoW - 4, photoH - 4], align: 'center', valign: 'center' });
+        doc.rect(x + 2, rowY + photoH - 14, 18, 12).fill(BRAND_BLUE);
+        doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7);
+        doc.text(String(i + 1), x + 2, rowY + photoH - 12, { width: 18, align: 'center' });
+        doc.fillColor(TEXT).font('Helvetica');
+      }
+    } catch(e) { console.log('Image embed error:', e.message); }
+    col++;
+    if (col >= cols) {
+      col = 0;
+      rowY += photoH + gap;
+    }
+  }
+  if (col > 0) rowY += photoH + gap;
+  return rowY + 4;
+}
+
 // Ensure space on page; create new page with header if not enough
 function ensureSpace(doc, y, need, headerOpts) {
   const limit = doc.page.height - 50;
@@ -290,6 +358,78 @@ function generatePDF(folder, data, ref) {
           ['Cutting Bow', data.cutting_bow],
           ['Surface Defects', data.surface_defects]
         ]);
+        
+        // Sheet Measurements table (if any sheets recorded)
+        const ctlSheets = (data.sheet_measurements || []).filter(r => r && (r.sheet_no || r.thickness || r.width || r.length || r.d1 || r.d2));
+        if (ctlSheets.length > 0) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'SHEET MEASUREMENTS');
+          const tblWQ = doc.page.width - 80;
+          const colWQ = tblWQ / 6;
+          doc.rect(40, y, tblWQ, 18).fill(BRAND_LIGHT);
+          doc.lineWidth(0.5).strokeColor(BORDER);
+          doc.rect(40, y, tblWQ, 18).stroke();
+          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+          const hdrs = ['Sheet No', 'Thickness', 'Width', 'Length', 'Diag 1', 'Diag 2'];
+          hdrs.forEach((h, idx) => {
+            doc.text(h, 40 + colWQ * idx + 4, y + 5, { width: colWQ - 8 });
+            if (idx > 0) doc.moveTo(40 + colWQ * idx, y).lineTo(40 + colWQ * idx, y + 18).stroke();
+          });
+          y += 18;
+          doc.font('Helvetica').fontSize(8).fillColor(TEXT);
+          ctlSheets.forEach((r, i) => {
+            y = ensureSpace(doc, y, 16, hdr);
+            if (i % 2 === 1) doc.rect(40, y, tblWQ, 16).fill(ROW_ALT);
+            doc.rect(40, y, tblWQ, 16).stroke();
+            const cells = [r.sheet_no, r.thickness, r.width, r.length, r.d1, r.d2];
+            cells.forEach((c, ci) => {
+              doc.fillColor(TEXT).text(String(c || '-'), 40 + colWQ * ci + 4, y + 4, { width: colWQ - 8 });
+              if (ci > 0) doc.moveTo(40 + colWQ * ci, y).lineTo(40 + colWQ * ci, y + 16).stroke();
+            });
+            y += 16;
+          });
+          y += 6;
+        }
+        
+        // Processed Quantity table for CTL
+        const ctlPq = data.processed_qty || {};
+        const ctlPqRows = [];
+        for (let i = 1; i <= 20; i++) {
+          const s = ctlPq['size_' + i] || {};
+          if (s.length || s.nos || s.weight_t) ctlPqRows.push({ size: 'Size ' + i, len: s.length, nos: s.nos, wt: s.weight_t });
+        }
+        if (ctlPqRows.length > 0) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'PROCESSED QUANTITY');
+          const tblWP = doc.page.width - 80;
+          const cwP = [70, (tblWP - 70) / 3, (tblWP - 70) / 3, (tblWP - 70) / 3];
+          doc.rect(40, y, tblWP, 18).fill(BRAND_LIGHT);
+          doc.lineWidth(0.5).strokeColor(BORDER);
+          doc.rect(40, y, tblWP, 18).stroke();
+          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+          let xcP = 40;
+          ['Size', 'Length (mm)', 'No. of Sheets', 'Weight (T)'].forEach((h, idx) => {
+            doc.text(h, xcP + 4, y + 5, { width: cwP[idx] - 8 });
+            if (idx > 0) doc.moveTo(xcP, y).lineTo(xcP, y + 18).stroke();
+            xcP += cwP[idx];
+          });
+          y += 18;
+          doc.font('Helvetica').fontSize(9).fillColor(TEXT);
+          ctlPqRows.forEach((r, i) => {
+            y = ensureSpace(doc, y, 16, hdr);
+            if (i % 2 === 1) doc.rect(40, y, tblWP, 16).fill(ROW_ALT);
+            doc.rect(40, y, tblWP, 16).stroke();
+            const vals = [r.size, r.len || '-', r.nos || '-', r.wt || '-'];
+            let xv = 40;
+            vals.forEach((v, idx) => {
+              if (idx > 0) doc.moveTo(xv, y).lineTo(xv, y + 16).stroke();
+              doc.fillColor(TEXT).text(String(v), xv + 4, y + 4, { width: cwP[idx] - 8 });
+              xv += cwP[idx];
+            });
+            y += 16;
+          });
+          y += 6;
+        }
         
         y = ensureSpace(doc, y, 80, hdr);
         y = drawSectionTitle(doc, y, 'SIGN-OFF');
@@ -472,6 +612,11 @@ function generatePDF(folder, data, ref) {
           doc.text(data.overall_observation, 48, y + 6, { width: tblW - 16 });
           y += 58;
         }
+      }
+      
+      // Inspection photos (Inward / CTL / Shearing) - small compact grid
+      if (data.photos && data.photos.length > 0) {
+        y = drawPhotosGrid(doc, y, data.photos, hdr, 'compact');
       }
 
       // Footer on all pages
