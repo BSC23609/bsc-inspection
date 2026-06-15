@@ -196,6 +196,8 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 
   <div class="home-body">
 
+    <div id="home_last_submission" style="display:none"></div>
+
     <div class="section-label">Select a form to fill</div>
 
     <div class="form-card" onclick="openForm('inward')">
@@ -655,6 +657,10 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   <div class="success-title" id="success-title">Submission saved!</div>
   <div class="success-ref" id="success-ref">Ref: BSC-000000</div>
   <div class="success-path" id="success-path">/BSC Inspections/...</div>
+  <div id="success-pdf-actions" style="display:flex;gap:8px;margin:18px 0 12px 0;justify-content:center;flex-wrap:wrap">
+    <button onclick="viewLastPdf()" style="padding:11px 18px;background:#1A6DAF;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">👁 View PDF</button>
+    <button onclick="downloadLastPdf()" style="padding:11px 18px;background:#fff;color:#1A6DAF;border:1px solid #1A6DAF;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">⬇ Download PDF</button>
+  </div>
   <div class="success-btns">
     <button class="btn-green" onclick="newEntry()">New Entry</button>
     <button class="btn-outline" onclick="goHome(); hideSuccess()">Home</button>
@@ -2139,8 +2145,9 @@ function runSubmit(btnId, spinId, lblId, data, folder) {
       data.pdf_content = folder === 'Inward' ? buildInwardPDF(data, ref) : buildQualityPDF(data, ref);
 
       lb.textContent = 'Submitting...';
-      await sendToServer(data);
-      showSuccess(ref, 'BSC Inspections / ' + folder, folder);
+      var resp = await sendToServer(data);
+      showSuccess(ref, 'BSC Inspections / ' + folder, folder, resp && resp.pdf_path);
+      saveLastSubmission(folder, ref, resp && resp.pdf_path);
     } catch(e) {
       toast('err', 'Submission failed: ' + e.message);
     }
@@ -2159,14 +2166,120 @@ function downloadLocal(content, filename, type) {
 // ============================================================
 //  SUCCESS SCREEN
 // ============================================================
-function showSuccess(ref, path, formType) {
+function showSuccess(ref, path, formType, pdfPath) {
   document.getElementById('success-title').textContent = formType + ' form saved!';
   document.getElementById('success-ref').textContent = 'Reference: ' + ref;
   document.getElementById('success-path').textContent = path;
+  // Wire up the PDF action buttons
+  window._lastPdfPath = pdfPath || '';
+  var actions = document.getElementById('success-pdf-actions');
+  if (actions) {
+    actions.style.display = pdfPath ? '' : 'none';
+  }
   document.getElementById('success-screen').classList.add('show');
   window.scrollTo(0,0);
 }
 function hideSuccess() { document.getElementById('success-screen').classList.remove('show'); }
+
+// ============================================================
+//  POST-SUBMIT PDF ACCESS + LAST SUBMISSION TRACKING
+// ============================================================
+function viewLastPdf() {
+  if (!window._lastPdfPath) { toast('err', 'PDF path not available'); return; }
+  // Reuse the existing PDF viewer modal
+  if (typeof viewCaseFile === 'function') {
+    var fname = window._lastPdfPath.split('/').pop();
+    // viewCaseFile signature: (caseId, filename, filePath) - caseId not strictly required for non-case PDFs
+    document.getElementById('pdf_modal_title').textContent = fname;
+    document.getElementById('pdf_modal_loading').style.display = 'block';
+    document.getElementById('pdf_modal_loading').textContent = 'Loading ' + fname + '...';
+    document.getElementById('pdf_modal_iframe').style.display = 'none';
+    document.getElementById('pdf_modal_iframe').src = 'about:blank';
+    document.getElementById('pdf_modal').style.display = 'flex';
+    var streamUrl = SERVER_URL + '/file?path=' + encodeURIComponent(window._lastPdfPath);
+    document.getElementById('pdf_modal_download').href = streamUrl + '&download=1';
+    document.getElementById('pdf_modal_iframe').src = streamUrl;
+    document.getElementById('pdf_modal_iframe').onload = function() {
+      document.getElementById('pdf_modal_loading').style.display = 'none';
+      document.getElementById('pdf_modal_iframe').style.display = 'block';
+    };
+  } else {
+    // Fallback - open in new tab
+    window.open(SERVER_URL + '/file?path=' + encodeURIComponent(window._lastPdfPath), '_blank');
+  }
+}
+
+function downloadLastPdf() {
+  if (!window._lastPdfPath) { toast('err', 'PDF path not available'); return; }
+  var url = SERVER_URL + '/file?path=' + encodeURIComponent(window._lastPdfPath) + '&download=1';
+  // Trigger download
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = window._lastPdfPath.split('/').pop();
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function saveLastSubmission(formType, ref, pdfPath) {
+  if (!pdfPath) return;
+  try {
+    var entry = {
+      formType: formType,
+      ref: ref,
+      pdfPath: pdfPath,
+      timestamp: new Date().toISOString()
+    };
+    localStorage.setItem('bsc_last_submission', JSON.stringify(entry));
+    renderLastSubmission();
+  } catch(e) { /* localStorage may fail in private mode - ignore */ }
+}
+
+function getLastSubmission() {
+  try {
+    var raw = localStorage.getItem('bsc_last_submission');
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch(e) { return null; }
+}
+
+function clearLastSubmission() {
+  try { localStorage.removeItem('bsc_last_submission'); } catch(e) {}
+  renderLastSubmission();
+}
+
+function renderLastSubmission() {
+  var container = document.getElementById('home_last_submission');
+  if (!container) return;
+  var entry = getLastSubmission();
+  if (!entry) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  var fname = entry.pdfPath ? entry.pdfPath.split('/').pop() : '';
+  var when = '';
+  try {
+    var d = new Date(entry.timestamp);
+    when = d.toLocaleString('en-IN', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' });
+  } catch(e) {}
+  container.innerHTML =
+    '<div style="background:linear-gradient(135deg, #e8f2fb, #fff);border:1px solid #1A6DAF40;border-radius:12px;padding:14px;margin:0 0 16px 0;display:flex;align-items:center;gap:12px">'
+    + '<div style="width:40px;height:48px;background:#fee;border:1px solid #fcc;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#c33;font-weight:700;font-size:11px;flex-shrink:0">PDF</div>'
+    + '<div style="flex:1;min-width:0">'
+    + '<div style="font-size:11px;color:#1A6DAF;font-weight:700;text-transform:uppercase;letter-spacing:0.5px">Last Submitted</div>'
+    + '<div style="font-size:13px;font-weight:600;color:#1f2937;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + escHtml(entry.formType) + ' · ' + escHtml(entry.ref) + '</div>'
+    + '<div style="font-size:11px;color:#6b7280;margin-top:2px">' + escHtml(when) + '</div>'
+    + '</div>'
+    + '<div style="display:flex;gap:6px;flex-shrink:0">'
+    + '<button onclick="window._lastPdfPath=\'' + entry.pdfPath.replace(/\\/g,"\\\\").replace(/'/g,"\\'") + '\'; viewLastPdf()" style="padding:8px 12px;background:#1A6DAF;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">View</button>'
+    + '<button onclick="window._lastPdfPath=\'' + entry.pdfPath.replace(/\\/g,"\\\\").replace(/'/g,"\\'") + '\'; downloadLastPdf()" style="padding:8px 10px;background:#fff;color:#1A6DAF;border:1px solid #1A6DAF;border-radius:6px;font-size:12px;font-weight:600;cursor:pointer">⬇</button>'
+    + '<button onclick="clearLastSubmission()" style="padding:8px 10px;background:#fff;color:#999;border:1px solid #e5e7eb;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer" title="Dismiss">×</button>'
+    + '</div>'
+    + '</div>';
+}
+
+
 function newEntry() {
   hideSuccess();
   var btn = document.querySelector('#screen-inward .btn-primary, #screen-quality .btn-primary');
@@ -2544,9 +2657,10 @@ async function submitComplaint() {
     var result = await resp.json();
     if (result.status !== 'success') throw new Error(result.message || 'Submission failed');
     
-    toast('ok', 'Complaint ' + result.case_id + ' submitted successfully');
+    var formType = (currentComplaintType === 'customer') ? 'Sales Quality Complaint' : 'Purchase Quality Complaint';
+    showSuccess(result.case_id, 'BSC Inspections / Complaints', formType, result.pdf_path);
+    saveLastSubmission(formType, result.case_id, result.pdf_path);
     clearComplaint();
-    setTimeout(function() { showScreen('complaint-menu'); }, 2000);
   } catch(e) {
     toast('err', 'Submission failed: ' + e.message);
   } finally {
@@ -3912,6 +4026,7 @@ if (document.getElementById('sh_osz_rows')) addShOszRow();
 if (document.getElementById('sh_pq_grid')) buildShPQ();
 document.getElementById('sh_date').value = now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate());
 loadAppSettings();
+renderLastSubmission();
 
 // Deep link: if URL has ?case=XXX, open that case directly
 (async function handleDeepLink() {

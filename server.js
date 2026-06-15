@@ -1021,7 +1021,8 @@ app.post('/submit', async (req, res) => {
       .then(() => console.log('[xlsx] row appended for', fileName))
       .catch(e => console.error('[xlsx] row append FAILED for', fileName, '-', e.message));
 
-    res.json({ status: 'success', ref: ref, filename: fileName });
+    const pdf_path = pdfFolder + '/' + fileName + '.pdf';
+    res.json({ status: 'success', ref: ref, filename: fileName, pdf_path: pdf_path });
 
     if (folder === 'Inward' && RESEND_API_KEY) {
       sendInwardEmail(pdfBuffer, fileName, data)
@@ -1198,7 +1199,7 @@ app.post('/complaint/submit', async (req, res) => {
     // Append to Excel
     await appendComplaintRow(token, data);
 
-    res.json({ status: 'success', case_id: caseId, filename: fileName });
+    res.json({ status: 'success', case_id: caseId, filename: fileName, pdf_path: pdfPath });
 
     // Send email
     if (RESEND_API_KEY) {
@@ -1730,6 +1731,37 @@ app.get('/complaint/files', async (req, res) => {
 });
 
 // GET /complaint/file?path=<path>&download=1 → stream file from OneDrive
+// Generic file streaming endpoint - broader path allowed (security: must be under BSC Inspections/)
+app.get('/file', async (req, res) => {
+  const filePath = req.query.path;
+  const download = req.query.download === '1';
+  if (!filePath) return res.status(400).send('path required');
+  // Security: only allow paths under BSC Inspections/
+  if (!filePath.startsWith('BSC Inspections/')) {
+    return res.status(403).send('Access denied');
+  }
+  // Block path traversal
+  if (filePath.indexOf('..') >= 0) {
+    return res.status(403).send('Invalid path');
+  }
+  try {
+    const token = await getToken();
+    const upstream = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(filePath) + ':/content', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!upstream.ok) {
+      return res.status(upstream.status).send('File not found');
+    }
+    const ct = upstream.headers.get('content-type') || 'application/octet-stream';
+    res.setHeader('Content-Type', ct);
+    const fname = filePath.split('/').pop();
+    res.setHeader('Content-Disposition', (download ? 'attachment' : 'inline') + '; filename="' + fname + '"');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    const buf = await upstream.buffer();
+    res.send(buf);
+  } catch(err) {
+    res.status(500).send('Error: ' + err.message);
+  }
+});
+
 app.get('/complaint/file', async (req, res) => {
   const filePath = req.query.path;
   const download = req.query.download === '1';
@@ -1757,6 +1789,252 @@ app.get('/complaint/file', async (req, res) => {
     res.send(buf);
   } catch(err) {
     res.status(500).send('Error: ' + err.message);
+  }
+});
+
+
+// =====================================================
+// PDF REGENERATION - rebuild past PDFs using new template
+// Hit repeatedly: GET /regenerate-pdfs?type=quality&batch=0&key=BSC_MIGRATE_2026
+// =====================================================
+const BATCH_SIZE = 15;
+
+async function fetchPhotosFromFolder(token, folderPath) {
+  const photos = [];
+  try {
+    const listResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(folderPath) + ':/children?$top=50', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!listResp.ok) return [];
+    const items = (await listResp.json()).value || [];
+    for (const it of items) {
+      if (it.folder) continue;
+      const name = (it.name || '').toLowerCase();
+      if (!/\.(jpe?g|png|gif|webp)$/i.test(name)) continue;
+      try {
+        const dl = await fetch(it['@microsoft.graph.downloadUrl']);
+        if (dl.ok) {
+          const buf = await dl.buffer();
+          const mime = (it.file && it.file.mimeType) || 'image/jpeg';
+          photos.push({ name: it.name, type: mime, data: 'data:' + mime + ';base64,' + buf.toString('base64') });
+        }
+      } catch(e) { console.log('[regen] photo fetch err:', e.message); }
+    }
+  } catch(e) { console.log('[regen] folder list err:', e.message); }
+  return photos;
+}
+
+// Reconstruct data object from a row of the Inspection Excel
+function rowToInwardData(v) {
+  return {
+    timestamp: v[1]||'', vehicle_number: v[2]||'', batch_number: v[3]||'',
+    make_of_coil: v[4]||'', grade: v[5]||'', width: v[6]||'',
+    thickness: v[7]||'', coil_weight: v[8]||'', coil_id: v[9]||'',
+    actual_thickness: v[10]||'', actual_width: v[11]||'',
+    id_sticker: v[12]||'', edge_inner: v[13]||'', edge_outer: v[14]||'',
+    scratch: v[15]||'', strapping: v[16]||'', rust: v[17]||'',
+    other_damages: v[18]||'', wheels_india: (v[19] === true || v[19] === 'TRUE' || v[19] === 'true' || v[19] === 'Yes'),
+    inspected_by: v[20]||'', remarks: v[21]||''
+  };
+}
+
+function rowToQualityData(v) {
+  const data = {
+    timestamp: v[1]||'', customer_name: v[2]||'', date: v[3]||'',
+    time: v[4]||'', coil_number: v[5]||'', batch_number: v[6]||'',
+    make: v[7]||'', coil_grade: v[8]||'', coil_thickness: v[9]||'',
+    coil_width: v[10]||'', coil_weight: v[11]||'',
+    first_bit: v[12]||'', last_bit: v[13]||'', defective: v[14]||'',
+    balance_wt: v[15]||'', coil_verified: v[16]||'', blade_clearance: v[17]||'',
+    bur: v[18]||'', cutting_finish: v[19]||'', scalling: v[20]||'',
+    pit_marks: v[21]||'', waviness: v[22]||'', center_bow: v[23]||'',
+    cutting_bow: v[24]||'', surface_defects: v[25]||'',
+    operator: v[26]||'', machine_name: v[27]||'', inspector: v[28]||'',
+    remarks: v[29]||''
+  };
+  // Sheet measurements - columns 30-179 (30 rows x 5 fields each from old layout, or 6 fields new)
+  // We try the new 6-field layout first; if file has old 5-field, the offsets won't match but won't crash
+  data.sheet_measurements = [];
+  for (let i = 0; i < 30; i++) {
+    const base = 30 + i * 6;
+    const row = {
+      sheet_no: v[base]||'', thickness: v[base+1]||'', width: v[base+2]||'',
+      length: v[base+3]||'', d1: v[base+4]||'', d2: v[base+5]||''
+    };
+    if (row.sheet_no || row.thickness || row.width || row.length) data.sheet_measurements.push(row);
+  }
+  // Processed quantity - columns 210+ (20 sizes x 3 fields)
+  data.processed_qty = {};
+  for (let i = 1; i <= 20; i++) {
+    const base = 210 + (i-1) * 3;
+    data.processed_qty['size_' + i] = {
+      length: v[base]||'', nos: v[base+1]||'', weight_t: v[base+2]||''
+    };
+  }
+  return data;
+}
+
+function rowToShearingData(v) {
+  const data = {
+    timestamp: v[1]||'', customer_name: v[2]||'', date: v[3]||'',
+    batch_number: v[4]||'', grade: v[5]||'', make: v[6]||'', type: v[7]||'',
+    process: v[8]||'', operator: v[9]||'', input_size: v[10]||'', qc_name: v[11]||'',
+    burr: v[12]||'', blade_clearance: v[13]||'', cutting_finish: v[14]||'',
+    surface_condition: v[15]||'', bow_bend: v[16]||'', taper_cutting: v[17]||'',
+    rejection_flag: v[18]||'No', remarks: v[19]||'', overall_observation: v[20]||''
+  };
+  // Sheet measurements - 30 rows x 6 fields starting at col 21
+  data.measurements = [];
+  for (let i = 0; i < 30; i++) {
+    const base = 21 + i * 6;
+    const row = {
+      sheet_no: v[base]||'', width1: v[base+1]||'', width2: v[base+2]||'',
+      diag1: v[base+3]||'', diag2: v[base+4]||'', remarks: v[base+5]||''
+    };
+    if (row.sheet_no || row.width1 || row.width2) data.measurements.push(row);
+  }
+  // Output sizes - 20 cols starting at 201
+  data.output_sizes = [];
+  for (let i = 0; i < 20; i++) {
+    if (v[201 + i]) data.output_sizes.push(v[201 + i]);
+  }
+  // Processed quantity - 20 sizes x 3 fields starting at 221
+  data.processed_qty = {};
+  for (let i = 1; i <= 20; i++) {
+    const base = 221 + (i-1) * 3;
+    data.processed_qty['size_' + i] = {
+      length: v[base]||'', nos: v[base+1]||'', weight_t: v[base+2]||''
+    };
+  }
+  // Rejections - 10 rows x 2 fields starting at 281
+  data.rejections = [];
+  for (let i = 0; i < 10; i++) {
+    const base = 281 + i * 2;
+    if (v[base] || v[base+1]) data.rejections.push({ size: v[base]||'', qty: v[base+1]||'' });
+  }
+  return data;
+}
+
+function rowToComplaintData(v) {
+  return {
+    case_id: v[0]||'', timestamp: v[1]||'', source: v[2]||'', filed_by: v[3]||'',
+    customer_name: v[4]||'', batch_number: v[5]||'', grade: v[6]||'', dimensions: v[7]||'',
+    tc_number: v[8]||'', invoice_no: v[9]||'', invoice_date: v[10]||'', quantity: v[11]||'',
+    mill: v[12]||'', defect_type: v[13]||'', remarks: v[14]||'', status: v[15]||'',
+    reviewed_by: v[16]||'', root_cause: v[17]||'', decision: v[18]||'',
+    vendor_name: v[19]||'', vendor_email: v[20]||'', resolution: v[21]||'', resolved_date: v[22]||'',
+    customer_email: v[23]||'', production_comments: v[24]||'', sales_reviewer: v[25]||'',
+    customer_message: v[26]||'', customer_outcome_by: v[27]||'', customer_outcome_notes: v[28]||''
+  };
+}
+
+app.get('/regenerate-pdfs', async (req, res) => {
+  if (req.query.key !== 'BSC_MIGRATE_2026') return res.status(403).json({ error: 'Invalid key' });
+  const type = String(req.query.type || '').toLowerCase();
+  const batch = parseInt(req.query.batch || '0', 10);
+  if (!['inward','quality','shearing','complaints'].includes(type)) {
+    return res.status(400).json({ error: 'type must be inward|quality|shearing|complaints' });
+  }
+  
+  try {
+    const token = await getToken();
+    
+    // Map type to Excel file + table
+    const configs = {
+      inward:    { file: 'BSC Inspections/Inward/Inward_Log.xlsx',     table: 'InwardLog',    pdfFolder: 'BSC Inspections/Inward/PDF',     photoBase: 'BSC Inspections/Inward/Photos' },
+      quality:   { file: 'BSC Inspections/Quality/Quality_Log.xlsx',   table: 'QualityLog',   pdfFolder: 'BSC Inspections/Quality/PDF',    photoBase: 'BSC Inspections/Quality/Photos' },
+      shearing:  { file: 'BSC Inspections/Shearing/Shearing_Log.xlsx', table: 'ShearingLog',  pdfFolder: 'BSC Inspections/Shearing/PDF',   photoBase: 'BSC Inspections/Shearing/Photos' },
+      complaints:{ file: 'BSC Inspections/Complaints/Complaints_Log.xlsx', table: 'ComplaintsLog', pdfFolder: 'BSC Inspections/Complaints/PDF', photoBase: 'BSC Inspections/Complaints/Attachments' }
+    };
+    const cfg = configs[type];
+    
+    // Get fileId
+    const meta = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(cfg.file), { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!meta.ok) return res.status(404).json({ error: 'Log file not found: ' + cfg.file });
+    const fileId = (await meta.json()).id;
+    
+    // Read all rows
+    const rowsResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + cfg.table + '/rows', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!rowsResp.ok) return res.status(500).json({ error: 'Cannot read table: ' + cfg.table });
+    const allRows = (await rowsResp.json()).value || [];
+    const total = allRows.length;
+    
+    // Slice this batch
+    const start = batch * BATCH_SIZE;
+    const end = Math.min(start + BATCH_SIZE, total);
+    const slice = allRows.slice(start, end);
+    
+    const errors = [];
+    const processed = [];
+    
+    for (const row of slice) {
+      const v = row.values[0];
+      try {
+        if (type === 'complaints') {
+          const cdata = rowToComplaintData(v);
+          if (!cdata.case_id) { errors.push({ idx: row.index, err: 'no case_id' }); continue; }
+          // Fetch photos from Attachments/<caseId> folder (only images)
+          const photos = await fetchPhotosFromFolder(token, cfg.photoBase + '/' + cdata.case_id);
+          const pdfBuf = await generateComplaintPDF(cdata, photos);
+          const pdfName = cdata.case_id + '_Defect_Report.pdf';
+          await uploadFile(token, cfg.pdfFolder + '/' + pdfName, pdfBuf, 'application/pdf');
+          processed.push(cdata.case_id);
+        } else {
+          // Inspection types: Inward, Quality, Shearing
+          const fileNameInExcel = v[0]; // first col is file name
+          if (!fileNameInExcel) { errors.push({ idx: row.index, err: 'no filename' }); continue; }
+          
+          let data, folder, pdfPath, photoPath;
+          if (type === 'inward') {
+            data = rowToInwardData(v);
+            folder = 'Inward';
+            pdfPath = cfg.pdfFolder + '/' + fileNameInExcel + '.pdf';
+            photoPath = cfg.photoBase + '/' + fileNameInExcel;
+          } else if (type === 'quality') {
+            data = rowToQualityData(v);
+            folder = 'Quality';
+            // CTL has machine-specific subfolders
+            const machineNorm = String(data.machine_name || '').trim().toUpperCase().replace(/\s+/g, '');
+            let sub = '';
+            if (machineNorm === 'CTL-1' || machineNorm === 'CTL1') sub = '/CTL-1';
+            else if (machineNorm === 'CTL-2' || machineNorm === 'CTL2') sub = '/CTL-2';
+            pdfPath = cfg.pdfFolder + sub + '/' + fileNameInExcel + '.pdf';
+            photoPath = cfg.photoBase + sub + '/' + fileNameInExcel;
+          } else {
+            data = rowToShearingData(v);
+            folder = 'Shearing';
+            pdfPath = cfg.pdfFolder + '/' + fileNameInExcel + '.pdf';
+            photoPath = cfg.photoBase + '/' + fileNameInExcel;
+          }
+          
+          // Fetch photos from OneDrive
+          const photos = await fetchPhotosFromFolder(token, photoPath);
+          data.photos = photos;
+          
+          // Reference number from filename for PDF header
+          const refNo = fileNameInExcel;
+          const pdfBuf = await generatePDF(folder, data, refNo);
+          await uploadFile(token, pdfPath, pdfBuf, 'application/pdf');
+          processed.push(fileNameInExcel);
+        }
+      } catch(e) {
+        errors.push({ idx: row.index, err: e.message });
+        console.log('[regen]', type, 'row', row.index, 'failed:', e.message);
+      }
+    }
+    
+    res.json({
+      type: type,
+      batch: batch,
+      batch_size: BATCH_SIZE,
+      total: total,
+      processed_in_batch: processed.length,
+      processed_total_so_far: end,
+      done: end >= total,
+      next_batch: end >= total ? null : (batch + 1),
+      errors: errors,
+      processed_files: processed
+    });
+  } catch(err) {
+    res.status(500).json({ error: err.message, stack: err.stack });
   }
 });
 
