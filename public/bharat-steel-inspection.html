@@ -4461,12 +4461,13 @@ function renderSubmissions(list){
     if(c.status==='submitted') actions='<button class="us-btn" style="border-color:#A6F4C5;color:#067647" onclick="decide('+c.id+',\'accept\')">Accept</button><button class="us-btn" style="border-color:#FCA5A5;color:#B91C1C" onclick="decide('+c.id+',\'decline\')">Decline</button>';
     else if(c.status==='in_review') actions='<button class="us-btn" style="border-color:#A6F4C5;color:#067647" onclick="decide('+c.id+',\'resolve\')">Send resolution</button><button class="us-btn" style="border-color:#FCA5A5;color:#B91C1C" onclick="decide('+c.id+',\'decline\')">Decline</button>';
     var ph=(c.photos&&c.photos.length)?('<div style="display:flex;gap:6px;margin-top:10px">'+c.photos.map(function(p){return '<div style="width:46px;height:46px;border-radius:8px;border:1px solid #EAECF0;background-size:cover;background-position:center;background-image:url('+p+')"></div>';}).join('')+'</div>'):'';
+    var metaHtml=(function(){var a=[['Grade',c.grade],['Dimensions',c.dimensions],['Batch',c.batch_no],['TC',c.tc_no],['Invoice',c.invoice_no],['Inv date',c.invoice_date],['Qty',c.quantity],['Mobile',c.mobile],['Email',c.contact_email]].filter(function(x){return x[1];}).map(function(x){return '<span style="color:#98A2B3">'+x[0]+':</span> '+usEsc(x[1]);}).join(' &nbsp;\u00b7&nbsp; ');return a?('<div style="font-size:11px;color:#475467;margin-top:6px;line-height:1.8">'+a+'</div>'):'';})();
     return '<div class="us-tablewrap" style="padding:16px 18px;margin-bottom:12px">'+
       '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">'+
       '<div style="flex:1;min-width:200px"><div style="font-family:monospace;font-size:11.5px;color:#0B5793;font-weight:600">'+usEsc(c.ref||('#'+c.id))+'</div>'+
-      '<div style="font-weight:700;color:#101828;font-size:14px;margin-top:2px">'+usEsc(c.company||'')+(c.product?(' \u00b7 '+usEsc(c.product)):'')+'</div>'+
+      '<div style="font-weight:700;color:#101828;font-size:14px;margin-top:2px">'+usEsc(c.company||'')+(c.filed_by?(' \u00b7 '+usEsc(c.filed_by)):'')+'</div>'+
       '<div style="font-size:12px;color:#667085;margin-top:4px">'+usEsc(c.description||'')+'</div>'+
-      (c.invoice_no?'<div style="font-size:11px;color:#98A2B3;margin-top:4px">Invoice '+usEsc(c.invoice_no)+(c.grade?(' \u00b7 '+usEsc(c.grade)):'')+'</div>':'')+ph+'</div>'+
+      metaHtml+ph+'</div>'+
       '<div style="text-align:right"><span class="us-pill '+s[0]+'">'+s[1]+'</span>'+(c.handler_emp?'<div style="font-size:10.5px;color:#98A2B3;margin-top:6px">'+usEsc(c.handler_emp)+'</div>':'')+'</div></div>'+
       (actions?'<div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">'+actions+'</div>':'')+'</div>';
   }).join('');

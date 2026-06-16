@@ -29,11 +29,48 @@ app.use('/auth', authRouter);
 // CUSTOMER PORTAL (brick 3) — Postgres-backed intake
 // ===================================================
 function ccPublic(r){
-  return { id:r.id, ref:r.ref, company:r.company, product:r.product, grade:r.grade,
-    invoice_no:r.invoice_no, po_no:r.po_no, so_no:r.so_no, tc_no:r.tc_no, qty_affected:r.qty_affected,
+  return { id:r.id, ref:r.ref, company:r.company, filed_by:r.filed_by, contact_email:r.contact_email, mobile:r.mobile,
+    grade:r.grade, dimensions:r.dimensions, batch_no:r.batch_no, tc_no:r.tc_no,
+    invoice_no:r.invoice_no, invoice_date:r.invoice_date, quantity:r.quantity,
     description:r.description, status:r.status, decision_note:r.decision_note,
     resolution_note:r.resolution_note, customer_response:r.customer_response,
     handler_emp:r.handler_emp, photos:r.photos||[], created_at:r.created_at, updated_at:r.updated_at };
+}
+
+async function notifyNewComplaint(row){
+  try {
+    if (!RESEND_API_KEY) { console.log('[portal] RESEND_API_KEY not set; skip complaint email'); return; }
+    const esc = s => String(s==null?'':s).replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+    const link   = 'https://qms.bharatsteels.in/?submission=' + encodeURIComponent(row.ref || row.id);
+    const waText = encodeURIComponent('New BSC complaint ' + (row.ref||'') + ' from ' + (row.company||'') + '. Please review in the QMS.');
+    const waLink = 'https://wa.me/919884384261?text=' + waText; // Shivam
+    const rows = [
+      ['Reference', row.ref],['Customer', row.company],['Filed by', row.filed_by],
+      ['Mobile', row.mobile],['Email', row.contact_email],['Grade', row.grade],
+      ['Dimensions', row.dimensions],['Batch No', row.batch_no],['TC Number', row.tc_no],
+      ['Invoice No', row.invoice_no],['Invoice Date', row.invoice_date],['Quantity', row.quantity]
+    ].filter(x => x[1]).map(x =>
+      '<tr><td style="padding:5px 12px;color:#667085;border-bottom:1px solid #F2F4F7">'+esc(x[0])+
+      '</td><td style="padding:5px 12px;font-weight:600;border-bottom:1px solid #F2F4F7">'+esc(x[1])+'</td></tr>').join('');
+    const html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:580px;color:#101828">'
+      + '<h2 style="color:#0F6CB6;margin:0 0 4px">New customer complaint</h2>'
+      + '<p style="color:#475467;margin:0 0 14px;font-size:13px">A new quality complaint was logged in the QMS complaint portal.</p>'
+      + '<table style="border-collapse:collapse;font-size:13px;border:1px solid #EAECF0;border-radius:8px;width:100%">'+rows+'</table>'
+      + '<p style="margin:16px 0 6px;font-size:13px;color:#475467">Description</p>'
+      + '<div style="font-size:13px;background:#F8FAFC;border:1px solid #EAECF0;border-radius:8px;padding:10px;white-space:pre-wrap">'+esc(row.description||'')+'</div>'
+      + (row.photos && row.photos.length ? '<p style="font-size:12px;color:#667085;margin-top:8px">'+row.photos.length+' photo(s) attached — view them in the portal.</p>' : '')
+      + '<div style="margin-top:18px">'
+      + '<a href="'+link+'" style="background:#0F6CB6;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600">Open in QMS</a>&nbsp;&nbsp;'
+      + '<a href="'+waLink+'" style="background:#25D366;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600">WhatsApp Shivam</a>'
+      + '</div></div>';
+    await sendEmail({
+      to: ['info@bharatsteels.in'],
+      cc: ['shivamshroff1997@gmail.com'],
+      subject: 'New complaint ' + (row.ref||'') + ' — ' + (row.company||''),
+      html,
+      text: 'New complaint ' + (row.ref||'') + ' from ' + (row.company||'') + '. Filed by ' + (row.filed_by||'-') + '. Open: ' + link
+    });
+  } catch (e) { console.error('[portal] notifyNewComplaint', e.message); }
 }
 
 app.get('/portal/complaints', requireAuth, requireCustomer, async (req, res) => {
@@ -47,22 +84,27 @@ app.post('/portal/complaints', requireAuth, requireCustomer, async (req, res) =>
   try {
     const b = req.body || {};
     if (!b.description || String(b.description).trim().length < 5) return res.status(400).json({ error:'description_required' });
-    let photos = Array.isArray(b.photos) ? b.photos.slice(0,4) : [];
-    photos = photos.filter(p => typeof p === 'string' && p.startsWith('data:image') && p.length < 3000000);
+    let photos = Array.isArray(b.photos) ? b.photos.slice(0,10) : [];
+    photos = photos.filter(p => typeof p === 'string' && p.startsWith('data:image') && p.length < 4000000);
     const yr = new Date().getFullYear();
     const c = await pgq('SELECT count(*)::int AS n FROM customer_complaints WHERE ref LIKE $1', ['CMP-'+yr+'-%']);
     const ref = 'CMP-'+yr+'-'+String(c.rows[0].n + 1).padStart(3,'0');
     const u = req.user;
+    const S = v => (v==null || String(v).trim()==='') ? null : String(v).trim();
     const r = await pgq(
       `INSERT INTO customer_complaints
-        (ref,customer_id,company,contact_name,email,invoice_no,po_no,so_no,tc_no,product,grade,qty_affected,description,photos,status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'submitted') RETURNING *`,
+        (ref,customer_id,company,contact_name,email,filed_by,contact_email,mobile,
+         grade,dimensions,batch_no,tc_no,invoice_no,invoice_date,quantity,
+         description,photos,status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'submitted') RETURNING *`,
       [ref,u.id,u.company,u.contact_name,u.email,
-       b.invoice_no||null,b.po_no||null,b.so_no||null,b.tc_no||null,
-       b.product||null,b.grade||null,b.qty_affected||null,String(b.description).trim(),
-       JSON.stringify(photos)]
+       S(b.filed_by),S(b.email),S(b.mobile),
+       S(b.grade),S(b.dimensions),S(b.batch_no),S(b.tc_no),S(b.invoice_no),S(b.invoice_date),S(b.quantity),
+       String(b.description).trim(), JSON.stringify(photos)]
     );
-    res.json({ ok:true, complaint: ccPublic(r.rows[0]) });
+    const row = r.rows[0];
+    notifyNewComplaint(row); // fire-and-forget (won't block or fail the submission)
+    res.json({ ok:true, complaint: ccPublic(row) });
   } catch(e){ console.error('[portal] raise', e.message); res.status(500).json({error:'server_error'}); }
 });
 

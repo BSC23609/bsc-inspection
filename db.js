@@ -83,6 +83,14 @@ async function migrate() {
   `);
   await q(`CREATE INDEX IF NOT EXISTS idx_cc_email  ON customer_complaints (lower(email));`);
   await q(`CREATE INDEX IF NOT EXISTS idx_cc_status ON customer_complaints (status);`);
+  // extra intake fields (added later)
+  await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS filed_by     TEXT;`);
+  await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS contact_email TEXT;`);
+  await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS mobile       TEXT;`);
+  await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS dimensions   TEXT;`);
+  await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS batch_no     TEXT;`);
+  await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS invoice_date TEXT;`);
+  await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS quantity     TEXT;`);
 }
 
 module.exports = { pool, q, migrate };
