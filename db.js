@@ -43,7 +43,8 @@ async function migrate() {
       id                   SERIAL PRIMARY KEY,
       company              TEXT NOT NULL,
       contact_name         TEXT,
-      email                TEXT UNIQUE NOT NULL,
+      code                 TEXT UNIQUE,
+      email                TEXT,
       active               BOOLEAN NOT NULL DEFAULT true,
       password_hash        TEXT NOT NULL,
       must_change_password BOOLEAN NOT NULL DEFAULT true,
@@ -53,6 +54,10 @@ async function migrate() {
   `);
   await q(`CREATE INDEX IF NOT EXISTS idx_emp_empno ON employees (lower(emp_no));`);
   await q(`CREATE INDEX IF NOT EXISTS idx_cust_email ON customers (lower(email));`);
+  // ensure code column + relaxed email on already-created DBs
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS code TEXT;`);
+  await q(`CREATE UNIQUE INDEX IF NOT EXISTS customers_code_key ON customers (code);`);
+  await q(`ALTER TABLE customers ALTER COLUMN email DROP NOT NULL;`);
 
   // Customer-portal complaint intake / tracking (brick 3)
   await q(`
@@ -78,21 +83,6 @@ async function migrate() {
   `);
   await q(`CREATE INDEX IF NOT EXISTS idx_cc_email  ON customer_complaints (lower(email));`);
   await q(`CREATE INDEX IF NOT EXISTS idx_cc_status ON customer_complaints (status);`);
-
-  // Vendor portal accounts
-  await q(`
-    CREATE TABLE IF NOT EXISTS vendors (
-      id                   SERIAL PRIMARY KEY,
-      vendor_no            TEXT UNIQUE NOT NULL,
-      name                 TEXT NOT NULL,
-      active               BOOLEAN NOT NULL DEFAULT true,
-      password_hash        TEXT NOT NULL,
-      must_change_password BOOLEAN NOT NULL DEFAULT true,
-      token_version        INTEGER NOT NULL DEFAULT 0,
-      created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
-    );
-  `);
-  await q(`CREATE INDEX IF NOT EXISTS idx_vendor_no ON vendors (lower(vendor_no));`);
 }
 
 module.exports = { pool, q, migrate };

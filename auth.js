@@ -57,7 +57,7 @@ function setCookie(res, token) {
 function clearCookie(res) { res.clearCookie(COOKIE, { path:'/' }); }
 
 async function loadUser(kind, id) {
-  const table = kind === 'employee' ? 'employees' : (kind === 'vendor' ? 'vendors' : 'customers');
+  const table = kind === 'employee' ? 'employees' : 'customers';
   const r = await q(`SELECT * FROM ${table} WHERE id=$1`, [id]);
   return r.rows[0];
 }
@@ -87,10 +87,6 @@ function requireCustomer(req, res, next) {
   if (req.userKind !== 'customer') return res.status(403).json({ error:'customers_only' });
   next();
 }
-function requireVendor(req, res, next) {
-  if (req.userKind !== 'vendor') return res.status(403).json({ error:'vendors_only' });
-  next();
-}
 function requireAdmin(req, res, next) {
   if (req.userKind !== 'employee' || !req.user.is_admin) return res.status(403).json({ error:'admin_only' });
   next();
@@ -112,21 +108,12 @@ router.post('/login', async (req, res) => {
     if (!identifier || !password) return res.status(400).json({ error:'missing_credentials' });
 
     if (kind === 'customer') {
-      const r = await q('SELECT * FROM customers WHERE lower(email)=lower($1)', [String(identifier).trim()]);
+      const r = await q('SELECT * FROM customers WHERE lower(code)=lower($1) OR lower(email)=lower($1)', [String(identifier).trim()]);
       const u = r.rows[0];
       if (!u || !u.active || !(await verify(password, u.password_hash)))
         return res.status(401).json({ error:'invalid_login' });
       setCookie(res, signToken(u, 'customer'));
       return res.json({ ok:true, kind:'customer', name:u.contact_name || u.company, company:u.company, must_change_password:u.must_change_password });
-    }
-
-    if (kind === 'vendor') {
-      const r = await q('SELECT * FROM vendors WHERE lower(vendor_no)=lower($1)', [String(identifier).trim()]);
-      const u = r.rows[0];
-      if (!u || !u.active || !(await verify(password, u.password_hash)))
-        return res.status(401).json({ error:'invalid_login' });
-      setCookie(res, signToken(u, 'vendor'));
-      return res.json({ ok:true, kind:'vendor', name:u.name, must_change_password:u.must_change_password });
     }
 
     const r = await q('SELECT * FROM employees WHERE lower(emp_no)=lower($1)', [String(identifier).trim()]);
@@ -146,10 +133,7 @@ router.post('/logout', (req, res) => { clearCookie(res); res.json({ ok:true }); 
 router.get('/me', requireAuth, (req, res) => {
   const u = req.user;
   if (req.userKind === 'customer') {
-    return res.json({ kind:'customer', name:u.contact_name || u.company, company:u.company, email:u.email, must_change_password:u.must_change_password });
-  }
-  if (req.userKind === 'vendor') {
-    return res.json({ kind:'vendor', name:u.name, vendor_no:u.vendor_no, must_change_password:u.must_change_password });
+    return res.json({ kind:'customer', code:u.code, name:u.contact_name || u.company, company:u.company, email:u.email, must_change_password:u.must_change_password });
   }
   res.json({ kind:'employee', name:u.name, emp_no:u.emp_no, role:u.role, is_admin:u.is_admin, modules:effectiveModules(u), must_change_password:u.must_change_password });
 });
@@ -276,17 +260,18 @@ router.get('/customers', requireAuth, requireAdmin, async (req, res) => {
 
 router.post('/customers', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { company, contact_name, email, password, active } = req.body || {};
-    if (!company || !email || !password) return res.status(400).json({ error:'missing_fields' });
+    const { code, company, contact_name, email, password, active } = req.body || {};
+    if (!code || !company || !password) return res.status(400).json({ error:'missing_fields' });
     const h = await hash(password);
     const r = await q(
-      `INSERT INTO customers (company, contact_name, email, active, password_hash, must_change_password)
-       VALUES ($1,$2,$3,$4,$5,true) RETURNING id`,
-      [String(company).trim(), (contact_name||'').trim(), String(email).trim().toLowerCase(), active !== false, h]
+      `INSERT INTO customers (code, company, contact_name, email, active, password_hash, must_change_password)
+       VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING id`,
+      [String(code).trim(), String(company).trim(), (contact_name||'').trim(),
+       email ? String(email).trim().toLowerCase() : null, active !== false, h]
     );
     res.json({ ok:true, id:r.rows[0].id });
   } catch (e) {
-    if (e.code === '23505') return res.status(409).json({ error:'email_taken' });
+    if (e.code === '23505') return res.status(409).json({ error:'code_taken' });
     console.error('[auth] create customer:', e.message); res.status(500).json({ error:'server_error' });
   }
 });
@@ -402,60 +387,8 @@ router.delete('/customers/:id', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ---- Admin: vendor account management ----
-router.get('/vendors', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const r = await q('SELECT id, vendor_no, name, active, must_change_password, created_at FROM vendors ORDER BY name ASC');
-    res.json(r.rows);
-  } catch (e) { console.error('[auth] list vendors:', e.message); res.status(500).json({ error:'server_error' }); }
-});
-router.post('/vendors', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const { vendor_no, name, password, active } = req.body || {};
-    if (!vendor_no || !name || !password) return res.status(400).json({ error:'missing_fields' });
-    const h = await hash(password);
-    const r = await q(
-      `INSERT INTO vendors (vendor_no, name, active, password_hash, must_change_password)
-       VALUES ($1,$2,$3,$4,true) RETURNING id`,
-      [String(vendor_no).trim(), String(name).trim(), active !== false, h]
-    );
-    res.json({ ok:true, id:r.rows[0].id });
-  } catch (e) {
-    if (e.code === '23505') return res.status(409).json({ error:'vendor_no_taken' });
-    console.error('[auth] create vendor:', e.message); res.status(500).json({ error:'server_error' });
-  }
-});
-router.patch('/vendors/:id', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id, 10);
-    const { name, active } = req.body || {};
-    const cur = await q('SELECT * FROM vendors WHERE id=$1', [id]);
-    if (!cur.rows[0]) return res.status(404).json({ error:'not_found' });
-    const u = cur.rows[0];
-    await q('UPDATE vendors SET name=$1, active=$2, token_version=token_version+1 WHERE id=$3',
-      [name == null ? u.name : name, active === undefined ? u.active : !!active, id]);
-    res.json({ ok:true });
-  } catch (e) { console.error('[auth] update vendor:', e.message); res.status(500).json({ error:'server_error' }); }
-});
-router.delete('/vendors/:id', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const r = await q('DELETE FROM vendors WHERE id=$1 RETURNING vendor_no', [parseInt(req.params.id, 10)]);
-    if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
-    res.json({ ok:true });
-  } catch (e) { console.error('[auth] delete vendor:', e.message); res.status(500).json({ error:'server_error' }); }
-});
-router.post('/vendors/:id/reset-password', requireAuth, requireAdmin, async (req, res) => {
-  try {
-    const pw = (req.body && req.body.password) || 'Bsc@2026';
-    const h  = await hash(pw);
-    const r = await q('UPDATE vendors SET password_hash=$1, must_change_password=true, token_version=token_version+1 WHERE id=$2 RETURNING vendor_no', [h, parseInt(req.params.id, 10)]);
-    if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
-    res.json({ ok:true, password:pw });
-  } catch (e) { console.error('[auth] reset vendor pw:', e.message); res.status(500).json({ error:'server_error' }); }
-});
-
-// ---- One-shot bulk import of the vendor list ----
-const VENDOR_ROSTER = [
+// ---- One-shot bulk import of the complaint-portal accounts (Vendor IDs) ----
+const CUSTOMER_ROSTER = [
   ['7204547','ARC FABS'],['7200465','BALAJI FAB'],['7206172','BELRISE'],['7200232','CHIRAKKAL'],
   ['7203923','DALI & SAMIR'],['7200489','DIAMOND'],['7200490','DIG VIJAY'],['7200394','ELKAYAM'],
   ['7200030','ESWARI AUOT'],['7200401','HEGDE'],['7201061','KAILASH VAHN PRIVATE LTD.'],['7200186','KLN ENGG'],
@@ -465,31 +398,31 @@ const VENDOR_ROSTER = [
   ['7205460','SURIN'],['7206247','VJS AUTO'],['7201121','ALBONAIR'],['7205457','JAI SUSPENSION'],
   ['7204101','JAMNA'],['7204803','ALF Eng'],['7441130','Space AGE'],['7201296','Schwing setter'],
 ];
-router.get('/seed-vendors', async (req, res) => {
+router.get('/seed-customers', async (req, res) => {
   if (!SETUP_KEY || req.query.key !== SETUP_KEY) return res.status(403).json({ error:'bad_key' });
   try {
     await migrate();
     const pw = String(req.query.pw || 'Bsc@2026');
     const h  = await hash(pw);
     let created = 0, updated = 0;
-    for (const [vendor_no, name] of VENDOR_ROSTER) {
+    for (const [code, company] of CUSTOMER_ROSTER) {
       const r = await q(
-        `INSERT INTO vendors (vendor_no, name, active, password_hash, must_change_password)
-         VALUES ($1,$2,true,$3,true)
-         ON CONFLICT (vendor_no) DO UPDATE SET name=EXCLUDED.name
+        `INSERT INTO customers (code, company, contact_name, email, active, password_hash, must_change_password)
+         VALUES ($1,$2,'',NULL,true,$3,true)
+         ON CONFLICT (code) DO UPDATE SET company=EXCLUDED.company
          RETURNING (xmax = 0) AS inserted`,
-        [vendor_no, name, h]
+        [code, company, h]
       );
       if (r.rows[0] && r.rows[0].inserted) created++; else updated++;
     }
-    res.json({ ok:true, total:VENDOR_ROSTER.length, created, updated,
+    res.json({ ok:true, total:CUSTOMER_ROSTER.length, created, updated,
       default_password: created ? pw : undefined,
-      note: created ? 'New vendors use this default password; each is asked to set their own on first login.' : 'All vendors already existed; names refreshed, passwords untouched.' });
-  } catch (e) { console.error('[auth] seed vendors:', e.message); res.status(500).json({ error:'seed_failed', detail:e.message }); }
+      note: created ? 'New accounts use this default password; each is asked to set their own on first login.' : 'All accounts already existed; names refreshed, passwords untouched.' });
+  } catch (e) { console.error('[auth] seed customers:', e.message); res.status(500).json({ error:'seed_failed', detail:e.message }); }
 });
 
 module.exports = {
   authRouter: router,
   requireAuth, requireEmployee, requireCustomer, requireAdmin, requireModule,
-  effectiveModules, defaultModules, MODULE_KEYS, MODULE_META, hash, verify, requireVendor,
+  effectiveModules, defaultModules, MODULE_KEYS, MODULE_META, hash, verify,
 };

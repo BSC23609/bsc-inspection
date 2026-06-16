@@ -146,9 +146,9 @@
   </div>
   <div class="lright"><div class="lbox">
     <h3 id="lg_title">Customer sign in</h3>
-    <div class="lsub" id="lg_sub">Use the email your account was created with.</div>
+    <div class="lsub" id="lg_sub">Use your Vendor ID and the password shared with you.</div>
     <div id="lg_login">
-      <div class="f"><label>Email address</label><input id="lg_email" type="email" placeholder="you@company.com" onkeydown="if(event.key==='Enter')doLogin()"></div>
+      <div class="f"><label>Vendor ID</label><input id="lg_email" type="text" placeholder="7200000" onkeydown="if(event.key==='Enter')doLogin()"></div>
       <div class="f"><label>Password</label><input id="lg_pw" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" onkeydown="if(event.key==='Enter')doLogin()"></div>
       <button class="btn btn-primary lbtn" id="lg_btn" onclick="doLogin()">Sign in</button>
       <div class="errline" id="lg_err"></div>
@@ -199,12 +199,12 @@ async function boot(){
 function showChange(){ $('v-login').hidden=false; $('v-app').hidden=true; $('lg_login').hidden=true; $('lg_change').hidden=false; $('lg_title').textContent='Set a new password'; $('lg_sub').textContent='Choose a password for your first sign in.'; }
 async function doLogin(){
   var email=$('lg_email').value.trim(), pw=$('lg_pw').value, err=$('lg_err'); err.textContent='';
-  if(!email||!pw){ err.textContent='Enter your email and password.'; return; }
+  if(!email||!pw){ err.textContent='Enter your Vendor ID and password.'; return; }
   var b=$('lg_btn'); b.disabled=true; b.textContent='Signing in…';
   try{
     var r=await fetch('/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'customer',identifier:email,password:pw})});
     var d=await r.json().catch(function(){return{};});
-    if(!r.ok){ err.textContent=(d.error==='invalid_login')?'Wrong email or password.':'Sign in failed.'; return; }
+    if(!r.ok){ err.textContent=(d.error==='invalid_login')?'Wrong Vendor ID or password.':'Sign in failed.'; return; }
     if(d.must_change_password){ showChange(); return; }
     var me=await (await fetch('/auth/me')).json(); enterApp(me);
   }catch(e){ err.textContent='Network error. Try again.'; }
