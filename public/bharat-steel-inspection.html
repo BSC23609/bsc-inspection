@@ -4402,7 +4402,7 @@ function renderCustomers(list){
 function openCustomerDrawer(id){
   var c=id?CU_CACHE.find(function(x){return x.id===id;}):null; CU_EDIT=c||null; var isNew=!c;
   var html='<div class="us-dh"><div class="t">'+(isNew?'Add customer':usEsc(c.company))+'</div></div><div class="us-db">'+
-    '<div class="us-fl"><label>Vendor ID</label><input id="cd_code" '+(isNew?'':'disabled')+' value="'+(c?usEsc(c.code||''):'')+'" placeholder="7200000"></div>'+
+    '<div class="us-fl"><label>Vendor ID</label><input id="cd_code" '+(isNew?'':'disabled')+' value="'+(c?usEsc(c.code||''):'')+'" placeholder="e.g. 7204547"></div>'+
     '<div class="us-fl"><label>Company</label><input id="cd_company" value="'+(c?usEsc(c.company):'')+'" placeholder="Company name"></div>'+
     '<div class="us-fl"><label>Contact person</label><input id="cd_contact" value="'+(c?usEsc(c.contact_name||''):'')+'" placeholder="QA contact"></div>'+
     '<div class="us-fl"><label>Email <span style="text-transform:none;color:#98A2B3">(optional)</span></label><input id="cd_email" value="'+(c&&c.email?usEsc(c.email):'')+'" placeholder="qa@company.com"></div>'+
