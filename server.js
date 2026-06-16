@@ -17,6 +17,13 @@ app.use((req, res, next) => {
 const path = require('path');
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ---- Auth & DB (Neon Postgres + JWT cookie sessions) ----
+// Additive: this does NOT gate existing routes yet. Login lives under /auth/*.
+const cookieParser = require('cookie-parser');
+const { authRouter } = require('./auth');
+app.use(cookieParser());
+app.use('/auth', authRouter);
+
 const CLIENT_ID     = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const TENANT_ID     = process.env.TENANT_ID;
