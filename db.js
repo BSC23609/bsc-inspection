@@ -78,6 +78,21 @@ async function migrate() {
   `);
   await q(`CREATE INDEX IF NOT EXISTS idx_cc_email  ON customer_complaints (lower(email));`);
   await q(`CREATE INDEX IF NOT EXISTS idx_cc_status ON customer_complaints (status);`);
+
+  // Vendor portal accounts
+  await q(`
+    CREATE TABLE IF NOT EXISTS vendors (
+      id                   SERIAL PRIMARY KEY,
+      vendor_no            TEXT UNIQUE NOT NULL,
+      name                 TEXT NOT NULL,
+      active               BOOLEAN NOT NULL DEFAULT true,
+      password_hash        TEXT NOT NULL,
+      must_change_password BOOLEAN NOT NULL DEFAULT true,
+      token_version        INTEGER NOT NULL DEFAULT 0,
+      created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS idx_vendor_no ON vendors (lower(vendor_no));`);
 }
 
 module.exports = { pool, q, migrate };

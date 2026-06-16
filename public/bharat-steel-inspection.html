@@ -217,6 +217,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <button class="lg-btn" id="lg_btn" onclick="bscLogin()">Sign in</button>
     <div class="lg-err" id="lg_err"></div>
     <div class="lg-note">Customer? <a href="/customer.html" style="color:var(--brand);font-weight:600">Sign in to the complaint portal &rarr;</a></div>
+    <div class="lg-note" style="margin-top:6px">Vendor? <a href="/vendor.html" style="color:var(--brand);font-weight:600">Sign in to the vendor portal &rarr;</a></div>
   </div></div>
 </div>
 
@@ -310,6 +311,22 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 </div>
 <div class="us-scrim" id="cu_scrim" onclick="closeCustomerDrawer()"></div>
 <div class="us-drawer" id="cu_drawer"></div>
+<div class="screen" id="screen-vendors">
+  <div class="us-top">
+    <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
+    <h2>Vendors</h2>
+    <button class="us-add" onclick="openVendorDrawer(null)">+ Add vendor</button>
+  </div>
+  <div class="us-body">
+    <div class="us-tablewrap"><table class="us-table">
+      <thead><tr><th>Vendor</th><th>Vendor ID</th><th>Status</th><th></th></tr></thead>
+      <tbody id="vd_rows"><tr><td colspan="4" style="padding:24px;text-align:center;color:#9CA3AF">Loading&hellip;</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+<div class="us-scrim" id="vd_scrim" onclick="closeVendorDrawer()"></div>
+<div class="us-drawer" id="vd_drawer"></div>
+
 
 <div class="screen" id="screen-submissions">
   <div class="us-top">
@@ -4198,6 +4215,7 @@ function _authBar(me){
   var btns = '';
   if(canSales) btns += '<button class="usersbtn" onclick="openSubmissions()">Submissions</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openCustomers()">Customers</button>';
+  if(me.is_admin) btns += '<button class="usersbtn" onclick="openVendors()">Vendors</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openUsers()">Users</button>';
   bar.innerHTML = btns + '<span id="bsc_user"></span><button onclick="bscLogout()">Sign out</button>';
   document.getElementById('bsc_user').textContent = (me.name||'') + tag;
@@ -4293,7 +4311,7 @@ function renderUsers(users){
       '<td>'+(u.is_admin?'<span class="us-adm">\u25cf Admin</span>':'<span class="us-noadm">\u2014</span>')+'</td>'+
       '<td><span class="us-st '+(u.active?'us-on':'us-off')+'">'+(u.active?'Active':'Disabled')+'</span></td>'+
       '<td>'+usModCount(u)+'</td>'+
-      '<td><div class="us-act"><button class="us-btn" onclick="openUserDrawer('+u.id+')">Edit</button><button class="us-btn" onclick="resetUserPw('+u.id+')">Reset PW</button></div></td>'+
+      '<td><div class="us-act"><button class="us-btn" onclick="openUserDrawer('+u.id+')">Edit</button><button class="us-btn" onclick="resetUserPw('+u.id+')">Reset PW</button><button class="us-btn" style="color:#B91C1C;border-color:#FCA5A5" onclick="removeUser('+u.id+')">Remove</button></div></td>'+
     '</tr>';
   }).join('');
   document.getElementById('us_rows').innerHTML = rows || '<tr><td colspan="6" style="padding:24px;text-align:center;color:#9CA3AF">No users yet.</td></tr>';
@@ -4394,7 +4412,7 @@ function renderCustomers(list){
     return '<tr><td><div class="us-nm">'+usEsc(c.company)+'</div><div class="us-emp">'+usEsc(c.contact_name||'')+'</div></td>'+
       '<td style="font-family:monospace;font-size:12.5px;color:#475467">'+usEsc(c.email)+'</td>'+
       '<td><span class="us-st '+(c.active?'us-on':'us-off')+'">'+(c.active?'Active':'Disabled')+'</span></td>'+
-      '<td><div class="us-act"><button class="us-btn" onclick="openCustomerDrawer('+c.id+')">Edit</button><button class="us-btn" onclick="resetCustomerPw('+c.id+')">Reset PW</button></div></td></tr>';
+      '<td><div class="us-act"><button class="us-btn" onclick="openCustomerDrawer('+c.id+')">Edit</button><button class="us-btn" onclick="resetCustomerPw('+c.id+')">Reset PW</button><button class="us-btn" style="color:#B91C1C;border-color:#FCA5A5" onclick="removeCustomer('+c.id+')">Remove</button></div></td></tr>';
   }).join('');
   document.getElementById('cu_rows').innerHTML=rows||'<tr><td colspan="4" style="padding:24px;text-align:center;color:#9CA3AF">No customers yet.</td></tr>';
 }
@@ -4474,6 +4492,84 @@ async function decide(id,action){
   else if(action==='resolve'){ note=prompt('Resolution to share with the customer:'); if(!note) return; }
   try{ var r=await fetch(SERVER_URL+'/portal/admin/submissions/'+id+'/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:action,note:note})});
     if(!r.ok){ toast('err','Action failed'); return; } toast('ok','Updated'); await loadSubmissions();
+  }catch(e){ toast('err','Network error'); }
+}
+
+/* ===== Vendors (admin) + Remove actions ===== */
+var VD_CACHE=[], VD_EDIT=null;
+async function openVendors(){ showScreen('vendors'); await loadVendors(); }
+async function loadVendors(){
+  var body=document.getElementById('vd_rows');
+  try{
+    var r=await fetch(SERVER_URL+'/auth/vendors');
+    if(!r.ok){ body.innerHTML='<tr><td colspan="4" style="padding:24px;text-align:center;color:#DC2626">Not authorised.</td></tr>'; return; }
+    VD_CACHE=await r.json(); renderVendors(VD_CACHE);
+  }catch(e){ body.innerHTML='<tr><td colspan="4" style="padding:24px;text-align:center;color:#DC2626">Failed to load.</td></tr>'; }
+}
+function renderVendors(list){
+  var rows=list.map(function(v){
+    return '<tr><td><div class="us-nm">'+usEsc(v.name)+'</div></td>'+
+      '<td style="font-family:monospace;font-size:12.5px;color:#475467">'+usEsc(v.vendor_no)+'</td>'+
+      '<td><span class="us-st '+(v.active?'us-on':'us-off')+'">'+(v.active?'Active':'Disabled')+'</span></td>'+
+      '<td><div class="us-act"><button class="us-btn" onclick="openVendorDrawer('+v.id+')">Edit</button><button class="us-btn" onclick="resetVendorPw('+v.id+')">Reset PW</button><button class="us-btn" style="color:#B91C1C;border-color:#FCA5A5" onclick="removeVendor('+v.id+')">Remove</button></div></td></tr>';
+  }).join('');
+  document.getElementById('vd_rows').innerHTML=rows||'<tr><td colspan="4" style="padding:24px;text-align:center;color:#9CA3AF">No vendors yet.</td></tr>';
+}
+function openVendorDrawer(id){
+  var v=id?VD_CACHE.find(function(x){return x.id===id;}):null; VD_EDIT=v||null; var isNew=!v;
+  var html='<div class="us-dh"><div class="t">'+(isNew?'Add vendor':usEsc(v.name))+'</div></div><div class="us-db">'+
+    '<div class="us-fl"><label>Vendor ID</label><input id="vd_no" '+(isNew?'':'disabled')+' value="'+(v?usEsc(v.vendor_no):'')+'" placeholder="7200000"></div>'+
+    '<div class="us-fl"><label>Vendor name</label><input id="vd_name" value="'+(v?usEsc(v.name):'')+'" placeholder="Vendor description"></div>'+
+    (isNew?'<div class="us-fl"><label>Default password</label><input id="vd_pw" value="Bsc@2026"></div>':'')+
+    '<div class="us-sw" style="margin-top:6px"><div class="sl">Account active</div><div class="us-tg '+((!v||v.active)?'on':'')+'" id="vd_active" onclick="this.classList.toggle(\'on\')"></div></div>'+
+    '</div><div class="us-df"><span class="us-derr" id="vd_err"></span><button class="us-save" id="vd_save" onclick="saveVendor()">'+(isNew?'Create vendor':'Save')+'</button></div>';
+  document.getElementById('vd_drawer').innerHTML=html;
+  document.getElementById('vd_drawer').classList.add('open'); document.getElementById('vd_scrim').classList.add('open');
+}
+async function saveVendor(){
+  var err=document.getElementById('vd_err'); err.textContent='';
+  var name=document.getElementById('vd_name').value.trim();
+  var active=document.getElementById('vd_active').classList.contains('on');
+  var btn=document.getElementById('vd_save'); btn.disabled=true;
+  try{
+    var r,d;
+    if(!VD_EDIT){
+      var vno=document.getElementById('vd_no').value.trim(), pw=document.getElementById('vd_pw').value;
+      if(!vno||!name||!pw){ err.textContent='Vendor ID, name and password are required.'; btn.disabled=false; return; }
+      r=await fetch(SERVER_URL+'/auth/vendors',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({vendor_no:vno,name:name,password:pw,active:active})});
+      d=await r.json().catch(function(){return{};});
+      if(!r.ok){ err.textContent=(d.error==='vendor_no_taken')?'That Vendor ID already exists.':'Could not create.'; btn.disabled=false; return; }
+    } else {
+      r=await fetch(SERVER_URL+'/auth/vendors/'+VD_EDIT.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,active:active})});
+      if(!r.ok){ err.textContent='Could not save.'; btn.disabled=false; return; }
+    }
+    closeVendorDrawer(); await loadVendors();
+  }catch(e){ err.textContent='Network error.'; btn.disabled=false; }
+}
+async function resetVendorPw(id){
+  var pw=prompt('Set a default password for this vendor:','Bsc@2026'); if(pw===null) return;
+  try{ var r=await fetch(SERVER_URL+'/auth/vendors/'+id+'/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    var d=await r.json().catch(function(){return{};}); if(!r.ok){ toast('err','Reset failed'); return; } toast('ok','Default password: '+d.password);
+  }catch(e){ toast('err','Network error'); }
+}
+async function removeVendor(id){
+  if(!confirm('Remove this vendor? Their login will stop working. This cannot be undone.')) return;
+  try{ var r=await fetch(SERVER_URL+'/auth/vendors/'+id,{method:'DELETE'}); if(!r.ok){ toast('err','Could not remove'); return; } toast('ok','Vendor removed'); await loadVendors(); }catch(e){ toast('err','Network error'); }
+}
+function closeVendorDrawer(){ document.getElementById('vd_drawer').classList.remove('open'); document.getElementById('vd_scrim').classList.remove('open'); }
+
+async function removeUser(id){
+  if(!confirm('Remove this employee? Their login will stop working. This cannot be undone.')) return;
+  try{ var r=await fetch(SERVER_URL+'/auth/users/'+id,{method:'DELETE'}); var d=await r.json().catch(function(){return{};});
+    if(!r.ok){ toast('err', d.error==='self_delete'?'You cannot remove your own account':'Could not remove'); return; }
+    toast('ok','Employee removed'); await loadUsers();
+  }catch(e){ toast('err','Network error'); }
+}
+async function removeCustomer(id){
+  if(!confirm('Remove this customer? Their login will stop working. This cannot be undone.')) return;
+  try{ var r=await fetch(SERVER_URL+'/auth/customers/'+id,{method:'DELETE'}); var d=await r.json().catch(function(){return{};});
+    if(!r.ok){ toast('err', d.error==='has_records'?'This customer has complaints — disable instead of removing':'Could not remove'); return; }
+    toast('ok','Customer removed'); await loadCustomers();
   }catch(e){ toast('err','Network error'); }
 }
 
