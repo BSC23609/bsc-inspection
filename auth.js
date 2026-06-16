@@ -15,6 +15,18 @@ const TTL_MS     = 8 * 60 * 60 * 1000; // 8h
 // ---- Canonical module catalogue (keys used by the frontend too) ----
 const MODULE_KEYS = ['inward','ctl','shearing','salesqc','purchaseqc','dash_prod','dash_sales','dash_all'];
 
+// Catalogue with labels/groups — sent to the Users admin UI to render switches.
+const MODULE_META = [
+  { key:'inward',     label:'Coil Inward',         group:'Inspections' },
+  { key:'ctl',        label:'CTL Quality',         group:'Inspections' },
+  { key:'shearing',   label:'Shearing Quality',    group:'Inspections' },
+  { key:'salesqc',    label:'Sales QC',            group:'Complaints'  },
+  { key:'purchaseqc', label:'Purchase QC',         group:'Complaints'  },
+  { key:'dash_prod',  label:'Pending — Production', group:'Dashboards' },
+  { key:'dash_sales', label:'Pending — Sales',      group:'Dashboards' },
+  { key:'dash_all',   label:'Overall Dashboard',    group:'Dashboards' },
+];
+
 function defaultModules(role) {
   if (role === 'sales') {
     return { inward:false, ctl:false, shearing:false, salesqc:true, purchaseqc:false, dash_prod:false, dash_sales:true,  dash_all:false };
@@ -173,8 +185,123 @@ router.get('/migrate', async (req, res) => {
   }
 });
 
+// ---- Admin: user management (brick 2b) ----
+router.get('/modules', requireAuth, (req, res) => res.json(MODULE_META));
+
+router.get('/users', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const r = await q(`SELECT id, emp_no, name, role, is_admin, active, module_access, must_change_password, created_at
+                       FROM employees ORDER BY created_at ASC`);
+    res.json(r.rows);
+  } catch (e) { console.error('[auth] list users:', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+router.post('/users', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    let { emp_no, name, role, is_admin, active, password, module_access } = req.body || {};
+    if (!emp_no || !name || !password) return res.status(400).json({ error:'missing_fields' });
+    role = role === 'sales' ? 'sales' : 'pdqc';
+    const mods = Object.assign({}, defaultModules(role), module_access || {});
+    const h = await hash(password);
+    const r = await q(
+      `INSERT INTO employees (emp_no,name,role,is_admin,active,password_hash,must_change_password,module_access)
+       VALUES ($1,$2,$3,$4,$5,$6,true,$7) RETURNING id`,
+      [String(emp_no).trim(), String(name).trim(), role, !!is_admin, active !== false, h, JSON.stringify(mods)]
+    );
+    res.json({ ok:true, id:r.rows[0].id });
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error:'emp_no_taken' });
+    console.error('[auth] create user:', e.message); res.status(500).json({ error:'server_error' });
+  }
+});
+
+router.patch('/users/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { name, role, is_admin, active, module_access } = req.body || {};
+    const cur = await q('SELECT * FROM employees WHERE id=$1', [id]);
+    if (!cur.rows[0]) return res.status(404).json({ error:'not_found' });
+    const u = cur.rows[0];
+    // Prevent an admin from locking themselves out
+    if (id === req.user.id && ((is_admin === false) || (active === false)))
+      return res.status(400).json({ error:'self_lockout' });
+    const newRole = role === undefined ? u.role : (role === 'sales' ? 'sales' : 'pdqc');
+    const mods    = module_access !== undefined ? module_access : u.module_access;
+    await q(
+      `UPDATE employees SET name=$1, role=$2, is_admin=$3, active=$4, module_access=$5, token_version=token_version+1 WHERE id=$6`,
+      [name == null ? u.name : name, newRole,
+       is_admin === undefined ? u.is_admin : !!is_admin,
+       active === undefined ? u.active : !!active,
+       JSON.stringify(mods), id]
+    );
+    res.json({ ok:true });
+  } catch (e) { console.error('[auth] update user:', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+router.post('/users/:id/reset-password', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const pw = (req.body && req.body.password) || 'Bsc@123';
+    const h  = await hash(pw);
+    const r = await q('UPDATE employees SET password_hash=$1, must_change_password=true, token_version=token_version+1 WHERE id=$2 RETURNING emp_no', [h, id]);
+    if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
+    res.json({ ok:true, password:pw });
+  } catch (e) { console.error('[auth] reset pw:', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+// ---- Admin: customer account management (brick 3) ----
+router.get('/customers', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const r = await q(`SELECT id, company, contact_name, email, active, must_change_password, created_at
+                       FROM customers ORDER BY created_at ASC`);
+    res.json(r.rows);
+  } catch (e) { console.error('[auth] list customers:', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+router.post('/customers', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { company, contact_name, email, password, active } = req.body || {};
+    if (!company || !email || !password) return res.status(400).json({ error:'missing_fields' });
+    const h = await hash(password);
+    const r = await q(
+      `INSERT INTO customers (company, contact_name, email, active, password_hash, must_change_password)
+       VALUES ($1,$2,$3,$4,$5,true) RETURNING id`,
+      [String(company).trim(), (contact_name||'').trim(), String(email).trim().toLowerCase(), active !== false, h]
+    );
+    res.json({ ok:true, id:r.rows[0].id });
+  } catch (e) {
+    if (e.code === '23505') return res.status(409).json({ error:'email_taken' });
+    console.error('[auth] create customer:', e.message); res.status(500).json({ error:'server_error' });
+  }
+});
+
+router.patch('/customers/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const { company, contact_name, active } = req.body || {};
+    const cur = await q('SELECT * FROM customers WHERE id=$1', [id]);
+    if (!cur.rows[0]) return res.status(404).json({ error:'not_found' });
+    const u = cur.rows[0];
+    await q(`UPDATE customers SET company=$1, contact_name=$2, active=$3, token_version=token_version+1 WHERE id=$4`,
+      [company == null ? u.company : company, contact_name == null ? u.contact_name : contact_name,
+       active === undefined ? u.active : !!active, id]);
+    res.json({ ok:true });
+  } catch (e) { console.error('[auth] update customer:', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+router.post('/customers/:id/reset-password', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const pw = (req.body && req.body.password) || 'Welcome@123';
+    const h  = await hash(pw);
+    const r = await q('UPDATE customers SET password_hash=$1, must_change_password=true, token_version=token_version+1 WHERE id=$2 RETURNING email', [h, id]);
+    if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
+    res.json({ ok:true, password:pw });
+  } catch (e) { console.error('[auth] reset customer pw:', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
 module.exports = {
   authRouter: router,
   requireAuth, requireEmployee, requireCustomer, requireAdmin, requireModule,
-  effectiveModules, defaultModules, MODULE_KEYS, hash, verify,
+  effectiveModules, defaultModules, MODULE_KEYS, MODULE_META, hash, verify,
 };

@@ -20,9 +20,107 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ---- Auth & DB (Neon Postgres + JWT cookie sessions) ----
 // Additive: this does NOT gate existing routes yet. Login lives under /auth/*.
 const cookieParser = require('cookie-parser');
-const { authRouter } = require('./auth');
+const { authRouter, requireAuth, requireEmployee, requireAdmin, requireCustomer, requireModule } = require('./auth');
+const { q: pgq } = require('./db');
 app.use(cookieParser());
 app.use('/auth', authRouter);
+
+// ===================================================
+// CUSTOMER PORTAL (brick 3) — Postgres-backed intake
+// ===================================================
+function ccPublic(r){
+  return { id:r.id, ref:r.ref, company:r.company, product:r.product, grade:r.grade,
+    invoice_no:r.invoice_no, po_no:r.po_no, so_no:r.so_no, tc_no:r.tc_no, qty_affected:r.qty_affected,
+    description:r.description, status:r.status, decision_note:r.decision_note,
+    resolution_note:r.resolution_note, customer_response:r.customer_response,
+    handler_emp:r.handler_emp, photos:r.photos||[], created_at:r.created_at, updated_at:r.updated_at };
+}
+
+app.get('/portal/complaints', requireAuth, requireCustomer, async (req, res) => {
+  try {
+    const r = await pgq('SELECT * FROM customer_complaints WHERE customer_id=$1 ORDER BY created_at DESC', [req.user.id]);
+    res.json(r.rows.map(ccPublic));
+  } catch(e){ console.error('[portal] list', e.message); res.status(500).json({error:'server_error'}); }
+});
+
+app.post('/portal/complaints', requireAuth, requireCustomer, async (req, res) => {
+  try {
+    const b = req.body || {};
+    if (!b.description || String(b.description).trim().length < 5) return res.status(400).json({ error:'description_required' });
+    let photos = Array.isArray(b.photos) ? b.photos.slice(0,4) : [];
+    photos = photos.filter(p => typeof p === 'string' && p.startsWith('data:image') && p.length < 3000000);
+    const yr = new Date().getFullYear();
+    const c = await pgq('SELECT count(*)::int AS n FROM customer_complaints WHERE ref LIKE $1', ['CMP-'+yr+'-%']);
+    const ref = 'CMP-'+yr+'-'+String(c.rows[0].n + 1).padStart(3,'0');
+    const u = req.user;
+    const r = await pgq(
+      `INSERT INTO customer_complaints
+        (ref,customer_id,company,contact_name,email,invoice_no,po_no,so_no,tc_no,product,grade,qty_affected,description,photos,status)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,'submitted') RETURNING *`,
+      [ref,u.id,u.company,u.contact_name,u.email,
+       b.invoice_no||null,b.po_no||null,b.so_no||null,b.tc_no||null,
+       b.product||null,b.grade||null,b.qty_affected||null,String(b.description).trim(),
+       JSON.stringify(photos)]
+    );
+    res.json({ ok:true, complaint: ccPublic(r.rows[0]) });
+  } catch(e){ console.error('[portal] raise', e.message); res.status(500).json({error:'server_error'}); }
+});
+
+app.get('/portal/complaints/:id', requireAuth, requireCustomer, async (req, res) => {
+  try {
+    const r = await pgq('SELECT * FROM customer_complaints WHERE id=$1 AND customer_id=$2', [parseInt(req.params.id,10), req.user.id]);
+    if (!r.rows[0]) return res.status(404).json({error:'not_found'});
+    res.json(ccPublic(r.rows[0]));
+  } catch(e){ console.error('[portal] get', e.message); res.status(500).json({error:'server_error'}); }
+});
+
+app.post('/portal/complaints/:id/respond', requireAuth, requireCustomer, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id,10);
+    const { action, note } = req.body || {};
+    const r = await pgq('SELECT * FROM customer_complaints WHERE id=$1 AND customer_id=$2', [id, req.user.id]);
+    const c = r.rows[0];
+    if (!c) return res.status(404).json({error:'not_found'});
+    if (c.status !== 'resolution_sent') return res.status(400).json({error:'no_resolution_pending'});
+    if (action === 'accept') {
+      await pgq(`UPDATE customer_complaints SET status='closed', customer_response=$1, updated_at=now() WHERE id=$2`, [note||'Accepted', id]);
+    } else if (action === 'rereview') {
+      await pgq(`UPDATE customer_complaints SET status='in_review', customer_response=$1, resolution_note=NULL, updated_at=now() WHERE id=$2`, [note||'Re-review requested', id]);
+    } else return res.status(400).json({error:'bad_action'});
+    res.json({ ok:true });
+  } catch(e){ console.error('[portal] respond', e.message); res.status(500).json({error:'server_error'}); }
+});
+
+app.get('/portal/admin/submissions', requireAuth, requireModule('salesqc'), async (req, res) => {
+  try {
+    const status = req.query.status;
+    const r = status
+      ? await pgq('SELECT * FROM customer_complaints WHERE status=$1 ORDER BY created_at DESC', [status])
+      : await pgq('SELECT * FROM customer_complaints ORDER BY created_at DESC');
+    res.json(r.rows.map(ccPublic));
+  } catch(e){ console.error('[portal] submissions', e.message); res.status(500).json({error:'server_error'}); }
+});
+
+app.post('/portal/admin/submissions/:id/decision', requireAuth, requireModule('salesqc'), async (req, res) => {
+  try {
+    const id = parseInt(req.params.id,10);
+    const { action, note } = req.body || {};
+    const r = await pgq('SELECT * FROM customer_complaints WHERE id=$1', [id]);
+    const c = r.rows[0];
+    if (!c) return res.status(404).json({error:'not_found'});
+    const emp = (req.user.name||'') + ' ('+(req.user.emp_no||'')+')';
+    if (action === 'accept') {
+      await pgq(`UPDATE customer_complaints SET status='in_review', decision_note=$1, handler_emp=$2, updated_at=now() WHERE id=$3`, [note||null, emp, id]);
+    } else if (action === 'decline') {
+      if (!note) return res.status(400).json({error:'reason_required'});
+      await pgq(`UPDATE customer_complaints SET status='declined', decision_note=$1, handler_emp=$2, updated_at=now() WHERE id=$3`, [note, emp, id]);
+    } else if (action === 'resolve') {
+      if (!note) return res.status(400).json({error:'resolution_required'});
+      await pgq(`UPDATE customer_complaints SET status='resolution_sent', resolution_note=$1, handler_emp=$2, updated_at=now() WHERE id=$3`, [note, emp, id]);
+    } else return res.status(400).json({error:'bad_action'});
+    res.json({ ok:true });
+  } catch(e){ console.error('[portal] decision', e.message); res.status(500).json({error:'server_error'}); }
+});
 
 const CLIENT_ID     = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
@@ -926,7 +1024,7 @@ function escHtml(s) {
 app.get('/', (req, res) => { res.sendFile(path.join(__dirname, 'public', 'bharat-steel-inspection.html')); });
 app.get('/health', (req, res) => { res.json({ status: 'BSC Inspection Server is running' }); });
 
-app.get('/stats', async (req, res) => {
+app.get('/stats', requireAuth, requireEmployee, async (req, res) => {
   try {
     const token = await getToken();
     const folders = ['Inward', 'Quality', 'Shearing'];
@@ -985,7 +1083,7 @@ app.get('/stats', async (req, res) => {
 });
 
 // SUBMIT inspection form (existing)
-app.post('/submit', async (req, res) => {
+app.post('/submit', requireAuth, requireEmployee, async (req, res) => {
   try {
     const data    = req.body;
     const folder  = data.form_type;
@@ -1081,7 +1179,7 @@ async function getNextCaseId(token) {
 // ONE-TIME: Initialize Complaints folder + Excel template
 // Hit once: GET /init-complaints?key=BSC_MIGRATE_2026
 // =====================================================
-app.get('/init-complaints', async (req, res) => {
+app.get('/init-complaints', requireAuth, requireAdmin, async (req, res) => {
   if (req.query.key !== 'BSC_MIGRATE_2026') {
     return res.status(403).json({ error: 'Invalid key' });
   }
@@ -1129,7 +1227,7 @@ app.get('/init-complaints', async (req, res) => {
   }
 });
 
-app.post('/complaint/submit', async (req, res) => {
+app.post('/complaint/submit', requireAuth, requireEmployee, async (req, res) => {
   try {
     const data = req.body;
     if (!data.batch_number || !data.grade || !data.dimensions) {
@@ -1243,7 +1341,7 @@ app.post('/complaint/submit', async (req, res) => {
 });
 
 // Stage 2/3: Update complaint with production analysis or vendor escalation or resolution
-app.post('/complaint/update', async (req, res) => {
+app.post('/complaint/update', requireAuth, requireEmployee, async (req, res) => {
   try {
     const data = req.body;
     if (!data.case_id) return res.status(400).json({ status: 'error', message: 'Missing case_id' });
@@ -1680,7 +1778,7 @@ async function appendExcelRow(token, folder, data, fileName) {
 // =====================================================
 
 // GET /complaint/files?caseId=BSC-QC-021-2026 → list of files for that case
-app.get('/complaint/files', async (req, res) => {
+app.get('/complaint/files', requireAuth, requireEmployee, async (req, res) => {
   const caseId = req.query.caseId;
   if (!caseId) return res.status(400).json({ error: 'caseId required' });
   try {
@@ -1739,7 +1837,7 @@ app.get('/complaint/files', async (req, res) => {
 
 // GET /complaint/file?path=<path>&download=1 → stream file from OneDrive
 // Generic file streaming endpoint - broader path allowed (security: must be under BSC Inspections/)
-app.get('/file', async (req, res) => {
+app.get('/file', requireAuth, requireEmployee, async (req, res) => {
   const filePath = req.query.path;
   const download = req.query.download === '1';
   if (!filePath) return res.status(400).send('path required');
@@ -1769,7 +1867,7 @@ app.get('/file', async (req, res) => {
   }
 });
 
-app.get('/complaint/file', async (req, res) => {
+app.get('/complaint/file', requireAuth, requireEmployee, async (req, res) => {
   const filePath = req.query.path;
   const download = req.query.download === '1';
   if (!filePath) return res.status(400).send('path required');
@@ -1933,7 +2031,7 @@ function rowToComplaintData(v) {
   };
 }
 
-app.get('/regenerate-pdfs', async (req, res) => {
+app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
   if (req.query.key !== 'BSC_MIGRATE_2026') return res.status(403).json({ error: 'Invalid key' });
   const type = String(req.query.type || '').toLowerCase();
   const batch = parseInt(req.query.batch || '0', 10);
@@ -2101,7 +2199,7 @@ async function saveSettings(token, settings) {
 }
 
 // GET /settings - public read of allowed config
-app.get('/settings', async (req, res) => {
+app.get('/settings', requireAuth, requireEmployee, async (req, res) => {
   try {
     const token = await getToken();
     const s = await loadSettings(token);
@@ -2113,7 +2211,7 @@ app.get('/settings', async (req, res) => {
 });
 
 // POST /admin/settings - update settings (password required)
-app.post('/admin/settings', async (req, res) => {
+app.post('/admin/settings', requireAuth, requireAdmin, async (req, res) => {
   const { password, settings } = req.body;
   if (password !== ADMIN_PASSWORD) return res.status(403).json({ error: 'Invalid password' });
   if (!settings || typeof settings !== 'object') return res.status(400).json({ error: 'Invalid settings' });
@@ -2129,7 +2227,7 @@ app.post('/admin/settings', async (req, res) => {
 });
 
 // POST /admin/verify - just check password
-app.post('/admin/verify', (req, res) => {
+app.post('/admin/verify', requireAuth, requireAdmin, (req, res) => {
   if (req.body && req.body.password === ADMIN_PASSWORD) {
     return res.json({ status: 'success' });
   }

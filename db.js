@@ -53,6 +53,31 @@ async function migrate() {
   `);
   await q(`CREATE INDEX IF NOT EXISTS idx_emp_empno ON employees (lower(emp_no));`);
   await q(`CREATE INDEX IF NOT EXISTS idx_cust_email ON customers (lower(email));`);
+
+  // Customer-portal complaint intake / tracking (brick 3)
+  await q(`
+    CREATE TABLE IF NOT EXISTS customer_complaints (
+      id              SERIAL PRIMARY KEY,
+      ref             TEXT UNIQUE,
+      customer_id     INTEGER REFERENCES customers(id),
+      company         TEXT,
+      contact_name    TEXT,
+      email           TEXT,
+      invoice_no      TEXT, po_no TEXT, so_no TEXT, tc_no TEXT,
+      product         TEXT, grade TEXT, qty_affected TEXT,
+      description     TEXT NOT NULL,
+      photos          JSONB NOT NULL DEFAULT '[]'::jsonb,
+      status          TEXT NOT NULL DEFAULT 'submitted',  -- submitted|in_review|declined|resolution_sent|closed
+      decision_note   TEXT,
+      resolution_note TEXT,
+      customer_response TEXT,
+      handler_emp     TEXT,
+      created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS idx_cc_email  ON customer_complaints (lower(email));`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_cc_status ON customer_complaints (status);`);
 }
 
 module.exports = { pool, q, migrate };
