@@ -212,7 +212,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   <div class="lg-wrap"><div class="lg-card">
     <div class="lg-brand">Bharat Steel (Chennai)<b>Quality Management</b></div>
     <div class="lg-sub">Employee sign in</div>
-    <div class="lg-f"><label>Employee number</label><input id="lg_id" placeholder="BSC/006" autocomplete="username" onkeydown="if(event.key==='Enter')bscLogin()"></div>
+    <div class="lg-f"><label>Employee code</label><input id="lg_id" placeholder="BSC/098" autocomplete="username" onkeydown="if(event.key==='Enter')bscLogin()"></div>
     <div class="lg-f"><label>Password</label><input id="lg_pw" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password" onkeydown="if(event.key==='Enter')bscLogin()"></div>
     <button class="lg-btn" id="lg_btn" onclick="bscLogin()">Sign in</button>
     <div class="lg-err" id="lg_err"></div>
@@ -4219,12 +4219,12 @@ async function bscLogin(){
   var id=document.getElementById('lg_id').value.trim();
   var pw=document.getElementById('lg_pw').value;
   var err=document.getElementById('lg_err'); err.textContent='';
-  if(!id||!pw){ err.textContent='Enter your employee number and password.'; return; }
+  if(!id||!pw){ err.textContent='Enter your employee code and password.'; return; }
   var btn=document.getElementById('lg_btn'); btn.disabled=true; btn.textContent='Signing in\u2026';
   try{
     var r=await fetch(SERVER_URL+'/auth/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'employee',identifier:id,password:pw})});
     var d=await r.json().catch(function(){return {};});
-    if(!r.ok){ err.textContent = (d.error==='invalid_login')?'Wrong employee number or password.':'Sign in failed. Try again.'; return; }
+    if(!r.ok){ err.textContent = (d.error==='invalid_login')?'Wrong employee code or password.':'Sign in failed. Try again.'; return; }
     applyUser(d);
     document.getElementById('lg_pw').value='';
     if(d.must_change_password){ showScreen('changepw'); }
@@ -4317,7 +4317,7 @@ function openUserDrawer(id){
   var html=
     '<div class="us-dh"><div class="t">'+(isNew?'Add user':usEsc(u.name))+'</div></div>'+
     '<div class="us-db">'+
-      '<div class="us-fl"><label>Employee number</label><input id="ud_emp" '+(isNew?'':'disabled')+' value="'+(u?usEsc(u.emp_no):'')+'" placeholder="BSC/006"></div>'+
+      '<div class="us-fl"><label>Employee code</label><input id="ud_emp" '+(isNew?'':'disabled')+' value="'+(u?usEsc(u.emp_no):'')+'" placeholder="BSC/006"></div>'+
       '<div class="us-fl"><label>Name</label><input id="ud_name" value="'+(u?usEsc(u.name):'')+'" placeholder="Full name"></div>'+
       '<div class="us-fl"><label>Role</label><select id="ud_role" onchange="usRoleChange()"><option value="pdqc"'+(role==='pdqc'?' selected':'')+'>PDQC</option><option value="sales"'+(role==='sales'?' selected':'')+'>Sales</option></select></div>'+
       (isNew?'<div class="us-fl"><label>Temporary password</label><input id="ud_pw" value="Bsc@123"></div>':'')+
@@ -4354,10 +4354,10 @@ async function saveUser(){
     if(!US_EDIT){
       var emp=document.getElementById('ud_emp').value.trim();
       var pw=document.getElementById('ud_pw').value;
-      if(!emp||!name||!pw){ err.textContent='Employee number, name and password are required.'; btn.disabled=false; return; }
+      if(!emp||!name||!pw){ err.textContent='Employee code, name and password are required.'; btn.disabled=false; return; }
       r=await fetch(SERVER_URL+'/auth/users',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emp_no:emp,name:name,role:role,is_admin:is_admin,active:active,password:pw,module_access:module_access})});
       d=await r.json().catch(function(){return{};});
-      if(!r.ok){ err.textContent = (d.error==='emp_no_taken')?'That employee number already exists.':'Could not create user.'; btn.disabled=false; return; }
+      if(!r.ok){ err.textContent = (d.error==='emp_no_taken')?'That employee code already exists.':'Could not create user.'; btn.disabled=false; return; }
     } else {
       r=await fetch(SERVER_URL+'/auth/users/'+US_EDIT.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name,role:role,is_admin:is_admin,active:active,module_access:module_access})});
       d=await r.json().catch(function(){return{};});

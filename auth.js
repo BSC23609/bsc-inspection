@@ -10,7 +10,7 @@ const { q, migrate } = require('./db');
 const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure-change-me';
 const SETUP_KEY  = process.env.SETUP_KEY  || '';
 const COOKIE     = 'bsc_qms_token';
-const TTL_MS     = 8 * 60 * 60 * 1000; // 8h
+const TTL_MS     = 365 * 24 * 60 * 60 * 1000; // 1 year — stay signed in on the device
 
 // ---- Canonical module catalogue (keys used by the frontend too) ----
 const MODULE_KEYS = ['inward','ctl','shearing','salesqc','purchaseqc','dash_prod','dash_sales','dash_all'];
@@ -49,7 +49,7 @@ async function hash(pw)        { return bcrypt.hash(pw, 10); }
 async function verify(pw, h)   { return bcrypt.compare(pw, h); }
 
 function signToken(u, kind) {
-  return jwt.sign({ sub: u.id, kind, tv: u.token_version || 0 }, JWT_SECRET, { expiresIn: '8h' });
+  return jwt.sign({ sub: u.id, kind, tv: u.token_version || 0 }, JWT_SECRET, { expiresIn: '365d' });
 }
 function setCookie(res, token) {
   res.cookie(COOKIE, token, { httpOnly:true, secure:true, sameSite:'lax', maxAge:TTL_MS, path:'/' });
@@ -298,6 +298,70 @@ router.post('/customers/:id/reset-password', requireAuth, requireAdmin, async (r
     if (!r.rows[0]) return res.status(404).json({ error:'not_found' });
     res.json({ ok:true, password:pw });
   } catch (e) { console.error('[auth] reset customer pw:', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+// ---- One-shot bulk import of the BSC employee roster ----
+// Department -> role: Production=pdqc, Sales=sales, Management=sales(+admin).
+// "App Role" containing Admin -> is_admin. Dispatch staff are intentionally excluded.
+const STAFF_ROSTER = [
+  // [emp_no, name, role, is_admin]
+  ['CMD',     'GOVERDHAN AGARWAL',     'sales', true],
+  ['CEO',     'GOURAV SARAF',          'sales', true],
+  ['BSC/017', 'SHIVAM Shroff',         'sales', true],
+  ['BSC/119', 'Jeevabharathy S',       'sales', true],
+  ['BSC/098', 'Kannan K',              'pdqc',  true],
+  ['BSC/005', 'PARAMAGURU S',          'sales', false],
+  ['BSC/012', 'VENKATESH PRASAD DOBA', 'sales', false],
+  ['BSC/102', 'VijayaLakshmi k',       'sales', false],
+  ['BSC/110', 'Aarthi S',              'sales', false],
+  ['BSC/111', 'Archana A',             'sales', false],
+  ['BSC/120', 'Varsha K',              'sales', false],
+  ['BSC/130', 'Uma BalaSubramani',     'sales', false],
+  ['BSC/039', 'Ragupathi C',           'pdqc',  false],
+  ['BSC/083', 'G YUVARAJ',             'pdqc',  false],
+  ['BSC/084', 'Velu C',                'pdqc',  false],
+  ['BSC/090', 'Surajit Sasanka Maity', 'pdqc',  false],
+  ['BSC/093', 'Pappu Kumar',           'pdqc',  false],
+  ['BSC/103', 'Primith P',             'pdqc',  false],
+  ['BSC/109', 'Vignesh A',             'pdqc',  false],
+  ['BSC/118', 'Mathan M',              'pdqc',  false],
+  ['BSC/134', 'Kumar Balakrishnan',    'pdqc',  false],
+  ['BSC/141', 'Amulraj D',             'pdqc',  false],
+  ['BSC/146', 'ISAAC G',               'pdqc',  false],
+  ['BSC/147', 'Mohan K',               'pdqc',  false],
+  ['BSC/151', 'DHINAKRAN K',           'pdqc',  false],
+  ['BSC/154', 'Charumathi N',          'pdqc',  false],
+  ['BSC/158', 'R V STALIN',            'pdqc',  false],
+];
+
+router.get('/seed-employees', async (req, res) => {
+  if (!SETUP_KEY || req.query.key !== SETUP_KEY) return res.status(403).json({ error:'bad_key' });
+  try {
+    await migrate();
+    const pw = String(req.query.pw || 'Bsc@2026');
+    const h  = await hash(pw);
+    let created = 0, updated = 0;
+    for (const [emp_no, name, role, is_admin] of STAFF_ROSTER) {
+      const r = await q(
+        `INSERT INTO employees (emp_no,name,role,is_admin,active,password_hash,must_change_password,module_access)
+         VALUES ($1,$2,$3,$4,true,$5,true,$6)
+         ON CONFLICT (emp_no) DO UPDATE SET name=EXCLUDED.name, role=EXCLUDED.role, is_admin=EXCLUDED.is_admin
+         RETURNING (xmax = 0) AS inserted`,
+        [emp_no, name, role, is_admin, h, JSON.stringify(defaultModules(role))]
+      );
+      if (r.rows[0] && r.rows[0].inserted) created++; else updated++;
+    }
+    res.json({
+      ok: true, total: STAFF_ROSTER.length, created, updated,
+      temp_password: created ? pw : undefined,
+      note: created
+        ? 'New accounts use this temp password; each is forced to set their own on first login. Existing accounts kept their password — only name/role/admin were refreshed.'
+        : 'All accounts already existed; mappings refreshed, passwords untouched.'
+    });
+  } catch (e) {
+    console.error('[auth] seed error:', e.message);
+    res.status(500).json({ error:'seed_failed', detail:e.message });
+  }
 });
 
 module.exports = {
