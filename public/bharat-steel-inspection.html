@@ -4201,7 +4201,7 @@ function _authBar(me){
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openCustomers()">Customers</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openUsers()">Users</button>';
   bar.innerHTML = btns + '<span id="bsc_user"></span><button onclick="bscLogout()">Sign out</button>';
-  document.getElementById('bsc_user').textContent = (me.name||'') + tag;
+  document.getElementById('bsc_user').textContent = ((me.name||'').trim().split(/\s+/)[0] || '') + (me.is_admin?' \u00b7 ADMIN':'');
   bar.style.display='flex';
 }
 function applyUser(me){ window._me=me; _authBar(me); applyAccess(me); }
@@ -4569,7 +4569,13 @@ body{background:var(--gray-100);color:var(--gray-800)}
 .toast.err{background:#FFF1F4;color:#C01548;border:1px solid #FCCFDB}
 .success-icon{background:var(--green-bg);border-color:var(--green-border)}
 .success-path{background:var(--blue-bg);color:var(--brand-dark);font-family:'IBM Plex Mono',monospace;border-radius:8px}
-#bsc_authbar{border-radius:999px}
+#bsc_authbar{border-radius:999px;top:9px;right:10px;gap:6px;padding:4px 6px 4px 13px}
+#bsc_authbar #bsc_user{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* keep page content clear of the floating account bar */
+#screen-users,#screen-customers,#screen-submissions{padding-top:56px}
+.us-top{top:56px}
+@media(min-width:640px){.form-topbar{padding-right:200px}}
+@media(max-width:639px){#bsc_authbar #bsc_user{display:none}.form-topbar{padding-right:118px}}
 </style>
 
 </body>

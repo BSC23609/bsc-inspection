@@ -333,6 +333,14 @@ const STAFF_ROSTER = [
   ['BSC/151', 'DHINAKRAN K',           'pdqc',  false],
   ['BSC/154', 'Charumathi N',          'pdqc',  false],
   ['BSC/158', 'R V STALIN',            'pdqc',  false],
+  // Dispatch — accounts only, no QMS modules by default (grant per-person in Users)
+  ['BSC/008', 'SATHYA D',              'pdqc',  false, 'none'],
+  ['BSC/013', 'MAHENDRAN RAMDAS',      'pdqc',  false, 'none'],
+  ['BSC/019', 'KUMAR N',               'pdqc',  false, 'none'],
+  ['BSC/028', 'JEGAN',                 'pdqc',  false, 'none'],
+  ['BSC/029', 'SOORIYARAJ L',          'pdqc',  false, 'none'],
+  ['BSC/156', 'Sam Kumar',             'pdqc',  false, 'none'],
+  ['BSC/157', 'M Dhanush',             'pdqc',  false, 'none'],
 ];
 
 router.get('/seed-employees', async (req, res) => {
@@ -342,13 +350,16 @@ router.get('/seed-employees', async (req, res) => {
     const pw = String(req.query.pw || 'Bsc@2026');
     const h  = await hash(pw);
     let created = 0, updated = 0;
-    for (const [emp_no, name, role, is_admin] of STAFF_ROSTER) {
+    for (const [emp_no, name, role, is_admin, mods] of STAFF_ROSTER) {
+      const modAccess = mods === 'none'
+        ? MODULE_KEYS.reduce((o,k)=>{ o[k]=false; return o; },{})
+        : defaultModules(role);
       const r = await q(
         `INSERT INTO employees (emp_no,name,role,is_admin,active,password_hash,must_change_password,module_access)
          VALUES ($1,$2,$3,$4,true,$5,true,$6)
          ON CONFLICT (emp_no) DO UPDATE SET name=EXCLUDED.name, role=EXCLUDED.role, is_admin=EXCLUDED.is_admin
          RETURNING (xmax = 0) AS inserted`,
-        [emp_no, name, role, is_admin, h, JSON.stringify(defaultModules(role))]
+        [emp_no, name, role, is_admin, h, JSON.stringify(modAccess)]
       );
       if (r.rows[0] && r.rows[0].inserted) created++; else updated++;
     }
