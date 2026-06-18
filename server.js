@@ -73,6 +73,37 @@ async function notifyNewComplaint(row){
   } catch (e) { console.error('[portal] notifyNewComplaint', e.message); }
 }
 
+// ---- WATI WhatsApp template notification ----
+const WATI_ENDPOINT = (process.env.WATI_API_ENDPOINT || '').replace(/\/+$/,'');
+const WATI_TOKEN    = process.env.WATI_ACCESS_TOKEN || '';
+const WATI_TEMPLATE = process.env.WATI_TEMPLATE_NAME || 'new_complaint_alert';
+const WATI_NUMBERS  = (process.env.WATI_NOTIFY_NUMBERS || '919884384261').split(',').map(s => s.trim()).filter(Boolean);
+
+async function sendWatiComplaint(row){
+  if (!WATI_ENDPOINT || !WATI_TOKEN) { console.log('[wati] not configured; skip WhatsApp'); return; }
+  const link = 'https://qms.bharatsteels.in/?submission=' + encodeURIComponent(row.ref || row.id);
+  const parameters = [
+    { name:'ref',      value: String(row.ref || '') },
+    { name:'company',  value: String(row.company || '') },
+    { name:'filed_by', value: String(row.filed_by || '-') },
+    { name:'link',     value: link }
+  ];
+  const auth = WATI_TOKEN.startsWith('Bearer') ? WATI_TOKEN : ('Bearer ' + WATI_TOKEN);
+  for (const num of WATI_NUMBERS) {
+    try {
+      const url = WATI_ENDPOINT + '/api/v1/sendTemplateMessage?whatsappNumber=' + encodeURIComponent(num);
+      const resp = await fetch(url, {
+        method:'POST',
+        headers:{ 'Authorization': auth, 'Content-Type':'application/json' },
+        body: JSON.stringify({ template_name: WATI_TEMPLATE, broadcast_name: 'qms_complaint_' + (row.ref || row.id), parameters })
+      });
+      const txt = await resp.text();
+      if (!resp.ok) console.error('[wati] send failed', num, resp.status, txt);
+      else console.log('[wati] sent to', num);
+    } catch (e) { console.error('[wati] error', num, e.message); }
+  }
+}
+
 app.get('/portal/complaints', requireAuth, requireCustomer, async (req, res) => {
   try {
     const r = await pgq('SELECT * FROM customer_complaints WHERE customer_id=$1 ORDER BY created_at DESC', [req.user.id]);
@@ -103,7 +134,8 @@ app.post('/portal/complaints', requireAuth, requireCustomer, async (req, res) =>
        String(b.description).trim(), JSON.stringify(photos)]
     );
     const row = r.rows[0];
-    notifyNewComplaint(row); // fire-and-forget (won't block or fail the submission)
+    notifyNewComplaint(row); // email (fire-and-forget, won't block or fail the submission)
+    sendWatiComplaint(row).catch(e => console.error('[wati]', e.message)); // WhatsApp
     res.json({ ok:true, complaint: ccPublic(row) });
   } catch(e){ console.error('[portal] raise', e.message); res.status(500).json({error:'server_error'}); }
 });
