@@ -432,6 +432,32 @@ router.get('/seed-customers', async (req, res) => {
   } catch (e) { console.error('[auth] seed customers:', e.message); res.status(500).json({ error:'seed_failed', detail:e.message }); }
 });
 
+
+// ---- SSO consume: accept a signed emp_no token from the BSC Portal and start a QMS session ----
+// The portal (tickets.bharatsteels.in) mints a short-lived token signed with the shared SSO_SECRET.
+// We verify it, match the employee by emp_no, and set the normal QMS session cookie. Route = /auth/sso
+const SSO_SECRET = process.env.SSO_SECRET || '';
+router.get('/sso', async (req, res) => {
+  try {
+    if (!SSO_SECRET) return res.redirect('/?sso=notconfigured');
+    const token = req.query.token;
+    if (!token) return res.redirect('/?sso=missing');
+    let payload;
+    try { payload = jwt.verify(token, SSO_SECRET, { issuer: 'bsc-portal' }); }
+    catch (e) { return res.redirect('/?sso=invalid'); }
+    const empNo = String(payload.emp_no || '').trim();
+    if (!empNo) return res.redirect('/?sso=invalid');
+    const r = await q('SELECT * FROM employees WHERE lower(emp_no)=lower($1)', [empNo]);
+    const u = r.rows[0];
+    if (!u || !u.active) return res.redirect('/?sso=noaccess');
+    setCookie(res, signToken(u, 'employee'));
+    return res.redirect('/');
+  } catch (e) {
+    console.error('[auth] sso consume error:', e.message);
+    return res.redirect('/?sso=error');
+  }
+});
+
 module.exports = {
   authRouter: router,
   requireAuth, requireEmployee, requireCustomer, requireAdmin, requireModule,
