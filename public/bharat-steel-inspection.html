@@ -320,6 +320,22 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   <div class="us-body" id="sub_body"><div style="text-align:center;color:#9CA3AF;padding:30px">Loading&hellip;</div></div>
 </div>
 
+<div class="screen" id="screen-reports">
+  <div class="us-top">
+    <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
+    <h2>Monthly Reports</h2>
+    <input type="month" id="rep_month" onchange="loadReportClients()" style="margin-left:auto;margin-right:8px;border:1px solid #E5E7EB;border-radius:8px;padding:7px 10px;font-size:13px">
+    <button class="us-add" onclick="sendAllReports()">Send all now</button>
+  </div>
+  <div class="us-body">
+    <div id="rep_status" style="margin-bottom:14px"></div>
+    <div class="us-tablewrap"><table class="us-table">
+      <thead><tr><th>Client</th><th>Vendor ID</th><th>Email</th><th></th></tr></thead>
+      <tbody id="rep_rows"><tr><td colspan="4" style="padding:24px;text-align:center;color:#9CA3AF">Loading&hellip;</td></tr></tbody>
+    </table></div>
+  </div>
+</div>
+
 
 <div class="screen" id="screen-home">
   <div class="home-header">
@@ -4200,6 +4216,7 @@ function _authBar(me){
   if(canSales) btns += '<button class="usersbtn" onclick="openSubmissions()">Submissions</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openCustomers()">Customers</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openUsers()">Users</button>';
+  if(me.is_admin) btns += '<button class="usersbtn" onclick="openReports()">Reports</button>';
   bar.innerHTML = btns + '<span id="bsc_user"></span><button onclick="bscLogout()">Sign out</button>';
   document.getElementById('bsc_user').textContent = ((me.name||'').trim().split(/\s+/)[0] || '') + (me.is_admin?' \u00b7 ADMIN':'');
   bar.style.display='flex';
@@ -4406,6 +4423,7 @@ function openCustomerDrawer(id){
     '<div class="us-fl"><label>Company</label><input id="cd_company" value="'+(c?usEsc(c.company):'')+'" placeholder="Company name"></div>'+
     '<div class="us-fl"><label>Contact person</label><input id="cd_contact" value="'+(c?usEsc(c.contact_name||''):'')+'" placeholder="QA contact"></div>'+
     '<div class="us-fl"><label>Email <span style="text-transform:none;color:#98A2B3">(optional)</span></label><input id="cd_email" value="'+(c&&c.email?usEsc(c.email):'')+'" placeholder="qa@company.com"></div>'+
+    '<div class="us-fl"><label>WhatsApp <span style="text-transform:none;color:#98A2B3">(for monthly report)</span></label><input id="cd_whatsapp" value="'+(c&&c.whatsapp?usEsc(c.whatsapp):'')+'" placeholder="919884384261"></div>'+
     (isNew?'<div class="us-fl"><label>Temporary password</label><input id="cd_pw" value="Welcome@123"></div>':'')+
     '<div class="us-sw" style="margin-top:6px"><div class="sl">Account active</div><div class="us-tg '+((!c||c.active)?'on':'')+'" id="cd_active" onclick="this.classList.toggle(\'on\')"></div></div>'+
     '</div><div class="us-df"><span class="us-derr" id="cd_err"></span><button class="us-save" id="cd_save" onclick="saveCustomer()">'+(isNew?'Create customer':'Save')+'</button></div>';
@@ -4416,6 +4434,8 @@ async function saveCustomer(){
   var err=document.getElementById('cd_err'); err.textContent='';
   var code=(document.getElementById('cd_code')||{}).value;
   if(code!=null) code=code.trim();
+  var email=(document.getElementById('cd_email')||{}).value; if(email!=null) email=email.trim();
+  var whatsapp=(document.getElementById('cd_whatsapp')||{}).value; if(whatsapp!=null) whatsapp=whatsapp.trim();
   var company=document.getElementById('cd_company').value.trim();
   var contact=document.getElementById('cd_contact').value.trim();
   var active=document.getElementById('cd_active').classList.contains('on');
@@ -4423,13 +4443,13 @@ async function saveCustomer(){
   try{
     var r,d;
     if(!CU_EDIT){
-      var email=document.getElementById('cd_email').value.trim(), pw=document.getElementById('cd_pw').value;
+      var pw=document.getElementById('cd_pw').value;
       if(!code||!company||!pw){ err.textContent='Vendor ID, company and password are required.'; btn.disabled=false; return; }
-      r=await fetch(SERVER_URL+'/auth/customers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code,company:company,contact_name:contact,email:email,password:pw,active:active})});
+      r=await fetch(SERVER_URL+'/auth/customers',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({code:code,company:company,contact_name:contact,email:email,whatsapp:whatsapp,password:pw,active:active})});
       d=await r.json().catch(function(){return{};});
       if(!r.ok){ err.textContent=(d.error==='code_taken')?'That Vendor ID already exists.':'Could not create.'; btn.disabled=false; return; }
     } else {
-      r=await fetch(SERVER_URL+'/auth/customers/'+CU_EDIT.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({company:company,contact_name:contact,active:active})});
+      r=await fetch(SERVER_URL+'/auth/customers/'+CU_EDIT.id,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({company:company,contact_name:contact,email:email,whatsapp:whatsapp,active:active})});
       if(!r.ok){ err.textContent='Could not save.'; btn.disabled=false; return; }
     }
     closeCustomerDrawer(); await loadCustomers();
@@ -4445,6 +4465,48 @@ function closeCustomerDrawer(){ document.getElementById('cu_drawer').classList.r
 
 var SUB_ST={submitted:['us-pdqc','Submitted'],in_review:['us-sales','In review'],resolution_sent:['us-sales','Awaiting customer'],declined:['us-off','Declined'],closed:['us-on','Closed']};
 async function openSubmissions(){ showScreen('submissions'); await loadSubmissions(); }
+
+async function openReports(){
+  showScreen('reports');
+  var d=new Date(); d.setDate(0);
+  document.getElementById('rep_month').value=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  document.getElementById('rep_status').innerHTML='';
+  await loadReportClients();
+}
+async function loadReportClients(){
+  var tb=document.getElementById('rep_rows'); var ym=document.getElementById('rep_month').value;
+  try{
+    var r=await fetch(SERVER_URL+'/auth/customers'); var list=await r.json();
+    if(!Array.isArray(list)) list=[];
+    var we=list.filter(function(c){return c.email;});
+    if(!we.length){ tb.innerHTML='<tr><td colspan="4" style="padding:24px;text-align:center;color:#9CA3AF">No clients have an email yet \u2014 add emails under Customers.</td></tr>'; return; }
+    tb.innerHTML=we.map(function(c){
+      return '<tr><td>'+usEsc(c.company||'')+'</td>'+
+        '<td style="font-family:monospace;font-size:12.5px;color:#475467">'+usEsc(c.code||'')+'</td>'+
+        '<td style="font-size:12.5px;color:#475467">'+usEsc(c.email)+'</td>'+
+        '<td style="text-align:right"><a target="_blank" style="text-decoration:none;padding:6px 11px;border-radius:8px;border:1px solid #E5E7EB;color:var(--brand);font-weight:600;font-size:12.5px" href="'+SERVER_URL+'/reports/admin/preview?code='+encodeURIComponent(c.code||'')+'&month='+encodeURIComponent(ym)+'">Preview</a></td></tr>';
+    }).join('');
+  }catch(e){ tb.innerHTML='<tr><td colspan="4" style="padding:24px;text-align:center;color:#EF4444">Could not load clients.</td></tr>'; }
+}
+async function sendAllReports(){
+  var ym=document.getElementById('rep_month').value;
+  if(!/^\d{4}-\d{2}$/.test(ym)){ toast('error','Pick a month first'); return; }
+  if(!confirm('Send the '+ym+' report to every client with an email (info@bharatsteels.in in CC)?')) return;
+  var st=document.getElementById('rep_status');
+  st.innerHTML='<div style="padding:12px;background:#EFF6FF;border:1px solid #BFDBFE;border-radius:8px;color:#1E40AF;font-size:13px">Sending reports for '+ym+'\u2026 this can take a minute.</div>';
+  try{
+    var r=await fetch(SERVER_URL+'/reports/monthly/send?month='+encodeURIComponent(ym),{method:'POST'});
+    var d=await r.json();
+    if(!r.ok) throw new Error(d.detail||d.error||'Failed');
+    var res=d.results||[];
+    var sent=res.filter(function(x){return x.sent;}), skip=res.filter(function(x){return x.skipped;}), errs=res.filter(function(x){return x.error;});
+    var html='<div style="padding:12px;background:#ECFDF3;border:1px solid #A6F4C5;border-radius:8px;color:#067647;font-size:13px;margin-bottom:8px"><b>'+sent.length+'</b> report(s) sent for '+ym+'.</div>';
+    if(sent.length) html+='<div style="font-size:12px;color:#475467;margin-bottom:6px"><b>Sent:</b> '+sent.map(function(x){return usEsc(x.company)+' ('+x.trips+' trips)';}).join(', ')+'</div>';
+    if(skip.length) html+='<div style="font-size:12px;color:#98A2B3;margin-bottom:6px"><b>Skipped (no data):</b> '+skip.map(function(x){return usEsc(x.company);}).join(', ')+'</div>';
+    if(errs.length) html+='<div style="font-size:12px;color:#EF4444"><b>Errors:</b> '+errs.map(function(x){return usEsc(x.company)+' \u2014 '+usEsc(x.error);}).join('; ')+'</div>';
+    st.innerHTML=html;
+  }catch(e){ st.innerHTML='<div style="padding:12px;background:#FEF3F2;border:1px solid #FECDCA;border-radius:8px;color:#B42318;font-size:13px">'+usEsc(e.message)+'</div>'; }
+}
 async function loadSubmissions(){
   var body=document.getElementById('sub_body');
   try{
@@ -4573,7 +4635,7 @@ body{background:var(--gray-100);color:var(--gray-800)}
 #bsc_authbar{border-radius:999px;top:9px;right:10px;gap:6px;padding:4px 6px 4px 13px}
 #bsc_authbar #bsc_user{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* keep page content clear of the floating account bar */
-#screen-users,#screen-customers,#screen-submissions{padding-top:56px}
+#screen-users,#screen-customers,#screen-submissions,#screen-reports{padding-top:56px}
 .us-top{top:56px}
 @media(min-width:640px){.form-topbar{padding-right:200px}}
 @media(max-width:639px){#bsc_authbar #bsc_user{display:none}.form-topbar{padding-right:118px}}

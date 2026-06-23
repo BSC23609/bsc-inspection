@@ -58,6 +58,7 @@ async function migrate() {
   await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS code TEXT;`);
   await q(`CREATE UNIQUE INDEX IF NOT EXISTS customers_code_key ON customers (code);`);
   await q(`ALTER TABLE customers ALTER COLUMN email DROP NOT NULL;`);
+  await q(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS whatsapp TEXT;`);
 
   // Customer-portal complaint intake / tracking (brick 3)
   await q(`

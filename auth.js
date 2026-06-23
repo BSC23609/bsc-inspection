@@ -252,7 +252,7 @@ router.post('/users/:id/reset-password', requireAuth, requireAdmin, async (req, 
 // ---- Admin: customer account management (brick 3) ----
 router.get('/customers', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const r = await q(`SELECT id, company, contact_name, email, active, must_change_password, created_at
+    const r = await q(`SELECT id, code, company, contact_name, email, whatsapp, active, must_change_password, created_at
                        FROM customers ORDER BY created_at ASC`);
     res.json(r.rows);
   } catch (e) { console.error('[auth] list customers:', e.message); res.status(500).json({ error:'server_error' }); }
@@ -260,14 +260,15 @@ router.get('/customers', requireAuth, requireAdmin, async (req, res) => {
 
 router.post('/customers', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { code, company, contact_name, email, password, active } = req.body || {};
+    const { code, company, contact_name, email, whatsapp, password, active } = req.body || {};
     if (!code || !company || !password) return res.status(400).json({ error:'missing_fields' });
     const h = await hash(password);
     const r = await q(
-      `INSERT INTO customers (code, company, contact_name, email, active, password_hash, must_change_password)
-       VALUES ($1,$2,$3,$4,$5,$6,true) RETURNING id`,
+      `INSERT INTO customers (code, company, contact_name, email, whatsapp, active, password_hash, must_change_password)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,true) RETURNING id`,
       [String(code).trim(), String(company).trim(), (contact_name||'').trim(),
-       email ? String(email).trim().toLowerCase() : null, active !== false, h]
+       email ? String(email).trim().toLowerCase() : null,
+       whatsapp ? String(whatsapp).replace(/[^0-9]/g,'') : null, active !== false, h]
     );
     res.json({ ok:true, id:r.rows[0].id });
   } catch (e) {
@@ -279,13 +280,15 @@ router.post('/customers', requireAuth, requireAdmin, async (req, res) => {
 router.patch('/customers/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const { company, contact_name, active } = req.body || {};
+    const { company, contact_name, email, whatsapp, active } = req.body || {};
     const cur = await q('SELECT * FROM customers WHERE id=$1', [id]);
     if (!cur.rows[0]) return res.status(404).json({ error:'not_found' });
     const u = cur.rows[0];
-    await q(`UPDATE customers SET company=$1, contact_name=$2, active=$3, token_version=token_version+1 WHERE id=$4`,
+    const newEmail = email === undefined ? u.email : (email ? String(email).trim().toLowerCase() : null);
+    const newWa = whatsapp === undefined ? u.whatsapp : (whatsapp ? String(whatsapp).replace(/[^0-9]/g,'') : null);
+    await q(`UPDATE customers SET company=$1, contact_name=$2, email=$3, whatsapp=$4, active=$5, token_version=token_version+1 WHERE id=$6`,
       [company == null ? u.company : company, contact_name == null ? u.contact_name : contact_name,
-       active === undefined ? u.active : !!active, id]);
+       newEmail, newWa, active === undefined ? u.active : !!active, id]);
     res.json({ ok:true });
   } catch (e) { console.error('[auth] update customer:', e.message); res.status(500).json({ error:'server_error' }); }
 });
@@ -430,32 +433,6 @@ router.get('/seed-customers', async (req, res) => {
       default_password: created ? pw : undefined,
       note: created ? 'New accounts use this default password; each is asked to set their own on first login.' : 'All accounts already existed; names refreshed, passwords untouched.' });
   } catch (e) { console.error('[auth] seed customers:', e.message); res.status(500).json({ error:'seed_failed', detail:e.message }); }
-});
-
-
-// ---- SSO consume: accept a signed emp_no token from the BSC Portal and start a QMS session ----
-// The portal (tickets.bharatsteels.in) mints a short-lived token signed with the shared SSO_SECRET.
-// We verify it, match the employee by emp_no, and set the normal QMS session cookie. Route = /auth/sso
-const SSO_SECRET = process.env.SSO_SECRET || '';
-router.get('/sso', async (req, res) => {
-  try {
-    if (!SSO_SECRET) return res.redirect('/?sso=notconfigured');
-    const token = req.query.token;
-    if (!token) return res.redirect('/?sso=missing');
-    let payload;
-    try { payload = jwt.verify(token, SSO_SECRET, { issuer: 'bsc-portal' }); }
-    catch (e) { return res.redirect('/?sso=invalid'); }
-    const empNo = String(payload.emp_no || '').trim();
-    if (!empNo) return res.redirect('/?sso=invalid');
-    const r = await q('SELECT * FROM employees WHERE lower(emp_no)=lower($1)', [empNo]);
-    const u = r.rows[0];
-    if (!u || !u.active) return res.redirect('/?sso=noaccess');
-    setCookie(res, signToken(u, 'employee'));
-    return res.redirect('/');
-  } catch (e) {
-    console.error('[auth] sso consume error:', e.message);
-    return res.redirect('/?sso=error');
-  }
 });
 
 module.exports = {

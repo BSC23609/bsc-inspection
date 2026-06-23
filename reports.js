@@ -53,6 +53,7 @@ function dispDate(s){ const t = String(s || '').trim(); let m; if ((m = t.match(
 function num(v){ const n = parseFloat(String(v || '').replace(/,/g, '')); return isFinite(n) ? n : 0; }
 function fmtHHMM(v){ let s = String(v || '').trim(); if (!s || s === '0') return '\u2014'; if (s.includes(':')) return s; if (!/^\d{1,4}$/.test(s)) return s; s = s.padStart(4, '0'); return s.slice(0, 2) + ':' + s.slice(2); }
 function mins(v){ const s = String(v || '').replace(/\s*min\.?/i, '').trim(); return s || '\u2014'; }
+function toMin(v){ let s = String(v || '').trim(); if (!s) return null; s = s.replace(':', ''); if (!/^\d{1,4}$/.test(s)) return null; s = s.padStart(4, '0'); const hh = +s.slice(0, 2), mm = +s.slice(2); if (hh > 23 || mm > 59) return null; return hh * 60 + mm; }
 
 async function fetchRows(){
   const headers = { 'User-Agent': 'bsc-qms' };
@@ -95,20 +96,33 @@ function buildPDF({ billToName, shipToName, code, ym, rows, complaints }){
       const trips = rows.length;
       const completed = rows.filter(r => /complet/i.test(r['U_VSPLWBST'] || '')).length;
       const netWt = rows.reduce((s, r) => s + num(r['Net Weight']), 0);
-      const stats = [['Total trips', String(trips)], ['Completed', String(completed)], ['Pending', String(trips - completed)], ['Net weight (T)', netWt.toFixed(2)]];
+      const tats = [];
+      rows.forEach(r => { if (!/complet/i.test(r['U_VSPLWBST'] || '')) return; const a = toMin(r['In Time']), b = toMin(r['Invoice Time']); if (a != null && b != null && b - a > 0 && b - a < 1440) tats.push(b - a); });
+      const avgTAT = tats.length ? tats.reduce((s, v) => s + v, 0) / tats.length : null;
+      const stats = [
+        ['Total trips', String(trips), false], ['Completed', String(completed), false],
+        ['Pending', String(trips - completed), false], ['Net weight (T)', netWt.toFixed(2), false],
+        ['Avg TAT (min)', avgTAT == null ? '\u2014' : String(Math.round(avgTAT)), true]
+      ];
       const bw = W / stats.length;
       stats.forEach((s, i) => {
         const x = L + i * bw;
-        doc.roundedRect(x + 3, y, bw - 6, 44, 6).lineWidth(1).strokeColor(LINE).stroke();
-        doc.fillColor(MUTED).font('Helvetica').fontSize(7.5).text(s[0].toUpperCase(), x + 10, y + 9, { width: bw - 20 });
-        doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(15).text(s[1], x + 10, y + 21, { width: bw - 20 });
+        if (s[2]) {
+          doc.roundedRect(x + 3, y, bw - 6, 44, 6).fill(BLUE);
+          doc.fillColor('#CDE3F7').font('Helvetica-Bold').fontSize(7.5).text(s[0].toUpperCase(), x + 10, y + 9, { width: bw - 20 });
+          doc.fillColor('#fff').font('Helvetica-Bold').fontSize(15).text(s[1], x + 10, y + 21, { width: bw - 20 });
+        } else {
+          doc.roundedRect(x + 3, y, bw - 6, 44, 6).lineWidth(1).strokeColor(LINE).stroke();
+          doc.fillColor(MUTED).font('Helvetica').fontSize(7.5).text(s[0].toUpperCase(), x + 10, y + 9, { width: bw - 20 });
+          doc.fillColor(BLUE).font('Helvetica-Bold').fontSize(15).text(s[1], x + 10, y + 21, { width: bw - 20 });
+        }
       });
       y += 60;
 
       doc.fillColor(DARK).font('Helvetica-Bold').fontSize(10).text('DISPATCH DETAILS', L, y); y += 15;
       const cols = [
-        ['Date', 64, 'l'], ['Status', 56, 'l'], ['Vehicle', 74, 'l'], ['In', 40, 'l'], ['Out', 40, 'l'],
-        ['Inv Time', 48, 'l'], ['Invoice #', 66, 'l'], ['Net Wt', 46, 'r'], ['W-Time', 44, 'r'], ['B-Time', 44, 'r'], ['Sales Emp', W - 522, 'l']
+        ['Date', 70, 'l'], ['Status', 64, 'l'], ['Vehicle', 92, 'l'], ['In', 48, 'l'], ['Out', 48, 'l'],
+        ['Inv Time', 58, 'l'], ['Invoice #', 80, 'l'], ['Net Wt', 56, 'r'], ['W-Time', 54, 'r'], ['B-Time', 54, 'r'], ['Sales Emp', 146, 'l']
       ];
       function header(){ doc.rect(L, y, W, 17).fill(BLUE); doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7.5); let x = L; cols.forEach(c => { doc.text(c[0], x + 4, y + 5, { width: c[1] - 8, align: c[2] === 'r' ? 'right' : 'left' }); x += c[1]; }); y += 17; }
       header();
@@ -129,6 +143,12 @@ function buildPDF({ billToName, shipToName, code, ym, rows, complaints }){
         doc.fillColor(DARK); y += 14;
       });
       if (!rows.length){ doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(9).text('No dispatches recorded for this period.', L, y + 6); y += 22; }
+
+      y += 6;
+      doc.fillColor(MUTED).font('Helvetica-Oblique').fontSize(7).text(
+        'W-Time = weighbridge turnaround (In \u2192 Out)   \u00b7   B-Time = billing time (Out \u2192 Invoice)   \u00b7   TAT = total turnaround (In \u2192 Invoice).  All durations in minutes.',
+        L, y, { width: W });
+      y += 12;
 
       y += 16; if (y > 500){ doc.addPage(); y = 36; }
       doc.fillColor(DARK).font('Helvetica-Bold').fontSize(10).text('COMPLAINTS THIS PERIOD', L, y); y += 15;

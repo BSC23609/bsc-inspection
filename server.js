@@ -35,6 +35,115 @@ app.get('/reports/dispatch/preview', async (req, res) => {
     res.send(out.pdf);
   } catch (e) { console.error('[reports] preview', e.message); res.status(500).send('Report error: ' + e.message); }
 });
+
+// Admin-session preview (cookie-auth; used by the admin Reports panel)
+app.get('/reports/admin/preview', requireAuth, requireAdmin, async (req, res) => {
+  const code = String(req.query.code || '').trim();
+  const ym   = String(req.query.month || '').trim();
+  if (!/^\d+$/.test(code) || !/^\d{4}-\d{2}$/.test(ym)) return res.status(400).send('need code & month');
+  try {
+    const out = await reportsMod.buildMonthlyReport({ code, ym });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="report-' + code + '-' + ym + '.pdf"');
+    res.send(out.pdf);
+  } catch (e) { console.error('[reports] admin preview', e.message); res.status(500).send('Report error: ' + e.message); }
+});
+
+function prevMonthYM(){
+  const d = new Date();
+  d.setUTCDate(0); // last day of previous month
+  return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
+}
+
+async function sendReportEmail(cust, ym, pdf, trips, complaints){
+  const [yy, mm] = ym.split('-').map(Number);
+  const monthName = new Date(yy, mm - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+  const fname = ('Dispatch-Report-' + (cust.company || cust.code) + '-' + ym).replace(/[^A-Za-z0-9_\-]+/g, '_') + '.pdf';
+  const html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:560px;color:#101828">'
+    + '<h2 style="color:#0F6CB6;margin:0 0 6px">Monthly Dispatch Report</h2>'
+    + '<p style="font-size:13px;color:#475467;margin:0 0 10px">Dear ' + (cust.company || 'Customer') + ',</p>'
+    + '<p style="font-size:13px;color:#475467;margin:0 0 12px">Please find attached your dispatch report for <b>' + monthName + '</b>.</p>'
+    + '<table style="font-size:13px;border-collapse:collapse"><tr><td style="padding:3px 14px 3px 0;color:#667085">Total trips</td><td style="font-weight:700">' + trips + '</td></tr>'
+    + '<tr><td style="padding:3px 14px 3px 0;color:#667085">Complaints logged</td><td style="font-weight:700">' + complaints + '</td></tr></table>'
+    + '<p style="font-size:12px;color:#98A2B3;margin-top:18px">Bharat Steel (Chennai) Pvt. Ltd.</p></div>';
+  return sendEmail({
+    to: [cust.email],
+    cc: ['info@bharatsteels.in'],
+    subject: 'Dispatch Report — ' + monthName + ' — ' + (cust.company || cust.code),
+    html,
+    text: 'Dear ' + (cust.company || 'Customer') + ', attached is your dispatch report for ' + monthName + '. Total trips: ' + trips + ', complaints: ' + complaints + '.',
+    attachments: [{ filename: fname, content: pdf.toString('base64') }]
+  });
+}
+
+const WATI_REPORT_TEMPLATE = process.env.WATI_REPORT_TEMPLATE || 'monthly_dispatch_report';
+async function sendReportWhatsApp(cust, ym){
+  if (!WATI_ENDPOINT || !WATI_TOKEN) return { skipped: 'wati_not_configured' };
+  if (!process.env.REPORT_PUBLIC_TOKEN) return { skipped: 'no_public_token' };
+  let num = String(cust.whatsapp || '').replace(/\D/g, '');
+  if (!num) return { skipped: 'no_number' };
+  if (num.length === 10) num = '91' + num;
+  const [yy, mm] = ym.split('-').map(Number);
+  const monthName = new Date(yy, mm - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
+  const link = 'https://qms.bharatsteels.in/reports/file/' + encodeURIComponent(cust.code) + '/' + ym + '?t=' + encodeURIComponent(process.env.REPORT_PUBLIC_TOKEN);
+  const parameters = [
+    { name: 'company', value: String(cust.company || '') },
+    { name: 'month', value: monthName },
+    { name: 'link', value: link }
+  ];
+  const auth = WATI_TOKEN.startsWith('Bearer') ? WATI_TOKEN : ('Bearer ' + WATI_TOKEN);
+  const url = WATI_ENDPOINT + '/api/v1/sendTemplateMessage?whatsappNumber=' + encodeURIComponent(num);
+  const resp = await fetch(url, { method: 'POST', headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ template_name: WATI_REPORT_TEMPLATE, broadcast_name: 'monthly_report_' + (cust.code || '') + '_' + ym, parameters }) });
+  const txt = await resp.text();
+  if (!resp.ok) throw new Error('WATI ' + resp.status + ': ' + txt.slice(0, 200));
+  return { sent: true };
+}
+
+async function runMonthlyReports(ym){
+  const cust = await pgq("SELECT * FROM customers WHERE active=true AND email IS NOT NULL AND email <> '' ORDER BY company");
+  const results = [];
+  for (const c of cust.rows){
+    try {
+      const out = await reportsMod.buildMonthlyReport({ code: c.code, ym });
+      if (out.trips === 0 && out.complaints === 0){ results.push({ code: c.code, company: c.company, skipped: 'no data' }); continue; }
+      await sendReportEmail(c, ym, out.pdf, out.trips, out.complaints);
+      let wa = null;
+      try { wa = await sendReportWhatsApp(c, ym); } catch (e) { wa = { error: e.message }; }
+      results.push({ code: c.code, company: c.company, email: c.email, trips: out.trips, complaints: out.complaints, sent: true, whatsapp: wa });
+    } catch (e) { results.push({ code: c.code, company: c.company, error: e.message }); }
+  }
+  return results;
+}
+
+// Cron-triggered run (key-auth). Defaults to previous month.
+app.post('/reports/monthly/run', async (req, res) => {
+  if (!process.env.SETUP_KEY || req.query.key !== process.env.SETUP_KEY) return res.status(403).json({ error: 'bad_key' });
+  const ym = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : prevMonthYM();
+  try { const results = await runMonthlyReports(ym); res.json({ ok: true, month: ym, sent: results.filter(r => r.sent).length, total: results.length, results }); }
+  catch (e) { console.error('[reports] run', e.message); res.status(500).json({ error: 'run_failed', detail: e.message }); }
+});
+
+// Admin-session manual send (used by the Reports panel)
+app.post('/reports/monthly/send', requireAuth, requireAdmin, async (req, res) => {
+  const ym = /^\d{4}-\d{2}$/.test(req.query.month || '') ? req.query.month : prevMonthYM();
+  try { const results = await runMonthlyReports(ym); res.json({ ok: true, month: ym, sent: results.filter(r => r.sent).length, total: results.length, results }); }
+  catch (e) { console.error('[reports] send', e.message); res.status(500).json({ error: 'send_failed', detail: e.message }); }
+});
+
+// Public tokenized report download (the WhatsApp message links here)
+app.get('/reports/file/:code/:ym', async (req, res) => {
+  if (!process.env.REPORT_PUBLIC_TOKEN || req.query.t !== process.env.REPORT_PUBLIC_TOKEN) return res.status(403).send('forbidden');
+  const code = String(req.params.code || '').trim();
+  const ym = String(req.params.ym || '').replace(/\.pdf$/i, '').trim();
+  if (!/^\d+$/.test(code) || !/^\d{4}-\d{2}$/.test(ym)) return res.status(400).send('bad params');
+  try {
+    const out = await reportsMod.buildMonthlyReport({ code, ym });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="Dispatch-Report-' + code + '-' + ym + '.pdf"');
+    res.send(out.pdf);
+  } catch (e) { console.error('[reports] file', e.message); res.status(500).send('error'); }
+});
 app.use(cookieParser());
 app.use('/auth', authRouter);
 
