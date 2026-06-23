@@ -22,6 +22,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 const cookieParser = require('cookie-parser');
 const { authRouter, requireAuth, requireEmployee, requireAdmin, requireCustomer, requireModule } = require('./auth');
 const { q: pgq } = require('./db');
+const reportsMod = require('./reports');
+app.get('/reports/dispatch/preview', async (req, res) => {
+  if (!process.env.SETUP_KEY || req.query.key !== process.env.SETUP_KEY) return res.status(403).send('bad key');
+  const code = String(req.query.code || '').trim();
+  const ym   = String(req.query.month || '').trim();
+  if (!/^\d+$/.test(code) || !/^\d{4}-\d{2}$/.test(ym)) return res.status(400).send('Use ?key=YOUR_SETUP_KEY&code=7206270&month=2026-06');
+  try {
+    const out = await reportsMod.buildMonthlyReport({ code, ym });
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="dispatch-' + code + '-' + ym + '.pdf"');
+    res.send(out.pdf);
+  } catch (e) { console.error('[reports] preview', e.message); res.status(500).send('Report error: ' + e.message); }
+});
 app.use(cookieParser());
 app.use('/auth', authRouter);
 
