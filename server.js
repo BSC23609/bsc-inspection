@@ -23,6 +23,7 @@ const cookieParser = require('cookie-parser');
 const { authRouter, requireAuth, requireEmployee, requireAdmin, requireCustomer, requireModule } = require('./auth');
 const { q: pgq } = require('./db');
 const reportsMod = require('./reports');
+app.use(cookieParser());
 app.get('/reports/dispatch/preview', async (req, res) => {
   if (!process.env.SETUP_KEY || req.query.key !== process.env.SETUP_KEY) return res.status(403).send('bad key');
   const code = String(req.query.code || '').trim();
@@ -144,7 +145,6 @@ app.get('/reports/file/:code/:ym', async (req, res) => {
     res.send(out.pdf);
   } catch (e) { console.error('[reports] file', e.message); res.status(500).send('error'); }
 });
-app.use(cookieParser());
 app.use('/auth', authRouter);
 
 // ===================================================

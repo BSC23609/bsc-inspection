@@ -127,10 +127,10 @@ function buildPDF({ billToName, shipToName, code, ym, rows, complaints }){
 
       doc.fillColor(DARK).font('Helvetica-Bold').fontSize(10).text('DISPATCH DETAILS', L, y); y += 15;
       const cols = [
-        ['Date', 70, 'l'], ['Status', 64, 'l'], ['Vehicle', 92, 'l'], ['In', 48, 'l'], ['Out', 48, 'l'],
-        ['Inv Time', 58, 'l'], ['Invoice #', 80, 'l'], ['Net Wt', 56, 'r'], ['W-Time', 54, 'r'], ['B-Time', 54, 'r'], ['Sales Emp', 146, 'l']
+        ['Date', 84], ['Status', 80], ['Vehicle', 110], ['In', 60], ['Out', 60],
+        ['Inv Time', 72], ['Invoice #', 94], ['Net Wt', 70], ['W-Time', 70], ['B-Time', 70]
       ];
-      function header(){ doc.rect(L, y, W, 17).fill(BLUE); doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7.5); let x = L; cols.forEach(c => { doc.text(c[0], x + 4, y + 5, { width: c[1] - 8, align: c[2] === 'r' ? 'right' : 'left' }); x += c[1]; }); y += 17; }
+      function header(){ doc.rect(L, y, W, 17).fill(BLUE); doc.fillColor('#fff').font('Helvetica-Bold').fontSize(7.5); let x = L; cols.forEach(c => { doc.text(c[0], x + 4, y + 5, { width: c[1] - 8, align: 'center' }); x += c[1]; }); y += 17; }
       header();
       rows.sort((a, b) => String(a['CreateDate']).localeCompare(String(b['CreateDate'])));
       rows.forEach((r, idx) => {
@@ -138,12 +138,11 @@ function buildPDF({ billToName, shipToName, code, ym, rows, complaints }){
         if (idx % 2) doc.rect(L, y, W, 14).fill(ZEBRA);
         const vals = [dispDate(r['CreateDate']), r['U_VSPLWBST'], r['U_VSPV'], fmtHHMM(r['In Time']), fmtHHMM(r['Out Time']),
           r['Invoice Time'] || '\u2014', r['Invoice No'] || '\u2014',
-          num(r['Net Weight']) ? num(r['Net Weight']).toFixed(2) : '\u2014', r['Time Taken'] || '\u2014', mins(r['OutTime_To_InvoiceTime']),
-          (r['Sales Employee Name'] || '')];
+          num(r['Net Weight']) ? num(r['Net Weight']).toFixed(2) : '\u2014', r['Time Taken'] || '\u2014', mins(r['OutTime_To_InvoiceTime'])];
         let x = L; doc.font('Helvetica').fontSize(7.5);
         cols.forEach((c, i) => {
           if (i === 1){ doc.fillColor(/complet/i.test(vals[1] || '') ? '#067647' : '#B54708'); } else doc.fillColor(DARK);
-          doc.text(clip(doc, vals[i], c[1] - 8), x + 4, y + 4, { width: c[1] - 8, align: c[2] === 'r' ? 'right' : 'left' });
+          doc.text(clip(doc, vals[i], c[1] - 8), x + 4, y + 4, { width: c[1] - 8, align: 'center' });
           x += c[1];
         });
         doc.fillColor(DARK); y += 14;
@@ -178,8 +177,8 @@ function buildPDF({ billToName, shipToName, code, ym, rows, complaints }){
       for (let i = 0; i < range.count; i++){
         doc.switchToPage(range.start + i);
         doc.fillColor(MUTED).font('Helvetica').fontSize(7.5)
-           .text('Generated ' + new Date().toLocaleString('en-IN') + '   \u00b7   Bharat Steel (Chennai)', L, 568, { width: W })
-           .text('Page ' + (i + 1) + ' of ' + range.count, L, 568, { width: W, align: 'right' });
+           .text('Generated ' + new Date().toLocaleString('en-IN') + '   \u00b7   Bharat Steel (Chennai)', L, 547, { width: W, lineBreak: false })
+           .text('Page ' + (i + 1) + ' of ' + range.count, L, 547, { width: W, align: 'right', lineBreak: false });
       }
       doc.end();
     } catch (e) { reject(e); }
