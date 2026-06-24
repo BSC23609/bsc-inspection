@@ -237,6 +237,41 @@ async function sendWatiComplaint(row){
   }
 }
 
+// ---- WATI diagnostic (key-gated). Returns the raw WATI response so you can see the exact reason a send fails. ----
+// Usage: /reports/wati-test?key=SETUP_KEY&number=9198XXXXXXXX&template=monthly_dispatch_report1
+app.get('/reports/wati-test', async (req, res) => {
+  if (!process.env.SETUP_KEY || req.query.key !== process.env.SETUP_KEY) return res.status(403).json({ error: 'bad_key' });
+  const env = {
+    WATI_API_ENDPOINT_set: !!WATI_ENDPOINT,
+    WATI_API_ENDPOINT_value: WATI_ENDPOINT || null,
+    WATI_ACCESS_TOKEN_set: !!WATI_TOKEN,
+    WATI_REPORT_TEMPLATE: WATI_REPORT_TEMPLATE,
+    WATI_TEMPLATE_NAME_complaint: WATI_TEMPLATE,
+    WATI_NOTIFY_NUMBERS: WATI_NUMBERS,
+    REPORT_PUBLIC_TOKEN_set: !!process.env.REPORT_PUBLIC_TOKEN
+  };
+  if (!WATI_ENDPOINT || !WATI_TOKEN) return res.json({ env, verdict: 'wati_not_configured (set WATI_API_ENDPOINT + WATI_ACCESS_TOKEN)' });
+  const number = normWa(String(req.query.number || ''));
+  if (!number) return res.json({ env, verdict: 'pass ?number=9198XXXXXXXX to attempt a real test send' });
+  const template = String(req.query.template || WATI_REPORT_TEMPLATE);
+  const parameters = [
+    { name: 'company', value: 'TEST COMPANY' },
+    { name: 'month', value: 'June 2026' },
+    { name: 'link', value: 'https://qms.bharatsteels.in/' }
+  ];
+  const auth = WATI_TOKEN.startsWith('Bearer') ? WATI_TOKEN : ('Bearer ' + WATI_TOKEN);
+  const url = WATI_ENDPOINT + '/api/v1/sendTemplateMessage?whatsappNumber=' + encodeURIComponent(number);
+  try {
+    const resp = await fetch(url, { method: 'POST', headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ template_name: template, broadcast_name: 'wati_test_' + Date.now(), parameters }) });
+    const raw = await resp.text();
+    let body; try { body = JSON.parse(raw); } catch (e) { body = raw; }
+    res.json({ env, request: { url, template, number, parameters }, response: { http_status: resp.status, ok: resp.ok, body } });
+  } catch (e) {
+    res.json({ env, request: { url, template, number }, fetch_error: e.message });
+  }
+});
+
 app.get('/portal/complaints', requireAuth, requireCustomer, async (req, res) => {
   try {
     const r = await pgq('SELECT * FROM customer_complaints WHERE customer_id=$1 ORDER BY created_at DESC', [req.user.id]);
