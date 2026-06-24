@@ -56,6 +56,8 @@ function prevMonthYM(){
   return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0');
 }
 
+function splitRecipients(s){ return String(s || '').split(/[\s,;]+/).map(x => x.trim()).filter(Boolean); }
+function normWa(s){ let n = String(s || '').replace(/\D/g, ''); if (n.length === 10) n = '91' + n; return n; }
 async function sendReportEmail(cust, ym, pdf, trips, complaints){
   const [yy, mm] = ym.split('-').map(Number);
   const monthName = new Date(yy, mm - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
@@ -67,8 +69,9 @@ async function sendReportEmail(cust, ym, pdf, trips, complaints){
     + '<table style="font-size:13px;border-collapse:collapse"><tr><td style="padding:3px 14px 3px 0;color:#667085">Total trips</td><td style="font-weight:700">' + trips + '</td></tr>'
     + '<tr><td style="padding:3px 14px 3px 0;color:#667085">Complaints logged</td><td style="font-weight:700">' + complaints + '</td></tr></table>'
     + '<p style="font-size:12px;color:#98A2B3;margin-top:18px">Bharat Steel (Chennai) Pvt. Ltd.</p></div>';
+  const toList = splitRecipients(cust.email);
   return sendEmail({
-    to: [cust.email],
+    to: toList.length ? toList : [cust.email],
     cc: ['info@bharatsteels.in'],
     subject: 'Dispatch Report — ' + monthName + ' — ' + (cust.company || cust.code),
     html,
@@ -81,9 +84,8 @@ const WATI_REPORT_TEMPLATE = process.env.WATI_REPORT_TEMPLATE || 'monthly_dispat
 async function sendReportWhatsApp(cust, ym){
   if (!WATI_ENDPOINT || !WATI_TOKEN) return { skipped: 'wati_not_configured' };
   if (!process.env.REPORT_PUBLIC_TOKEN) return { skipped: 'no_public_token' };
-  let num = String(cust.whatsapp || '').replace(/\D/g, '');
-  if (!num) return { skipped: 'no_number' };
-  if (num.length === 10) num = '91' + num;
+  const nums = splitRecipients(cust.whatsapp).map(normWa).filter(Boolean);
+  if (!nums.length) return { skipped: 'no_number' };
   const [yy, mm] = ym.split('-').map(Number);
   const monthName = new Date(yy, mm - 1, 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' });
   const link = 'https://qms.bharatsteels.in/reports/file/' + encodeURIComponent(cust.code) + '/' + ym + '?t=' + encodeURIComponent(process.env.REPORT_PUBLIC_TOKEN);
@@ -93,12 +95,19 @@ async function sendReportWhatsApp(cust, ym){
     { name: 'link', value: link }
   ];
   const auth = WATI_TOKEN.startsWith('Bearer') ? WATI_TOKEN : ('Bearer ' + WATI_TOKEN);
-  const url = WATI_ENDPOINT + '/api/v1/sendTemplateMessage?whatsappNumber=' + encodeURIComponent(num);
-  const resp = await fetch(url, { method: 'POST', headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ template_name: WATI_REPORT_TEMPLATE, broadcast_name: 'monthly_report_' + (cust.code || '') + '_' + ym, parameters }) });
-  const txt = await resp.text();
-  if (!resp.ok) throw new Error('WATI ' + resp.status + ': ' + txt.slice(0, 200));
-  return { sent: true };
+  let okCount = 0; const errs = [];
+  for (const num of nums){
+    try {
+      const url = WATI_ENDPOINT + '/api/v1/sendTemplateMessage?whatsappNumber=' + encodeURIComponent(num);
+      const resp = await fetch(url, { method: 'POST', headers: { 'Authorization': auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ template_name: WATI_REPORT_TEMPLATE, broadcast_name: 'monthly_report_' + (cust.code || '') + '_' + ym, parameters }) });
+      const txt = await resp.text();
+      if (!resp.ok) throw new Error('WATI ' + resp.status + ': ' + txt.slice(0, 120));
+      okCount++;
+    } catch (e) { errs.push(num + ': ' + e.message); }
+  }
+  if (!okCount && errs.length) throw new Error(errs.join(' | '));
+  return { sent: okCount, total: nums.length, errors: errs.length ? errs : undefined };
 }
 
 async function runMonthlyReports(ym){

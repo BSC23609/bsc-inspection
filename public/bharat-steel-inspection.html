@@ -4422,8 +4422,8 @@ function openCustomerDrawer(id){
     '<div class="us-fl"><label>Vendor ID</label><input id="cd_code" '+(isNew?'':'disabled')+' value="'+(c?usEsc(c.code||''):'')+'" placeholder="e.g. 7204547"></div>'+
     '<div class="us-fl"><label>Company</label><input id="cd_company" value="'+(c?usEsc(c.company):'')+'" placeholder="Company name"></div>'+
     '<div class="us-fl"><label>Contact person</label><input id="cd_contact" value="'+(c?usEsc(c.contact_name||''):'')+'" placeholder="QA contact"></div>'+
-    '<div class="us-fl"><label>Email <span style="text-transform:none;color:#98A2B3">(optional)</span></label><input id="cd_email" value="'+(c&&c.email?usEsc(c.email):'')+'" placeholder="qa@company.com"></div>'+
-    '<div class="us-fl"><label>WhatsApp <span style="text-transform:none;color:#98A2B3">(for monthly report)</span></label><input id="cd_whatsapp" value="'+(c&&c.whatsapp?usEsc(c.whatsapp):'')+'" placeholder="919884384261"></div>'+
+    '<div class="us-fl"><label>Email <span style="text-transform:none;color:#98A2B3">(optional \u2014 comma-separate for several)</span></label><input id="cd_email" value="'+(c&&c.email?usEsc(c.email):'')+'" placeholder="qa@company.com, mgr@company.com"></div>'+
+    '<div class="us-fl"><label>WhatsApp <span style="text-transform:none;color:#98A2B3">(comma-separate for several)</span></label><input id="cd_whatsapp" value="'+(c&&c.whatsapp?usEsc(c.whatsapp):'')+'" placeholder="919884384261, 919876543210"></div>'+
     (isNew?'<div class="us-fl"><label>Temporary password</label><input id="cd_pw" value="Welcome@123"></div>':'')+
     '<div class="us-sw" style="margin-top:6px"><div class="sl">Account active</div><div class="us-tg '+((!c||c.active)?'on':'')+'" id="cd_active" onclick="this.classList.toggle(\'on\')"></div></div>'+
     '</div><div class="us-df"><span class="us-derr" id="cd_err"></span><button class="us-save" id="cd_save" onclick="saveCustomer()">'+(isNew?'Create customer':'Save')+'</button></div>';
