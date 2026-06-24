@@ -168,6 +168,8 @@ function ccPublic(r){
     handler_emp:r.handler_emp, photos:r.photos||[], created_at:r.created_at, updated_at:r.updated_at };
 }
 
+const COMPLAINT_NOTIFY_TO = (process.env.COMPLAINT_NOTIFY_TO || 'info@bharatsteels.in').split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
+const COMPLAINT_NOTIFY_CC = (process.env.COMPLAINT_NOTIFY_CC || 'shivamshroff1997@gmail.com').split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
 async function notifyNewComplaint(row){
   try {
     if (!RESEND_API_KEY) { console.log('[portal] RESEND_API_KEY not set; skip complaint email'); return; }
@@ -195,8 +197,8 @@ async function notifyNewComplaint(row){
       + '<a href="'+waLink+'" style="background:#25D366;color:#fff;text-decoration:none;padding:10px 16px;border-radius:8px;font-size:13px;font-weight:600">WhatsApp Shivam</a>'
       + '</div></div>';
     await sendEmail({
-      to: ['info@bharatsteels.in'],
-      cc: ['shivamshroff1997@gmail.com'],
+      to: COMPLAINT_NOTIFY_TO,
+      cc: COMPLAINT_NOTIFY_CC,
       subject: 'New complaint ' + (row.ref||'') + ' — ' + (row.company||''),
       html,
       text: 'New complaint ' + (row.ref||'') + ' from ' + (row.company||'') + '. Filed by ' + (row.filed_by||'-') + '. Open: ' + link
