@@ -1,0 +1,20 @@
+name: Monthly Dispatch Report
+
+# Runs at 05:30 UTC on the 1st of every month = 11:00 AM IST.
+# (GitHub Actions schedules are UTC and may start a few minutes late under load.)
+on:
+  schedule:
+    - cron: '30 5 1 * *'
+  workflow_dispatch: {}      # lets you trigger a test run manually from the Actions tab
+
+jobs:
+  send-reports:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger monthly dispatch report
+        run: |
+          echo "Triggering monthly report run..."
+          curl -fsS --max-time 600 -X POST \
+            "https://qms.bharatsteels.in/reports/monthly/run?key=${{ secrets.REPORT_RUN_KEY }}"
+          echo ""
+          echo "Done."
