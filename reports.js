@@ -97,7 +97,13 @@ function buildPDF({ billToName, shipToName, code, ym, rows, complaints }){
       const completed = rows.filter(r => /complet/i.test(r['U_VSPLWBST'] || '')).length;
       const netWt = rows.reduce((s, r) => s + num(r['Net Weight']), 0);
       const tats = [];
-      rows.forEach(r => { if (!/complet/i.test(r['U_VSPLWBST'] || '')) return; const a = toMin(r['In Time']), b = toMin(r['Invoice Time']); if (a != null && b != null && b - a > 0 && b - a < 1440) tats.push(b - a); });
+      rows.forEach(r => {
+        if (!/complet/i.test(r['U_VSPLWBST'] || '')) return;
+        const a = toMin(r['In Time']), b = toMin(r['Invoice Time']);
+        if (a == null || b == null) return;
+        let d = b - a; if (d < 0) d += 1440; // invoice billed past midnight
+        if (d >= 0 && d < 1440) tats.push(d);
+      });
       const avgTAT = tats.length ? tats.reduce((s, v) => s + v, 0) / tats.length : null;
       const stats = [
         ['Total trips', String(trips), false], ['Completed', String(completed), false],
