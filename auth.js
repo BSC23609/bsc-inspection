@@ -11,6 +11,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-insecure-change-me';
 const SETUP_KEY  = process.env.SETUP_KEY  || '';
 const COOKIE     = 'bsc_qms_token';
 const TTL_MS     = 365 * 24 * 60 * 60 * 1000; // 1 year — stay signed in on the device
+const SSO_SECRET = process.env.SSO_SECRET || ''; // shared secret with the BSC portal (one-click SSO)
 
 // ---- Canonical module catalogue (keys used by the frontend too) ----
 const MODULE_KEYS = ['inward','ctl','shearing','salesqc','purchaseqc','dash_prod','dash_sales','dash_all'];
@@ -129,6 +130,42 @@ router.post('/login', async (req, res) => {
 });
 
 router.post('/logout', (req, res) => { clearCookie(res); res.json({ ok:true }); });
+
+// ---- One-click SSO from the BSC portal ----------------------------------
+// The portal is the login authority. When a user clicks "Quality (QMS)" there,
+// the portal mints a short-lived token signed with the SHARED SSO_SECRET, carrying
+// { emp_no, name } (issuer 'bsc-portal'), and redirects the browser here. We verify
+// it, find the matching QMS employee, start a normal QMS session (same cookie as
+// /login), and send them into the app. Handled at BOTH /auth/sso and /auth so it
+// works no matter which path the portal's QMS_SSO_URL points at.
+async function ssoConsume(req, res) {
+  const token = req.query.token;
+  // No token (e.g. someone opened /auth directly) -> just show the login screen.
+  if (!token) return res.redirect('/');
+  if (!SSO_SECRET) {
+    console.error('[auth] SSO token received but SSO_SECRET is not set on QMS');
+    return res.status(500).send('Single sign-on is not configured on QMS. Please contact IT.');
+  }
+  try {
+    const p = jwt.verify(token, SSO_SECRET, { issuer: 'bsc-portal' });
+    const empNo = String(p.emp_no || '').trim();
+    if (!empNo) return res.redirect('/');
+    const r = await q('SELECT * FROM employees WHERE lower(emp_no)=lower($1)', [empNo]);
+    const u = r.rows[0];
+    if (!u || !u.active) {
+      return res.status(403).send(
+        `No active QMS account for ${empNo}. Please ask IT to enable QMS access for you.`);
+    }
+    setCookie(res, signToken(u, 'employee')); // same session cookie as a normal login
+    return res.redirect('/');
+  } catch (e) {
+    // Expired or tampered token -> fall back to the manual login screen.
+    console.error('[auth] SSO verify failed:', e.message);
+    return res.redirect('/');
+  }
+}
+router.get('/sso', ssoConsume); // portal default: https://qms.bharatsteels.in/auth/sso
+router.get('/',    ssoConsume); // also covers QMS_SSO_URL pointed at .../auth
 
 router.get('/me', requireAuth, (req, res) => {
   const u = req.user;
