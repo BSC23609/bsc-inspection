@@ -4,7 +4,7 @@ name: Monthly Dispatch Report
 # (GitHub Actions schedules are UTC and may start a few minutes late under load.)
 on:
   schedule:
-    - cron: '30 5 1 * *'
+    - cron: '30 5 2 * *'
   workflow_dispatch: {}      # lets you trigger a test run manually from the Actions tab
 
 jobs:
