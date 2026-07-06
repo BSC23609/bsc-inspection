@@ -318,7 +318,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-submissions">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Customer Submissions</h2>
+    <h2>Customer Complaints</h2>
   </div>
   <div class="us-body" id="sub_body"><div style="text-align:center;color:#9CA3AF;padding:30px">Loading&hellip;</div></div>
 </div>
@@ -4216,7 +4216,7 @@ function _authBar(me){
   var tag = (me.role?(' \u00b7 '+me.role.toUpperCase()):'') + (me.is_admin?' \u00b7 ADMIN':'');
   var canSales = me.is_admin || (me.modules && me.modules.salesqc);
   var btns = '';
-  if(canSales) btns += '<button class="usersbtn" onclick="openSubmissions()">Submissions</button>';
+  if(canSales) btns += '<button class="usersbtn" onclick="openSubmissions()">Complaints</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openCustomers()">Customers</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openUsers()">Users</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openReports()">Reports</button>';
@@ -4519,7 +4519,7 @@ async function loadSubmissions(){
   }catch(e){ body.innerHTML='<div style="text-align:center;color:#DC2626;padding:30px">Failed to load.</div>'; }
 }
 function renderSubmissions(list){
-  if(!list.length){ document.getElementById('sub_body').innerHTML='<div style="text-align:center;color:#9CA3AF;padding:36px">No customer submissions yet.</div>'; return; }
+  if(!list.length){ document.getElementById('sub_body').innerHTML='<div style="text-align:center;color:#9CA3AF;padding:36px">No complaints received yet.</div>'; return; }
   var html=list.map(function(c){
     var s=SUB_ST[c.status]||['us-off',c.status];
     var actions='';
