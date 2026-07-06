@@ -183,6 +183,32 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 .success-btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
 .btn-green{padding:11px 22px;border-radius:var(--r);border:none;background:var(--green);color:#fff;font-family:var(--font);font-size:13px;font-weight:600;cursor:pointer}
 .btn-outline{padding:11px 22px;border-radius:var(--r);border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:var(--font);font-size:13px;font-weight:500;cursor:pointer}
+
+/* ===== complaint detail + timeline + modal ===== */
+.cd-back{display:inline-flex;align-items:center;gap:6px;color:#0B5793;font-weight:600;font-size:13px;cursor:pointer;margin-bottom:14px}
+.cd-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px 24px}
+.cd-f .k{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#98A2B3}
+.cd-f .v{font-size:13.5px;color:#101828;font-weight:600;margin-top:1px}
+.cd-tstep{display:flex;gap:12px;position:relative;padding-bottom:20px}
+.cd-tstep:last-child{padding-bottom:0}
+.cd-tstep .cd-rail{position:absolute;left:10px;top:22px;bottom:0;width:2px;background:#E5E9F0}
+.cd-tstep.done .cd-rail{background:#12B76A}
+.cd-tstep .cd-node{width:22px;height:22px;border-radius:999px;flex:none;display:flex;align-items:center;justify-content:center;z-index:1;border:2px solid #E5E9F0;background:#fff;font-size:12px;color:#fff}
+.cd-tstep.done .cd-node{background:#12B76A;border-color:#12B76A}
+.cd-tstep.now .cd-node{border-color:#1A6DAF;background:#EAF3FB}
+.cd-tstep.now .cd-node i{width:8px;height:8px;border-radius:999px;background:#1A6DAF;display:block}
+.cd-tstep .cd-tt{font-size:13px;font-weight:700;color:#101828}
+.cd-tstep.todo .cd-tt{color:#98A2B3}
+.cd-tstep .cd-td{font-size:11.5px;color:#667085;margin-top:1px}
+.cd-modal-bg{position:fixed;inset:0;background:rgba(16,24,40,.55);z-index:9999;display:none;align-items:center;justify-content:center;padding:16px}
+.cd-modal-bg.on{display:flex}
+.cd-modal{background:#fff;border-radius:14px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3);overflow:hidden}
+.cd-modal h3{margin:0;padding:18px 20px 4px;font-size:17px;color:#101828}
+.cd-modal p{margin:0;padding:0 20px;font-size:12.5px;color:#667085}
+.cd-modal textarea{width:calc(100% - 40px);margin:14px 20px 0;min-height:96px;border:1px solid #D0D5DD;border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;resize:vertical;box-sizing:border-box}
+.cd-modal .cd-acts{display:flex;justify-content:flex-end;gap:8px;padding:16px 20px 18px}
+.cd-modal .cd-acts button{border:none;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer}
+.cd-thumb-lg{width:120px;height:120px;border-radius:10px;border:1px solid #EAECF0;background-size:cover;background-position:center;cursor:pointer}
 </style>
 </head>
 <body>
@@ -4519,6 +4545,7 @@ async function loadSubmissions(){
   }catch(e){ body.innerHTML='<div style="text-align:center;color:#DC2626;padding:30px">Failed to load.</div>'; }
 }
 function renderSubmissions(list){
+  window.SUBS=list; window.CD_OPEN=null;
   if(!list.length){ document.getElementById('sub_body').innerHTML='<div style="text-align:center;color:#9CA3AF;padding:36px">No complaints received yet.</div>'; return; }
   var html=list.map(function(c){
     var s=SUB_ST[c.status]||['us-off',c.status];
@@ -4527,7 +4554,7 @@ function renderSubmissions(list){
     else if(c.status==='in_review') actions='<button class="us-btn" style="border-color:#A6F4C5;color:#067647" onclick="decide('+c.id+',\'resolve\')">Send resolution</button><button class="us-btn" style="border-color:#FCA5A5;color:#B91C1C" onclick="decide('+c.id+',\'decline\')">Decline</button>';
     var ph=(c.photos&&c.photos.length)?('<div style="display:flex;gap:6px;margin-top:10px">'+c.photos.map(function(p){return '<div style="width:46px;height:46px;border-radius:8px;border:1px solid #EAECF0;background-size:cover;background-position:center;background-image:url('+p+')"></div>';}).join('')+'</div>'):'';
     var metaHtml=(function(){var a=[['Grade',c.grade],['Dimensions',c.dimensions],['Batch',c.batch_no],['TC',c.tc_no],['Invoice',c.invoice_no],['Inv date',c.invoice_date],['Qty',c.quantity],['Mobile',c.mobile],['Email',c.contact_email]].filter(function(x){return x[1];}).map(function(x){return '<span style="color:#98A2B3">'+x[0]+':</span> '+usEsc(x[1]);}).join(' &nbsp;\u00b7&nbsp; ');return a?('<div style="font-size:11px;color:#475467;margin-top:6px;line-height:1.8">'+a+'</div>'):'';})();
-    return '<div class="us-tablewrap" style="padding:16px 18px;margin-bottom:12px">'+
+    return '<div class="us-tablewrap" style="padding:16px 18px;margin-bottom:12px;cursor:pointer" onclick="if(!event.target.closest(\'button\'))openComplaintDetail('+c.id+')">'+
       '<div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">'+
       '<div style="flex:1;min-width:200px"><div style="font-family:monospace;font-size:11.5px;color:#0B5793;font-weight:600">'+usEsc(c.ref||('#'+c.id))+'</div>'+
       '<div style="font-weight:700;color:#101828;font-size:14px;margin-top:2px">'+usEsc(c.company||'')+(c.filed_by?(' \u00b7 '+usEsc(c.filed_by)):'')+'</div>'+
@@ -4538,13 +4565,99 @@ function renderSubmissions(list){
   }).join('');
   document.getElementById('sub_body').innerHTML=html;
 }
-async function decide(id,action){
-  var note=null;
-  if(action==='decline'){ note=prompt('Reason for declining (the customer will see this):'); if(!note) return; }
-  else if(action==='resolve'){ note=prompt('Resolution to share with the customer:'); if(!note) return; }
+function decide(id,action){
+  if(action==='decline'){ openNoteModal('Decline complaint','The customer will see this reason.','Reason for declining\u2026',function(note){ submitDecision(id,'decline',note); }); return; }
+  if(action==='resolve'){ openNoteModal('Send resolution','Shared with the customer for sign-off.','Resolution details to share with the customer\u2026',function(note){ submitDecision(id,'resolve',note); }); return; }
+  submitDecision(id,'accept',null);
+}
+async function submitDecision(id,action,note){
   try{ var r=await fetch(SERVER_URL+'/portal/admin/submissions/'+id+'/decision',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:action,note:note})});
-    if(!r.ok){ toast('err','Action failed'); return; } toast('ok','Updated'); await loadSubmissions();
+    if(!r.ok){ toast('err','Action failed'); return; } toast('ok','Updated');
+    var keep=window.CD_OPEN;
+    await loadSubmissions();
+    if(keep){ openComplaintDetail(keep); }
   }catch(e){ toast('err','Network error'); }
+}
+function openComplaintDetail(id){
+  var c=(window.SUBS||[]).filter(function(x){return x.id===id;})[0];
+  if(!c) return;
+  window.CD_OPEN=id;
+  renderComplaintDetail(c);
+}
+function fmtCd(iso){ if(!iso) return '\u2014'; try{ return new Date(iso).toLocaleString('en-IN',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'}); }catch(e){ return iso; } }
+function cdTimeline(c){
+  var idx=({submitted:1,in_review:2,resolution_sent:3,closed:4,declined:1})[c.status]||1;
+  var closed=c.status==='closed';
+  function st(n){ return closed?'done':(n<idx?'done':(n===idx?'now':'todo')); }
+  var steps=[
+    ['done','Submitted','Complaint raised by the customer'],
+    [closed?'done':st(1),'Under review','Reviewed by the sales team'],
+    [closed?'done':st(2),'In progress','Quality team working on it'],
+    [closed?'done':st(3),'Resolution','Shared with the customer for sign-off'],
+    [closed?'done':'todo','Closed','Complaint closed out']
+  ];
+  return steps.map(function(s){
+    var node=s[0]==='done'?'<div class="cd-node">\u2713</div>':(s[0]==='now'?'<div class="cd-node"><i></i></div>':'<div class="cd-node"></div>');
+    return '<div class="cd-tstep '+s[0]+'"><div class="cd-rail"></div>'+node+'<div><div class="cd-tt">'+s[1]+'</div><div class="cd-td">'+s[2]+'</div></div></div>';
+  }).join('');
+}
+function renderComplaintDetail(c){
+  var s=SUB_ST[c.status]||['us-off',c.status];
+  var fields=[['Grade',c.grade],['Dimensions',c.dimensions],['Batch No',c.batch_no],['TC No',c.tc_no],['Invoice No',c.invoice_no],['Invoice Date',c.invoice_date],['Quantity',c.quantity],['Mobile',c.mobile],['Email',c.contact_email||c.email],['Filed by',c.filed_by]].filter(function(x){return x[1];});
+  var grid=fields.map(function(x){return '<div class="cd-f"><div class="k">'+usEsc(x[0])+'</div><div class="v">'+usEsc(x[1])+'</div></div>';}).join('');
+  var photos=(c.photos&&c.photos.length)?('<div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:6px">'+c.photos.map(function(p){return '<div class="cd-thumb-lg" style="background-image:url('+p+')" onclick="window.open(\''+p+'\',\'_blank\')"></div>';}).join('')+'</div>'):'<div style="color:#98A2B3;font-size:13px">No photos attached.</div>';
+  var resolveBlock='';
+  if(c.resolution_note||c.decision_note){
+    var dec=c.status==='declined';
+    resolveBlock='<div style="margin-top:16px;padding:14px 16px;border-radius:10px;background:'+(dec?'#FEF3F2':'#ECFDF3')+';border:1px solid '+(dec?'#FECDCA':'#A6F4C5')+'"><div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:'+(dec?'#B42318':'#067647')+'">'+(dec?'Declined':(c.status==='closed'?'Resolution (closed)':'Resolution shared'))+'</div><div style="font-size:13.5px;color:#344054;margin-top:6px;line-height:1.5">'+usEsc(c.resolution_note||c.decision_note)+'</div></div>';
+  }
+  var actions='';
+  if(c.status==='submitted') actions='<button class="us-btn" style="border-color:#A6F4C5;color:#067647" onclick="decide('+c.id+',\'accept\')">Accept</button><button class="us-btn" style="border-color:#FCA5A5;color:#B91C1C" onclick="decide('+c.id+',\'decline\')">Decline</button>';
+  else if(c.status==='in_review') actions='<button class="us-btn" style="border-color:#A6F4C5;color:#067647" onclick="decide('+c.id+',\'resolve\')">Send resolution</button><button class="us-btn" style="border-color:#FCA5A5;color:#B91C1C" onclick="decide('+c.id+',\'decline\')">Decline</button>';
+  document.getElementById('sub_body').innerHTML=
+    '<div class="cd-back" onclick="loadSubmissions()">\u2039 Back to all complaints</div>'+
+    '<div class="us-tablewrap" style="padding:20px 22px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">'+
+        '<div><div style="font-family:monospace;font-size:12px;color:#0B5793;font-weight:600">'+usEsc(c.ref||('#'+c.id))+'</div>'+
+        '<div style="font-weight:700;font-size:18px;color:#101828;margin-top:2px">'+usEsc(c.company||'')+'</div>'+
+        '<div style="font-size:12px;color:#98A2B3;margin-top:3px">Raised '+fmtCd(c.created_at)+(c.handler_emp?(' \u00b7 Handler: '+usEsc(c.handler_emp)):'')+'</div></div>'+
+        '<div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px"><span class="us-pill '+s[0]+'">'+s[1]+'</span>'+
+        '<a href="'+SERVER_URL+'/portal/admin/complaints/'+c.id+'/pdf" target="_blank" class="us-btn" style="border-color:#1A6DAF;color:#0B5793;text-decoration:none">\u2193 Download PDF</a></div>'+
+      '</div>'+
+      '<div style="height:1px;background:#EAECF0;margin:16px 0"></div>'+
+      '<div style="display:grid;grid-template-columns:1.25fr 1fr;gap:24px" class="cd-cols">'+
+        '<div>'+
+          '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#0F4C75;margin-bottom:10px">Complaint details</div>'+
+          '<div class="cd-grid">'+grid+'</div>'+
+          '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#0F4C75;margin:18px 0 6px">Description</div>'+
+          '<div style="font-size:13.5px;color:#344054;line-height:1.55">'+usEsc(c.description||'\u2014')+'</div>'+
+          '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#0F4C75;margin:18px 0 8px">Photos</div>'+photos+
+          resolveBlock+
+          (actions?'<div style="display:flex;gap:8px;margin-top:18px">'+actions+'</div>':'')+
+        '</div>'+
+        '<div>'+
+          '<div style="font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#0F4C75;margin-bottom:12px">Status tracker</div>'+
+          cdTimeline(c)+
+        '</div>'+
+      '</div>'+
+    '</div>';
+}
+function ensureCdModal(){
+  if(document.getElementById('cd_modal_bg')) return;
+  var d=document.createElement('div'); d.id='cd_modal_bg'; d.className='cd-modal-bg';
+  d.innerHTML='<div class="cd-modal"><h3 id="cd_m_title"></h3><p id="cd_m_sub"></p><textarea id="cd_m_ta"></textarea><div class="cd-acts"><button id="cd_m_cancel" style="background:#F2F4F7;color:#344054">Cancel</button><button id="cd_m_ok" style="background:#1A6DAF;color:#fff">Send</button></div></div>';
+  document.body.appendChild(d);
+  d.addEventListener('click',function(e){ if(e.target===d) hideCdModal(); });
+  document.getElementById('cd_m_cancel').onclick=hideCdModal;
+}
+function hideCdModal(){ var d=document.getElementById('cd_modal_bg'); if(d) d.classList.remove('on'); }
+function openNoteModal(title,sub,placeholder,onOk){
+  ensureCdModal();
+  document.getElementById('cd_m_title').textContent=title;
+  document.getElementById('cd_m_sub').textContent=sub||'';
+  var ta=document.getElementById('cd_m_ta'); ta.value=''; ta.placeholder=placeholder||'';
+  document.getElementById('cd_m_ok').onclick=function(){ var v=ta.value.trim(); if(!v){ ta.focus(); return; } hideCdModal(); onOk(v); };
+  document.getElementById('cd_modal_bg').classList.add('on'); setTimeout(function(){ta.focus();},50);
 }
 
 async function removeUser(id){

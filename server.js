@@ -364,6 +364,141 @@ app.post('/portal/admin/submissions/:id/decision', requireAuth, requireModule('s
   } catch(e){ console.error('[portal] decision', e.message); res.status(500).json({error:'server_error'}); }
 });
 
+
+// ================= Customer complaint -> branded PDF (admin only) =================
+function ccTimelineSteps(status){
+  var idx = ({submitted:1,in_review:2,resolution_sent:3,closed:4,declined:1})[status] || 1;
+  var closed = status === 'closed';
+  function st(n){ return closed ? 'done' : (n < idx ? 'done' : (n === idx ? 'now' : 'todo')); }
+  return [
+    ['done',                         'Submitted',    'Complaint raised by the customer'],
+    [closed?'done':st(1),            'Under review', 'Reviewed by the sales team'],
+    [closed?'done':st(2),            'In progress',  'Quality team working on it'],
+    [closed?'done':st(3),            'Resolution',   'Shared with the customer for sign-off'],
+    [closed?'done':(status==='declined'?'todo':'todo'), 'Closed', 'Complaint closed out']
+  ];
+}
+function buildCustomerComplaintPDF(c){
+  return new Promise(function(resolve, reject){
+    try{
+      var doc = new PDFDocument({ size:'A4', margin:0, bufferPages:true });
+      var bufs=[]; doc.on('data', function(b){bufs.push(b);}); doc.on('end', function(){resolve(Buffer.concat(bufs));}); doc.on('error', reject);
+      var pageW = doc.page.width;
+      var L = 40, R = pageW - 40, W = R - L;
+      var STLABEL = ({submitted:'Submitted',in_review:'In review',resolution_sent:'Awaiting customer',declined:'Declined',closed:'Closed'})[c.status] || c.status;
+
+      var y = drawBrandedHeader(doc, { title:'CUSTOMER COMPLAINT', subtitle:'Quality Complaint Report', refLabel: c.ref ? ('Ref: '+c.ref) : ('#'+c.id) });
+
+      // Title row: company + status chip
+      doc.fillColor(TEXT).font('Helvetica-Bold').fontSize(15).text(c.company || 'Customer complaint', L, y, { width: W-140 });
+      doc.roundedRect(R-120, y-2, 120, 22, 11).fill(BRAND_BLUE);
+      doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9).text(STLABEL.toUpperCase(), R-120, y+4, { width:120, align:'center' });
+      y += 22;
+      doc.fillColor(MUTED).font('Helvetica').fontSize(9)
+         .text('Raised: ' + (c.created_at ? new Date(c.created_at).toLocaleString('en-IN') : '-')
+             + (c.filed_by ? ('     Filed by: ' + c.filed_by) : '')
+             + (c.handler_emp ? ('     Handler: ' + c.handler_emp) : ''), L, y, { width: W });
+      y += 20;
+      doc.moveTo(L,y).lineTo(R,y).lineWidth(1).strokeColor(BORDER).stroke(); y += 12;
+
+      // Details grid (label/value, two columns)
+      var fields = [
+        ['Grade', c.grade], ['Dimensions', c.dimensions], ['Batch No', c.batch_no], ['TC No', c.tc_no],
+        ['Invoice No', c.invoice_no], ['Invoice Date', c.invoice_date], ['Quantity', c.quantity],
+        ['Mobile', c.mobile], ['Email', c.contact_email || c.email]
+      ].filter(function(p){ return p[1]; });
+      doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(10).text('COMPLAINT DETAILS', L, y); y += 16;
+      var colW = W/2, rowH = 18, startY = y;
+      fields.forEach(function(p, i){
+        var col = i % 2, row = Math.floor(i/2);
+        var x = L + col*colW, yy = startY + row*rowH;
+        doc.fillColor(MUTED).font('Helvetica').fontSize(8.5).text(p[0].toUpperCase(), x, yy, { width: 90 });
+        doc.fillColor(TEXT).font('Helvetica-Bold').fontSize(9.5).text(String(p[1]), x+92, yy-1, { width: colW-100 });
+      });
+      y = startY + Math.ceil(fields.length/2)*rowH + 8;
+
+      // Description
+      if (c.description){
+        doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(10).text('DESCRIPTION', L, y); y += 15;
+        doc.fillColor(TEXT).font('Helvetica').fontSize(9.5).text(String(c.description), L, y, { width: W, lineGap: 2 });
+        y = doc.y + 10;
+      }
+
+      // Resolution / decision
+      if (c.resolution_note || c.decision_note){
+        var isDecline = c.status === 'declined';
+        var boxColor = isDecline ? '#FEF3F2' : '#ECFDF3', brdr = isDecline ? '#FECDCA' : '#A6F4C5', txtColor = isDecline ? '#B42318' : '#067647';
+        var label = isDecline ? 'DECISION (DECLINED)' : (c.status==='closed' ? 'RESOLUTION (CLOSED)' : 'RESOLUTION SHARED');
+        var note = c.resolution_note || c.decision_note;
+        var noteH = doc.heightOfString(String(note), { width: W-24, lineGap:2 }) + 30;
+        if (y + noteH > 760){ doc.addPage(); y = 40; }
+        doc.roundedRect(L, y, W, noteH, 8).fill(boxColor);
+        doc.fillColor(txtColor).font('Helvetica-Bold').fontSize(9).text(label, L+12, y+10);
+        doc.fillColor('#344054').font('Helvetica').fontSize(9.5).text(String(note), L+12, y+24, { width: W-24, lineGap:2 });
+        y += noteH + 12;
+      }
+
+      // Status timeline
+      if (y + 130 > 780){ doc.addPage(); y = 40; }
+      doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(10).text('STATUS TIMELINE', L, y); y += 16;
+      ccTimelineSteps(c.status).forEach(function(s, i, arr){
+        var done = s[0]==='done', now = s[0]==='now';
+        var cx = L+9, cy = y+7;
+        if (i < arr.length-1){ doc.moveTo(cx, cy+9).lineTo(cx, y+28).lineWidth(2).strokeColor(done ? '#12B76A' : BORDER).stroke(); }
+        if (done){ doc.circle(cx, cy, 8).fill('#12B76A'); doc.fillColor('#fff').font('Helvetica-Bold').fontSize(8).text('\u2713', cx-3, cy-4); }
+        else if (now){ doc.circle(cx, cy, 8).lineWidth(2).strokeColor(BRAND_BLUE).stroke(); doc.circle(cx, cy, 3.2).fill(BRAND_BLUE); }
+        else { doc.circle(cx, cy, 8).lineWidth(1.5).strokeColor(BORDER).stroke(); }
+        doc.fillColor(now||done ? TEXT : '#98A2B3').font('Helvetica-Bold').fontSize(10).text(s[1], L+26, y);
+        doc.fillColor(MUTED).font('Helvetica').fontSize(8.5).text(s[2], L+26, y+13);
+        y += 30;
+      });
+      y += 6;
+
+      // Photos
+      var photos = Array.isArray(c.photos) ? c.photos : [];
+      if (photos.length){
+        if (y + 40 > 780){ doc.addPage(); y = 40; }
+        doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(10).text('ATTACHED PHOTOS ('+photos.length+')', L, y); y += 16;
+        var pw = (W - 3*10) / 4, ph = pw; // 4 per row, square
+        var col = 0;
+        photos.forEach(function(p){
+          if (typeof p !== 'string') return;
+          var m = p.match(/^data:image\/\w+;base64,(.+)$/);
+          if (!m) return;
+          if (col === 4){ col = 0; y += ph + 10; }
+          if (y + ph > 800){ doc.addPage(); y = 40; col = 0; }
+          var x = L + col*(pw+10);
+          try { doc.image(Buffer.from(m[1], 'base64'), x, y, { fit:[pw, ph], align:'center', valign:'center' }); doc.roundedRect(x, y, pw, ph, 4).lineWidth(1).strokeColor(BORDER).stroke(); } catch(e){}
+          col++;
+        });
+        y += ph + 10;
+      }
+
+      // Footer on every page
+      var range = doc.bufferedPageRange();
+      for (var i=0;i<range.count;i++){
+        doc.switchToPage(range.start+i);
+        doc.fillColor(MUTED).font('Helvetica').fontSize(7.5)
+           .text('Generated ' + new Date().toLocaleString('en-IN') + '   \u00b7   Bharat Steel (Chennai) Pvt. Ltd.', L, 812, { width: W, lineBreak:false })
+           .text('Page ' + (i+1) + ' of ' + range.count, L, 812, { width: W, align:'right', lineBreak:false });
+      }
+      doc.end();
+    } catch(e){ reject(e); }
+  });
+}
+app.get('/portal/admin/complaints/:id/pdf', requireAuth, requireModule('salesqc'), async (req, res) => {
+  try{
+    var id = parseInt(req.params.id, 10);
+    var r = await pgq('SELECT * FROM customer_complaints WHERE id=$1', [id]);
+    var c = r.rows[0];
+    if (!c) return res.status(404).json({ error:'not_found' });
+    var pdf = await buildCustomerComplaintPDF(c);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', 'inline; filename="' + (c.ref || ('complaint-'+id)) + '.pdf"');
+    res.send(pdf);
+  } catch(e){ console.error('[portal] complaint pdf', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
 const CLIENT_ID     = process.env.CLIENT_ID;
 const CLIENT_SECRET = process.env.CLIENT_SECRET;
 const TENANT_ID     = process.env.TENANT_ID;
