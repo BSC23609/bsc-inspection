@@ -165,7 +165,9 @@ function ccPublic(r){
     invoice_no:r.invoice_no, invoice_date:r.invoice_date, quantity:r.quantity,
     description:r.description, status:r.status, decision_note:r.decision_note,
     resolution_note:r.resolution_note, customer_response:r.customer_response,
-    handler_emp:r.handler_emp, photos:r.photos||[], created_at:r.created_at, updated_at:r.updated_at };
+    handler_emp:r.handler_emp,
+    photos:(Array.isArray(r.photos)?r.photos:[]).map(function(_,i){return '/portal/complaint-photo?id='+r.id+'&i='+i;}),
+    created_at:r.created_at, updated_at:r.updated_at };
 }
 
 const COMPLAINT_NOTIFY_TO = (process.env.COMPLAINT_NOTIFY_TO || 'info@bharatsteels.in').split(/[\s,;]+/).map(s => s.trim()).filter(Boolean);
@@ -304,6 +306,7 @@ app.post('/portal/complaints', requireAuth, requireCustomer, async (req, res) =>
     const row = r.rows[0];
     notifyNewComplaint(row); // email (fire-and-forget, won't block or fail the submission)
     sendWatiComplaint(row).catch(e => console.error('[wati]', e.message)); // WhatsApp
+    processComplaintAssets(row.id).catch(e => console.error('[cc-assets]', e.message)); // photos+pdf -> OneDrive
     res.json({ ok:true, complaint: ccPublic(row) });
   } catch(e){ console.error('[portal] raise', e.message); res.status(500).json({error:'server_error'}); }
 });
@@ -329,6 +332,7 @@ app.post('/portal/complaints/:id/respond', requireAuth, requireCustomer, async (
     } else if (action === 'rereview') {
       await pgq(`UPDATE customer_complaints SET status='in_review', customer_response=$1, resolution_note=NULL, updated_at=now() WHERE id=$2`, [note||'Re-review requested', id]);
     } else return res.status(400).json({error:'bad_action'});
+    reArchive(id);
     res.json({ ok:true });
   } catch(e){ console.error('[portal] respond', e.message); res.status(500).json({error:'server_error'}); }
 });
@@ -341,6 +345,47 @@ app.get('/portal/admin/submissions', requireAuth, requireModule('salesqc'), asyn
       : await pgq('SELECT * FROM customer_complaints ORDER BY created_at DESC');
     res.json(r.rows.map(ccPublic));
   } catch(e){ console.error('[portal] submissions', e.message); res.status(500).json({error:'server_error'}); }
+});
+
+// One-time: push any complaints whose photos are still base64 in the DB up to OneDrive (key-gated).
+app.get('/portal/admin/migrate-photos', async (req, res) => {
+  if (!process.env.SETUP_KEY || req.query.key !== process.env.SETUP_KEY) return res.status(403).json({ error:'bad_key' });
+  try {
+    var r = await pgq('SELECT id,ref FROM customer_complaints ORDER BY id');
+    var done = [];
+    for (var i=0;i<r.rows.length;i++){ await processComplaintAssets(r.rows[i].id); done.push(r.rows[i].ref); }
+    res.json({ ok:true, processed: done });
+  } catch(e){ console.error('[cc-migrate]', e.message); res.status(500).json({ error:e.message }); }
+});
+
+// Stream a complaint photo (base64 in DB or file in OneDrive). Admin/Sales-QC or the owning customer only.
+app.get('/portal/complaint-photo', requireAuth, async (req, res) => {
+  try {
+    var id = parseInt(req.query.id,10), i = parseInt(req.query.i,10);
+    if (isNaN(id) || isNaN(i)) return res.status(400).send('bad request');
+    var r = await pgq('SELECT id,customer_id,photos FROM customer_complaints WHERE id=$1',[id]);
+    var row = r.rows[0];
+    if (!row) return res.status(404).send('not found');
+    if (req.userKind === 'customer') { if (row.customer_id !== req.user.id) return res.status(403).send('denied'); }
+    else if (req.userKind === 'employee') { if (!(req.user.is_admin || (req.modules && req.modules.salesqc))) return res.status(403).send('denied'); }
+    else return res.status(403).send('denied');
+    var raw = Array.isArray(row.photos) ? row.photos : [];
+    var p = raw[i];
+    if (!p) return res.status(404).send('no photo');
+    if (ccIsB64(p)) {
+      var m = /^data:image\/(\w+);base64,(.+)$/.exec(p);
+      if (!m) return res.status(404).send('bad');
+      res.setHeader('Content-Type', 'image/'+m[1]);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      return res.send(Buffer.from(m[2],'base64'));
+    }
+    var token = await getToken();
+    var up = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content', { headers:{ 'Authorization':'Bearer '+token } });
+    if (!up.ok) return res.status(up.status).send('not found');
+    res.setHeader('Content-Type', up.headers.get('content-type') || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(await up.buffer());
+  } catch(e){ console.error('[cc-photo]', e.message); res.status(500).send('error'); }
 });
 
 app.post('/portal/admin/submissions/:id/decision', requireAuth, requireModule('salesqc'), async (req, res) => {
@@ -360,6 +405,7 @@ app.post('/portal/admin/submissions/:id/decision', requireAuth, requireModule('s
       if (!note) return res.status(400).json({error:'resolution_required'});
       await pgq(`UPDATE customer_complaints SET status='resolution_sent', resolution_note=$1, handler_emp=$2, updated_at=now() WHERE id=$3`, [note, emp, id]);
     } else return res.status(400).json({error:'bad_action'});
+    reArchive(id);
     res.json({ ok:true });
   } catch(e){ console.error('[portal] decision', e.message); res.status(500).json({error:'server_error'}); }
 });
@@ -378,7 +424,57 @@ function ccTimelineSteps(status){
     [closed?'done':(status==='declined'?'todo':'todo'), 'Closed', 'Complaint closed out']
   ];
 }
-function buildCustomerComplaintPDF(c){
+function ccIsB64(p){ return typeof p==='string' && p.indexOf('data:')===0; }
+function ccExt(p){ var m=/^data:image\/(\w+)/.exec(p); var e=m?m[1]:'jpg'; return e==='jpeg'?'jpg':e; }
+function ccMime(ext){ return 'image/'+(ext==='jpg'?'jpeg':ext); }
+async function loadPhotoBuffers(rawPhotos){
+  var out=[]; var token=null;
+  var arr=Array.isArray(rawPhotos)?rawPhotos:[];
+  for (var i=0;i<arr.length;i++){
+    var p=arr[i];
+    try{
+      if (ccIsB64(p)){ var m=/^data:image\/\w+;base64,(.+)$/.exec(p); if(m) out.push(Buffer.from(m[1],'base64')); }
+      else { if(!token) token=await getToken();
+        var up=await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}});
+        if(up.ok) out.push(await up.buffer()); }
+    }catch(e){ console.error('[cc-photo] load', e.message); }
+  }
+  return out;
+}
+async function archiveComplaintPDF(row){
+  try{
+    if(!(CLIENT_ID&&CLIENT_SECRET&&TENANT_ID)) return;
+    var buffers=await loadPhotoBuffers(row.photos||[]);
+    var pdf=await buildCustomerComplaintPDF(row, buffers);
+    var token=await getToken();
+    await uploadFile(token,'BSC Inspections/Customer Complaints/'+row.ref+'/'+row.ref+'.pdf', pdf, 'application/pdf');
+  }catch(e){ console.error('[cc-pdf-archive]', e.message); }
+}
+async function processComplaintAssets(id){
+  try{
+    var r=await pgq('SELECT * FROM customer_complaints WHERE id=$1',[id]); var row=r.rows[0]; if(!row) return;
+    var raw=Array.isArray(row.photos)?row.photos:[];
+    if(raw.some(ccIsB64) && CLIENT_ID && CLIENT_SECRET && TENANT_ID){
+      var token=await getToken();
+      var folder='BSC Inspections/Customer Complaints/'+row.ref;
+      var paths=[];
+      for(var i=0;i<raw.length;i++){
+        var p=raw[i];
+        if(ccIsB64(p)){
+          var m=/^data:image\/\w+;base64,(.+)$/.exec(p); if(!m) continue;
+          var ext=ccExt(p); var fp=folder+'/photo-'+(i+1)+'.'+ext;
+          await uploadFile(token, fp, Buffer.from(m[1],'base64'), ccMime(ext));
+          paths.push(fp);
+        } else paths.push(p);
+      }
+      await pgq('UPDATE customer_complaints SET photos=$1 WHERE id=$2',[JSON.stringify(paths), id]);
+      row.photos=paths;
+    }
+    await archiveComplaintPDF(row);
+  }catch(e){ console.error('[cc-assets]', e.message); }
+}
+function reArchive(id){ processComplaintAssets(id).catch(function(){}); }
+function buildCustomerComplaintPDF(c, photoBuffers){
   return new Promise(function(resolve, reject){
     try{
       var doc = new PDFDocument({ size:'A4', margin:0, bufferPages:true });
@@ -454,21 +550,18 @@ function buildCustomerComplaintPDF(c){
       });
       y += 6;
 
-      // Photos
-      var photos = Array.isArray(c.photos) ? c.photos : [];
+      // Photos (pre-loaded buffers: base64 or fetched from OneDrive)
+      var photos = Array.isArray(photoBuffers) ? photoBuffers.filter(Boolean) : [];
       if (photos.length){
         if (y + 40 > 780){ doc.addPage(); y = 40; }
         doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(10).text('ATTACHED PHOTOS ('+photos.length+')', L, y); y += 16;
         var pw = (W - 3*10) / 4, ph = pw; // 4 per row, square
         var col = 0;
-        photos.forEach(function(p){
-          if (typeof p !== 'string') return;
-          var m = p.match(/^data:image\/\w+;base64,(.+)$/);
-          if (!m) return;
+        photos.forEach(function(buf){
           if (col === 4){ col = 0; y += ph + 10; }
           if (y + ph > 800){ doc.addPage(); y = 40; col = 0; }
           var x = L + col*(pw+10);
-          try { doc.image(Buffer.from(m[1], 'base64'), x, y, { fit:[pw, ph], align:'center', valign:'center' }); doc.roundedRect(x, y, pw, ph, 4).lineWidth(1).strokeColor(BORDER).stroke(); } catch(e){}
+          try { doc.image(buf, x, y, { fit:[pw, ph], align:'center', valign:'center' }); doc.roundedRect(x, y, pw, ph, 4).lineWidth(1).strokeColor(BORDER).stroke(); } catch(e){}
           col++;
         });
         y += ph + 10;
@@ -492,7 +585,8 @@ app.get('/portal/admin/complaints/:id/pdf', requireAuth, requireModule('salesqc'
     var r = await pgq('SELECT * FROM customer_complaints WHERE id=$1', [id]);
     var c = r.rows[0];
     if (!c) return res.status(404).json({ error:'not_found' });
-    var pdf = await buildCustomerComplaintPDF(c);
+    var buffers = await loadPhotoBuffers(c.photos || []);
+    var pdf = await buildCustomerComplaintPDF(c, buffers);
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'inline; filename="' + (c.ref || ('complaint-'+id)) + '.pdf"');
     res.send(pdf);
