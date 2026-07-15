@@ -211,9 +211,9 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 .cd-thumb-lg{width:120px;height:120px;border-radius:10px;border:1px solid #EAECF0;background-size:cover;background-position:center;cursor:pointer}
 
 /* ===== HRC Stock ===== */
-.stk-tabs{display:flex;gap:6px;margin:0 0 14px}
-.stk-tab{border:none;background:#F2F4F7;color:#475467;padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer}
-.stk-tab.on{background:#0B5793;color:#fff}
+.stk-tabs{display:block;margin:0 0 14px;line-height:0}
+.stk-tab{display:inline-block;vertical-align:top;border:1px solid #E5E7EB;background:#F2F4F7;color:#475467;padding:9px 18px;border-radius:8px;font-weight:600;font-size:13px;line-height:1.2;cursor:pointer;margin:0 6px 0 0}
+.stk-tab.on{background:#0B5793;color:#fff;border-color:#0B5793}
 .stk-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;color:#475467}
 .stk-toolbar input{border:1px solid #D0D5DD;border-radius:8px;padding:7px 10px;font-size:13px}
 .stk-toolbar button{background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer}
@@ -388,10 +388,10 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <h2>HRC Stock</h2>
   </div>
   <div class="us-body">
-    <div class="stk-tabs">
-      <button id="stktab-sheet" class="stk-tab on" onclick="stkTab('sheet')">Stock Sheet</button>
-      <button id="stktab-items" class="stk-tab" onclick="stkTab('items')">Items</button>
-      <button id="stktab-open" class="stk-tab" onclick="stkTab('open')">Opening Stock</button>
+    <div class="stk-tabs" style="display:block;margin-bottom:14px">
+      <button id="stktab-sheet" class="stk-tab on" onclick="stkTab('sheet')" style="display:inline-block;padding:9px 18px;margin-right:6px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;border:1px solid #0B5793;background:#0B5793;color:#fff">Stock Sheet</button>
+      <button id="stktab-items" class="stk-tab" onclick="stkTab('items')" style="display:inline-block;padding:9px 18px;margin-right:6px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;border:1px solid #E5E7EB;background:#F2F4F7;color:#475467">Items</button>
+      <button id="stktab-open" class="stk-tab" onclick="stkTab('open')" style="display:inline-block;padding:9px 18px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;border:1px solid #E5E7EB;background:#F2F4F7;color:#475467">Opening Stock</button>
     </div>
 
     <div id="stkpane-sheet">
@@ -4643,7 +4643,10 @@ function stkFnum(v){ if(v==null||v==='') return ''; var n=Math.round((+v)*100)/1
 function openStock(){ showScreen('stock'); var t=new Date().toISOString().slice(0,10); var f=document.getElementById('stk_from'), to=document.getElementById('stk_to'); if(!to.value) to.value=t; if(!f.value){ var d=new Date(); d.setDate(d.getDate()-2); f.value=d.toISOString().slice(0,10); } stkTab('sheet'); loadStockGrid(); }
 function stkTab(which){
   ['sheet','items','open'].forEach(function(k){
-    document.getElementById('stktab-'+k).classList.toggle('on', k===which);
+    var tb=document.getElementById('stktab-'+k);
+    tb.classList.toggle('on', k===which);
+    if(k===which){ tb.style.background='#0B5793'; tb.style.color='#fff'; tb.style.borderColor='#0B5793'; }
+    else { tb.style.background='#F2F4F7'; tb.style.color='#475467'; tb.style.borderColor='#E5E7EB'; }
     document.getElementById('stkpane-'+k).style.display = k===which ? '' : 'none';
   });
   if(which==='open'){ if(!STK_ITEMS.length) loadStockItems(); else renderOpening(); }
