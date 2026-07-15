@@ -230,6 +230,18 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 .stk-totq{font-weight:700;color:#0B5793;background:#F3F9FF}
 .stk-in,.stk-ind{border:1px solid #D0D5DD;border-radius:6px;padding:4px 6px;font-size:12px;width:96px}
 .stk-mono{font-family:monospace}
+
+/* ===== Stock entry ===== */
+.stke-entrybox{background:#fff;border:1px solid #EAECF0;border-radius:12px;padding:16px}
+.stke-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
+.stke-row label{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.03em;color:#98A2B3;margin-bottom:4px}
+.stke-row input{width:100%;border:1px solid #D0D5DD;border-radius:8px;padding:8px 10px;font-size:14px;box-sizing:border-box}
+.stke-add{background:#067647;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:600;font-size:14px;cursor:pointer;height:38px}
+.stke-hint{font-size:11.5px;color:#98A2B3;margin-top:10px}
+.stke-drop{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #D0D5DD;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:260px;overflow:auto;z-index:30;margin-top:4px}
+.stke-drop .opt{padding:8px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid #F2F4F7}
+.stke-drop .opt:hover{background:#EAF3FB}
+.stke-drop .opt .c{font-family:monospace;color:#667085;font-size:11px}
 </style>
 </head>
 <body>
@@ -393,6 +405,36 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   </div>
 </div>
 
+<div class="screen" id="screen-stock-entry">
+  <div class="us-top">
+    <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
+    <h2>Stock Entry</h2>
+  </div>
+  <div class="us-body">
+    <div class="stk-toolbar"><span>Date</span><input type="date" id="stke_date" onchange="stkeLoadTxns()"></div>
+    <div class="stk-tabs" id="stke_types">
+      <button class="stk-tab on" data-t="purchase" onclick="stkeSetType('purchase')">Purchase</button>
+      <button class="stk-tab" data-t="prod_in" onclick="stkeSetType('prod_in')">Production In</button>
+      <button class="stk-tab" data-t="prod_out" onclick="stkeSetType('prod_out')">Production Out</button>
+      <button class="stk-tab" data-t="sales" onclick="stkeSetType('sales')">Sales</button>
+    </div>
+    <div class="stke-entrybox">
+      <div class="stke-row">
+        <div style="flex:2;min-width:220px;position:relative">
+          <label>Item</label>
+          <input id="stke_item_search" placeholder="Search code or name&hellip;" oninput="stkeFilter()" onfocus="stkeFilter()" autocomplete="off">
+          <div id="stke_item_drop" class="stke-drop" style="display:none"></div>
+        </div>
+        <div style="width:120px"><label>Quantity</label><input type="number" step="any" id="stke_qty" placeholder="0"></div>
+        <div style="width:170px"><label>Document No</label><input id="stke_doc" placeholder="e.g. INV-123"></div>
+        <button class="stke-add" onclick="stkeAdd()">+ Add</button>
+      </div>
+      <div class="stke-hint">Keep the same Document No and add several items to record one document across many items. One item can also carry several document numbers.</div>
+    </div>
+    <div id="stke_list" class="us-tablewrap" style="margin-top:14px"><div style="padding:20px;text-align:center;color:#9CA3AF">Loading&hellip;</div></div>
+  </div>
+</div>
+
 <div class="screen" id="screen-submissions">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
@@ -465,6 +507,15 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="card-desc">Raise customer complaint, internal finding, or escalate to vendor</div>
       </div>
       <div class="card-arrow">›</div>
+    </div>
+
+    <div class="form-card" onclick="openStockEntry()">
+      <div class="card-icon" style="background:#EAF7EE"><svg viewBox="0 0 24 24" fill="none" stroke="#067647" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18M3 12h18M3 17h18"/></svg></div>
+      <div class="card-body">
+        <div class="card-title">Stock Entry</div>
+        <div class="card-desc">Record purchase, production and sales quantities with document numbers</div>
+      </div>
+      <div class="card-arrow">&rsaquo;</div>
     </div>
 
     <div onclick="window.open('bsc-dashboard.html','_blank')" style="display:flex;align-items:center;gap:14px;background:#fff;border-radius:var(--rlg);border:1px solid var(--gray-200);padding:18px;margin-bottom:12px;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,0.04)">
@@ -4481,6 +4532,67 @@ function closeUserDrawer(){ document.getElementById('us_drawer').classList.remov
 /* ===== Customers (admin) + Customer Submissions (sales triage) — brick 3 ===== */
 var CU_CACHE=[], CU_EDIT=null;
 async function openCustomers(){ showScreen('customers'); await loadCustomers(); }
+
+// ===== Stock Entry (any employee) =====
+var STKE_ITEMS=[], STKE_SEL=null, STKE_TYPE='purchase';
+async function openStockEntry(){
+  showScreen('stock-entry');
+  var d=document.getElementById('stke_date'); if(!d.value) d.value=new Date().toISOString().slice(0,10);
+  STKE_TYPE='purchase'; stkeMarkType();
+  if(!STKE_ITEMS.length){ try{ var r=await fetch(SERVER_URL+'/stock/item-list'); if(r.ok) STKE_ITEMS=await r.json(); }catch(e){} }
+  stkeLoadTxns();
+}
+function stkeMarkType(){ var b=document.querySelectorAll('#stke_types .stk-tab'); for(var i=0;i<b.length;i++){ b[i].classList.toggle('on', b[i].getAttribute('data-t')===STKE_TYPE); } }
+function stkeSetType(t){ STKE_TYPE=t; stkeMarkType(); stkeLoadTxns(); }
+function stkeFilter(){
+  var q=(document.getElementById('stke_item_search').value||'').toLowerCase().trim();
+  var drop=document.getElementById('stke_item_drop');
+  var list=STKE_ITEMS.filter(function(it){ return !q || (it.item_code+' '+(it.item_name||'')).toLowerCase().indexOf(q)>=0; }).slice(0,30);
+  if(!list.length){ drop.style.display='none'; return; }
+  drop.innerHTML=list.map(function(it){ return '<div class="opt" onclick="stkePick('+it.id+')"><div>'+usEsc(it.item_name||'')+'</div><div class="c">'+usEsc(it.item_code)+(it.grade?(' \u00b7 '+usEsc(it.grade)):'')+'</div></div>'; }).join('');
+  drop.style.display='block';
+}
+function stkePick(id){
+  var m=STKE_ITEMS.filter(function(x){return x.id===id;}); STKE_SEL=m[0]||null;
+  if(STKE_SEL){ document.getElementById('stke_item_search').value=STKE_SEL.item_code+'  '+(STKE_SEL.item_name||''); }
+  document.getElementById('stke_item_drop').style.display='none';
+}
+async function stkeAdd(){
+  if(!STKE_SEL){ toast('err','Pick an item first'); return; }
+  var qty=document.getElementById('stke_qty').value;
+  if(qty===''||isNaN(+qty)){ toast('err','Enter a quantity'); return; }
+  var doc=document.getElementById('stke_doc').value.trim();
+  var date=document.getElementById('stke_date').value;
+  try{
+    var r=await fetch(SERVER_URL+'/stock/txn',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item_id:STKE_SEL.id,txn_date:date,txn_type:STKE_TYPE,qty:qty,doc_no:doc})});
+    if(!r.ok){ toast('err','Save failed'); return; }
+    toast('ok','Entry added');
+    document.getElementById('stke_qty').value=''; document.getElementById('stke_item_search').value=''; STKE_SEL=null;
+    stkeLoadTxns(); // Document No is kept so you can reuse it across items
+  }catch(e){ toast('err','Network error'); }
+}
+async function stkeLoadTxns(){
+  var date=document.getElementById('stke_date').value;
+  var el=document.getElementById('stke_list'); el.innerHTML='<div style="padding:20px;text-align:center;color:#9CA3AF">Loading&hellip;</div>';
+  try{ var r=await fetch(SERVER_URL+'/stock/txns?date='+date+'&type='+STKE_TYPE); stkeRender(await r.json()); }
+  catch(e){ el.innerHTML='<div style="padding:20px;text-align:center;color:#B42318">Network error</div>'; }
+}
+function stkeRender(rows){
+  var el=document.getElementById('stke_list');
+  if(!rows||!rows.length){ el.innerHTML='<div style="padding:24px;text-align:center;color:#9CA3AF">No entries for this date &amp; type yet.</div>'; return; }
+  var html='<table class="us-table"><thead><tr><th>Item</th><th>Qty</th><th>Doc No</th><th>By</th><th></th></tr></thead><tbody>';
+  rows.forEach(function(t){
+    html+='<tr><td><div style="font-weight:600">'+usEsc(t.item_name||'')+'</div><div style="font-size:11px;color:#98A2B3;font-family:monospace">'+usEsc(t.item_code)+'</div></td>'+
+      '<td>'+(+t.qty)+'</td><td>'+usEsc(t.doc_no||'\u2014')+'</td><td style="font-size:12px;color:#667085">'+usEsc(t.entered_by||'')+'</td>'+
+      '<td><button class="us-btn" style="border-color:#FCA5A5;color:#B91C1C" onclick="stkeDel('+t.id+')">Delete</button></td></tr>';
+  });
+  html+='</tbody></table>';
+  el.innerHTML=html;
+}
+async function stkeDel(id){
+  try{ var r=await fetch(SERVER_URL+'/stock/txn/'+id,{method:'DELETE'}); if(!r.ok){ toast('err','Delete failed'); return; } toast('ok','Deleted'); stkeLoadTxns(); }
+  catch(e){ toast('err','Network error'); }
+}
 
 // ===== HRC Stock (admin) =====
 var STK_ITEMS=[];
