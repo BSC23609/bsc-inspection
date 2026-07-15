@@ -434,6 +434,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
     <h2>Stock Entry</h2>
+    <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
     <div class="stke-entrybox">
@@ -4569,6 +4570,7 @@ async function openCustomers(){ showScreen('customers'); await loadCustomers(); 
 var STKE_ITEMS=[], STKE_SEL=null, STKE_TYPE='purchase';
 async function openStockEntry(){
   showScreen('stock-entry');
+  var al=document.getElementById('stke_admin_link'); if(al) al.style.display=(window._me&&window._me.is_admin)?'':'none';
   var d=document.getElementById('stke_date'); if(!d.value) d.value=new Date().toISOString().slice(0,10);
   document.getElementById('stke_type').value='purchase'; STKE_TYPE='purchase';
   if(!STKE_ITEMS.length){ try{ var r=await fetch(SERVER_URL+'/stock/item-list'); if(r.ok) STKE_ITEMS=await r.json(); }catch(e){} }
