@@ -240,11 +240,11 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 
 /* ===== Stock entry ===== */
 .stke-entrybox{background:#fff;border:1px solid #EAECF0;border-radius:12px;padding:16px}
-.stke-row{display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap}
-.stke-f{display:flex;flex-direction:column;min-width:0}
+.stke-row{display:block}
+.stke-f{display:inline-block;vertical-align:bottom;margin:0 12px 12px 0}
 .stke-l{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#667085;margin-bottom:5px;line-height:1.2;display:block}
-.stke-in{width:100%;border:1px solid #D0D5DD;border-radius:8px;padding:8px 10px;font-size:14px;box-sizing:border-box;height:38px;background:#fff;color:#1F2937}
-.stke-add{background:#067647;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:600;font-size:14px;cursor:pointer;height:38px;align-self:flex-end}
+.stke-in{width:100%;border:1px solid #D0D5DD;border-radius:8px;padding:8px 10px;font-size:14px;box-sizing:border-box;height:38px;background:#fff;color:#1F2937;display:block}
+.stke-add{background:#067647;color:#fff;border:none;border-radius:8px;padding:9px 18px;font-weight:600;font-size:14px;cursor:pointer;height:38px;display:inline-block;vertical-align:bottom;margin-bottom:12px}
 .stke-hint{font-size:11.5px;color:#98A2B3;margin-top:10px}
 .stke-drop{position:absolute;top:100%;left:0;right:0;background:#fff;border:1px solid #D0D5DD;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);max-height:260px;overflow:auto;z-index:30;margin-top:4px}
 .stke-drop .opt{padding:8px 10px;cursor:pointer;font-size:13px;border-bottom:1px solid #F2F4F7}
@@ -385,7 +385,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R3</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R4</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -433,34 +433,34 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R3</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R4</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
     <div class="stke-entrybox">
       <div class="stke-row">
-        <div class="stke-f" style="width:160px">
-          <span class="stke-l">Transaction</span>
-          <select id="stke_type" class="stke-in" onchange="stkeTypeChange()">
+        <div class="stke-f" style="display:inline-block;vertical-align:bottom;width:160px;margin:0 12px 12px 0">
+          <span class="stke-l" style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#667085;margin-bottom:5px;line-height:1.2">Transaction</span>
+          <select id="stke_type" class="stke-in" onchange="stkeTypeChange()" style="display:block;width:100%;box-sizing:border-box;height:38px;border:1px solid #D0D5DD;border-radius:8px;padding:8px 10px;font-size:14px;background:#fff">
             <option value="purchase">Purchase</option>
             <option value="prod_in">Production In</option>
             <option value="prod_out">Production Out</option>
             <option value="sales">Sales</option>
           </select>
         </div>
-        <div class="stke-f" style="width:150px">
-          <span class="stke-l">Date</span>
-          <input type="date" class="stke-in" id="stke_date" onchange="stkeLoadTxns()">
+        <div class="stke-f" style="display:inline-block;vertical-align:bottom;width:150px;margin:0 12px 12px 0">
+          <span class="stke-l" style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#667085;margin-bottom:5px;line-height:1.2">Date</span>
+          <input type="date" class="stke-in" id="stke_date" onchange="stkeLoadTxns()" style="display:block;width:100%;box-sizing:border-box;height:38px;border:1px solid #D0D5DD;border-radius:8px;padding:8px 10px;font-size:14px">
         </div>
-        <div class="stke-f" style="flex:2;min-width:200px;position:relative">
-          <span class="stke-l">Item</span>
-          <input class="stke-in" id="stke_item_search" placeholder="Search code or name&hellip;" oninput="stkeFilter()" onfocus="stkeFilter()" autocomplete="off">
+        <div class="stke-f" style="display:inline-block;vertical-align:bottom;width:280px;position:relative;margin:0 12px 12px 0">
+          <span class="stke-l" style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#667085;margin-bottom:5px;line-height:1.2">Item</span>
+          <input class="stke-in" id="stke_item_search" placeholder="Search code or name&hellip;" oninput="stkeFilter()" onfocus="stkeFilter()" autocomplete="off" style="display:block;width:100%;box-sizing:border-box;height:38px;border:1px solid #D0D5DD;border-radius:8px;padding:8px 10px;font-size:14px">
           <div id="stke_item_drop" class="stke-drop" style="display:none"></div>
         </div>
-        <div class="stke-f" style="width:100px"><span class="stke-l">Qty (Nos)</span><input type="number" step="any" class="stke-in" id="stke_nos" oninput="stkeCalc('nos')" placeholder="0"></div>
-        <div class="stke-f" style="width:100px"><span class="stke-l">Qty (Tons)</span><input type="number" step="any" class="stke-in" id="stke_tons" oninput="stkeCalc('tons')" placeholder="0"></div>
-        <div class="stke-f" style="width:150px"><span class="stke-l">Document No</span><input class="stke-in" id="stke_doc" placeholder="e.g. INV-123"></div>
-        <button class="stke-add" onclick="stkeAdd()">+ Add</button>
+        <div class="stke-f" style="display:inline-block;vertical-align:bottom;width:100px;margin:0 12px 12px 0"><span class="stke-l" style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#667085;margin-bottom:5px;line-height:1.2">Qty (Nos)</span><input type="number" step="any" class="stke-in" id="stke_nos" oninput="stkeCalc('nos')" placeholder="0" style="display:block;width:100%;box-sizing:border-box;height:38px;border:1px solid #D0D5DD;border-radius:8px;padding:8px 10px;font-size:14px"></div>
+        <div class="stke-f" style="display:inline-block;vertical-align:bottom;width:100px;margin:0 12px 12px 0"><span class="stke-l" style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#667085;margin-bottom:5px;line-height:1.2">Qty (Tons)</span><input type="number" step="any" class="stke-in" id="stke_tons" oninput="stkeCalc('tons')" placeholder="0" style="display:block;width:100%;box-sizing:border-box;height:38px;border:1px solid #D0D5DD;border-radius:8px;padding:8px 10px;font-size:14px"></div>
+        <div class="stke-f" style="display:inline-block;vertical-align:bottom;width:150px;margin:0 12px 12px 0"><span class="stke-l" style="display:block;font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.03em;color:#667085;margin-bottom:5px;line-height:1.2">Document No</span><input class="stke-in" id="stke_doc" placeholder="e.g. INV-123" style="display:block;width:100%;box-sizing:border-box;height:38px;border:1px solid #D0D5DD;border-radius:8px;padding:8px 10px;font-size:14px"></div>
+        <button class="stke-add" onclick="stkeAdd()" style="display:inline-block;vertical-align:bottom;margin-bottom:12px">+ Add</button>
       </div>
       <div class="stke-hint">Enter Nos or Tons &mdash; the other fills automatically from the item&rsquo;s session weight. Reuse a Document No across items to log one document covering many items.</div>
     </div>
