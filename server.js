@@ -364,6 +364,21 @@ const STOCK_TYPES = ['purchase','prod_in','prod_out','sales'];
 function stkNum(v){ var n=parseFloat(v); return isFinite(n)?n:0; }
 function ymd(d){ return (d instanceof Date) ? d.toISOString().slice(0,10) : String(d).slice(0,10); }
 function addDays(iso, n){ var d=new Date(iso+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+function calcSessionWgt(t,w,l){ t=+t; w=+w; l=+l; if(!(t>0&&w>0&&l>0)) return 0; return (t*(w/1000)*(l/1000)*7.9*1)/1000; }
+async function logStockTxn(action, t, item){
+  try{
+    if(!(CLIENT_ID&&CLIENT_SECRET&&TENANT_ID)) return;
+    var token=await getToken();
+    var ym = ymd(t.txn_date).slice(0,7);
+    var p='BSC Inspections/Stock/Stock_Log_'+ym+'.csv';
+    var existing='';
+    try{ var g=await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}}); if(g.ok) existing=await g.text(); }catch(e){}
+    if(!existing) existing='Timestamp,Action,Txn Date,Type,Item Code,Item Name,Qty Nos,Qty Tons,Document No,Entered By,Txn ID\n';
+    function c(s){ return '"'+String(s==null?'':s).replace(/"/g,'""')+'"'; }
+    var row=[new Date().toISOString(), action, ymd(t.txn_date), t.txn_type, (item?item.item_code:''), c(item?item.item_name:''), t.qty, t.qty_tons, c(t.doc_no||''), c(t.entered_by||''), t.id].join(',')+'\n';
+    await uploadFile(token, p, Buffer.from(existing+row,'utf8'), 'text/csv');
+  }catch(e){ console.error('[stock-log]', e.message); }
+}
 
 // Seed / refresh item master from stock_seed.json (key-gated). Upserts by item_code; never touches opening or txns.
 app.get('/stock/seed', async (req, res) => {
@@ -403,6 +418,39 @@ app.get('/stock/item-list', requireAuth, requireEmployee, async (req, res) => {
   } catch(e){ console.error('[stock] item-list', e.message); res.status(500).json({ error:'server_error' }); }
 });
 
+// Create item (admin)
+app.post('/stock/items', requireAuth, requireAdmin, async (req,res)=>{
+  try{
+    var b=req.body||{};
+    if(!b.item_code || !String(b.item_code).trim()) return res.status(400).json({error:'code_required'});
+    var sw=calcSessionWgt(b.thickness,b.width,b.length);
+    var mx=await pgq('SELECT COALESCE(MAX(sort_order),0)+1 AS n FROM stock_items');
+    var r=await pgq(
+      `INSERT INTO stock_items (item_code,item_name,thickness,width,length,grade,session_wgt,opening_pcs,opening_date,active,sort_order)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,true,$10) RETURNING *`,
+      [String(b.item_code).trim(), b.item_name||null, b.thickness||null, b.width||null, b.length||null, b.grade||null, sw, stkNum(b.opening_pcs), b.opening_date||null, mx.rows[0].n]
+    );
+    res.json({ok:true, item:r.rows[0]});
+  }catch(e){ if(String(e.code)==='23505'||String(e.message).indexOf('unique')>=0) return res.status(400).json({error:'code_exists'}); console.error('[stock] add item', e.message); res.status(500).json({error:'server_error'}); }
+});
+// Update item (admin)
+app.patch('/stock/items/:id', requireAuth, requireAdmin, async (req,res)=>{
+  try{
+    var id=parseInt(req.params.id,10); var b=req.body||{};
+    var sw=calcSessionWgt(b.thickness,b.width,b.length);
+    await pgq(
+      `UPDATE stock_items SET item_name=$1, thickness=$2, width=$3, length=$4, grade=$5, session_wgt=$6, active=COALESCE($7,active) WHERE id=$8`,
+      [b.item_name||null, b.thickness||null, b.width||null, b.length||null, b.grade||null, sw, (b.active===undefined?null:!!b.active), id]
+    );
+    res.json({ok:true});
+  }catch(e){ console.error('[stock] edit item', e.message); res.status(500).json({error:'server_error'}); }
+});
+// Delete item (admin) — cascades to its transactions
+app.delete('/stock/items/:id', requireAuth, requireAdmin, async (req,res)=>{
+  try{ await pgq('DELETE FROM stock_items WHERE id=$1',[parseInt(req.params.id,10)]); res.json({ok:true}); }
+  catch(e){ console.error('[stock] del item', e.message); res.status(500).json({error:'server_error'}); }
+});
+
 // Set opening stock (admin). Body: { rows:[{item_id, opening_pcs, opening_date}], opening_date? }
 app.post('/stock/opening', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -428,12 +476,23 @@ app.post('/stock/txn', requireAuth, requireEmployee, async (req, res) => {
     var b = req.body || {};
     if (!b.item_id || !b.txn_date || STOCK_TYPES.indexOf(b.txn_type)<0) return res.status(400).json({ error:'bad_input' });
     var who = (req.user && (req.user.name || req.user.emp_no)) || '';
+    var itemR = await pgq('SELECT id,item_code,item_name,session_wgt FROM stock_items WHERE id=$1',[parseInt(b.item_id,10)]);
+    var item = itemR.rows[0]; if(!item) return res.status(400).json({ error:'bad_item' });
+    var sw = +item.session_wgt || 0;
+    var nos, tons;
+    var hasNos = (b.qty!==undefined && b.qty!==null && b.qty!=='');
+    var hasTons = (b.qty_tons!==undefined && b.qty_tons!==null && b.qty_tons!=='');
+    if (hasNos){ nos=stkNum(b.qty); tons = hasTons ? stkNum(b.qty_tons) : nos*sw; }
+    else if (hasTons){ tons=stkNum(b.qty_tons); nos = sw>0 ? tons/sw : 0; }
+    else { return res.status(400).json({ error:'qty_required' }); }
     var r = await pgq(
-      `INSERT INTO stock_txns (item_id,txn_date,txn_type,qty,doc_no,entered_by)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
-      [parseInt(b.item_id,10), ymd(b.txn_date), b.txn_type, stkNum(b.qty), (b.doc_no||'').trim()||null, who]
+      `INSERT INTO stock_txns (item_id,txn_date,txn_type,qty,qty_tons,doc_no,entered_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [item.id, ymd(b.txn_date), b.txn_type, nos, tons, (b.doc_no||'').trim()||null, who]
     );
-    res.json({ ok:true, txn:r.rows[0] });
+    var txn=r.rows[0];
+    logStockTxn('add', txn, item);
+    res.json({ ok:true, txn:txn });
   } catch(e){ console.error('[stock] txn', e.message); res.status(500).json({ error:'server_error' }); }
 });
 
@@ -461,6 +520,7 @@ app.delete('/stock/txn/:id', requireAuth, requireEmployee, async (req, res) => {
     var who = (req.user && (req.user.name || req.user.emp_no)) || '';
     if (!req.user.is_admin && t.entered_by !== who) return res.status(403).json({ error:'not_yours' });
     await pgq('DELETE FROM stock_txns WHERE id=$1', [id]);
+    (async function(){ try{ var ir=await pgq('SELECT item_code,item_name FROM stock_items WHERE id=$1',[t.item_id]); logStockTxn('delete', t, ir.rows[0]); }catch(e){} })();
     res.json({ ok:true });
   } catch(e){ console.error('[stock] del txn', e.message); res.status(500).json({ error:'server_error' }); }
 });

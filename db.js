@@ -125,6 +125,7 @@ async function migrate() {
   `);
   await q(`CREATE INDEX IF NOT EXISTS idx_stk_txn_date ON stock_txns (txn_date);`);
   await q(`CREATE INDEX IF NOT EXISTS idx_stk_txn_item ON stock_txns (item_id, txn_date);`);
+  await q(`ALTER TABLE stock_txns ADD COLUMN IF NOT EXISTS qty_tons NUMERIC NOT NULL DEFAULT 0;`);
 }
 
 module.exports = { pool, q, migrate };
