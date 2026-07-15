@@ -288,7 +288,7 @@ app.post('/portal/complaints', requireAuth, requireCustomer, async (req, res) =>
     let photos = Array.isArray(b.photos) ? b.photos.slice(0,10) : [];
     photos = photos.filter(p => typeof p === 'string' && p.startsWith('data:image') && p.length < 4000000);
     const yr = new Date().getFullYear();
-    const c = await pgq('SELECT count(*)::int AS n FROM customer_complaints WHERE ref LIKE $1', ['CMP-'+yr+'-%']);
+    const c = await pgq("SELECT COALESCE(MAX((split_part(ref,'-',3))::int),0) AS n FROM customer_complaints WHERE ref LIKE $1", ['CMP-'+yr+'-%']);
     const ref = 'CMP-'+yr+'-'+String(c.rows[0].n + 1).padStart(3,'0');
     const u = req.user;
     const S = v => (v==null || String(v).trim()==='') ? null : String(v).trim();
@@ -359,6 +359,173 @@ app.get('/portal/admin/migrate-photos', async (req, res) => {
 });
 
 // Stream a complaint photo (base64 in DB or file in OneDrive). Admin/Sales-QC or the owning customer only.
+// ============================= HRC STOCK MODULE =============================
+const STOCK_TYPES = ['purchase','prod_in','prod_out','sales'];
+function stkNum(v){ var n=parseFloat(v); return isFinite(n)?n:0; }
+function ymd(d){ return (d instanceof Date) ? d.toISOString().slice(0,10) : String(d).slice(0,10); }
+function addDays(iso, n){ var d=new Date(iso+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+
+// Seed / refresh item master from stock_seed.json (key-gated). Upserts by item_code; never touches opening or txns.
+app.get('/stock/seed', async (req, res) => {
+  if (!process.env.SETUP_KEY || req.query.key !== process.env.SETUP_KEY) return res.status(403).json({ error:'bad_key' });
+  try {
+    var seed = JSON.parse(fs.readFileSync(path.join(__dirname, 'stock_seed.json'), 'utf8'));
+    var n=0;
+    for (var i=0;i<seed.length;i++){
+      var it=seed[i];
+      await pgq(
+        `INSERT INTO stock_items (item_code,item_name,thickness,width,length,grade,session_wgt,sort_order)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+         ON CONFLICT (item_code) DO UPDATE SET
+           item_name=EXCLUDED.item_name, thickness=EXCLUDED.thickness, width=EXCLUDED.width,
+           length=EXCLUDED.length, grade=EXCLUDED.grade, session_wgt=EXCLUDED.session_wgt, sort_order=EXCLUDED.sort_order`,
+        [it.code, it.name, it.thick, it.width, it.length, it.grade, it.session_wgt, it.sort_order||i]
+      );
+      n++;
+    }
+    res.json({ ok:true, seeded:n });
+  } catch(e){ console.error('[stock] seed', e.message); res.status(500).json({ error:e.message }); }
+});
+
+// Item master (admin)
+app.get('/stock/items', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    var r = await pgq('SELECT id,item_code,item_name,thickness,width,length,grade,session_wgt,opening_pcs,opening_date,active FROM stock_items ORDER BY sort_order, id');
+    res.json(r.rows);
+  } catch(e){ console.error('[stock] items', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+// Item list for entry screens (any employee) - light payload
+app.get('/stock/item-list', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    var r = await pgq('SELECT id,item_code,item_name,grade,session_wgt FROM stock_items WHERE active=true ORDER BY sort_order, id');
+    res.json(r.rows);
+  } catch(e){ console.error('[stock] item-list', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+// Set opening stock (admin). Body: { rows:[{item_id, opening_pcs, opening_date}], opening_date? }
+app.post('/stock/opening', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    var b = req.body || {};
+    var rows = Array.isArray(b.rows) ? b.rows : [];
+    var globalDate = b.opening_date || null;
+    var n=0;
+    for (var i=0;i<rows.length;i++){
+      var row=rows[i];
+      if (!row || !row.item_id) continue;
+      var od = row.opening_date || globalDate;
+      await pgq('UPDATE stock_items SET opening_pcs=$1, opening_date=$2 WHERE id=$3',
+        [stkNum(row.opening_pcs), od, parseInt(row.item_id,10)]);
+      n++;
+    }
+    res.json({ ok:true, updated:n });
+  } catch(e){ console.error('[stock] opening', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+// Add a transaction line (any employee). Body: { item_id, txn_date, txn_type, qty, doc_no }
+app.post('/stock/txn', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    var b = req.body || {};
+    if (!b.item_id || !b.txn_date || STOCK_TYPES.indexOf(b.txn_type)<0) return res.status(400).json({ error:'bad_input' });
+    var who = (req.user && (req.user.name || req.user.emp_no)) || '';
+    var r = await pgq(
+      `INSERT INTO stock_txns (item_id,txn_date,txn_type,qty,doc_no,entered_by)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`,
+      [parseInt(b.item_id,10), ymd(b.txn_date), b.txn_type, stkNum(b.qty), (b.doc_no||'').trim()||null, who]
+    );
+    res.json({ ok:true, txn:r.rows[0] });
+  } catch(e){ console.error('[stock] txn', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+// List transaction lines for a date (+optional type). Any employee.
+app.get('/stock/txns', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    var date = req.query.date; var type = req.query.type;
+    if (!date) return res.status(400).json({ error:'date_required' });
+    var sql = `SELECT t.*, i.item_code, i.item_name FROM stock_txns t JOIN stock_items i ON i.id=t.item_id WHERE t.txn_date=$1`;
+    var params=[ymd(date)];
+    if (type && STOCK_TYPES.indexOf(type)>=0){ sql += ' AND t.txn_type=$2'; params.push(type); }
+    sql += ' ORDER BY t.created_at DESC';
+    var r = await pgq(sql, params);
+    res.json(r.rows);
+  } catch(e){ console.error('[stock] txns', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+// Delete a transaction line (admin, or the person who entered it)
+app.delete('/stock/txn/:id', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    var id = parseInt(req.params.id,10);
+    var r = await pgq('SELECT * FROM stock_txns WHERE id=$1', [id]);
+    var t = r.rows[0];
+    if (!t) return res.status(404).json({ error:'not_found' });
+    var who = (req.user && (req.user.name || req.user.emp_no)) || '';
+    if (!req.user.is_admin && t.entered_by !== who) return res.status(403).json({ error:'not_yours' });
+    await pgq('DELETE FROM stock_txns WHERE id=$1', [id]);
+    res.json({ ok:true });
+  } catch(e){ console.error('[stock] del txn', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
+// The grid: items x day-blocks, exactly like the sheet. Admin. ?from=YYYY-MM-DD&to=YYYY-MM-DD
+app.get('/stock/grid', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    var to = req.query.to || ymd(new Date());
+    var from = req.query.from || addDays(to, -2); // default 3-day window like the sheet
+    if (from > to){ var t=from; from=to; to=t; }
+    // day list
+    var days=[]; for (var d=from; d<=to; d=addDays(d,1)){ days.push(d); if (days.length>62) break; }
+
+    var itemsR = await pgq('SELECT id,item_code,item_name,thickness,width,length,grade,session_wgt,opening_pcs,opening_date FROM stock_items ORDER BY sort_order, id');
+    var items = itemsR.rows;
+
+    // aggregate all txns up to 'to' (need history before 'from' to carry opening forward)
+    var aggR = await pgq(
+      `SELECT item_id, to_char(txn_date,'YYYY-MM-DD') AS d,
+              COALESCE(SUM(qty) FILTER (WHERE txn_type='purchase'),0) AS purchase,
+              COALESCE(SUM(qty) FILTER (WHERE txn_type='prod_in'),0)  AS prod_in,
+              COALESCE(SUM(qty) FILTER (WHERE txn_type='prod_out'),0) AS prod_out,
+              COALESCE(SUM(qty) FILTER (WHERE txn_type='sales'),0)    AS sales
+       FROM stock_txns WHERE txn_date <= $1 GROUP BY item_id, txn_date`, [to]);
+    var map = {}; // item_id -> { date -> {purchase,prod_in,prod_out,sales} }
+    aggR.rows.forEach(function(x){
+      (map[x.item_id] = map[x.item_id] || {})[x.d] = {
+        purchase:+x.purchase, prod_in:+x.prod_in, prod_out:+x.prod_out, sales:+x.sales
+      };
+    });
+
+    var out = items.map(function(it){
+      var byday = map[it.id] || {};
+      var sw = +it.session_wgt || 0;
+      var od = it.opening_date ? ymd(it.opening_date) : from;
+      var running = +it.opening_pcs || 0; // stock at start of od
+      // carry forward from od up to (from-1)
+      var cur = od;
+      while (cur < from){
+        var m0 = byday[cur];
+        if (m0) running += (m0.purchase - m0.prod_in + m0.prod_out - m0.sales);
+        cur = addDays(cur,1);
+      }
+      var cells = days.map(function(dd){
+        var opening = running;
+        var m = byday[dd] || { purchase:0, prod_in:0, prod_out:0, sales:0 };
+        var total = opening - m.prod_in + m.prod_out + m.purchase - m.sales;
+        running = total;
+        return {
+          date: dd, opening: opening,
+          prod_in: m.prod_in, prod_out: m.prod_out, purchase: m.purchase, sales: m.sales,
+          total: total, total_qty: +(total * sw).toFixed(4)
+        };
+      });
+      return {
+        id: it.id, item_code: it.item_code, item_name: it.item_name,
+        thickness: it.thickness, width: it.width, length: it.length, grade: it.grade,
+        session_wgt: sw, opening_pcs: +it.opening_pcs||0, opening_date: it.opening_date?ymd(it.opening_date):null,
+        cells: cells
+      };
+    });
+    res.json({ from: from, to: to, days: days, items: out });
+  } catch(e){ console.error('[stock] grid', e.message); res.status(500).json({ error:'server_error' }); }
+});
+
 app.get('/portal/complaint-photo', requireAuth, async (req, res) => {
   try {
     var id = parseInt(req.query.id,10), i = parseInt(req.query.i,10);

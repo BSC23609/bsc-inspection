@@ -209,6 +209,27 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 .cd-modal .cd-acts{display:flex;justify-content:flex-end;gap:8px;padding:16px 20px 18px}
 .cd-modal .cd-acts button{border:none;border-radius:9px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer}
 .cd-thumb-lg{width:120px;height:120px;border-radius:10px;border:1px solid #EAECF0;background-size:cover;background-position:center;cursor:pointer}
+
+/* ===== HRC Stock ===== */
+.stk-tabs{display:flex;gap:6px;margin:0 0 14px}
+.stk-tab{border:none;background:#F2F4F7;color:#475467;padding:8px 16px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer}
+.stk-tab.on{background:#0B5793;color:#fff}
+.stk-toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px;font-size:13px;color:#475467}
+.stk-toolbar input{border:1px solid #D0D5DD;border-radius:8px;padding:7px 10px;font-size:13px}
+.stk-toolbar button{background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 16px;font-weight:600;font-size:13px;cursor:pointer}
+.stk-gridwrap{overflow:auto;max-height:74vh;border:1px solid #EAECF0;border-radius:10px;background:#fff}
+.stk-table{border-collapse:separate;border-spacing:0;font-size:11.5px;white-space:nowrap}
+.stk-table th,.stk-table td{border-bottom:1px solid #EEF0F3;border-right:1px solid #EEF0F3;padding:5px 9px;text-align:center}
+.stk-table thead th{position:sticky;top:0;background:#F8FAFC;z-index:2;font-size:10.5px;text-transform:uppercase;letter-spacing:.02em;color:#475467}
+.stk-table thead tr:nth-child(2) th{top:28px}
+.stk-daycol{background:#EAF3FB!important;color:#0B5793!important;font-weight:700}
+.stk-idh{background:#EEF2F6!important;color:#0F4C75!important;font-weight:700}
+.stk-table td.nm,.stk-table th.nm{max-width:230px;overflow:hidden;text-overflow:ellipsis;text-align:left}
+.stk-table td.lft{text-align:left}
+.stk-tot{font-weight:700;background:#F8FAFC}
+.stk-totq{font-weight:700;color:#0B5793;background:#F3F9FF}
+.stk-in,.stk-ind{border:1px solid #D0D5DD;border-radius:6px;padding:4px 6px;font-size:12px;width:96px}
+.stk-mono{font-family:monospace}
 </style>
 </head>
 <body>
@@ -340,6 +361,37 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="us-scrim" id="cu_scrim" onclick="closeCustomerDrawer()"></div>
 <div class="us-drawer" id="cu_drawer"></div>
 
+
+<div class="screen" id="screen-stock">
+  <div class="us-top">
+    <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
+    <h2>HRC Stock</h2>
+  </div>
+  <div class="us-body">
+    <div class="stk-tabs">
+      <button id="stktab-sheet" class="stk-tab on" onclick="stkTab('sheet')">Stock Sheet</button>
+      <button id="stktab-open" class="stk-tab" onclick="stkTab('open')">Opening Stock</button>
+    </div>
+    <div id="stkpane-sheet">
+      <div class="stk-toolbar">
+        <span>From</span><input type="date" id="stk_from">
+        <span>To</span><input type="date" id="stk_to">
+        <button onclick="loadStockGrid()">Show</button>
+        <span id="stk_grid_info" style="color:#98A2B3"></span>
+      </div>
+      <div id="stk_grid" class="stk-gridwrap"><div style="padding:24px;text-align:center;color:#9CA3AF">Loading&hellip;</div></div>
+    </div>
+    <div id="stkpane-open" style="display:none">
+      <div class="stk-toolbar">
+        <span>Default opening date</span><input type="date" id="stk_open_date">
+        <input type="text" id="stk_open_search" placeholder="Search item&hellip;" oninput="renderOpening()" style="min-width:200px">
+        <button onclick="saveOpening()">Save opening stock</button>
+        <span id="stk_open_info" style="color:#98A2B3"></span>
+      </div>
+      <div id="stk_open" class="stk-gridwrap"><div style="padding:24px;text-align:center;color:#9CA3AF">Loading&hellip;</div></div>
+    </div>
+  </div>
+</div>
 
 <div class="screen" id="screen-submissions">
   <div class="us-top">
@@ -4246,6 +4298,7 @@ function _authBar(me){
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openCustomers()">Customers</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openUsers()">Users</button>';
   if(me.is_admin) btns += '<button class="usersbtn" onclick="openReports()">Reports</button>';
+  if(me.is_admin) btns += '<button class="usersbtn" onclick="openStock()">Stock</button>';
   bar.innerHTML = btns + '<span id="bsc_user"></span><button onclick="bscLogout()">Sign out</button>';
   document.getElementById('bsc_user').textContent = ((me.name||'').trim().split(/\s+/)[0] || '') + (me.is_admin?' \u00b7 ADMIN':'');
   bar.style.display='flex';
@@ -4428,6 +4481,86 @@ function closeUserDrawer(){ document.getElementById('us_drawer').classList.remov
 /* ===== Customers (admin) + Customer Submissions (sales triage) — brick 3 ===== */
 var CU_CACHE=[], CU_EDIT=null;
 async function openCustomers(){ showScreen('customers'); await loadCustomers(); }
+
+// ===== HRC Stock (admin) =====
+var STK_ITEMS=[];
+function stkFnum(v){ if(v==null||v==='') return ''; var n=Math.round((+v)*100)/100; return n; }
+function openStock(){ showScreen('stock'); var t=new Date().toISOString().slice(0,10); var f=document.getElementById('stk_from'), to=document.getElementById('stk_to'); if(!to.value) to.value=t; if(!f.value){ var d=new Date(); d.setDate(d.getDate()-2); f.value=d.toISOString().slice(0,10); } stkTab('sheet'); loadStockGrid(); }
+function stkTab(which){
+  document.getElementById('stktab-sheet').classList.toggle('on', which==='sheet');
+  document.getElementById('stktab-open').classList.toggle('on', which==='open');
+  document.getElementById('stkpane-sheet').style.display = which==='sheet' ? '' : 'none';
+  document.getElementById('stkpane-open').style.display = which==='open' ? '' : 'none';
+  if(which==='open'){ if(!STK_ITEMS.length) loadStockItems(); else renderOpening(); }
+}
+async function loadStockGrid(){
+  var from=document.getElementById('stk_from').value, to=document.getElementById('stk_to').value;
+  var el=document.getElementById('stk_grid'); el.innerHTML='<div style="padding:24px;text-align:center;color:#9CA3AF">Loading&hellip;</div>';
+  try{
+    var r=await fetch(SERVER_URL+'/stock/grid?from='+from+'&to='+to);
+    if(!r.ok){ el.innerHTML='<div style="padding:24px;text-align:center;color:#B42318">Failed to load</div>'; return; }
+    renderStockGrid(await r.json());
+  }catch(e){ el.innerHTML='<div style="padding:24px;text-align:center;color:#B42318">Network error</div>'; }
+}
+function renderStockGrid(d){
+  document.getElementById('stk_grid_info').textContent = d.items.length+' items \u00b7 '+d.days.length+' day(s)';
+  var sub=['Opening','Prod In','Prod Out','Purchase','Sales','Total','Total Qty'];
+  var html='<table class="stk-table"><thead><tr>'+
+    '<th class="stk-idh" colspan="7">Item Details</th>';
+  d.days.forEach(function(day){ html+='<th class="stk-daycol" colspan="7">'+day+'</th>'; });
+  html+='</tr><tr>';
+  ['Item Code','Item Name','Thick','Width','Length','Grade','Session Wgt'].forEach(function(hh){ html+='<th class="stk-idh">'+hh+'</th>'; });
+  d.days.forEach(function(){ sub.forEach(function(sc){ html+='<th>'+sc+'</th>'; }); });
+  html+='</tr></thead><tbody>';
+  d.items.forEach(function(it){
+    html+='<tr>'+
+      '<td class="lft stk-mono">'+usEsc(it.item_code)+'</td>'+
+      '<td class="nm" title="'+usEsc(it.item_name||'')+'">'+usEsc(it.item_name||'')+'</td>'+
+      '<td>'+stkFnum(it.thickness)+'</td><td>'+stkFnum(it.width)+'</td><td>'+stkFnum(it.length)+'</td>'+
+      '<td>'+usEsc(it.grade||'')+'</td><td>'+stkFnum(it.session_wgt)+'</td>';
+    it.cells.forEach(function(c){
+      html+='<td>'+stkFnum(c.opening)+'</td><td>'+stkFnum(c.prod_in)+'</td><td>'+stkFnum(c.prod_out)+'</td><td>'+stkFnum(c.purchase)+'</td><td>'+stkFnum(c.sales)+'</td><td class="stk-tot">'+stkFnum(c.total)+'</td><td class="stk-totq">'+stkFnum(c.total_qty)+'</td>';
+    });
+    html+='</tr>';
+  });
+  html+='</tbody></table>';
+  document.getElementById('stk_grid').innerHTML=html;
+}
+async function loadStockItems(){
+  var el=document.getElementById('stk_open'); el.innerHTML='<div style="padding:24px;text-align:center;color:#9CA3AF">Loading&hellip;</div>';
+  try{ var r=await fetch(SERVER_URL+'/stock/items'); STK_ITEMS=await r.json(); renderOpening(); }
+  catch(e){ el.innerHTML='<div style="padding:24px;text-align:center;color:#B42318">Network error</div>'; }
+}
+function renderOpening(){
+  var q=(document.getElementById('stk_open_search').value||'').toLowerCase();
+  var list=STK_ITEMS.filter(function(it){ return !q || (it.item_code+' '+(it.item_name||'')).toLowerCase().indexOf(q)>=0; });
+  var html='<table class="stk-table"><thead><tr>'+
+    '<th class="stk-idh">Item Code</th><th class="stk-idh nm">Item Name</th><th class="stk-idh">Grade</th><th class="stk-idh">Session Wgt</th><th class="stk-idh">Opening Pcs</th><th class="stk-idh">Opening Date</th></tr></thead><tbody>';
+  list.forEach(function(it){
+    html+='<tr><td class="lft stk-mono">'+usEsc(it.item_code)+'</td>'+
+      '<td class="nm" title="'+usEsc(it.item_name||'')+'">'+usEsc(it.item_name||'')+'</td>'+
+      '<td>'+usEsc(it.grade||'')+'</td><td>'+stkFnum(it.session_wgt)+'</td>'+
+      '<td><input type="number" step="any" class="stk-in" data-id="'+it.id+'" value="'+(it.opening_pcs!=null?it.opening_pcs:0)+'"></td>'+
+      '<td><input type="date" class="stk-ind" data-id="'+it.id+'" value="'+(it.opening_date?String(it.opening_date).slice(0,10):'')+'"></td></tr>';
+  });
+  html+='</tbody></table>';
+  document.getElementById('stk_open').innerHTML=html;
+  document.getElementById('stk_open_info').textContent=list.length+' items';
+}
+async function saveOpening(){
+  var gd=document.getElementById('stk_open_date').value||null;
+  var rows=[];
+  document.querySelectorAll('#stk_open .stk-in').forEach(function(inp){
+    var id=inp.getAttribute('data-id');
+    var dd=document.querySelector('#stk_open .stk-ind[data-id="'+id+'"]');
+    rows.push({ item_id:id, opening_pcs:inp.value, opening_date:(dd&&dd.value)||gd });
+  });
+  try{
+    var r=await fetch(SERVER_URL+'/stock/opening',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:rows, opening_date:gd})});
+    if(!r.ok){ toast('err','Save failed'); return; }
+    var d=await r.json(); toast('ok','Opening stock saved ('+d.updated+' items)'); loadStockItems();
+  }catch(e){ toast('err','Network error'); }
+}
 async function loadCustomers(){
   var body=document.getElementById('cu_rows');
   try{

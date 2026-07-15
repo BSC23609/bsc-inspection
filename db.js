@@ -92,6 +92,39 @@ async function migrate() {
   await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS batch_no     TEXT;`);
   await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS invoice_date TEXT;`);
   await q(`ALTER TABLE customer_complaints ADD COLUMN IF NOT EXISTS quantity     TEXT;`);
+
+  // ===== HRC Stock module =====
+  await q(`
+    CREATE TABLE IF NOT EXISTS stock_items (
+      id           SERIAL PRIMARY KEY,
+      item_code    TEXT UNIQUE NOT NULL,
+      item_name    TEXT,
+      thickness    NUMERIC,
+      width        NUMERIC,
+      length       NUMERIC,
+      grade        TEXT,
+      session_wgt  NUMERIC NOT NULL DEFAULT 0,
+      opening_pcs  NUMERIC NOT NULL DEFAULT 0,
+      opening_date DATE,
+      active       BOOLEAN NOT NULL DEFAULT true,
+      sort_order   INTEGER NOT NULL DEFAULT 0,
+      created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await q(`
+    CREATE TABLE IF NOT EXISTS stock_txns (
+      id         SERIAL PRIMARY KEY,
+      item_id    INTEGER NOT NULL REFERENCES stock_items(id) ON DELETE CASCADE,
+      txn_date   DATE NOT NULL,
+      txn_type   TEXT NOT NULL,   -- purchase | prod_in | prod_out | sales
+      qty        NUMERIC NOT NULL DEFAULT 0,
+      doc_no     TEXT,
+      entered_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+  `);
+  await q(`CREATE INDEX IF NOT EXISTS idx_stk_txn_date ON stock_txns (txn_date);`);
+  await q(`CREATE INDEX IF NOT EXISTS idx_stk_txn_item ON stock_txns (item_id, txn_date);`);
 }
 
 module.exports = { pool, q, migrate };
