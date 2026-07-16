@@ -305,7 +305,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 /* ===== Users admin (brick 2b) ===== */
 #screen-users{background:#F4F6F9}
 #bsc_authbar .usersbtn{background:#fff;color:var(--brand);border:1px solid #E5E7EB}
-.us-top{background:#fff;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;gap:12px;padding:14px 20px;position:sticky;top:0;z-index:5}
+.us-top{background:#fff;border-bottom:1px solid #E5E7EB;display:flex;align-items:center;gap:12px;padding:14px 20px;position:relative;z-index:1}
 .us-top .us-back{font-size:13px;font-weight:600;color:#6B7280;cursor:pointer;border:0;background:none;font-family:var(--font)}
 .us-top h2{font-family:var(--font);font-size:16px;font-weight:700;color:#0D1320}
 .us-top .us-add{margin-left:auto;background:var(--brand);color:#fff;border:0;font-family:var(--font);font-weight:600;font-size:13px;padding:9px 14px;border-radius:9px;cursor:pointer}
@@ -385,7 +385,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R4</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R5</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -433,7 +433,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R4</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R5</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -5149,7 +5149,7 @@ body{background:var(--gray-100);color:var(--gray-800)}
 #bsc_authbar #bsc_user{max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* keep page content clear of the floating account bar */
 #screen-users,#screen-customers,#screen-submissions,#screen-reports{padding-top:56px}
-.us-top{top:56px}
+.us-top{top:0}
 @media(min-width:640px){.form-topbar{padding-right:200px}}
 @media(max-width:639px){#bsc_authbar #bsc_user{display:none}.form-topbar{padding-right:118px}}
 </style>
