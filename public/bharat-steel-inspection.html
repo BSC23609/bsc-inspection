@@ -385,7 +385,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R5</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R9</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -433,7 +433,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R5</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R9</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -934,6 +934,47 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     </div>
 
     <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">&#9888;&#65039;</span> Rejection Quantity (if any)</div>
+      <div class="sec-body">
+        <div class="field"><label>Any Rejections?</label>
+          <div class="pills" id="qg_rejection">
+            <div class="pill" onclick="rp('qg_rejection',this,'No'); toggleQRejection(false)">No</div>
+            <div class="pill" onclick="rp('qg_rejection',this,'Yes'); toggleQRejection(true)">Yes</div>
+          </div>
+        </div>
+        <div id="q_rejection_wrap" style="display:none;margin-top:14px">
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr style="background:var(--gray-50)">
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Size</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">No. of Pieces</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);width:40px"></th>
+              </tr></thead>
+              <tbody id="q_rej_rows"></tbody>
+            </table>
+          </div>
+          <button type="button" id="q_rej_add_btn" class="btn-sec" style="margin-top:10px;width:100%" onclick="addQRejRow()">+ Add Row</button>
+
+          <div class="field" style="margin-top:16px"><label>Rejection Type(s) <span style="font-weight:400;color:var(--gray-500)">(select all that apply)</span></label>
+            <div class="pills" id="qg_rejection_types" style="flex-wrap:wrap;gap:8px">
+              <div class="pill" data-val="WIDTH VARIATION" onclick="mpTog(this)">WIDTH VARIATION</div>
+              <div class="pill" data-val="LENGTH VARIATION" onclick="mpTog(this)">LENGTH VARIATION</div>
+              <div class="pill" data-val="DIAGONAL VARIATION" onclick="mpTog(this)">DIAGONAL VARIATION</div>
+              <div class="pill" data-val="LINE MARK" onclick="mpTog(this)">LINE MARK</div>
+              <div class="pill" data-val="DENT MARK" onclick="mpTog(this)">DENT MARK</div>
+              <div class="pill" data-val="CORE LAMINATION" onclick="mpTog(this)">CORE LAMINATION</div>
+              <div class="pill" data-val="D SCALE" onclick="mpTog(this)">D SCALE</div>
+              <div class="pill" data-val="RUST" onclick="mpTog(this)">RUST</div>
+              <div class="pill" data-val="PITTED" onclick="mpTog(this)">PITTED</div>
+              <div class="pill" data-val="BURR" onclick="mpTog(this)">BURR</div>
+              <div class="pill" data-val="BREAKAWAY" onclick="mpTog(this)">BREAKAWAY</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📷</span> Pictures (if any)</div>
       <div class="sec-body">
         <div style="display:flex;gap:8px">
@@ -1151,6 +1192,22 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
             </table>
           </div>
           <button type="button" id="sh_rej_add_btn" class="btn-sec" style="margin-top:10px;width:100%" onclick="addShRejRow()">+ Add Row</button>
+
+          <div class="field" style="margin-top:16px"><label>Rejection Type(s) <span style="font-weight:400;color:var(--gray-500)">(select all that apply)</span></label>
+            <div class="pills" id="sg_rejection_types" style="flex-wrap:wrap;gap:8px">
+              <div class="pill" data-val="WIDTH VARIATION" onclick="mpTog(this)">WIDTH VARIATION</div>
+              <div class="pill" data-val="LENGTH VARIATION" onclick="mpTog(this)">LENGTH VARIATION</div>
+              <div class="pill" data-val="DIAGONAL VARIATION" onclick="mpTog(this)">DIAGONAL VARIATION</div>
+              <div class="pill" data-val="LINE MARK" onclick="mpTog(this)">LINE MARK</div>
+              <div class="pill" data-val="DENT MARK" onclick="mpTog(this)">DENT MARK</div>
+              <div class="pill" data-val="CORE LAMINATION" onclick="mpTog(this)">CORE LAMINATION</div>
+              <div class="pill" data-val="D SCALE" onclick="mpTog(this)">D SCALE</div>
+              <div class="pill" data-val="RUST" onclick="mpTog(this)">RUST</div>
+              <div class="pill" data-val="PITTED" onclick="mpTog(this)">PITTED</div>
+              <div class="pill" data-val="BURR" onclick="mpTog(this)">BURR</div>
+              <div class="pill" data-val="BREAKAWAY" onclick="mpTog(this)">BREAKAWAY</div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -1913,6 +1970,9 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="field" style="margin-top:10px"><label>Grade Options (comma separated)</label>
           <input type="text" id="adm_grades" placeholder="E250, E350 / ST52, HSFQ450 / 450 / EQV, HSFQ550 / 550 / EQV">
         </div>
+        <div class="field" style="margin-top:10px"><label>Rejection Type Options (comma separated) &mdash; used in CTL &amp; Shearing forms</label>
+          <input type="text" id="adm_rejection_types" placeholder="WIDTH VARIATION, LENGTH VARIATION, DIAGONAL VARIATION, LINE MARK, DENT MARK, ...">
+        </div>
       </div>
     </div>
     
@@ -2412,7 +2472,10 @@ function collectQuality() {
     bur: gv('q_bur'), cutting_finish: ys['yn_cut_finish']||'',
     scalling: ys['yn_scalling']||'', pit_marks: ys['yn_pit_marks']||'',
     waviness: ys['yn_waviness']||'', center_bow: gv('q_center_bow'),
-    cutting_bow: gv('q_cutting_bow'), surface_defects: ys['yn_surface_def']||''
+    cutting_bow: gv('q_cutting_bow'), surface_defects: ys['yn_surface_def']||'',
+    rejection_flag: rs['qg_rejection']||'No',
+    rejections: (function(){ var a=[]; document.querySelectorAll('#q_rej_rows tr').forEach(function(tr){ var id=tr.id.replace('q_rej_row_',''); a.push({ size: gv('qrej'+id+'_size'), qty: gv('qrej'+id+'_qty') }); }); return a; })(),
+    rejection_types: [].map.call(document.querySelectorAll('#qg_rejection_types .pill.sel'), function(p){ return p.getAttribute('data-val'); })
   };
 }
 
@@ -4095,6 +4158,35 @@ function updateShRejAddBtn() {
   else { btn.style.display = ''; btn.textContent = '+ Add Row (' + visible + '/10)'; }
 }
 
+// ----- CTL Rejection table (max 10) + multi-select types -----
+var qRejCount = 0;
+function mpTog(el){ el.classList.toggle('sel'); }
+function toggleQRejection(show) {
+  var w = document.getElementById('q_rejection_wrap');
+  if (w) w.style.display = show ? '' : 'none';
+  if (show && qRejCount === 0) addQRejRow();
+}
+function addQRejRow() {
+  if (qRejCount >= 10) return;
+  qRejCount++;
+  var id = qRejCount;
+  var tr = document.createElement('tr');
+  tr.id = 'q_rej_row_' + id;
+  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="qrej'+id+'_size" placeholder="Size" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="1" id="qrej'+id+'_qty" placeholder="No. of pieces" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeQRejRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">\u00d7</button></td>';
+  document.getElementById('q_rej_rows').appendChild(tr);
+  updateQRejAddBtn();
+}
+function removeQRejRow(id) { var el = document.getElementById('q_rej_row_' + id); if (el) el.remove(); updateQRejAddBtn(); }
+function updateQRejAddBtn() {
+  var visible = document.querySelectorAll('#q_rej_rows tr').length;
+  var btn = document.getElementById('q_rej_add_btn');
+  if (!btn) return;
+  if (visible >= 10) { btn.style.display = 'none'; }
+  else { btn.style.display = ''; btn.textContent = '+ Add Row (' + visible + '/10)'; }
+}
+
 function collectShearing() {
   var rows = [];
   document.querySelectorAll('#sh_rows tr').forEach(function(tr) {
@@ -4151,6 +4243,7 @@ function collectShearing() {
     taper_cutting: gv('sh_taper'),
     rejection_flag: rs['sg_rejection']||'No',
     rejections: rejections,
+    rejection_types: [].map.call(document.querySelectorAll('#sg_rejection_types .pill.sel'), function(p){ return p.getAttribute('data-val'); }),
     remarks: gv('sh_remarks'),
     overall_observation: gv('sh_observation'),
     timestamp: new Date().toISOString()
@@ -4218,6 +4311,7 @@ async function loadAdminSettings() {
     document.getElementById('adm_qc_default').value = s.qc_shearing_default || '';
     document.getElementById('adm_mills').value = (s.mills || []).join(', ');
     document.getElementById('adm_grades').value = (s.grades || []).join(', ');
+    document.getElementById('adm_rejection_types').value = (s.rejection_types || []).join(', ');
     var v = s.vendors || {};
     document.getElementById('adm_vendor_sail').value = v.SAIL || '';
     document.getElementById('adm_vendor_nmdc').value = v.NMDC || '';
@@ -4249,6 +4343,7 @@ async function saveAdminSettings() {
     qc_shearing_default: document.getElementById('adm_qc_default').value.trim() || 'Vignesh',
     mills: parseCsv(document.getElementById('adm_mills').value),
     grades: parseCsv(document.getElementById('adm_grades').value),
+    rejection_types: parseCsv(document.getElementById('adm_rejection_types').value),
     vendors: {
       SAIL: document.getElementById('adm_vendor_sail').value.trim(),
       NMDC: document.getElementById('adm_vendor_nmdc').value.trim(),
@@ -4325,6 +4420,18 @@ function applyAppSettings() {
   // Vendor emails
   if (s.vendors) {
     window.VENDOR_EMAILS = Object.assign({}, window.VENDOR_EMAILS || {}, s.vendors);
+  }
+
+  // Rejection type pills (CTL + Shearing) built from admin-managed settings
+  if (s.rejection_types && s.rejection_types.length) {
+    ['qg_rejection_types','sg_rejection_types'].forEach(function(cid){
+      var c = document.getElementById(cid);
+      if (!c) return;
+      c.innerHTML = s.rejection_types.map(function(t){
+        var safe = String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
+        return '<div class="pill" data-val="'+safe+'" onclick="mpTog(this)">'+safe+'</div>';
+      }).join('');
+    });
   }
 }
 
@@ -4640,6 +4747,7 @@ async function stkeDel(id){
 // ===== HRC Stock (admin) =====
 var STK_ITEMS=[], STK_GRID=null;
 function stkFnum(v){ if(v==null||v==='') return ''; var n=Math.round((+v)*100)/100; return n; }
+function stkFnum3(v){ if(v==null||v==='') return ''; return (+v).toFixed(3); }
 function openStock(){ showScreen('stock'); var t=new Date().toISOString().slice(0,10); var f=document.getElementById('stk_from'), to=document.getElementById('stk_to'); if(!to.value) to.value=t; if(!f.value){ var d=new Date(); d.setDate(d.getDate()-2); f.value=d.toISOString().slice(0,10); } stkTab('sheet'); loadStockGrid(); }
 function stkTab(which){
   ['sheet','items','open'].forEach(function(k){
@@ -4685,9 +4793,9 @@ function renderStockGrid(){
       '<td class="lft stk-mono stk-freeze">'+usEsc(it.item_code)+'</td>'+
       '<td class="nm" title="'+usEsc(it.item_name||'')+'">'+usEsc(it.item_name||'')+'</td>'+
       '<td>'+stkFnum(it.thickness)+'</td><td>'+stkFnum(it.width)+'</td><td>'+stkFnum(it.length)+'</td>'+
-      '<td>'+usEsc(it.grade||'')+'</td><td>'+stkFnum(it.session_wgt)+'</td>';
+      '<td>'+usEsc(it.grade||'')+'</td><td>'+stkFnum3(it.session_wgt)+'</td>';
     it.cells.forEach(function(c,di){
-      html+='<td class="stk-dsep'+(di%2?' altc':'')+'">'+stkFnum(c.opening)+'</td><td class="'+(di%2?'altc':'')+'">'+stkFnum(c.prod_in)+'</td><td class="'+(di%2?'altc':'')+'">'+stkFnum(c.prod_out)+'</td><td class="'+(di%2?'altc':'')+'">'+stkFnum(c.purchase)+'</td><td class="'+(di%2?'altc':'')+'">'+stkFnum(c.sales)+'</td><td class="stk-tot">'+stkFnum(c.total)+'</td><td class="stk-totq">'+stkFnum(c.total_qty)+'</td>';
+      html+='<td class="stk-dsep'+(di%2?' altc':'')+'">'+stkFnum(c.opening)+'</td><td class="'+(di%2?'altc':'')+'">'+stkFnum(c.prod_in)+'</td><td class="'+(di%2?'altc':'')+'">'+stkFnum(c.prod_out)+'</td><td class="'+(di%2?'altc':'')+'">'+stkFnum(c.purchase)+'</td><td class="'+(di%2?'altc':'')+'">'+stkFnum(c.sales)+'</td><td class="stk-tot">'+stkFnum(c.total)+'</td><td class="stk-totq">'+stkFnum3(c.total_qty)+'</td>';
     });
     html+='</tr>';
   });
@@ -4707,8 +4815,8 @@ function exportStockGrid(){
   var r2=['Item Code','Item Name','Thick','Width','Length','Grade','Session Wgt']; d.days.forEach(function(){ sub.forEach(function(s){ r2.push(s); }); });
   lines.push(r2.map(q).join(','));
   rows.forEach(function(it){
-    var r=[it.item_code,it.item_name,it.thickness,it.width,it.length,it.grade,it.session_wgt];
-    it.cells.forEach(function(c){ r.push(c.opening,c.prod_in,c.prod_out,c.purchase,c.sales,c.total,c.total_qty); });
+    var r=[it.item_code,it.item_name,it.thickness,it.width,it.length,it.grade,stkFnum3(it.session_wgt)];
+    it.cells.forEach(function(c){ r.push(c.opening,c.prod_in,c.prod_out,c.purchase,c.sales,c.total,stkFnum3(c.total_qty)); });
     lines.push(r.map(q).join(','));
   });
   var csv='\ufeff'+lines.join('\r\n');
@@ -4735,7 +4843,7 @@ function renderItemsAdmin(){
   list.forEach(function(it){
     html+='<tr><td class="lft stk-mono">'+usEsc(it.item_code)+'</td>'+
       '<td class="nm" title="'+usEsc(it.item_name||'')+'">'+usEsc(it.item_name||'')+'</td>'+
-      '<td>'+stkFnum(it.thickness)+'</td><td>'+stkFnum(it.width)+'</td><td>'+stkFnum(it.length)+'</td><td>'+usEsc(it.grade||'')+'</td><td>'+stkFnum(it.session_wgt)+'</td>'+
+      '<td>'+stkFnum(it.thickness)+'</td><td>'+stkFnum(it.width)+'</td><td>'+stkFnum(it.length)+'</td><td>'+usEsc(it.grade||'')+'</td><td>'+stkFnum3(it.session_wgt)+'</td>'+
       '<td style="white-space:nowrap"><button class="us-btn" onclick="openItemForm('+it.id+')">Edit</button> <button class="us-btn" style="border-color:#FCA5A5;color:#B91C1C" onclick="deleteItem('+it.id+')">Delete</button></td></tr>';
   });
   html+='</tbody></table>';
@@ -4756,7 +4864,7 @@ function openItemForm(id){
       '<div class="us-fl" style="flex:1"><label>Length</label><input id="itf_length" type="number" step="any" oninput="itfWgt()" value="'+val(it&&it.length)+'"></div>'+
     '</div>'+
     '<div class="us-fl"><label>Grade</label><input id="itf_grade" value="'+usEsc(val(it&&it.grade))+'"></div>'+
-    '<div style="font-size:13px;color:#475467;margin-top:4px">Session Wgt: <b id="itf_wgt">'+stkFnum(it&&it.session_wgt)+'</b></div>'+
+    '<div style="font-size:13px;color:#475467;margin-top:4px">Session Wgt: <b id="itf_wgt">'+stkFnum3(it&&it.session_wgt)+'</b></div>'+
     '</div>'+
     '<div class="us-df"><span class="us-derr" id="itf_err"></span><button class="us-save" onclick="saveItem('+(it?it.id:'null')+')">'+(it?'Save changes':'Create item')+'</button></div>';
   document.getElementById('itf_scrim').classList.add('open');
@@ -4766,7 +4874,7 @@ function closeItemForm(){ document.getElementById('itf_scrim').classList.remove(
 function itfWgt(){
   var t=parseFloat(document.getElementById('itf_thick').value), w=parseFloat(document.getElementById('itf_width').value), l=parseFloat(document.getElementById('itf_length').value);
   var sw=(t>0&&w>0&&l>0)?((t*(w/1000)*(l/1000)*7.9*1)/1000):0;
-  document.getElementById('itf_wgt').textContent=Math.round(sw*1e6)/1e6;
+  document.getElementById('itf_wgt').textContent=sw.toFixed(3);
 }
 async function saveItem(id){
   var body={
@@ -4803,7 +4911,7 @@ function renderOpening(){
   list.forEach(function(it){
     html+='<tr><td class="lft stk-mono">'+usEsc(it.item_code)+'</td>'+
       '<td class="nm" title="'+usEsc(it.item_name||'')+'">'+usEsc(it.item_name||'')+'</td>'+
-      '<td>'+usEsc(it.grade||'')+'</td><td>'+stkFnum(it.session_wgt)+'</td>'+
+      '<td>'+usEsc(it.grade||'')+'</td><td>'+stkFnum3(it.session_wgt)+'</td>'+
       '<td><input type="number" step="any" class="stk-in" data-id="'+it.id+'" value="'+(it.opening_pcs!=null?it.opening_pcs:0)+'"></td>'+
       '<td><input type="date" class="stk-ind" data-id="'+it.id+'" value="'+(it.opening_date?String(it.opening_date).slice(0,10):'')+'"></td></tr>';
   });

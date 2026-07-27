@@ -1240,6 +1240,46 @@ function generatePDF(folder, data, ref) {
           ['Operator', data.operator],
           ['Inspector', data.inspector]
         ]);
+
+        // Rejection quantity (CTL)
+        const qRejList = (data.rejections || []).filter(r => r && (r.size || r.qty));
+        if (data.rejection_flag === 'Yes' && qRejList.length > 0) {
+          y = ensureSpace(doc, y, 60, hdr);
+          y = drawSectionTitle(doc, y, 'REJECTION QUANTITY');
+          const tblW = doc.page.width - 80;
+          const cw2 = [tblW / 2, tblW / 2];
+          doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
+          doc.lineWidth(0.5).strokeColor(BORDER);
+          doc.rect(40, y, tblW, 18).stroke();
+          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+          doc.text('Size', 44, y + 5);
+          doc.text('No. of Pieces', 40 + cw2[0] + 4, y + 5);
+          doc.moveTo(40 + cw2[0], y).lineTo(40 + cw2[0], y + 18).stroke();
+          y += 18;
+          doc.font('Helvetica').fontSize(9).fillColor(TEXT);
+          qRejList.forEach((r, i) => {
+            y = ensureSpace(doc, y, 16, hdr);
+            if (i % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
+            doc.rect(40, y, tblW, 16).stroke();
+            doc.moveTo(40 + cw2[0], y).lineTo(40 + cw2[0], y + 16).stroke();
+            doc.fillColor(TEXT).text(String(r.size || '-'), 44, y + 4);
+            doc.text(String(r.qty || '-'), 40 + cw2[0] + 4, y + 4);
+            y += 16;
+          });
+          y += 6;
+        }
+        // Rejection type(s) (CTL)
+        const qRejTypes = (data.rejection_types || []).filter(Boolean);
+        if (data.rejection_flag === 'Yes' && qRejTypes.length > 0) {
+          y = ensureSpace(doc, y, 44, hdr);
+          y = drawSectionTitle(doc, y, 'REJECTION TYPE(S)');
+          const tblW = doc.page.width - 80;
+          const boxH = Math.max(24, 12 + Math.ceil(qRejTypes.join(',   ').length / 90) * 12);
+          doc.rect(40, y, tblW, boxH).stroke(BORDER);
+          doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+          doc.text(qRejTypes.join(',   '), 48, y + 7, { width: tblW - 16 });
+          y += boxH + 8;
+        }
       } else if (folder === 'Shearing') {
         y = drawSectionTitle(doc, y, 'HEADER');
         y = drawDataTable(doc, y, [
@@ -1394,6 +1434,18 @@ function generatePDF(folder, data, ref) {
             y += 16;
           });
           y += 6;
+        }
+        // Rejection type(s) (Shearing)
+        const shRejTypes = (data.rejection_types || []).filter(Boolean);
+        if (data.rejection_flag === 'Yes' && shRejTypes.length > 0) {
+          y = ensureSpace(doc, y, 44, hdr);
+          y = drawSectionTitle(doc, y, 'REJECTION TYPE(S)');
+          const tblW = doc.page.width - 80;
+          const boxH = Math.max(24, 12 + Math.ceil(shRejTypes.join(',   ').length / 90) * 12);
+          doc.rect(40, y, tblW, boxH).stroke(BORDER);
+          doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+          doc.text(shRejTypes.join(',   '), 48, y + 7, { width: tblW - 16 });
+          y += boxH + 8;
         }
         
         if (data.remarks) {
@@ -2863,7 +2915,8 @@ const DEFAULT_SETTINGS = {
   inward_emails: {
     default_to: ['support@bharatsteels.in'],
     wheels_india_to: ['support@bharatsteels.in', 'kannan@bharatsteels.in']
-  }
+  },
+  rejection_types: ['WIDTH VARIATION', 'LENGTH VARIATION', 'DIAGONAL VARIATION', 'LINE MARK', 'DENT MARK', 'CORE LAMINATION', 'D SCALE', 'RUST', 'PITTED', 'BURR', 'BREAKAWAY']
 };
 
 async function loadSettings(token) {
