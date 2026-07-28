@@ -101,6 +101,11 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 .pill{padding:7px 14px;border-radius:20px;border:1px solid var(--gray-200);font-size:12px;font-weight:500;cursor:pointer;color:var(--gray-600);background:#fff;transition:all 0.15s;user-select:none;white-space:nowrap}
 .pill:hover{border-color:var(--brand);color:var(--brand)}
 .pill.sel{background:var(--brand-light);color:var(--brand);border-color:var(--brand);font-weight:600}
+.rejtype-btn{min-width:130px;max-width:220px;padding:6px 8px;border:1px solid var(--gray-200);border-radius:4px;background:#fff;cursor:pointer;font-size:12px;color:var(--gray-600);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rejtype-btn.has{color:var(--brand);font-weight:600;border-color:var(--brand)}
+#rejtype_pop{position:fixed;z-index:99999;background:#fff;border:1px solid var(--gray-200);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.15);padding:6px;max-height:260px;overflow:auto;min-width:200px}
+#rejtype_pop label{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px;white-space:nowrap}
+#rejtype_pop label:hover{background:var(--gray-50)}
 
 /* YES/NO TOGGLE */
 .yn{display:flex;gap:5px}
@@ -385,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R10</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R11</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -433,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R10</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R11</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -948,28 +953,13 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
               <thead><tr style="background:var(--gray-50)">
                 <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Size</th>
                 <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">No. of Pieces</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Rejection Type(s) <span class="req">*</span></th>
                 <th style="padding:10px;border:1px solid var(--gray-200);width:40px"></th>
               </tr></thead>
               <tbody id="q_rej_rows"></tbody>
             </table>
           </div>
           <button type="button" id="q_rej_add_btn" class="btn-sec" style="margin-top:10px;width:100%" onclick="addQRejRow()">+ Add Row</button>
-
-          <div class="field" style="margin-top:16px"><label>Rejection Type(s) <span class="req">*</span> <span style="font-weight:400;color:var(--gray-500)">(select all that apply)</span></label>
-            <div class="pills" id="qg_rejection_types" style="flex-wrap:wrap;gap:8px">
-              <div class="pill" data-val="WIDTH VARIATION" onclick="mpTog(this)">WIDTH VARIATION</div>
-              <div class="pill" data-val="LENGTH VARIATION" onclick="mpTog(this)">LENGTH VARIATION</div>
-              <div class="pill" data-val="DIAGONAL VARIATION" onclick="mpTog(this)">DIAGONAL VARIATION</div>
-              <div class="pill" data-val="LINE MARK" onclick="mpTog(this)">LINE MARK</div>
-              <div class="pill" data-val="DENT MARK" onclick="mpTog(this)">DENT MARK</div>
-              <div class="pill" data-val="CORE LAMINATION" onclick="mpTog(this)">CORE LAMINATION</div>
-              <div class="pill" data-val="D SCALE" onclick="mpTog(this)">D SCALE</div>
-              <div class="pill" data-val="RUST" onclick="mpTog(this)">RUST</div>
-              <div class="pill" data-val="PITTED" onclick="mpTog(this)">PITTED</div>
-              <div class="pill" data-val="BURR" onclick="mpTog(this)">BURR</div>
-              <div class="pill" data-val="BREAKAWAY" onclick="mpTog(this)">BREAKAWAY</div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -1186,28 +1176,13 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
               <thead><tr style="background:var(--gray-50)">
                 <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Size</th>
                 <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Quantity</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Rejection Type(s) <span class="req">*</span></th>
                 <th style="padding:10px;border:1px solid var(--gray-200);width:40px"></th>
               </tr></thead>
               <tbody id="sh_rej_rows"></tbody>
             </table>
           </div>
           <button type="button" id="sh_rej_add_btn" class="btn-sec" style="margin-top:10px;width:100%" onclick="addShRejRow()">+ Add Row</button>
-
-          <div class="field" style="margin-top:16px"><label>Rejection Type(s) <span class="req">*</span> <span style="font-weight:400;color:var(--gray-500)">(select all that apply)</span></label>
-            <div class="pills" id="sg_rejection_types" style="flex-wrap:wrap;gap:8px">
-              <div class="pill" data-val="WIDTH VARIATION" onclick="mpTog(this)">WIDTH VARIATION</div>
-              <div class="pill" data-val="LENGTH VARIATION" onclick="mpTog(this)">LENGTH VARIATION</div>
-              <div class="pill" data-val="DIAGONAL VARIATION" onclick="mpTog(this)">DIAGONAL VARIATION</div>
-              <div class="pill" data-val="LINE MARK" onclick="mpTog(this)">LINE MARK</div>
-              <div class="pill" data-val="DENT MARK" onclick="mpTog(this)">DENT MARK</div>
-              <div class="pill" data-val="CORE LAMINATION" onclick="mpTog(this)">CORE LAMINATION</div>
-              <div class="pill" data-val="D SCALE" onclick="mpTog(this)">D SCALE</div>
-              <div class="pill" data-val="RUST" onclick="mpTog(this)">RUST</div>
-              <div class="pill" data-val="PITTED" onclick="mpTog(this)">PITTED</div>
-              <div class="pill" data-val="BURR" onclick="mpTog(this)">BURR</div>
-              <div class="pill" data-val="BREAKAWAY" onclick="mpTog(this)">BREAKAWAY</div>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -2474,8 +2449,7 @@ function collectQuality() {
     waviness: ys['yn_waviness']||'', center_bow: gv('q_center_bow'),
     cutting_bow: gv('q_cutting_bow'), surface_defects: ys['yn_surface_def']||'',
     rejection_flag: rs['qg_rejection']||'No',
-    rejections: (function(){ var a=[]; document.querySelectorAll('#q_rej_rows tr').forEach(function(tr){ var id=tr.id.replace('q_rej_row_',''); a.push({ size: gv('qrej'+id+'_size'), qty: gv('qrej'+id+'_qty') }); }); return a; })(),
-    rejection_types: [].map.call(document.querySelectorAll('#qg_rejection_types .pill.sel'), function(p){ return p.getAttribute('data-val'); })
+    rejections: (function(){ var a=[]; document.querySelectorAll('#q_rej_rows tr').forEach(function(tr){ var id=tr.id.replace('q_rej_row_',''); a.push({ size: gv('qrej'+id+'_size'), qty: gv('qrej'+id+'_qty'), types: (REJ_TYPE_SEL['q_'+id]||[]) }); }); return a; })()
   };
 }
 
@@ -2497,7 +2471,11 @@ function submitQuality() {
   if (!d.date)       { toast('err','Date of inspection is required'); return; }
   if (!d.coil_number){ toast('err','Coil number is required'); return; }
   if (!d.inspector)  { toast('err','Inspected by is required'); return; }
-  if (d.rejection_flag === 'Yes' && (!d.rejection_types || d.rejection_types.length === 0)) { toast('err','Please select at least one rejection type'); return; }
+  if (d.rejection_flag === 'Yes') {
+    var qrj = (d.rejections||[]).filter(function(r){ return r.size||r.qty; });
+    if (qrj.length === 0) { toast('err','Add at least one rejected size'); return; }
+    if (qrj.some(function(r){ return !r.types || r.types.length===0; })) { toast('err','Select a rejection type for each rejected size'); return; }
+  }
   runSubmit('q_submit','q_spin','q_lbl', d, 'Quality');
 }
 
@@ -4142,6 +4120,7 @@ function addShRejRow() {
   tr.id = 'sh_rej_row_' + id;
   tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="rej'+id+'_size" placeholder="Size" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
     + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="rej'+id+'_qty" placeholder="Quantity" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><div class="rejtype-btn" id="s_'+id+'_tbtn" onclick="openRejTypes(event,&#39;s_'+id+'&#39;)">Select type(s)</div></td>'
     + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeShRejRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">×</button></td>';
   document.getElementById('sh_rej_rows').appendChild(tr);
   updateShRejAddBtn();
@@ -4162,6 +4141,54 @@ function updateShRejAddBtn() {
 // ----- CTL Rejection table (max 10) + multi-select types -----
 var qRejCount = 0;
 function mpTog(el){ el.classList.toggle('sel'); }
+// ----- Per-row rejection type multi-select popover -----
+var REJ_TYPE_SEL = {};
+var _rejPopKey = null;
+function rejTypeOptions(){
+  return (window.APP_SETTINGS && APP_SETTINGS.rejection_types && APP_SETTINGS.rejection_types.length)
+    ? APP_SETTINGS.rejection_types
+    : ['WIDTH VARIATION','LENGTH VARIATION','DIAGONAL VARIATION','LINE MARK','DENT MARK','CORE LAMINATION','D SCALE','RUST','PITTED','BURR','BREAKAWAY'];
+}
+function rejTypeBtnUpdate(key){
+  var btn=document.getElementById(key+'_tbtn'); if(!btn) return;
+  var arr=REJ_TYPE_SEL[key]||[];
+  btn.textContent = arr.length ? (arr.length<=2 ? arr.join(', ') : (arr.length+' selected')) : 'Select type(s)';
+  btn.classList.toggle('has', arr.length>0);
+}
+function openRejTypes(ev, key){
+  ev.stopPropagation();
+  _rejPopKey=key;
+  var pop=document.getElementById('rejtype_pop');
+  if(!pop){ pop=document.createElement('div'); pop.id='rejtype_pop'; pop.style.display='none'; document.body.appendChild(pop); }
+  var sel=REJ_TYPE_SEL[key]||[];
+  pop.innerHTML=rejTypeOptions().map(function(t){
+    var safe=String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\"/g,'&quot;');
+    var checked=sel.indexOf(t)>=0?'checked':'';
+    return '<label><input type="checkbox" value="'+safe+'" '+checked+' onchange="rejTypeChange(this)"> '+safe+'</label>';
+  }).join('');
+  var r=document.getElementById(key+'_tbtn').getBoundingClientRect();
+  pop.style.display='block';
+  var top=r.bottom+4, left=r.left;
+  if(top+pop.offsetHeight > window.innerHeight-8) top=Math.max(8, r.top-pop.offsetHeight-4);
+  if(left+pop.offsetWidth > window.innerWidth-8) left=Math.max(8, window.innerWidth-pop.offsetWidth-8);
+  pop.style.top=top+'px'; pop.style.left=left+'px';
+}
+function rejTypeChange(cb){
+  if(!_rejPopKey) return;
+  var arr=REJ_TYPE_SEL[_rejPopKey]||[];
+  if(cb.checked){ if(arr.indexOf(cb.value)<0) arr.push(cb.value); }
+  else { arr=arr.filter(function(x){return x!==cb.value;}); }
+  REJ_TYPE_SEL[_rejPopKey]=arr;
+  rejTypeBtnUpdate(_rejPopKey);
+}
+function closeRejPop(){ var p=document.getElementById('rejtype_pop'); if(p) p.style.display='none'; _rejPopKey=null; }
+document.addEventListener('click', function(e){
+  var p=document.getElementById('rejtype_pop');
+  if(!p || p.style.display==='none') return;
+  if(p.contains(e.target)) return;
+  if(e.target.classList && e.target.classList.contains('rejtype-btn')) return;
+  closeRejPop();
+});
 function toggleQRejection(show) {
   var w = document.getElementById('q_rejection_wrap');
   if (w) w.style.display = show ? '' : 'none';
@@ -4175,6 +4202,7 @@ function addQRejRow() {
   tr.id = 'q_rej_row_' + id;
   tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="qrej'+id+'_size" placeholder="Size" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
     + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="1" id="qrej'+id+'_qty" placeholder="No. of pieces" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><div class="rejtype-btn" id="q_'+id+'_tbtn" onclick="openRejTypes(event,&#39;q_'+id+'&#39;)">Select type(s)</div></td>'
     + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeQRejRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">\u00d7</button></td>';
   document.getElementById('q_rej_rows').appendChild(tr);
   updateQRejAddBtn();
@@ -4219,7 +4247,8 @@ function collectShearing() {
     var id = tr.id.replace('sh_rej_row_','');
     rejections.push({
       size: gv('rej'+id+'_size'),
-      qty: gv('rej'+id+'_qty')
+      qty: gv('rej'+id+'_qty'),
+      types: (REJ_TYPE_SEL['s_'+id]||[])
     });
   });
   return {
@@ -4244,7 +4273,6 @@ function collectShearing() {
     taper_cutting: gv('sh_taper'),
     rejection_flag: rs['sg_rejection']||'No',
     rejections: rejections,
-    rejection_types: [].map.call(document.querySelectorAll('#sg_rejection_types .pill.sel'), function(p){ return p.getAttribute('data-val'); }),
     remarks: gv('sh_remarks'),
     overall_observation: gv('sh_observation'),
     timestamp: new Date().toISOString()
@@ -4262,7 +4290,11 @@ function submitShearing() {
   if (!d.cutting_finish)     { toast('err','Please select cutting finish'); return; }
   if (!d.surface_condition)  { toast('err','Please select surface condition'); return; }
   if (!d.qc_name)            { toast('err','QC name is required'); return; }
-  if (d.rejection_flag === 'Yes' && (!d.rejection_types || d.rejection_types.length === 0)) { toast('err','Please select at least one rejection type'); return; }
+  if (d.rejection_flag === 'Yes') {
+    var srj = (d.rejections||[]).filter(function(r){ return r.size||r.qty; });
+    if (srj.length === 0) { toast('err','Add at least one rejected size'); return; }
+    if (srj.some(function(r){ return !r.types || r.types.length===0; })) { toast('err','Select a rejection type for each rejected size'); return; }
+  }
   runSubmit('sh_submit','sh_spin','sh_lbl', d, 'Shearing');
 }
 
@@ -4424,17 +4456,6 @@ function applyAppSettings() {
     window.VENDOR_EMAILS = Object.assign({}, window.VENDOR_EMAILS || {}, s.vendors);
   }
 
-  // Rejection type pills (CTL + Shearing) built from admin-managed settings
-  if (s.rejection_types && s.rejection_types.length) {
-    ['qg_rejection_types','sg_rejection_types'].forEach(function(cid){
-      var c = document.getElementById(cid);
-      if (!c) return;
-      c.innerHTML = s.rejection_types.map(function(t){
-        var safe = String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
-        return '<div class="pill" data-val="'+safe+'" onclick="mpTog(this)">'+safe+'</div>';
-      }).join('');
-    });
-  }
 }
 
 // ============================================================

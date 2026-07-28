@@ -1044,6 +1044,43 @@ function ensureSpace(doc, y, need, headerOpts) {
 }
 
 
+function drawRejectionTable(doc, y, data, hdr) {
+  const rejList = (data.rejections || []).filter(r => r && (r.size || r.qty || (r.types && r.types.length)));
+  if (data.rejection_flag !== 'Yes' || rejList.length === 0) return y;
+  y = ensureSpace(doc, y, 60, hdr);
+  y = drawSectionTitle(doc, y, 'REJECTION QUANTITY');
+  const tblW = doc.page.width - 80;
+  const c1 = tblW * 0.26, c2 = tblW * 0.20, c3 = tblW * 0.54;
+  doc.lineWidth(0.5).strokeColor(BORDER);
+  doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
+  doc.strokeColor(BORDER).rect(40, y, tblW, 18).stroke();
+  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+  doc.text('Size', 44, y + 5, { width: c1 - 8 });
+  doc.text('No. of Pieces', 40 + c1 + 4, y + 5, { width: c2 - 8 });
+  doc.text('Rejection Type(s)', 40 + c1 + c2 + 4, y + 5, { width: c3 - 8 });
+  doc.moveTo(40 + c1, y).lineTo(40 + c1, y + 18).stroke();
+  doc.moveTo(40 + c1 + c2, y).lineTo(40 + c1 + c2, y + 18).stroke();
+  y += 18;
+  rejList.forEach((r, i) => {
+    const typesStr = (r.types || []).join(', ') || '-';
+    doc.font('Helvetica').fontSize(9);
+    const th = doc.heightOfString(typesStr, { width: c3 - 8 });
+    const rowH = Math.max(16, th + 8);
+    y = ensureSpace(doc, y, rowH, hdr);
+    if (i % 2 === 1) doc.rect(40, y, tblW, rowH).fill(ROW_ALT);
+    doc.strokeColor(BORDER).rect(40, y, tblW, rowH).stroke();
+    doc.moveTo(40 + c1, y).lineTo(40 + c1, y + rowH).stroke();
+    doc.moveTo(40 + c1 + c2, y).lineTo(40 + c1 + c2, y + rowH).stroke();
+    doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+    doc.text(String(r.size || '-'), 44, y + 4, { width: c1 - 8 });
+    doc.text(String(r.qty || '-'), 40 + c1 + 4, y + 4, { width: c2 - 8 });
+    doc.text(typesStr, 40 + c1 + c2 + 4, y + 4, { width: c3 - 8 });
+    y += rowH;
+  });
+  y += 6;
+  return y;
+}
+
 function generatePDF(folder, data, ref) {
   return new Promise((resolve, reject) => {
     try {
@@ -1241,45 +1278,7 @@ function generatePDF(folder, data, ref) {
           ['Inspector', data.inspector]
         ]);
 
-        // Rejection quantity (CTL)
-        const qRejList = (data.rejections || []).filter(r => r && (r.size || r.qty));
-        if (data.rejection_flag === 'Yes' && qRejList.length > 0) {
-          y = ensureSpace(doc, y, 60, hdr);
-          y = drawSectionTitle(doc, y, 'REJECTION QUANTITY');
-          const tblW = doc.page.width - 80;
-          const cw2 = [tblW / 2, tblW / 2];
-          doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
-          doc.lineWidth(0.5).strokeColor(BORDER);
-          doc.rect(40, y, tblW, 18).stroke();
-          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
-          doc.text('Size', 44, y + 5);
-          doc.text('No. of Pieces', 40 + cw2[0] + 4, y + 5);
-          doc.moveTo(40 + cw2[0], y).lineTo(40 + cw2[0], y + 18).stroke();
-          y += 18;
-          doc.font('Helvetica').fontSize(9).fillColor(TEXT);
-          qRejList.forEach((r, i) => {
-            y = ensureSpace(doc, y, 16, hdr);
-            if (i % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
-            doc.rect(40, y, tblW, 16).stroke();
-            doc.moveTo(40 + cw2[0], y).lineTo(40 + cw2[0], y + 16).stroke();
-            doc.fillColor(TEXT).text(String(r.size || '-'), 44, y + 4);
-            doc.text(String(r.qty || '-'), 40 + cw2[0] + 4, y + 4);
-            y += 16;
-          });
-          y += 6;
-        }
-        // Rejection type(s) (CTL)
-        const qRejTypes = (data.rejection_types || []).filter(Boolean);
-        if (data.rejection_flag === 'Yes' && qRejTypes.length > 0) {
-          y = ensureSpace(doc, y, 44, hdr);
-          y = drawSectionTitle(doc, y, 'REJECTION TYPE(S)');
-          const tblW = doc.page.width - 80;
-          const boxH = Math.max(24, 12 + Math.ceil(qRejTypes.join(',   ').length / 90) * 12);
-          doc.rect(40, y, tblW, boxH).stroke(BORDER);
-          doc.fillColor(TEXT).font('Helvetica').fontSize(9);
-          doc.text(qRejTypes.join(',   '), 48, y + 7, { width: tblW - 16 });
-          y += boxH + 8;
-        }
+        y = drawRejectionTable(doc, y, data, hdr);
       } else if (folder === 'Shearing') {
         y = drawSectionTitle(doc, y, 'HEADER');
         y = drawDataTable(doc, y, [
@@ -1408,45 +1407,7 @@ function generatePDF(folder, data, ref) {
           ['Taper Cutting', data.taper_cutting]
         ]);
         
-        // Rejection table
-        const rejList = (data.rejections || []).filter(r => r && (r.size || r.qty));
-        if (data.rejection_flag === 'Yes' && rejList.length > 0) {
-          y = ensureSpace(doc, y, 60, hdr);
-          y = drawSectionTitle(doc, y, 'REJECTION QUANTITY');
-          const tblW = doc.page.width - 80;
-          const cw2 = [tblW / 2, tblW / 2];
-          doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
-          doc.lineWidth(0.5).strokeColor(BORDER);
-          doc.rect(40, y, tblW, 18).stroke();
-          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
-          doc.text('Size', 44, y + 5);
-          doc.text('Quantity', 40 + cw2[0] + 4, y + 5);
-          doc.moveTo(40 + cw2[0], y).lineTo(40 + cw2[0], y + 18).stroke();
-          y += 18;
-          doc.font('Helvetica').fontSize(9).fillColor(TEXT);
-          rejList.forEach((r, i) => {
-            y = ensureSpace(doc, y, 16, hdr);
-            if (i % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
-            doc.rect(40, y, tblW, 16).stroke();
-            doc.moveTo(40 + cw2[0], y).lineTo(40 + cw2[0], y + 16).stroke();
-            doc.fillColor(TEXT).text(String(r.size || '-'), 44, y + 4);
-            doc.text(String(r.qty || '-'), 40 + cw2[0] + 4, y + 4);
-            y += 16;
-          });
-          y += 6;
-        }
-        // Rejection type(s) (Shearing)
-        const shRejTypes = (data.rejection_types || []).filter(Boolean);
-        if (data.rejection_flag === 'Yes' && shRejTypes.length > 0) {
-          y = ensureSpace(doc, y, 44, hdr);
-          y = drawSectionTitle(doc, y, 'REJECTION TYPE(S)');
-          const tblW = doc.page.width - 80;
-          const boxH = Math.max(24, 12 + Math.ceil(shRejTypes.join(',   ').length / 90) * 12);
-          doc.rect(40, y, tblW, boxH).stroke(BORDER);
-          doc.fillColor(TEXT).font('Helvetica').fontSize(9);
-          doc.text(shRejTypes.join(',   '), 48, y + 7, { width: tblW - 16 });
-          y += boxH + 8;
-        }
+        y = drawRejectionTable(doc, y, data, hdr);
         
         if (data.remarks) {
           y = ensureSpace(doc, y, 60, hdr);
