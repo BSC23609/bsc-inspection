@@ -2816,6 +2816,7 @@ app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
   
   try {
     const token = await getToken();
+    const _refSettings = await loadSettings(token);
     
     // Map type to Excel file + table
     const configs = {
@@ -2889,6 +2890,12 @@ app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
           const photos = await fetchPhotosFromFolder(token, photoPath);
           data.photos = photos;
           
+          // Reference blocks (sampling frequency / number-calc / tolerances) are global
+          // reference material, not captured per old submission — pull from current settings
+          if (!data.sample_frequency) data.sample_frequency = _refSettings.sample_frequency;
+          if (!data.calc_constants) data.calc_constants = _refSettings.calc_constants;
+          if (!data.tolerances) data.tolerances = _refSettings.tolerances;
+
           // Reference number from filename for PDF header
           const refNo = fileNameInExcel;
           const pdfBuf = await generatePDF(folder, data, refNo);
