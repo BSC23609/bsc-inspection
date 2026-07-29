@@ -2987,6 +2987,38 @@ app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// Diagnostic: dump a log table's actual column order + a couple of sample rows,
+// so the decoder/writer can be realigned to the real file. Read-only.
+// GET /log-columns?type=quality&key=BSC_MIGRATE_2026
+app.get('/log-columns', requireAuth, requireAdmin, async (req, res) => {
+  if (req.query.key !== 'BSC_MIGRATE_2026') return res.status(403).json({ error: 'Invalid key' });
+  const type = String(req.query.type || '').toLowerCase();
+  const map = {
+    inward:   { file: 'BSC Inspections/Inward/Inward_Log.xlsx',     table: 'InwardLog' },
+    quality:  { file: 'BSC Inspections/Quality/Quality_Log.xlsx',   table: 'QualityLog' },
+    shearing: { file: 'BSC Inspections/Shearing/Shearing_Log.xlsx', table: 'ShearingLog' }
+  };
+  const cfg = map[type];
+  if (!cfg) return res.status(400).json({ error: 'type must be inward|quality|shearing' });
+  try {
+    const token = await getToken();
+    const meta = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(cfg.file), { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!meta.ok) return res.status(404).json({ error: 'Log file not found: ' + cfg.file });
+    const fileId = (await meta.json()).id;
+    const colsResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + cfg.table + '/columns?$select=name,index', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!colsResp.ok) return res.status(500).json({ error: 'Cannot read columns for table ' + cfg.table + ': ' + (await colsResp.text()) });
+    const columns = ((await colsResp.json()).value || []).map(c => ({ index: c.index, name: c.name }));
+    let sample_rows = [];
+    try {
+      const rowsResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + cfg.table + '/rows?$top=2', { headers: { 'Authorization': 'Bearer ' + token } });
+      if (rowsResp.ok) sample_rows = ((await rowsResp.json()).value || []).map(r => r.values[0]);
+    } catch(e) {}
+    res.json({ table: cfg.table, column_count: columns.length, columns: columns, sample_rows: sample_rows });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Replay durable fallback rows (BSC Inspections/<folder>/UnloggedRows/*.json) back into
 // the Excel log once the table is healthy. Hit repeatedly until remaining = 0.
 // GET /reconcile-unlogged?type=quality&key=BSC_MIGRATE_2026
