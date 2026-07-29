@@ -2733,34 +2733,26 @@ function rowToInwardData(v) {
 }
 
 function rowToQualityData(v) {
+  // Column order below is the exact inverse of appendExcelRow (matches the real Quality_Log columns):
+  // 0 File Name | 1 Timestamp | 2 Customer | 3 Date | 4 Time | 5 Coil No | 6 Batch | 7 Make |
+  // 8 Coil Thickness | 9 Coil Grade | 10 Coil Width | 11 Coil Weight | 12 First Bit | 13 Last Bit |
+  // 14 Defective | 15 Balance Wt | 16 Coil Verified | 17 Blade Clearance | 18 Operator | 19 Machine No |
+  // 20 Inspector | 21 Remarks | 22 Bur | 23 Cutting Finish | 24 Scalling | 25 Pit Marks | 26 Waviness |
+  // 27 Center Bow | 28 Cutting Bow | 29 Surface Defects | 30..89 Size 1-20 (Length, Sheets, Weight)
   const data = {
-    timestamp: v[1]||'', customer_name: v[2]||'', date: v[3]||'',
-    time: v[4]||'', coil_number: v[5]||'', batch_number: v[6]||'',
-    make: v[7]||'', coil_grade: v[8]||'', coil_thickness: v[9]||'',
-    coil_width: v[10]||'', coil_weight: v[11]||'',
-    first_bit: v[12]||'', last_bit: v[13]||'', defective: v[14]||'',
-    balance_wt: v[15]||'', coil_verified: v[16]||'', blade_clearance: v[17]||'',
-    bur: v[18]||'', cutting_finish: v[19]||'', scalling: v[20]||'',
-    pit_marks: v[21]||'', waviness: v[22]||'', center_bow: v[23]||'',
-    cutting_bow: v[24]||'', surface_defects: v[25]||'',
-    operator: v[26]||'', machine_name: v[27]||'', inspector: v[28]||'',
-    remarks: v[29]||''
+    timestamp: v[1]||'', customer_name: v[2]||'', date: v[3]||'', time: v[4]||'',
+    coil_number: v[5]||'', batch_number: v[6]||'', make: v[7]||'',
+    coil_thickness: v[8]||'', coil_grade: v[9]||'', coil_width: v[10]||'', coil_weight: v[11]||'',
+    first_bit: v[12]||'', last_bit: v[13]||'', defective: v[14]||'', balance_wt: v[15]||'',
+    coil_verified: v[16]||'', blade_clearance: v[17]||'',
+    operator: v[18]||'', machine_name: v[19]||'', inspector: v[20]||'', remarks: v[21]||'',
+    bur: v[22]||'', cutting_finish: v[23]||'', scalling: v[24]||'', pit_marks: v[25]||'',
+    waviness: v[26]||'', center_bow: v[27]||'', cutting_bow: v[28]||'', surface_defects: v[29]||''
   };
-  // Sheet measurements - columns 30-179 (30 rows x 5 fields each from old layout, or 6 fields new)
-  // We try the new 6-field layout first; if file has old 5-field, the offsets won't match but won't crash
-  data.sheet_measurements = [];
-  for (let i = 0; i < 30; i++) {
-    const base = 30 + i * 6;
-    const row = {
-      sheet_no: v[base]||'', thickness: v[base+1]||'', width: v[base+2]||'',
-      length: v[base+3]||'', d1: v[base+4]||'', d2: v[base+5]||''
-    };
-    if (row.sheet_no || row.thickness || row.width || row.length) data.sheet_measurements.push(row);
-  }
-  // Processed quantity - columns 210+ (20 sizes x 3 fields)
+  // Processed quantity - columns 30..89 (20 sizes x [length, nos, weight_t])
   data.processed_qty = {};
   for (let i = 1; i <= 20; i++) {
-    const base = 210 + (i-1) * 3;
+    const base = 30 + (i-1) * 3;
     data.processed_qty['size_' + i] = {
       length: v[base]||'', nos: v[base+1]||'', weight_t: v[base+2]||''
     };
