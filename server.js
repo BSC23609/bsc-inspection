@@ -2488,7 +2488,9 @@ async function appendExcelRow(token, folder, data, fileName) {
       ...[...Array(30)].flatMap((_,i) => [sr(i).sheet_no||'', sr(i).width1||'', sr(i).width2||'', sr(i).diag1||'', sr(i).diag2||'', sr(i).remarks||'']),
       ...[...Array(20)].map((_,i) => os[i] || ''),
       ...[...Array(20)].flatMap((_,i) => [spqGet(i+1).length||'', spqGet(i+1).nos||'', spqGet(i+1).weight_t||'']),
-      ...[...Array(10)].flatMap((_,i) => [rjGet(i).size||'', rjGet(i).qty||''])
+      ...[...Array(10)].flatMap((_,i) => [rjGet(i).size||'', rjGet(i).qty||'']),
+      ...[...Array(10)].map((_,i) => (rjGet(i).types||[]).join(', ')),
+      data.lot_size||'', data.required_samples||''
     ]];
   })() : [[
     fileName, data.timestamp||'', data.customer_name||'', data.date||'', data.time||'',
@@ -2499,7 +2501,11 @@ async function appendExcelRow(token, folder, data, fileName) {
     data.operator||'', data.machine_name||'', data.inspector||'', data.remarks||'',
     data.bur||'', data.cutting_finish||'', data.scalling||'', data.pit_marks||'',
     data.waviness||'', data.center_bow||'', data.cutting_bow||'', data.surface_defects||'',
-    ...[...Array(20)].flatMap((_,i) => [s(i+1).length||'', s(i+1).nos||'', s(i+1).weight_t||''])
+    ...[...Array(20)].flatMap((_,i) => [s(i+1).length||'', s(i+1).nos||'', s(i+1).weight_t||'']),
+    ...[...Array(30)].flatMap((_,i) => { const m = (data.sheet_measurements||[])[i]||{}; return [m.sheet_no||'', m.thickness||'', m.width||'', m.length||'', m.d1||'', m.d2||'']; }),
+    data.rejection_flag||'No',
+    ...[...Array(10)].flatMap((_,i) => { const r = (data.rejections||[])[i]||{}; return [r.size||'', r.qty||'', ((r.types||[]).join(', '))]; }),
+    data.lot_size||'', data.required_samples||''
   ]];
   // Use workbook session for faster writes on large tables. Retry on timeout.
   const addUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/rows/add';
@@ -2757,6 +2763,24 @@ function rowToQualityData(v) {
       length: v[base]||'', nos: v[base+1]||'', weight_t: v[base+2]||''
     };
   }
+  // Sheet measurements - columns 90..269 (30 rows x [sheet_no, thickness, width, length, d1, d2])
+  data.sheet_measurements = [];
+  for (let i = 0; i < 30; i++) {
+    const b = 90 + i * 6;
+    const row = { sheet_no: v[b]||'', thickness: v[b+1]||'', width: v[b+2]||'', length: v[b+3]||'', d1: v[b+4]||'', d2: v[b+5]||'' };
+    if (row.sheet_no || row.thickness || row.width || row.length || row.d1 || row.d2) data.sheet_measurements.push(row);
+  }
+  // Rejection flag (270), rejections 271..300 (10 x [size, qty, types]), lot size (301), required samples (302)
+  data.rejection_flag = v[270] || 'No';
+  data.rejections = [];
+  for (let i = 0; i < 10; i++) {
+    const b = 271 + i * 3;
+    if (v[b] || v[b+1] || v[b+2]) {
+      data.rejections.push({ size: v[b]||'', qty: v[b+1]||'', types: (v[b+2] ? String(v[b+2]).split(',').map(t => t.trim()).filter(Boolean) : []) });
+    }
+  }
+  data.lot_size = v[301] || '';
+  data.required_samples = v[302] || '';
   return data;
 }
 
@@ -2792,12 +2816,16 @@ function rowToShearingData(v) {
       length: v[base]||'', nos: v[base+1]||'', weight_t: v[base+2]||''
     };
   }
-  // Rejections - 10 rows x 2 fields starting at 281
+  // Rejections - size/qty at 281 (10 x 2), types at 301 (10), lot size 311, required samples 312
   data.rejections = [];
   for (let i = 0; i < 10; i++) {
     const base = 281 + i * 2;
-    if (v[base] || v[base+1]) data.rejections.push({ size: v[base]||'', qty: v[base+1]||'' });
+    const tc = v[301 + i];
+    const types = tc ? String(tc).split(',').map(t => t.trim()).filter(Boolean) : [];
+    if (v[base] || v[base+1] || types.length) data.rejections.push({ size: v[base]||'', qty: v[base+1]||'', types: types });
   }
+  data.lot_size = v[311] || '';
+  data.required_samples = v[312] || '';
   return data;
 }
 
