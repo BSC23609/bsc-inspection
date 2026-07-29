@@ -1899,7 +1899,10 @@ app.post('/submit', requireAuth, requireEmployee, async (req, res) => {
     // Excel row append - non-blocking so submission succeeds even if Excel times out
     appendExcelRow(token, folder, data, fileName)
       .then(() => console.log('[xlsx] row appended for', fileName))
-      .catch(e => console.error('[xlsx] row append FAILED for', fileName, '-', e.message));
+      .catch(e => {
+        console.error('[xlsx] row append FAILED for', fileName, '-', e.message);
+        saveUnloggedRow(token, folder, data, fileName, e.message);
+      });
 
     const pdf_path = pdfFolder + '/' + fileName + '.pdf';
     res.json({ status: 'success', ref: ref, filename: fileName, pdf_path: pdf_path });
@@ -2546,6 +2549,19 @@ async function appendExcelRow(token, folder, data, fileName) {
   if (lastErr) throw lastErr;
 }
 
+// Durable fallback: if the Excel append fails, never lose the row — write the full
+// submission as a JSON file to OneDrive so it can be replayed into the log later.
+async function saveUnloggedRow(token, folder, data, fileName, reason) {
+  try {
+    const path = 'BSC Inspections/' + folder + '/UnloggedRows/' + fileName + '.json';
+    const payload = { fileName: fileName, folder: folder, saved_at: new Date().toISOString(), excel_error: String(reason || ''), data: data };
+    await uploadFile(token, path, Buffer.from(JSON.stringify(payload, null, 2), 'utf8'), 'application/json');
+    console.log('[xlsx-fallback] durable row saved:', path);
+  } catch(e) {
+    console.error('[xlsx-fallback] CRITICAL: failed to save durable row for', fileName, '-', e.message);
+  }
+}
+
 
 
 // =====================================================
@@ -2968,6 +2984,50 @@ app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
     });
   } catch(err) {
     res.status(500).json({ error: err.message, stack: err.stack });
+  }
+});
+
+// Replay durable fallback rows (BSC Inspections/<folder>/UnloggedRows/*.json) back into
+// the Excel log once the table is healthy. Hit repeatedly until remaining = 0.
+// GET /reconcile-unlogged?type=quality&key=BSC_MIGRATE_2026
+app.get('/reconcile-unlogged', requireAuth, requireAdmin, async (req, res) => {
+  if (req.query.key !== 'BSC_MIGRATE_2026') return res.status(403).json({ error: 'Invalid key' });
+  const type = String(req.query.type || '').toLowerCase();
+  const folderMap = { inward: 'Inward', quality: 'Quality', shearing: 'Shearing' };
+  const folder = folderMap[type];
+  if (!folder) return res.status(400).json({ error: 'type must be inward|quality|shearing' });
+  try {
+    const token = await getToken();
+    const dirPath = 'BSC Inspections/' + folder + '/UnloggedRows';
+    const listResp = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(dirPath) + ':/children?$top=200', { headers: { 'Authorization': 'Bearer ' + token } });
+    if (!listResp.ok) return res.json({ folder: folder, total_pending: 0, note: 'No UnloggedRows folder — nothing pending' });
+    const items = ((await listResp.json()).value || []).filter(it => !it.folder && /\.json$/i.test(it.name || ''));
+    const limit = Math.min(items.length, 25);
+    const processed = [], errors = [];
+    for (let i = 0; i < limit; i++) {
+      const it = items[i];
+      try {
+        const dl = await fetch(it['@microsoft.graph.downloadUrl']);
+        const rec = await dl.json();
+        await appendExcelRow(token, rec.folder || folder, rec.data || {}, rec.fileName);
+        // success -> remove the durable file
+        await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + it.id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+        processed.push(it.name);
+      } catch(e) {
+        errors.push({ file: it.name, err: e.message });
+      }
+    }
+    res.json({
+      folder: folder,
+      total_pending: items.length,
+      processed_now: processed.length,
+      remaining: items.length - processed.length,
+      more: items.length > limit,
+      processed: processed,
+      errors: errors
+    });
+  } catch(err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
