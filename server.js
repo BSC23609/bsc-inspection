@@ -1081,6 +1081,66 @@ function drawRejectionTable(doc, y, data, hdr) {
   return y;
 }
 
+function drawFrequencyTable(doc, y, data, hdr) {
+  const freq = data.sample_frequency || [];
+  if (!freq.length) return y;
+  y = ensureSpace(doc, y, 70, hdr);
+  y = drawSectionTitle(doc, y, 'SAMPLING FREQUENCY');
+  if (data.lot_size) {
+    doc.font('Helvetica').fontSize(9).fillColor(TEXT).text('Lot size entered: ' + data.lot_size + '   \u2192   Sheets to check: ' + (data.required_samples || '-'), 44, y);
+    y += 16;
+  }
+  const tblW = doc.page.width - 80;
+  const cw = tblW / 2;
+  doc.lineWidth(0.5).strokeColor(BORDER);
+  doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
+  doc.strokeColor(BORDER).rect(40, y, tblW, 18).stroke();
+  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+  doc.text('Lot size (No. of sheets)', 44, y + 5, { width: cw - 8 });
+  doc.text('Sample frequency to check', 40 + cw + 4, y + 5, { width: cw - 8 });
+  doc.moveTo(40 + cw, y).lineTo(40 + cw, y + 18).stroke();
+  y += 18;
+  freq.forEach((r, i) => {
+    y = ensureSpace(doc, y, 16, hdr);
+    const hit = data.lot_size && Number(data.lot_size) >= r.min && Number(data.lot_size) <= r.max;
+    if (hit) doc.rect(40, y, tblW, 16).fill('#FEF3C7');
+    else if (i % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
+    doc.strokeColor(BORDER).rect(40, y, tblW, 16).stroke();
+    doc.moveTo(40 + cw, y).lineTo(40 + cw, y + 16).stroke();
+    doc.fillColor(TEXT).font(hit ? 'Helvetica-Bold' : 'Helvetica').fontSize(9);
+    doc.text(r.min + ' - ' + r.max, 44, y + 4, { width: cw - 8 });
+    doc.text(String(r.samples) + ' sheets', 40 + cw + 4, y + 4, { width: cw - 8 });
+    y += 16;
+  });
+  y += 6;
+  return y;
+}
+
+function drawNumberCalc(doc, y, data, hdr) {
+  const cc = data.calc_constants || {};
+  const tol = data.tolerances || {};
+  const keys = Object.keys(cc);
+  if (!keys.length && !Object.keys(tol).length) return y;
+  y = ensureSpace(doc, y, 70, hdr);
+  y = drawSectionTitle(doc, y, 'NUMBER CALCULATION & TOLERANCES');
+  const tblW = doc.page.width - 80;
+  const lines = [];
+  keys.forEach(k => lines.push('Number calculation for ' + k + ':   L \u00d7 W \u00d7 T \u00d7 ' + cc[k]));
+  const tp = [];
+  if (tol.width != null) tp.push('Width \u00b1' + tol.width + 'mm');
+  if (tol.thickness != null) tp.push('Thickness \u00b1' + tol.thickness + 'mm');
+  if (tol.length != null) tp.push('Length \u00b1' + tol.length + 'mm');
+  if (tol.diagonal != null) tp.push('Diagonal \u00b1' + tol.diagonal + 'mm');
+  if (tp.length) lines.push('Tolerances:   ' + tp.join(';   '));
+  const boxH = 8 + lines.length * 13;
+  doc.strokeColor(BORDER).rect(40, y, tblW, boxH).stroke();
+  let yy = y + 6;
+  doc.font('Helvetica').fontSize(9);
+  lines.forEach(ln => { doc.fillColor(TEXT).text(ln, 48, yy, { width: tblW - 16 }); yy += 13; });
+  y += boxH + 8;
+  return y;
+}
+
 function generatePDF(folder, data, ref) {
   return new Promise((resolve, reject) => {
     try {
@@ -1279,6 +1339,8 @@ function generatePDF(folder, data, ref) {
         ]);
 
         y = drawRejectionTable(doc, y, data, hdr);
+        y = drawFrequencyTable(doc, y, data, hdr);
+        y = drawNumberCalc(doc, y, data, hdr);
       } else if (folder === 'Shearing') {
         y = drawSectionTitle(doc, y, 'HEADER');
         y = drawDataTable(doc, y, [
@@ -1408,6 +1470,8 @@ function generatePDF(folder, data, ref) {
         ]);
         
         y = drawRejectionTable(doc, y, data, hdr);
+        y = drawFrequencyTable(doc, y, data, hdr);
+        y = drawNumberCalc(doc, y, data, hdr);
         
         if (data.remarks) {
           y = ensureSpace(doc, y, 60, hdr);
@@ -2877,7 +2941,16 @@ const DEFAULT_SETTINGS = {
     default_to: ['support@bharatsteels.in'],
     wheels_india_to: ['support@bharatsteels.in', 'kannan@bharatsteels.in']
   },
-  rejection_types: ['WIDTH VARIATION', 'LENGTH VARIATION', 'DIAGONAL VARIATION', 'LINE MARK', 'DENT MARK', 'CORE LAMINATION', 'D SCALE', 'RUST', 'PITTED', 'BURR', 'BREAKAWAY']
+  rejection_types: ['WIDTH VARIATION', 'LENGTH VARIATION', 'DIAGONAL VARIATION', 'LINE MARK', 'DENT MARK', 'CORE LAMINATION', 'D SCALE', 'RUST', 'PITTED', 'BURR', 'BREAKAWAY'],
+  sample_frequency: [
+    { min: 3, max: 20, samples: 3 },
+    { min: 21, max: 50, samples: 5 },
+    { min: 51, max: 150, samples: 8 },
+    { min: 151, max: 300, samples: 11 },
+    { min: 301, max: 450, samples: 15 }
+  ],
+  calc_constants: { HR: 7.89, CHEQUERED: 8.1 },
+  tolerances: { width: 15, thickness: 0.5, length: 10, diagonal: 5 }
 };
 
 async function loadSettings(token) {
