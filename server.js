@@ -2806,6 +2806,42 @@ function rowToComplaintData(v) {
   };
 }
 
+async function gGetId(token, path){
+  const r = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(path), { headers: { 'Authorization': 'Bearer ' + token } });
+  if (!r.ok) return null;
+  return (await r.json()).id;
+}
+async function gEnsureChild(token, parentPath, name){
+  const childPath = parentPath + '/' + name;
+  let id = await gGetId(token, childPath);
+  if (id) return id;
+  const parentId = await gGetId(token, parentPath);
+  if (!parentId) return null;
+  const r = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + parentId + '/children', {
+    method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name: name, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' })
+  });
+  if (r.ok) return (await r.json()).id;
+  return await gGetId(token, childPath);
+}
+async function gDeleteIfExists(token, path){
+  const id = await gGetId(token, path);
+  if (!id) return false;
+  const d = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + id, { method: 'DELETE', headers: { 'Authorization': 'Bearer ' + token } });
+  return d.ok;
+}
+async function gMoveIfExists(token, srcPath, targetParentPath, targetChildName){
+  const srcId = await gGetId(token, srcPath);
+  if (!srcId) return false;
+  const targetId = await gEnsureChild(token, targetParentPath, targetChildName);
+  if (!targetId) return false;
+  const m = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + srcId, {
+    method: 'PATCH', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parentReference: { id: targetId } })
+  });
+  return m.ok;
+}
+
 app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
   if (req.query.key !== 'BSC_MIGRATE_2026') return res.status(403).json({ error: 'Invalid key' });
   const type = String(req.query.type || '').toLowerCase();
@@ -2863,7 +2899,7 @@ app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
           const fileNameInExcel = v[0]; // first col is file name
           if (!fileNameInExcel) { errors.push({ idx: row.index, err: 'no filename' }); continue; }
           
-          let data, folder, pdfPath, photoPath;
+          let data, folder, pdfPath, photoPath, refileSub = '';
           if (type === 'inward') {
             data = rowToInwardData(v);
             folder = 'Inward';
@@ -2879,6 +2915,7 @@ app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
             else if (machineNorm === 'CTL-2' || machineNorm === 'CTL2') sub = '/CTL-2';
             pdfPath = cfg.pdfFolder + sub + '/' + fileNameInExcel + '.pdf';
             photoPath = cfg.photoBase + sub + '/' + fileNameInExcel;
+            refileSub = sub;
           } else {
             data = rowToShearingData(v);
             folder = 'Shearing';
@@ -2887,7 +2924,11 @@ app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
           }
           
           // Fetch photos from OneDrive
-          const photos = await fetchPhotosFromFolder(token, photoPath);
+          let photos = await fetchPhotosFromFolder(token, photoPath);
+          if (type === 'quality' && refileSub && (!photos || !photos.length)) {
+            // machine name was just filled in: photos still sit in the base Photos folder
+            photos = await fetchPhotosFromFolder(token, cfg.photoBase + '/' + fileNameInExcel);
+          }
           data.photos = photos;
           
           // Reference blocks (sampling frequency / number-calc / tolerances) are global
@@ -2900,6 +2941,11 @@ app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
           const refNo = fileNameInExcel;
           const pdfBuf = await generatePDF(folder, data, refNo);
           await uploadFile(token, pdfPath, pdfBuf, 'application/pdf');
+          if (type === 'quality' && refileSub) {
+            // Refile: remove the stale base-folder PDF and relocate the photos into the machine subfolder
+            try { await gDeleteIfExists(token, cfg.pdfFolder + '/' + fileNameInExcel + '.pdf'); } catch(e) {}
+            try { await gMoveIfExists(token, cfg.photoBase + '/' + fileNameInExcel, cfg.photoBase, refileSub.slice(1)); } catch(e) {}
+          }
           processed.push(fileNameInExcel);
         }
       } catch(e) {
