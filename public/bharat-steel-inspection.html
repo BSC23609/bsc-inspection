@@ -390,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R12</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R13</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R12</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R13</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -1959,7 +1959,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           <input type="text" id="adm_rejection_types" placeholder="WIDTH VARIATION, LENGTH VARIATION, DIAGONAL VARIATION, LINE MARK, DENT MARK, ...">
         </div>
         <div class="field" style="margin-top:10px"><label>Sampling Frequency &mdash; format <code>min-max:sheets</code>, comma separated</label>
-          <input type="text" id="adm_sample_freq" placeholder="3-20:3, 21-50:5, 51-150:8, 151-300:11, 301-450:15">
+          <input type="text" id="adm_sample_freq" placeholder="1-2:1-2, 3-20:3, 21-50:5, 51-150:8, 151-300:11, 301-450:15">
         </div>
         <div class="field" style="margin-top:10px"><label>Number-Calc Constants &mdash; format <code>Name:constant</code>, comma separated</label>
           <input type="text" id="adm_calc_constants" placeholder="HR:7.89, CHEQUERED:8.1">
@@ -4399,8 +4399,8 @@ function parseCsv(str) {
 function parseFreq(str){
   return (str||'').split(',').map(function(s){return s.trim();}).filter(Boolean).map(function(s){
     var m=s.split(':'); var rng=(m[0]||'').split('-');
-    return { min: Number((rng[0]||'').trim()), max: Number((rng[1]||'').trim()), samples: Number((m[1]||'').trim()) };
-  }).filter(function(r){ return isFinite(r.min)&&isFinite(r.max)&&isFinite(r.samples); });
+    return { min: Number((rng[0]||'').trim()), max: Number((rng[1]||'').trim()), samples: (m[1]||'').trim() };
+  }).filter(function(r){ return isFinite(r.min)&&isFinite(r.max)&&r.samples!==''; });
 }
 function parsePairs(str){
   var o={}; (str||'').split(',').map(function(s){return s.trim();}).filter(Boolean).forEach(function(s){
@@ -4408,7 +4408,7 @@ function parsePairs(str){
     if(k && isFinite(v)) o[k]=v;
   }); return o;
 }
-function refFreq(){ return (window.APP_SETTINGS && APP_SETTINGS.sample_frequency && APP_SETTINGS.sample_frequency.length) ? APP_SETTINGS.sample_frequency : [{min:3,max:20,samples:3},{min:21,max:50,samples:5},{min:51,max:150,samples:8},{min:151,max:300,samples:11},{min:301,max:450,samples:15}]; }
+function refFreq(){ return (window.APP_SETTINGS && APP_SETTINGS.sample_frequency && APP_SETTINGS.sample_frequency.length) ? APP_SETTINGS.sample_frequency : [{min:1,max:2,samples:'1-2'},{min:3,max:20,samples:3},{min:21,max:50,samples:5},{min:51,max:150,samples:8},{min:151,max:300,samples:11},{min:301,max:450,samples:15}]; }
 function refCalc(){ return (window.APP_SETTINGS && APP_SETTINGS.calc_constants && Object.keys(APP_SETTINGS.calc_constants).length) ? APP_SETTINGS.calc_constants : {HR:7.89, CHEQUERED:8.1}; }
 function refTol(){ return (window.APP_SETTINGS && APP_SETTINGS.tolerances) ? APP_SETTINGS.tolerances : {width:15,thickness:0.5,length:10,diagonal:5}; }
 function reqSamples(lot){ var v=Number(lot); if(!isFinite(v)||v<=0) return ''; var r=''; refFreq().forEach(function(x){ if(v>=x.min&&v<=x.max) r=x.samples; }); return r; }

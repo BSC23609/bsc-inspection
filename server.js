@@ -2943,6 +2943,7 @@ const DEFAULT_SETTINGS = {
   },
   rejection_types: ['WIDTH VARIATION', 'LENGTH VARIATION', 'DIAGONAL VARIATION', 'LINE MARK', 'DENT MARK', 'CORE LAMINATION', 'D SCALE', 'RUST', 'PITTED', 'BURR', 'BREAKAWAY'],
   sample_frequency: [
+    { min: 1, max: 2, samples: '1-2' },
     { min: 3, max: 20, samples: 3 },
     { min: 21, max: 50, samples: 5 },
     { min: 51, max: 150, samples: 8 },
