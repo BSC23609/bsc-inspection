@@ -2477,6 +2477,8 @@ function logSchemaHeaders(folder) {
     for (let i=1;i<=10;i++) h.push('Rej '+i+' Size','Rej '+i+' Qty');
     for (let i=1;i<=10;i++) h.push('Rej '+i+' Types');
     h.push('Lot Size','Required Samples','Tolerance Profile');
+    for (let i=1;i<=30;i++) h.push('Sheet '+i+' Thickness');
+    h.push('Coil Thickness');
     return h;
   }
   return null; // Inward not yet schema-managed
@@ -2543,7 +2545,9 @@ async function appendExcelRow(token, folder, data, fileName) {
       ...[...Array(20)].flatMap((_,i) => [spqGet(i+1).length||'', spqGet(i+1).nos||'', spqGet(i+1).weight_t||'']),
       ...[...Array(10)].flatMap((_,i) => [rjGet(i).size||'', rjGet(i).qty||'']),
       ...[...Array(10)].map((_,i) => (rjGet(i).types||[]).join(', ')),
-      data.lot_size||'', data.required_samples||'', data.tolerance_profile||''
+      data.lot_size||'', data.required_samples||'', data.tolerance_profile||'',
+      ...[...Array(30)].map((_,i) => { const m=(data.measurements||[])[i]||{}; return m.thickness||''; }),
+      data.coil_thickness||''
     ]];
   })() : [[
     fileName, data.timestamp||'', data.customer_name||'', data.date||'', data.time||'',
@@ -2853,10 +2857,11 @@ function rowToShearingData(v) {
     const base = 21 + i * 6;
     const row = {
       sheet_no: v[base]||'', width1: v[base+1]||'', width2: v[base+2]||'',
-      diag1: v[base+3]||'', diag2: v[base+4]||'', remarks: v[base+5]||''
+      diag1: v[base+3]||'', diag2: v[base+4]||'', remarks: v[base+5]||'', thickness: v[314+i]||''
     };
-    if (row.sheet_no || row.width1 || row.width2) data.measurements.push(row);
+    if (row.sheet_no || row.width1 || row.width2 || row.thickness) data.measurements.push(row);
   }
+  data.coil_thickness = v[344] || '';
   // Output sizes - 20 cols starting at 201
   data.output_sizes = [];
   for (let i = 0; i < 20; i++) {

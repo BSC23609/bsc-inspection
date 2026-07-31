@@ -390,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R14</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R16</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R14</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R16</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -1083,6 +1083,9 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           <div class="field"><label>Input Size</label><input type="text" id="sh_input_size" placeholder="e.g. 1500x555"></div>
         </div>
         <div class="fg fg-2">
+          <div class="field"><label>Thickness (mm)</label><input type="number" step="0.01" id="sh_thickness" placeholder="Nominal thickness"></div>
+        </div>
+        <div class="fg fg-2">
           <div class="field"><label>Operator Name</label><input type="text" id="sh_operator" placeholder="Operator"></div>
           <div class="field"><label>QC Name *</label><input type="text" id="sh_qc_name" value="Vignesh" placeholder="QC name"></div>
         </div>
@@ -1112,6 +1115,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           <table style="width:100%;border-collapse:collapse;font-size:12px">
             <thead><tr style="background:var(--gray-50)">
               <th style="padding:8px;border:1px solid var(--gray-200)">Sheet No.</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Thickness</th>
               <th style="padding:8px;border:1px solid var(--gray-200)">Width 1</th>
               <th style="padding:8px;border:1px solid var(--gray-200)">Width 2</th>
               <th style="padding:8px;border:1px solid var(--gray-200)">Diag 1</th>
@@ -2684,8 +2688,12 @@ function openForm(f) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+f).classList.add('active');
   lastFormType = f;
-  if (f === 'quality') renderRefBlocks('q');
-  if (f === 'shearing') renderRefBlocks('sh');
+  if (f === 'quality') { renderRefBlocks('q');
+    if(!window._qFlag){ window._qFlag=true; var qr=document.getElementById('q_rows'); if(qr) qr.addEventListener('input',flagQuality); ['q_thick','q_width'].forEach(function(idn){ var e=document.getElementById(idn); if(e) e.addEventListener('input',flagQuality); }); }
+  }
+  if (f === 'shearing') { renderRefBlocks('sh');
+    if(!window._shFlag){ window._shFlag=true; var sr=document.getElementById('sh_rows'); if(sr) sr.addEventListener('input',flagShearing); var si=document.getElementById('sh_input_size'); if(si) si.addEventListener('input',flagShearing); var st=document.getElementById('sh_thickness'); if(st) st.addEventListener('input',flagShearing); }
+  }
   window.scrollTo(0,0);
 }
 function goHome() {
@@ -4060,6 +4068,7 @@ function addShRow() {
   tr.id = 'sh_row_' + shRowCount;
   var id = shRowCount;
   tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="sr'+id+'_sno" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_th" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
     + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_w1" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
     + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_w2" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
     + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_d1" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
@@ -4248,6 +4257,7 @@ function collectShearing() {
     var id = tr.id.replace('sh_row_','');
     rows.push({
       sheet_no: gv('sr'+id+'_sno'),
+      thickness: gv('sr'+id+'_th'),
       width1: gv('sr'+id+'_w1'),
       width2: gv('sr'+id+'_w2'),
       diag1: gv('sr'+id+'_d1'),
@@ -4297,6 +4307,7 @@ function collectShearing() {
     surface_condition: rs['sg_surface']||'',
     bow_bend: gv('sh_bow'),
     taper_cutting: gv('sh_taper'),
+    coil_thickness: gv('sh_thickness'),
     rejection_flag: rs['sg_rejection']||'No',
     rejections: rejections,
     lot_size: gv('sh_lot_size'), required_samples: reqSamples(gv('sh_lot_size')),
@@ -4420,7 +4431,30 @@ function refProfiles(){ return (window.APP_SETTINGS && APP_SETTINGS.tolerance_pr
 function activeProfile(p){ var pr=refProfiles(); return (TOL_SET[p]==='wheels_india' ? pr.wheels_india : pr.other) || pr.other; }
 function profileName(p){ return TOL_SET[p]==='wheels_india' ? 'Wheels India' : 'Other'; }
 function tolLines(pf){ var wu=pf.width_under, wo=(pf.width_over!=null?pf.width_over:wu), th=pf.width_threshold||1500; var ws=(wu===wo)?('Width \u22120/+'+wu+'mm'):('Width \u22120/+'+wu+'mm (<'+th+'), \u22120/+'+wo+'mm (\u2265'+th+')'); return [ws,'Thickness \u00b1'+pf.thickness+'mm','Length \u22120/+'+pf.length+'mm','Diagonal \u2264'+pf.diagonal+'mm']; }
-function setTolSet(p, which){ TOL_SET[p]=which; renderRefBlocks(p); }
+function setTolSet(p, which){ TOL_SET[p]=which; renderRefBlocks(p); if(p==='q') flagQuality(); else flagShearing(); }
+function flagInput(el, bad){ if(!el) return; el.style.borderColor = bad ? '#dc2626' : 'var(--gray-200)'; el.style.background = bad ? '#fef2f2' : ''; }
+function widthTolAt(pf, nominal){ var th=pf.width_threshold||1500; return (Number(nominal) >= th) ? pf.width_over : pf.width_under; }
+function flagQuality(){
+  var pf=activeProfile('q'); var ct=parseFloat((document.getElementById('q_thick')||{}).value); var cw=parseFloat((document.getElementById('q_width')||{}).value);
+  document.querySelectorAll('#q_rows tr').forEach(function(tr){
+    var id=tr.id.replace('row_','');
+    var th=document.getElementById('r'+id+'_th'); if(th){ var tv=parseFloat(th.value); flagInput(th, isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness); }
+    var w=document.getElementById('r'+id+'_w'); if(w){ var wv=parseFloat(w.value); var tol=widthTolAt(pf,cw); flagInput(w, isFinite(wv)&&isFinite(cw)&&tol!=null&&(wv<cw||wv>cw+tol)); }
+    var d1=document.getElementById('r'+id+'_d1'), d2=document.getElementById('r'+id+'_d2');
+    var a=parseFloat((d1||{}).value), b=parseFloat((d2||{}).value); var bad=isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal; flagInput(d1,bad); flagInput(d2,bad);
+  });
+}
+function flagShearing(){
+  var pf=activeProfile('sh'); var iw=parseFloat((((document.getElementById('sh_input_size')||{}).value)||'').split(/[x\u00d7X]/)[0]);
+  var ct=parseFloat((document.getElementById('sh_thickness')||{}).value);
+  document.querySelectorAll('#sh_rows tr').forEach(function(tr){
+    var id=tr.id.replace('sh_row_','');
+    var th=document.getElementById('sr'+id+'_th'); if(th){ var tv=parseFloat(th.value); flagInput(th, isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness); }
+    ['w1','w2'].forEach(function(k){ var el=document.getElementById('sr'+id+'_'+k); if(el){ var v=parseFloat(el.value); var tol=widthTolAt(pf,iw); flagInput(el, isFinite(v)&&isFinite(iw)&&tol!=null&&(v<iw||v>iw+tol)); } });
+    var d1=document.getElementById('sr'+id+'_d1'), d2=document.getElementById('sr'+id+'_d2');
+    var a=parseFloat((d1||{}).value), b=parseFloat((d2||{}).value); var bad=isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal; flagInput(d1,bad); flagInput(d2,bad);
+  });
+}
 function reqSamples(lot){ var v=Number(lot); if(!isFinite(v)||v<=0) return ''; var r=''; refFreq().forEach(function(x){ if(v>=x.min&&v<=x.max) r=x.samples; }); return r; }
 function renderRefBlocks(p){
   var host=document.getElementById(p+'_refblocks'); if(!host) return;
