@@ -1144,6 +1144,52 @@ function drawNumberCalc(doc, y, data, hdr) {
   return y;
 }
 
+function drawCutGroups(doc, y, data, hdr) {
+  const groups = (data.cut_groups || []).filter(g => g && (g.sheets||[]).length);
+  if (!groups.length) return y;
+  y = ensureSpace(doc, y, 40, hdr);
+  y = drawSectionTitle(doc, y, 'MEASUREMENTS BY CUT LENGTH');
+  const tblW = doc.page.width - 80; const cw = tblW / 6;
+  const cols = ['Sheet No', 'Thickness', 'Width', 'Length', 'Diag 1', 'Diag 2'];
+  groups.forEach(g => {
+    y = ensureSpace(doc, y, 48, hdr);
+    doc.font('Helvetica-Bold').fontSize(9).fillColor(BRAND_DARK).text('Cut Length: ' + (g.cut_length || '-') + ' mm', 40, y); y += 14;
+    doc.rect(40, y, tblW, 16).fill(BRAND_LIGHT); doc.lineWidth(0.5).strokeColor(BORDER).rect(40, y, tblW, 16).stroke();
+    doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(7.5);
+    cols.forEach((c, i) => { doc.text(c, 44 + i*cw, y + 5, { width: cw - 6 }); if (i > 0) doc.moveTo(40 + i*cw, y).lineTo(40 + i*cw, y + 16).stroke(); });
+    y += 16;
+    (g.sheets || []).forEach((sh, ri) => {
+      y = ensureSpace(doc, y, 14, hdr);
+      const oot = sh.out_of_tol;
+      if (oot) doc.rect(40, y, tblW, 14).fill('#FCE9E9'); else if (ri % 2) doc.rect(40, y, tblW, 14).fill(ROW_ALT);
+      doc.strokeColor(BORDER).rect(40, y, tblW, 14).stroke();
+      const vals = [sh.sheet_no, sh.thickness, sh.width, sh.length, sh.d1, sh.d2];
+      doc.font('Helvetica').fontSize(8).fillColor(oot ? '#B91C1C' : TEXT);
+      vals.forEach((v, i) => { doc.fillColor(oot ? '#B91C1C' : TEXT).text(String(v == null || v === '' ? '-' : v), 44 + i*cw, y + 3, { width: cw - 6 }); if (i > 0) doc.moveTo(40 + i*cw, y).lineTo(40 + i*cw, y + 14).stroke(); });
+      y += 14;
+    });
+    y += 6;
+  });
+  return y;
+}
+async function appendMeasCsv(token, folder, fileName, data) {
+  try {
+    if (folder !== 'Quality') return;
+    const groups = (data.cut_groups || []).filter(g => g && (g.sheets||[]).length);
+    if (!groups.length) return;
+    const path = 'BSC Inspections/Quality/Quality_Measurements_Log.csv';
+    let existing = '';
+    try { const g = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(path) + ':/content', { headers: { 'Authorization': 'Bearer ' + token } }); if (g.ok) existing = await g.text(); } catch(e) {}
+    if (!existing) existing = 'Timestamp,File Name,Cut Length,Sheet No,Thickness,Width,Length,Diag 1,Diag 2,Out Of Tolerance\n';
+    function c(v){ v = (v == null ? '' : String(v)); return /[",\n]/.test(v) ? ('"' + v.replace(/"/g, '""') + '"') : v; }
+    const ts = new Date().toISOString(); let lines = '';
+    groups.forEach(g => (g.sheets||[]).forEach(sh => {
+      lines += [ts, c(fileName), c(g.cut_length), c(sh.sheet_no), c(sh.thickness), c(sh.width), c(sh.length), c(sh.d1), c(sh.d2), (sh.out_of_tol ? 'YES' : '')].join(',') + '\n';
+    }));
+    await uploadFile(token, path, Buffer.from(existing + lines, 'utf8'), 'text/csv');
+  } catch(e) { console.error('[meas-csv]', e.message); }
+}
+
 function generatePDF(folder, data, ref) {
   return new Promise((resolve, reject) => {
     try {
@@ -1263,6 +1309,9 @@ function generatePDF(folder, data, ref) {
         ]);
         
         // Sheet Measurements table (if any sheets recorded)
+        if (data.cut_groups && data.cut_groups.length) {
+          y = drawCutGroups(doc, y, data, hdr);
+        } else {
         const ctlSheets = (data.sheet_measurements || []).filter(r => r && (r.sheet_no || r.thickness || r.width || r.length || r.d1 || r.d2));
         if (ctlSheets.length > 0) {
           y = ensureSpace(doc, y, 60, hdr);
@@ -1292,6 +1341,7 @@ function generatePDF(folder, data, ref) {
             y += 16;
           });
           y += 6;
+        }
         }
         
         // Processed Quantity table for CTL
@@ -1906,6 +1956,7 @@ app.post('/submit', requireAuth, requireEmployee, async (req, res) => {
         console.error('[xlsx] row append FAILED for', fileName, '-', e.message);
         saveUnloggedRow(token, folder, data, fileName, e.message);
       });
+    appendMeasCsv(token, folder, fileName, data);
 
     const pdf_path = pdfFolder + '/' + fileName + '.pdf';
     res.json({ status: 'success', ref: ref, filename: fileName, pdf_path: pdf_path });
@@ -2466,7 +2517,7 @@ function logSchemaHeaders(folder) {
     for (let i=1;i<=30;i++) h.push('Sheet '+i+' No','Sheet '+i+' Thickness','Sheet '+i+' Width','Sheet '+i+' Length','Sheet '+i+' Diag 1','Sheet '+i+' Diag 2');
     h.push('Rejection Flag');
     for (let i=1;i<=10;i++) h.push('Rej '+i+' Size','Rej '+i+' Qty','Rej '+i+' Types');
-    h.push('Lot Size','Required Samples','Tolerance Profile');
+    h.push('Lot Size','Required Samples','Tolerance Profile','Cut Lengths','Sheets Measured','Out Of Tolerance Count','Cut Groups');
     return h;
   }
   if (folder === 'Shearing') {
@@ -2562,7 +2613,8 @@ async function appendExcelRow(token, folder, data, fileName) {
     ...[...Array(30)].flatMap((_,i) => { const m = (data.sheet_measurements||[])[i]||{}; return [m.sheet_no||'', m.thickness||'', m.width||'', m.length||'', m.d1||'', m.d2||'']; }),
     data.rejection_flag||'No',
     ...[...Array(10)].flatMap((_,i) => { const r = (data.rejections||[])[i]||{}; return [r.size||'', r.qty||'', ((r.types||[]).join(', '))]; }),
-    data.lot_size||'', data.required_samples||'', data.tolerance_profile||''
+    data.lot_size||'', data.required_samples||'', data.tolerance_profile||'',
+    data.cut_lengths||'', data.sheets_measured||'', data.oot_count||'', JSON.stringify(data.cut_groups||[])
   ]];
   // Use workbook session for faster writes on large tables. Retry on timeout.
   const addUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/rows/add';
@@ -2839,6 +2891,10 @@ function rowToQualityData(v) {
   data.lot_size = v[301] || '';
   data.required_samples = v[302] || '';
   data.tolerance_profile = v[303] || '';
+  data.cut_lengths = v[304] || '';
+  data.sheets_measured = v[305] || '';
+  data.oot_count = v[306] || '';
+  try { data.cut_groups = v[307] ? JSON.parse(v[307]) : []; } catch(e) { data.cut_groups = []; }
   return data;
 }
 

@@ -390,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R17</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R18</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R17</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R18</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -2442,7 +2442,10 @@ function collectQuality() {
     });
     cut_groups.push({ cut_length: cl, sheets: sheets });
   });
-  window._q_cut_groups = cut_groups;
+  (function(){ var pf=activeProfile('q'), ct=parseFloat(gv('q_thick')), cw=parseFloat(gv('q_width')); var oot=0, sc=0, cll=[];
+    cut_groups.forEach(function(g){ if(g.cut_length!=='') cll.push(g.cut_length); g.sheets.forEach(function(s){ sc++; s.out_of_tol=qSheetOOT(s, parseFloat(g.cut_length), pf, ct, cw); if(s.out_of_tol) oot++; }); });
+    window._q_cut_groups=cut_groups; window._q_summary={ cut_lengths: cll.join(', '), sheets_measured: sc, oot_count: oot };
+  })();
   var pq = {};
   for(var i=1;i<=20;i++) {
     pq['size_'+i] = {
@@ -2471,7 +2474,7 @@ function collectQuality() {
     cutting_bow: gv('q_cutting_bow'), surface_defects: ys['yn_surface_def']||'',
     rejection_flag: rs['qg_rejection']||'No',
     rejections: (function(){ var a=[]; document.querySelectorAll('#q_rej_rows tr').forEach(function(tr){ var id=tr.id.replace('q_rej_row_',''); a.push({ size: gv('qrej'+id+'_size'), qty: gv('qrej'+id+'_qty'), types: (REJ_TYPE_SEL['q_'+id]||[]) }); }); return a; })(),
-    lot_size: gv('q_lot_size'), required_samples: reqSamples(gv('q_lot_size')), cut_groups: (window._q_cut_groups||[]),
+    lot_size: gv('q_lot_size'), required_samples: reqSamples(gv('q_lot_size')), cut_groups: (window._q_cut_groups||[]), cut_lengths: (window._q_summary||{}).cut_lengths||'', sheets_measured: (window._q_summary||{}).sheets_measured||0, oot_count: (window._q_summary||{}).oot_count||0,
     sample_frequency: refFreq(), calc_constants: refCalc(), tolerances: activeProfile('q'), tolerance_profile: profileName('q')
   };
 }
@@ -4459,6 +4462,14 @@ function flagQuality(){
       var a=parseFloat((d1||{}).value), b=parseFloat((d2||{}).value); var bad=isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal; flagInput(d1,bad); flagInput(d2,bad);
     });
   });
+}
+function qSheetOOT(s, cl, pf, ct, cw){
+  var bad=false;
+  var tv=parseFloat(s.thickness); if(isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness) bad=true;
+  var wv=parseFloat(s.width), wtol=widthTolAt(pf,cw); if(isFinite(wv)&&isFinite(cw)&&wtol!=null&&(wv<cw||wv>cw+wtol)) bad=true;
+  var lv=parseFloat(s.length); if(isFinite(lv)&&isFinite(cl)&&pf.length!=null&&(lv<cl||lv>cl+pf.length)) bad=true;
+  var a=parseFloat(s.d1), b=parseFloat(s.d2); if(isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal) bad=true;
+  return bad;
 }
 function flagShearing(){
   var pf=activeProfile('sh'); var iw=parseFloat((((document.getElementById('sh_input_size')||{}).value)||'').split(/[x\u00d7X]/)[0]);
