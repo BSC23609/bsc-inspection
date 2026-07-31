@@ -390,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R16</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R17</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R16</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R17</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -849,18 +849,9 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📐</span> Sheet Measurements</div>
       <div class="sec-body">
-        <div class="tbl-wrap">
-          <table class="meas-tbl">
-            <thead>
-              <tr>
-                <th>Sheet No.</th><th>Thickness</th><th>Width</th><th>Length</th>
-                <th>Diagonal 1</th><th>Diagonal 2</th><th>Line Speed</th><th>Remarks</th><th></th>
-              </tr>
-            </thead>
-            <tbody id="q_rows"></tbody>
-          </table>
-        </div>
-        <button class="add-row-btn" onclick="addRow()">+ Add row</button>
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">Enter a cut length, add its sheets, then &ldquo;Add cut length&rdquo; for each different length in the batch. Each sheet&rsquo;s Length flags against its cut length.</div>
+        <div id="q_groups"></div>
+        <button class="add-row-btn" type="button" onclick="addCutGroup()">+ Add cut length</button>
       </div>
     </div>
 
@@ -2439,15 +2430,19 @@ function collectInward() {
 
 function collectQuality() {
   var rows = [];
-  document.querySelectorAll('#q_rows tr').forEach(function(tr) {
-    var id = tr.id.replace('row_','');
-    rows.push({
-      sheet_no: gv('r'+id+'_sno'), thickness: gv('r'+id+'_th'),
-      width: gv('r'+id+'_w'), length: gv('r'+id+'_l'),
-      d1: gv('r'+id+'_d1'), d2: gv('r'+id+'_d2'),
-      line_speed: gv('r'+id+'_sp'), remarks: gv('r'+id+'_rm')
+  var cut_groups = [];
+  document.querySelectorAll('#q_groups > div').forEach(function(gdiv) {
+    var gid = gdiv.id.replace('cg_','');
+    var cl = gv('cg'+gid+'_len');
+    var sheets = [];
+    gdiv.querySelectorAll('tbody tr').forEach(function(tr) {
+      var rid = tr.id.replace('cgrow_','');
+      var row = { sheet_no: gv('cr'+rid+'_sno'), thickness: gv('cr'+rid+'_th'), width: gv('cr'+rid+'_w'), length: gv('cr'+rid+'_l'), d1: gv('cr'+rid+'_d1'), d2: gv('cr'+rid+'_d2'), line_speed: gv('cr'+rid+'_sp'), remarks: gv('cr'+rid+'_rm'), cut_length: cl };
+      sheets.push(row); rows.push(row);
     });
+    cut_groups.push({ cut_length: cl, sheets: sheets });
   });
+  window._q_cut_groups = cut_groups;
   var pq = {};
   for(var i=1;i<=20;i++) {
     pq['size_'+i] = {
@@ -2476,7 +2471,7 @@ function collectQuality() {
     cutting_bow: gv('q_cutting_bow'), surface_defects: ys['yn_surface_def']||'',
     rejection_flag: rs['qg_rejection']||'No',
     rejections: (function(){ var a=[]; document.querySelectorAll('#q_rej_rows tr').forEach(function(tr){ var id=tr.id.replace('q_rej_row_',''); a.push({ size: gv('qrej'+id+'_size'), qty: gv('qrej'+id+'_qty'), types: (REJ_TYPE_SEL['q_'+id]||[]) }); }); return a; })(),
-    lot_size: gv('q_lot_size'), required_samples: reqSamples(gv('q_lot_size')),
+    lot_size: gv('q_lot_size'), required_samples: reqSamples(gv('q_lot_size')), cut_groups: (window._q_cut_groups||[]),
     sample_frequency: refFreq(), calc_constants: refCalc(), tolerances: activeProfile('q'), tolerance_profile: profileName('q')
   };
 }
@@ -2689,7 +2684,8 @@ function openForm(f) {
   document.getElementById('screen-'+f).classList.add('active');
   lastFormType = f;
   if (f === 'quality') { renderRefBlocks('q');
-    if(!window._qFlag){ window._qFlag=true; var qr=document.getElementById('q_rows'); if(qr) qr.addEventListener('input',flagQuality); ['q_thick','q_width'].forEach(function(idn){ var e=document.getElementById(idn); if(e) e.addEventListener('input',flagQuality); }); }
+    if(!document.querySelector('#q_groups > div')) addCutGroup();
+    if(!window._qFlag){ window._qFlag=true; var qg=document.getElementById('q_groups'); if(qg) qg.addEventListener('input',flagQuality); ['q_thick','q_width'].forEach(function(idn){ var e=document.getElementById(idn); if(e) e.addEventListener('input',flagQuality); }); }
   }
   if (f === 'shearing') { renderRefBlocks('sh');
     if(!window._shFlag){ window._shFlag=true; var sr=document.getElementById('sh_rows'); if(sr) sr.addEventListener('input',flagShearing); var si=document.getElementById('sh_input_size'); if(si) si.addEventListener('input',flagShearing); var st=document.getElementById('sh_thickness'); if(st) st.addEventListener('input',flagShearing); }
@@ -2726,15 +2722,31 @@ function yn(g, v, el) {
   el.classList.add('a'); ys[g] = v;
 }
 
-function addRow() {
-  rowCount++;
-  var tb = document.getElementById('q_rows'), tr = document.createElement('tr');
-  tr.id = 'row_'+rowCount;
+var cgCount = 0, cgRowCount = {};
+function addCutGroup() {
+  if (cgCount >= 12) { toast('err','Max 12 cut lengths'); return; }
+  cgCount++; var gid = cgCount; cgRowCount[gid] = 0;
+  var div = document.createElement('div'); div.id = 'cg_'+gid;
+  div.style.cssText = 'margin:10px 0;padding:12px;border:1px solid var(--gray-200);border-radius:8px;background:var(--gray-50)';
+  div.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">'
+    + '<label style="font-weight:600">Cut Length (mm)</label>'
+    + '<input type="number" step="0.01" id="cg'+gid+'_len" placeholder="Target length" style="width:150px;padding:6px;border:1px solid var(--gray-200);border-radius:4px" oninput="flagQuality()">'
+    + '<button type="button" onclick="removeCutGroup('+gid+')" style="margin-left:auto;background:#fee;border:none;border-radius:4px;padding:5px 12px;cursor:pointer;color:#c00">Remove length</button></div>'
+    + '<div class="tbl-wrap"><table class="meas-tbl"><thead><tr><th>Sheet No.</th><th>Thickness</th><th>Width</th><th>Length</th><th>Diagonal 1</th><th>Diagonal 2</th><th>Line Speed</th><th>Remarks</th><th></th></tr></thead><tbody id="cg'+gid+'_rows"></tbody></table></div>'
+    + '<button class="add-row-btn" type="button" style="margin-top:6px" onclick="addSheetRow('+gid+')">+ Add sheet</button>';
+  document.getElementById('q_groups').appendChild(div);
+  addSheetRow(gid);
+}
+function removeCutGroup(gid) { var e=document.getElementById('cg_'+gid); if(e) e.remove(); }
+function addSheetRow(gid) {
+  cgRowCount[gid] = (cgRowCount[gid]||0) + 1; var rid = gid+'_'+cgRowCount[gid];
+  var tb = document.getElementById('cg'+gid+'_rows'); if(!tb) return;
+  var tr = document.createElement('tr'); tr.id = 'cgrow_'+rid;
   var cols = ['sno','th','w','l','d1','d2','sp','rm'];
-  tr.innerHTML = cols.map((c,i)=>'<td><input type="text" id="r'+rowCount+'_'+c+'" placeholder="'+(i===0?rowCount:'')+'"></td>').join('')+'<td><button class="row-del" onclick="delRow('+rowCount+')">✕</button></td>';
+  tr.innerHTML = cols.map(function(c,i){ return '<td><input type="text" id="cr'+rid+'_'+c+'" placeholder="'+(i===0?cgRowCount[gid]:'')+'"></td>'; }).join('') + '<td><button class="row-del" type="button" onclick="delSheetRow(&#39;'+rid+'&#39;)">✕</button></td>';
   tb.appendChild(tr);
 }
-function delRow(id) { var e=document.getElementById('row_'+id); if(e) e.remove(); }
+function delSheetRow(rid) { var e=document.getElementById('cgrow_'+rid); if(e) e.remove(); }
 
 var pqVisibleRows = 0;
 var PQ_MAX_ROWS = 20;
@@ -4436,12 +4448,16 @@ function flagInput(el, bad){ if(!el) return; el.style.borderColor = bad ? '#dc26
 function widthTolAt(pf, nominal){ var th=pf.width_threshold||1500; return (Number(nominal) >= th) ? pf.width_over : pf.width_under; }
 function flagQuality(){
   var pf=activeProfile('q'); var ct=parseFloat((document.getElementById('q_thick')||{}).value); var cw=parseFloat((document.getElementById('q_width')||{}).value);
-  document.querySelectorAll('#q_rows tr').forEach(function(tr){
-    var id=tr.id.replace('row_','');
-    var th=document.getElementById('r'+id+'_th'); if(th){ var tv=parseFloat(th.value); flagInput(th, isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness); }
-    var w=document.getElementById('r'+id+'_w'); if(w){ var wv=parseFloat(w.value); var tol=widthTolAt(pf,cw); flagInput(w, isFinite(wv)&&isFinite(cw)&&tol!=null&&(wv<cw||wv>cw+tol)); }
-    var d1=document.getElementById('r'+id+'_d1'), d2=document.getElementById('r'+id+'_d2');
-    var a=parseFloat((d1||{}).value), b=parseFloat((d2||{}).value); var bad=isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal; flagInput(d1,bad); flagInput(d2,bad);
+  document.querySelectorAll('#q_groups > div').forEach(function(gdiv){
+    var gid=gdiv.id.replace('cg_',''); var cl=parseFloat((document.getElementById('cg'+gid+'_len')||{}).value);
+    gdiv.querySelectorAll('tbody tr').forEach(function(tr){
+      var rid=tr.id.replace('cgrow_','');
+      var th=document.getElementById('cr'+rid+'_th'); if(th){ var tv=parseFloat(th.value); flagInput(th, isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness); }
+      var w=document.getElementById('cr'+rid+'_w'); if(w){ var wv=parseFloat(w.value); var tol=widthTolAt(pf,cw); flagInput(w, isFinite(wv)&&isFinite(cw)&&tol!=null&&(wv<cw||wv>cw+tol)); }
+      var l=document.getElementById('cr'+rid+'_l'); if(l){ var lv=parseFloat(l.value); flagInput(l, isFinite(lv)&&isFinite(cl)&&pf.length!=null&&(lv<cl||lv>cl+pf.length)); }
+      var d1=document.getElementById('cr'+rid+'_d1'), d2=document.getElementById('cr'+rid+'_d2');
+      var a=parseFloat((d1||{}).value), b=parseFloat((d2||{}).value); var bad=isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal; flagInput(d1,bad); flagInput(d2,bad);
+    });
   });
 }
 function flagShearing(){
