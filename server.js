@@ -1127,11 +1127,14 @@ function drawNumberCalc(doc, y, data, hdr) {
   const lines = [];
   keys.forEach(k => lines.push('Number calculation for ' + k + ':   L \u00d7 W \u00d7 T \u00d7 ' + cc[k]));
   const tp = [];
-  if (tol.width != null) tp.push('Width \u00b1' + tol.width + 'mm');
+  if (tol.width_under != null) {
+    const wu = tol.width_under, wo = (tol.width_over != null ? tol.width_over : wu), th = tol.width_threshold || 1500;
+    tp.push(wu === wo ? ('Width \u22120/+' + wu + 'mm') : ('Width \u22120/+' + wu + 'mm (<' + th + '), \u22120/+' + wo + 'mm (\u2265' + th + ')'));
+  } else if (tol.width != null) { tp.push('Width \u00b1' + tol.width + 'mm'); }
   if (tol.thickness != null) tp.push('Thickness \u00b1' + tol.thickness + 'mm');
-  if (tol.length != null) tp.push('Length \u00b1' + tol.length + 'mm');
-  if (tol.diagonal != null) tp.push('Diagonal \u00b1' + tol.diagonal + 'mm');
-  if (tp.length) lines.push('Tolerances:   ' + tp.join(';   '));
+  if (tol.length != null) tp.push('Length \u22120/+' + tol.length + 'mm');
+  if (tol.diagonal != null) tp.push('Diagonal \u2264' + tol.diagonal + 'mm');
+  if (tp.length) lines.push('Tolerances (' + (data.tolerance_profile || 'Other') + '):   ' + tp.join(';   '));
   const boxH = 8 + lines.length * 13;
   doc.strokeColor(BORDER).rect(40, y, tblW, boxH).stroke();
   let yy = y + 6;
@@ -2455,9 +2458,59 @@ async function uploadFile(token, filePath, content, contentType) {
   });
   if (!resp.ok) throw new Error('Upload failed (' + resp.status + '): ' + await resp.text());
 }
+const _schemaEnsured = new Set();
+function logSchemaHeaders(folder) {
+  if (folder === 'Quality') {
+    const h = ['File Name','Timestamp','Customer Name','Date','Time','Coil Number','Batch Number','Make','Coil Thickness','Coil Grade','Coil Width','Coil Weight','First Bit','Last Bit','Defective','Balance Wt','Coil Verified','Blade Clearance','Operator','Machine No','Inspector','Remarks','Bur','Cutting Finish','Scalling','Pit Marks','Waviness','Center Bow','Cutting Bow','Surface Defects'];
+    for (let i=1;i<=20;i++) h.push('Size '+i+' Length','Size '+i+' Sheets','Size '+i+' Weight (T)');
+    for (let i=1;i<=30;i++) h.push('Sheet '+i+' No','Sheet '+i+' Thickness','Sheet '+i+' Width','Sheet '+i+' Length','Sheet '+i+' Diag 1','Sheet '+i+' Diag 2');
+    h.push('Rejection Flag');
+    for (let i=1;i<=10;i++) h.push('Rej '+i+' Size','Rej '+i+' Qty','Rej '+i+' Types');
+    h.push('Lot Size','Required Samples','Tolerance Profile');
+    return h;
+  }
+  if (folder === 'Shearing') {
+    const h = ['File','Timestamp','Customer','Date','Batch','Grade','Make','Type','Process','Operator','Input Size','QC Name','Burr','Blade Clearance','Cutting Finish','Surface Condition','Bow/Bend','Taper Cutting','Rejection Flag','Remarks','Overall Observation'];
+    for (let i=1;i<=30;i++) h.push('Sheet '+i+' No','Sheet '+i+' Width 1','Sheet '+i+' Width 2','Sheet '+i+' Diag 1','Sheet '+i+' Diag 2','Sheet '+i+' Remarks');
+    for (let i=1;i<=20;i++) h.push('Output Size '+i);
+    for (let i=1;i<=20;i++) h.push('PQ Size '+i+' Length','PQ Size '+i+' Sheets','PQ Size '+i+' Weight');
+    for (let i=1;i<=10;i++) h.push('Rej '+i+' Size','Rej '+i+' Qty');
+    for (let i=1;i<=10;i++) h.push('Rej '+i+' Types');
+    h.push('Lot Size','Required Samples','Tolerance Profile');
+    return h;
+  }
+  return null; // Inward not yet schema-managed
+}
+// Ensure the OneDrive log table has (at least) all expected columns; add any missing ones at the end.
+async function ensureLogSchema(token, folder) {
+  const expected = logSchemaHeaders(folder);
+  if (!expected) return null;
+  const filePath  = 'BSC Inspections/' + folder + '/' + folder + '_Log.xlsx';
+  const tableName = folder === 'Shearing' ? 'ShearingLog' : 'QualityLog';
+  const fr = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(filePath), { headers: { 'Authorization': 'Bearer ' + token } });
+  if (!fr.ok) return null;
+  const fileId = (await fr.json()).id;
+  const cr = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/columns?$select=name', { headers: { 'Authorization': 'Bearer ' + token } });
+  if (!cr.ok) return null;
+  const cur = (await cr.json()).value || [];
+  let added = 0;
+  for (let i = cur.length; i < expected.length; i++) {
+    const r = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/columns', {
+      method: 'POST', headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: expected[i] })
+    });
+    if (r.ok) added++; else { console.error('[schema] add column failed', folder, expected[i], await r.text()); break; }
+  }
+  return { before: cur.length, expected: expected.length, added: added };
+}
+
 async function appendExcelRow(token, folder, data, fileName) {
   const filePath  = 'BSC Inspections/' + folder + '/' + folder + '_Log.xlsx';
   const tableName = folder === 'Inward' ? 'InwardLog' : folder === 'Shearing' ? 'ShearingLog' : 'QualityLog';
+  if (!_schemaEnsured.has(folder)) {
+    try { await ensureLogSchema(token, folder); _schemaEnsured.add(folder); }
+    catch(e) { console.error('[schema] ensure failed for', folder, '-', e.message); }
+  }
   const fileResp  = await fetch('https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/root:/' + encodeURIComponent(filePath), { headers:{ 'Authorization':'Bearer ' + token } });
   if (!fileResp.ok) throw new Error('Excel file not found: ' + filePath);
   const fileId = (await fileResp.json()).id;
@@ -2490,7 +2543,7 @@ async function appendExcelRow(token, folder, data, fileName) {
       ...[...Array(20)].flatMap((_,i) => [spqGet(i+1).length||'', spqGet(i+1).nos||'', spqGet(i+1).weight_t||'']),
       ...[...Array(10)].flatMap((_,i) => [rjGet(i).size||'', rjGet(i).qty||'']),
       ...[...Array(10)].map((_,i) => (rjGet(i).types||[]).join(', ')),
-      data.lot_size||'', data.required_samples||''
+      data.lot_size||'', data.required_samples||'', data.tolerance_profile||''
     ]];
   })() : [[
     fileName, data.timestamp||'', data.customer_name||'', data.date||'', data.time||'',
@@ -2505,7 +2558,7 @@ async function appendExcelRow(token, folder, data, fileName) {
     ...[...Array(30)].flatMap((_,i) => { const m = (data.sheet_measurements||[])[i]||{}; return [m.sheet_no||'', m.thickness||'', m.width||'', m.length||'', m.d1||'', m.d2||'']; }),
     data.rejection_flag||'No',
     ...[...Array(10)].flatMap((_,i) => { const r = (data.rejections||[])[i]||{}; return [r.size||'', r.qty||'', ((r.types||[]).join(', '))]; }),
-    data.lot_size||'', data.required_samples||''
+    data.lot_size||'', data.required_samples||'', data.tolerance_profile||''
   ]];
   // Use workbook session for faster writes on large tables. Retry on timeout.
   const addUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/rows/add';
@@ -2781,6 +2834,7 @@ function rowToQualityData(v) {
   }
   data.lot_size = v[301] || '';
   data.required_samples = v[302] || '';
+  data.tolerance_profile = v[303] || '';
   return data;
 }
 
@@ -2826,6 +2880,7 @@ function rowToShearingData(v) {
   }
   data.lot_size = v[311] || '';
   data.required_samples = v[312] || '';
+  data.tolerance_profile = v[313] || '';
   return data;
 }
 
@@ -3007,6 +3062,16 @@ app.get('/regenerate-pdfs', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// Ensure a log table has all the columns the current code expects (adds missing ones).
+// GET /migrate-logs?type=quality&key=BSC_MIGRATE_2026
+app.get('/migrate-logs', requireAuth, requireAdmin, async (req, res) => {
+  if (req.query.key !== 'BSC_MIGRATE_2026') return res.status(403).json({ error: 'Invalid key' });
+  const folder = { quality: 'Quality', shearing: 'Shearing' }[String(req.query.type || '').toLowerCase()];
+  if (!folder) return res.status(400).json({ error: 'type must be quality|shearing' });
+  try { const token = await getToken(); const r = await ensureLogSchema(token, folder); _schemaEnsured.add(folder); res.json({ folder: folder, result: r || 'no change' }); }
+  catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 // Diagnostic: dump a log table's actual column order + a couple of sample rows,
 // so the decoder/writer can be realigned to the real file. Read-only.
 // GET /log-columns?type=quality&key=BSC_MIGRATE_2026
@@ -3116,7 +3181,10 @@ const DEFAULT_SETTINGS = {
     { min: 301, max: 450, samples: 15 }
   ],
   calc_constants: { HR: 7.89, CHEQUERED: 8.1 },
-  tolerances: { width: 15, thickness: 0.5, length: 10, diagonal: 5 }
+  tolerance_profiles: {
+    wheels_india: { width_under: 15, width_over: 15, width_threshold: 1500, thickness: 0.2, length: 3, diagonal: 3 },
+    other:        { width_under: 20, width_over: 25, width_threshold: 1500, thickness: 0.5, length: 10, diagonal: 5 }
+  }
 };
 
 async function loadSettings(token) {

@@ -390,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R13</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R14</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R13</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R14</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -1964,8 +1964,11 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="field" style="margin-top:10px"><label>Number-Calc Constants &mdash; format <code>Name:constant</code>, comma separated</label>
           <input type="text" id="adm_calc_constants" placeholder="HR:7.89, CHEQUERED:8.1">
         </div>
-        <div class="field" style="margin-top:10px"><label>Tolerances (mm) &mdash; <code>Width:_, Thickness:_, Length:_, Diagonal:_</code></label>
-          <input type="text" id="adm_tolerances" placeholder="Width:15, Thickness:0.5, Length:10, Diagonal:5">
+        <div class="field" style="margin-top:10px"><label>Tolerance &mdash; Wheels India (mm) <span style="font-weight:400;color:var(--gray-500)">width_under, width_over, threshold, thickness, length, diagonal</span></label>
+          <input type="text" id="adm_tol_wheels" placeholder="width_under:15, width_over:15, threshold:1500, thickness:0.2, length:3, diagonal:3">
+        </div>
+        <div class="field" style="margin-top:10px"><label>Tolerance &mdash; Other coils (mm)</label>
+          <input type="text" id="adm_tol_other" placeholder="width_under:20, width_over:25, threshold:1500, thickness:0.5, length:10, diagonal:5">
         </div>
       </div>
     </div>
@@ -2470,7 +2473,7 @@ function collectQuality() {
     rejection_flag: rs['qg_rejection']||'No',
     rejections: (function(){ var a=[]; document.querySelectorAll('#q_rej_rows tr').forEach(function(tr){ var id=tr.id.replace('q_rej_row_',''); a.push({ size: gv('qrej'+id+'_size'), qty: gv('qrej'+id+'_qty'), types: (REJ_TYPE_SEL['q_'+id]||[]) }); }); return a; })(),
     lot_size: gv('q_lot_size'), required_samples: reqSamples(gv('q_lot_size')),
-    sample_frequency: refFreq(), calc_constants: refCalc(), tolerances: refTol()
+    sample_frequency: refFreq(), calc_constants: refCalc(), tolerances: activeProfile('q'), tolerance_profile: profileName('q')
   };
 }
 
@@ -4297,7 +4300,7 @@ function collectShearing() {
     rejection_flag: rs['sg_rejection']||'No',
     rejections: rejections,
     lot_size: gv('sh_lot_size'), required_samples: reqSamples(gv('sh_lot_size')),
-    sample_frequency: refFreq(), calc_constants: refCalc(), tolerances: refTol(),
+    sample_frequency: refFreq(), calc_constants: refCalc(), tolerances: activeProfile('sh'), tolerance_profile: profileName('sh'),
     remarks: gv('sh_remarks'),
     overall_observation: gv('sh_observation'),
     timestamp: new Date().toISOString()
@@ -4373,8 +4376,10 @@ async function loadAdminSettings() {
     document.getElementById('adm_rejection_types').value = (s.rejection_types || []).join(', ');
     document.getElementById('adm_sample_freq').value = (s.sample_frequency || []).map(function(r){ return r.min+'-'+r.max+':'+r.samples; }).join(', ');
     document.getElementById('adm_calc_constants').value = Object.keys(s.calc_constants || {}).map(function(k){ return k+':'+s.calc_constants[k]; }).join(', ');
-    var _tl = s.tolerances || {};
-    document.getElementById('adm_tolerances').value = ['Width:'+(_tl.width!=null?_tl.width:''),'Thickness:'+(_tl.thickness!=null?_tl.thickness:''),'Length:'+(_tl.length!=null?_tl.length:''),'Diagonal:'+(_tl.diagonal!=null?_tl.diagonal:'')].join(', ');
+    var _tp = s.tolerance_profiles || {}; var _wi=_tp.wheels_india||{}, _ot=_tp.other||{};
+    function _tolStr(p){ return ['width_under:'+(p.width_under!=null?p.width_under:''),'width_over:'+(p.width_over!=null?p.width_over:''),'threshold:'+(p.width_threshold!=null?p.width_threshold:1500),'thickness:'+(p.thickness!=null?p.thickness:''),'length:'+(p.length!=null?p.length:''),'diagonal:'+(p.diagonal!=null?p.diagonal:'')].join(', '); }
+    document.getElementById('adm_tol_wheels').value = _tolStr(_wi);
+    document.getElementById('adm_tol_other').value = _tolStr(_ot);
     var v = s.vendors || {};
     document.getElementById('adm_vendor_sail').value = v.SAIL || '';
     document.getElementById('adm_vendor_nmdc').value = v.NMDC || '';
@@ -4410,24 +4415,31 @@ function parsePairs(str){
 }
 function refFreq(){ return (window.APP_SETTINGS && APP_SETTINGS.sample_frequency && APP_SETTINGS.sample_frequency.length) ? APP_SETTINGS.sample_frequency : [{min:1,max:2,samples:'1-2'},{min:3,max:20,samples:3},{min:21,max:50,samples:5},{min:51,max:150,samples:8},{min:151,max:300,samples:11},{min:301,max:450,samples:15}]; }
 function refCalc(){ return (window.APP_SETTINGS && APP_SETTINGS.calc_constants && Object.keys(APP_SETTINGS.calc_constants).length) ? APP_SETTINGS.calc_constants : {HR:7.89, CHEQUERED:8.1}; }
-function refTol(){ return (window.APP_SETTINGS && APP_SETTINGS.tolerances) ? APP_SETTINGS.tolerances : {width:15,thickness:0.5,length:10,diagonal:5}; }
+var TOL_SET = { q:'other', sh:'other' };
+function refProfiles(){ return (window.APP_SETTINGS && APP_SETTINGS.tolerance_profiles) ? APP_SETTINGS.tolerance_profiles : {wheels_india:{width_under:15,width_over:15,width_threshold:1500,thickness:0.2,length:3,diagonal:3},other:{width_under:20,width_over:25,width_threshold:1500,thickness:0.5,length:10,diagonal:5}}; }
+function activeProfile(p){ var pr=refProfiles(); return (TOL_SET[p]==='wheels_india' ? pr.wheels_india : pr.other) || pr.other; }
+function profileName(p){ return TOL_SET[p]==='wheels_india' ? 'Wheels India' : 'Other'; }
+function tolLines(pf){ var wu=pf.width_under, wo=(pf.width_over!=null?pf.width_over:wu), th=pf.width_threshold||1500; var ws=(wu===wo)?('Width \u22120/+'+wu+'mm'):('Width \u22120/+'+wu+'mm (<'+th+'), \u22120/+'+wo+'mm (\u2265'+th+')'); return [ws,'Thickness \u00b1'+pf.thickness+'mm','Length \u22120/+'+pf.length+'mm','Diagonal \u2264'+pf.diagonal+'mm']; }
+function setTolSet(p, which){ TOL_SET[p]=which; renderRefBlocks(p); }
 function reqSamples(lot){ var v=Number(lot); if(!isFinite(v)||v<=0) return ''; var r=''; refFreq().forEach(function(x){ if(v>=x.min&&v<=x.max) r=x.samples; }); return r; }
 function renderRefBlocks(p){
   var host=document.getElementById(p+'_refblocks'); if(!host) return;
-  var freq=refFreq(), cc=refCalc(), tol=refTol();
+  var freq=refFreq(), cc=refCalc(), pf=activeProfile(p);
   var freqRows=freq.map(function(r,i){ return '<tr id="'+p+'_fr'+i+'"><td style="padding:8px;border:1px solid var(--gray-200)">'+r.min+' - '+r.max+'</td><td style="padding:8px;border:1px solid var(--gray-200)">'+r.samples+' sheets</td></tr>'; }).join('');
   var matOpts=Object.keys(cc).map(function(k){ return '<option value="'+k+'">'+k+'</option>'; }).join('');
-  var tolStr=[]; if(tol.width!=null)tolStr.push('Width \u00b1'+tol.width+'mm'); if(tol.thickness!=null)tolStr.push('Thickness \u00b1'+tol.thickness+'mm'); if(tol.length!=null)tolStr.push('Length \u00b1'+tol.length+'mm'); if(tol.diagonal!=null)tolStr.push('Diagonal \u00b1'+tol.diagonal+'mm');
+  var tolStr=tolLines(pf);
   host.innerHTML =
     '<div class="field"><label>Lot size (No. of sheets)</label><input type="number" id="'+p+'_lot_size" placeholder="Enter total sheets in lot" oninput="lotSizeCalc(&#39;'+p+'&#39;)"></div>'
     + '<div id="'+p+'_lot_result" style="margin:6px 0 12px;font-weight:600;color:var(--brand)"></div>'
     + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:var(--gray-50)"><th style="padding:8px;border:1px solid var(--gray-200);text-align:left">Lot size (No. of sheets)</th><th style="padding:8px;border:1px solid var(--gray-200);text-align:left">Sample frequency to check</th></tr></thead><tbody>'+freqRows+'</tbody></table></div>'
-    + '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--gray-200)"><label style="font-weight:600;display:block;margin-bottom:8px">Number Calculation</label>'
+    + '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--gray-200)"><label style="font-weight:600;display:block;margin-bottom:8px">Tolerance set</label>'
+    + '<div style="margin-bottom:12px"><span class="pill'+(TOL_SET[p]==='wheels_india'?' sel':'')+'" onclick="setTolSet(&#39;'+p+'&#39;,&#39;wheels_india&#39;)">Wheels India</span> <span class="pill'+(TOL_SET[p]==='other'?' sel':'')+'" onclick="setTolSet(&#39;'+p+'&#39;,&#39;other&#39;)">Other coils</span></div>'
+    + '<label style="font-weight:600;display:block;margin:6px 0 8px">Number Calculation</label>'
     + '<div class="fg fg-2" style="gap:8px"><div class="field"><label>Length (mm)</label><input type="number" id="'+p+'_calc_l" oninput="numCalc(&#39;'+p+'&#39;)"></div><div class="field"><label>Width (mm)</label><input type="number" id="'+p+'_calc_w" oninput="numCalc(&#39;'+p+'&#39;)"></div></div>'
     + '<div class="fg fg-2" style="gap:8px"><div class="field"><label>Thickness (mm)</label><input type="number" id="'+p+'_calc_t" oninput="numCalc(&#39;'+p+'&#39;)"></div><div class="field"><label>Pieces (optional)</label><input type="number" id="'+p+'_calc_pcs" oninput="numCalc(&#39;'+p+'&#39;)"></div></div>'
     + '<div class="field"><label>Material</label><select id="'+p+'_calc_mat" onchange="numCalc(&#39;'+p+'&#39;)">'+matOpts+'</select></div>'
     + '<div id="'+p+'_calc_result" style="margin-top:8px;font-weight:600;color:var(--brand)"></div>'
-    + '<div style="margin-top:8px;font-size:12px;color:var(--gray-500)">Formula: L \u00d7 W \u00d7 T \u00d7 constant.&nbsp; Tolerances: '+tolStr.join(';  ')+'</div></div>';
+    + '<div style="margin-top:8px;font-size:12px;color:var(--gray-500)">Formula: L \u00d7 W \u00d7 T \u00d7 constant.<br>Tolerances ('+profileName(p)+'): '+tolStr.join(';  ')+'</div></div>';
 }
 function lotSizeCalc(p){
   var el=document.getElementById(p+'_lot_size'); var v=Number(el?el.value:'');
@@ -4462,7 +4474,10 @@ async function saveAdminSettings() {
     rejection_types: parseCsv(document.getElementById('adm_rejection_types').value),
     sample_frequency: parseFreq(document.getElementById('adm_sample_freq').value),
     calc_constants: parsePairs(document.getElementById('adm_calc_constants').value),
-    tolerances: (function(){ var p=parsePairs(document.getElementById('adm_tolerances').value); var o={}; Object.keys(p).forEach(function(k){ o[k.toLowerCase()]=p[k]; }); return { width:o.width, thickness:o.thickness, length:o.length, diagonal:o.diagonal }; })(),
+    tolerance_profiles: (function(){
+      function pp(id){ var p=parsePairs(document.getElementById(id).value); return { width_under:p.width_under, width_over:p.width_over, width_threshold:(p.threshold!=null?p.threshold:1500), thickness:p.thickness, length:p.length, diagonal:p.diagonal }; }
+      return { wheels_india: pp('adm_tol_wheels'), other: pp('adm_tol_other') };
+    })(),
     vendors: {
       SAIL: document.getElementById('adm_vendor_sail').value.trim(),
       NMDC: document.getElementById('adm_vendor_nmdc').value.trim(),
