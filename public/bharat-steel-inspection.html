@@ -390,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R19</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R20</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R19</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R20</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -4391,7 +4391,7 @@ async function adminLogin() {
 
 async function loadAdminSettings() {
   try {
-    var resp = await fetch(SERVER_URL + '/settings');
+    var resp = await fetch(SERVER_URL + '/settings?_=' + Date.now(), { cache: 'no-store' });
     if (!resp.ok) throw new Error('Failed to load');
     var s = await resp.json();
     APP_SETTINGS = s;
@@ -4600,7 +4600,7 @@ async function saveAdminSettings() {
 // On app load, fetch settings to apply them where possible
 async function loadAppSettings() {
   try {
-    var resp = await fetch(SERVER_URL + '/settings');
+    var resp = await fetch(SERVER_URL + '/settings?_=' + Date.now(), { cache: 'no-store' });
     if (resp.ok) {
       APP_SETTINGS = await resp.json();
       applyAppSettings();
