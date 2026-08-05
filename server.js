@@ -3283,6 +3283,9 @@ app.get('/settings', requireAuth, requireEmployee, async (req, res) => {
   try {
     const token = await getToken();
     const s = await loadSettings(token);
+    // Never cache settings — Admin edits must show on the form immediately (Cloudflare + browser)
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.setHeader('Pragma', 'no-cache');
     // Public can read everything (no secrets here)
     res.json(s);
   } catch(e) {
