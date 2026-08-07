@@ -156,19 +156,58 @@ app.get('/reports/file/:code/:ym', async (req, res) => {
 });
 app.use('/auth', authRouter);
 
-// ---- 8D Report: store browser-generated PDF into BSC Inspections/8D reports/ ----
+// ---- 8D Report register (Neon + OneDrive) ----
+let _ensured8D = false;
+async function ensure8D(){
+  if (_ensured8D) return;
+  await pgq(`CREATE TABLE IF NOT EXISTS eightd_reports (
+    id SERIAL PRIMARY KEY, report_no TEXT UNIQUE, report_date DATE, customer TEXT, part TEXT,
+    ncr_ref TEXT, priority TEXT, status TEXT, pdf_path TEXT, created_by TEXT,
+    created_at TIMESTAMPTZ DEFAULT now())`);
+  _ensured8D = true;
+}
+app.get('/8d/next-number', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensure8D();
+    const yr = new Date().getFullYear();
+    const c = await pgq("SELECT COALESCE(MAX((split_part(report_no,'-',4))::int),0) AS n FROM eightd_reports WHERE report_no LIKE $1", ['BSC-8D-'+yr+'-%']);
+    res.setHeader('Cache-Control','no-store');
+    res.json({ report_no: 'BSC-8D-'+yr+'-'+String((c.rows[0].n||0)+1).padStart(3,'0') });
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
+async function append8DCsv(token, row){
+  try{
+    const p='BSC Inspections/8D reports/8D_Register.csv';
+    let ex='';
+    try{ const g=await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}}); if(g.ok) ex=await g.text(); }catch(e){}
+    if(!ex) ex='Report No,Date,Customer,Part,NCR Ref,Priority,Status,PDF,Created By,Created At\n';
+    const c=v=>{v=(v==null?'':String(v));return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v;};
+    const line=[row.report_no,row.report_date,row.customer,row.part,row.ncr_ref,row.priority,row.status,row.pdf_path,row.created_by,new Date().toISOString()].map(c).join(',')+'\n';
+    await uploadFile(token,p,Buffer.from(ex+line,'utf8'),'text/csv');
+  }catch(e){ console.error('[8d-csv]',e.message); }
+}
 app.post('/submit-8d', requireAuth, requireEmployee, async (req, res) => {
   try {
-    const { filename, pdf_base64 } = req.body || {};
-    if (!filename || !pdf_base64) return res.status(400).json({ error: 'filename and pdf_base64 required' });
-    const safe = String(filename).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 150) || ('8D_' + Date.now() + '.pdf');
-    const buf = Buffer.from(pdf_base64, 'base64');
+    await ensure8D();
+    const b = req.body || {};
+    if (!b.filename || !b.pdf_base64) return res.status(400).json({ error: 'filename and pdf_base64 required' });
+    const safe = String(b.filename).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 150) || ('8D_'+Date.now()+'.pdf');
+    const buf = Buffer.from(b.pdf_base64, 'base64');
     if (!buf.length) return res.status(400).json({ error: 'empty PDF payload' });
     const token = await getToken();
     const filePath = 'BSC Inspections/8D reports/' + safe;
     await uploadFile(token, filePath, buf, 'application/pdf');
-    console.log('[8d] saved', filePath, buf.length, 'bytes');
-    res.json({ ok: true, path: filePath });
+    const createdBy = (req.user && (req.user.name || req.user.emp_no || req.user.employee_id)) || '';
+    const row = { report_no: b.report_no||'', report_date: (b.report_date||null)||null, customer: b.customer||'', part: b.part||'', ncr_ref: b.ncr_ref||'', priority: b.priority||'', status: b.status||'Open', pdf_path: filePath, created_by: createdBy };
+    try {
+      await pgq(`INSERT INTO eightd_reports (report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,customer=EXCLUDED.customer,part=EXCLUDED.part,ncr_ref=EXCLUDED.ncr_ref,priority=EXCLUDED.priority,status=EXCLUDED.status,pdf_path=EXCLUDED.pdf_path`,
+        [row.report_no, row.report_date, row.customer, row.part, row.ncr_ref, row.priority, row.status, row.pdf_path, row.created_by]);
+    } catch(e){ console.error('[8d] neon insert failed:', e.message); }
+    append8DCsv(token, row);
+    console.log('[8d] saved', filePath, buf.length, 'bytes', row.report_no);
+    res.json({ ok: true, path: filePath, report_no: row.report_no });
   } catch (e) {
     console.error('[8d] save failed:', e.message);
     res.status(500).json({ error: e.message });
