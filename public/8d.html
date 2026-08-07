@@ -86,7 +86,7 @@ async function submit8D(){
   var psec=document.getElementById('photoSection'); if(psec) psec.style.display='none';
   document.querySelectorAll('.page textarea').forEach(function(t){ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; t.dataset.h=t.offsetHeight; });
   var opt={margin:0,filename:filename,image:{type:'jpeg',quality:0.85},
-    html2canvas:{scale:2,useCORS:true,onclone:function(doc){
+    html2canvas:{scale:2,useCORS:true,width:page.offsetWidth,windowWidth:page.offsetWidth,x:0,scrollX:0,onclone:function(doc){
       doc.querySelectorAll('.page textarea').forEach(function(t){
         var inTbl=!!t.closest('.tbl');
         var div=doc.createElement('div'); div.textContent=t.value;
@@ -165,6 +165,7 @@ function render8DPhotos(){
 </head>
 <body>
 <div class="toolbar">
+  <span style="align-self:center;font-size:11px;font-weight:700;color:#c026d3;margin-right:auto;border:1px solid #f0abfc;background:#fdf4ff;padding:3px 10px;border-radius:4px">8D BUILD v8</span>
   <button class="btn-reset" onclick="location.href='/'">‹ QMS Home</button>
   <button class="btn-reset" onclick="resetAll()">↺ Reset</button>
   <button class="btn-pdf" id="submitBtn" onclick="submit8D()">✓ Submit 8D Report</button>
