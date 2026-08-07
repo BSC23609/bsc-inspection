@@ -164,8 +164,23 @@ async function ensure8D(){
     id SERIAL PRIMARY KEY, report_no TEXT UNIQUE, report_date DATE, customer TEXT, part TEXT,
     ncr_ref TEXT, priority TEXT, status TEXT, pdf_path TEXT, created_by TEXT,
     created_at TIMESTAMPTZ DEFAULT now())`);
+  await pgq('ALTER TABLE eightd_reports ADD COLUMN IF NOT EXISTS form_data JSONB');
+  await pgq('ALTER TABLE eightd_reports ADD COLUMN IF NOT EXISTS rev_no INTEGER DEFAULT 0');
+  await pgq('ALTER TABLE eightd_reports ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ');
+  await pgq(`CREATE TABLE IF NOT EXISTS eightd_revisions (
+    id SERIAL PRIMARY KEY, report_no TEXT, rev_no INTEGER, form_data JSONB,
+    pdf_path TEXT, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now())`);
   _ensured8D = true;
 }
+app.get('/8d/get', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensure8D();
+    const r = await pgq('SELECT report_no,report_date,customer,part,ncr_ref,priority,status,form_data,rev_no FROM eightd_reports WHERE report_no=$1', [String(req.query.report_no||'')]);
+    res.setHeader('Cache-Control','no-store');
+    if(!r.rows.length) return res.status(404).json({ error:'not found' });
+    res.json(r.rows[0]);
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
 app.get('/8d/next-number', requireAuth, requireEmployee, async (req, res) => {
   try {
     await ensure8D();
@@ -190,24 +205,31 @@ app.post('/submit-8d', requireAuth, requireEmployee, async (req, res) => {
   try {
     await ensure8D();
     const b = req.body || {};
-    if (!b.filename || !b.pdf_base64) return res.status(400).json({ error: 'filename and pdf_base64 required' });
-    const safe = String(b.filename).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 150) || ('8D_'+Date.now()+'.pdf');
+    if (!b.report_no || !b.pdf_base64) return res.status(400).json({ error: 'report_no and pdf_base64 required' });
+    const rno = String(b.report_no).trim();
     const buf = Buffer.from(b.pdf_base64, 'base64');
     if (!buf.length) return res.status(400).json({ error: 'empty PDF payload' });
     const token = await getToken();
-    const filePath = 'BSC Inspections/8D reports/' + safe;
+    // next revision number (keeps every past revision)
+    const rr = await pgq('SELECT COALESCE(MAX(rev_no),-1)+1 AS n FROM eightd_revisions WHERE report_no=$1', [rno]);
+    const revNo = rr.rows[0].n || 0;
+    const safeRno = rno.replace(/[^A-Za-z0-9._-]/g, '_');
+    const filePath = 'BSC Inspections/8D reports/' + safeRno + '_Rev' + String(revNo).padStart(2,'0') + '.pdf';
     await uploadFile(token, filePath, buf, 'application/pdf');
     const createdBy = (req.user && (req.user.name || req.user.emp_no || req.user.employee_id)) || '';
-    const row = { report_no: b.report_no||'', report_date: (b.report_date||null)||null, customer: b.customer||'', part: b.part||'', ncr_ref: b.ncr_ref||'', priority: b.priority||'', status: b.status||'Open', pdf_path: filePath, created_by: createdBy };
+    const fd = b.form_data ? JSON.stringify(b.form_data) : null;
+    const row = { report_no: rno, report_date: (b.report_date||null)||null, customer: b.customer||'', part: b.part||'', ncr_ref: b.ncr_ref||'', priority: b.priority||'', status: b.status||'Open', pdf_path: filePath, created_by: createdBy };
     try {
-      await pgq(`INSERT INTO eightd_reports (report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
-        ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,customer=EXCLUDED.customer,part=EXCLUDED.part,ncr_ref=EXCLUDED.ncr_ref,priority=EXCLUDED.priority,status=EXCLUDED.status,pdf_path=EXCLUDED.pdf_path`,
-        [row.report_no, row.report_date, row.customer, row.part, row.ncr_ref, row.priority, row.status, row.pdf_path, row.created_by]);
-    } catch(e){ console.error('[8d] neon insert failed:', e.message); }
-    append8DCsv(token, row);
-    console.log('[8d] saved', filePath, buf.length, 'bytes', row.report_no);
-    res.json({ ok: true, path: filePath, report_no: row.report_no });
+      await pgq('INSERT INTO eightd_revisions (report_no,rev_no,form_data,pdf_path,created_by) VALUES ($1,$2,$3,$4,$5)',
+        [rno, revNo, fd, filePath, createdBy]);
+      await pgq(`INSERT INTO eightd_reports (report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by,form_data,rev_no,updated_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
+        ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,customer=EXCLUDED.customer,part=EXCLUDED.part,ncr_ref=EXCLUDED.ncr_ref,priority=EXCLUDED.priority,status=EXCLUDED.status,pdf_path=EXCLUDED.pdf_path,form_data=EXCLUDED.form_data,rev_no=EXCLUDED.rev_no,updated_at=now()`,
+        [rno, row.report_date, row.customer, row.part, row.ncr_ref, row.priority, row.status, row.pdf_path, row.created_by, fd, revNo]);
+    } catch(e){ console.error('[8d] neon write failed:', e.message); }
+    append8DCsv(token, Object.assign({}, row, { rev_no: revNo }));
+    console.log('[8d] saved', filePath, buf.length, 'bytes', rno, 'rev', revNo);
+    res.json({ ok: true, path: filePath, report_no: rno, rev_no: revNo });
   } catch (e) {
     console.error('[8d] save failed:', e.message);
     res.status(500).json({ error: e.message });
@@ -217,7 +239,7 @@ app.post('/submit-8d', requireAuth, requireEmployee, async (req, res) => {
 app.get('/8d/list', requireAuth, requireEmployee, async (req, res) => {
   try {
     await ensure8D();
-    const r = await pgq('SELECT report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by,created_at FROM eightd_reports ORDER BY created_at DESC');
+    const r = await pgq('SELECT report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by,created_at,rev_no FROM eightd_reports ORDER BY COALESCE(updated_at,created_at) DESC');
     res.setHeader('Cache-Control','no-store');
     res.json(r.rows || []);
   } catch(e){ res.status(500).json({ error: e.message }); }

@@ -390,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R26</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R27</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R26</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R27</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -2904,12 +2904,12 @@ function renderEightD(){
     var dt=x.report_date?String(x.report_date).slice(0,10):'';
     return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin:10px 12px;display:flex;align-items:center;gap:12px">'
       +'<div style="flex:1;min-width:0">'
-      +'<div style="font-weight:700;color:#0B5793;font-size:14px">'+e8esc(x.report_no||'')+'</div>'
+      +'<div style="font-weight:700;color:#0B5793;font-size:14px">'+e8esc(x.report_no||'')+(x.rev_no?' <span style="font-size:10px;color:#6b7280;font-weight:600">Rev '+x.rev_no+'</span>':'')+'</div>'
       +'<div style="font-size:12px;color:#374151;margin-top:2px">'+e8esc(x.customer||'\u2014')+(x.part?' \u00b7 '+e8esc(x.part):'')+'</div>'
       +'<div style="font-size:11px;color:#9ca3af;margin-top:2px">'+dt+(x.ncr_ref?' \u00b7 NCR '+e8esc(x.ncr_ref):'')+(x.created_by?' \u00b7 '+e8esc(x.created_by):'')+'</div>'
       +'</div>'
       +'<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;color:'+b[0]+';background:'+b[1]+'">'+e8esc(x.status||'\u2014')+'</span>'
-      +'<a href="/8d/download?report_no='+encodeURIComponent(x.report_no||'')+'" target="_blank" style="font-size:12px;font-weight:600;color:#0B5793;text-decoration:none;border:1px solid #c5d8ec;padding:6px 10px;border-radius:6px;white-space:nowrap">PDF \u2197</a>'
+      +'<a href="/8d.html?edit='+encodeURIComponent(x.report_no||'')+'" style="font-size:12px;font-weight:600;color:#0f766e;text-decoration:none;border:1px solid #99f6e4;background:#f0fdfa;padding:6px 10px;border-radius:6px;white-space:nowrap">Edit</a>'+'<a href="/8d/download?report_no='+encodeURIComponent(x.report_no||'')+'" target="_blank" style="font-size:12px;font-weight:600;color:#0B5793;text-decoration:none;border:1px solid #c5d8ec;padding:6px 10px;border-radius:6px;white-space:nowrap">PDF \u2197</a>'
       +'</div>';
   }).join('');
 }

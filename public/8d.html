@@ -61,9 +61,13 @@ textarea{resize:none;overflow:hidden;white-space:pre-wrap;word-break:break-word;
 .sigbox textarea{min-height:18px}
 .header-right textarea,.mf textarea{min-height:20px}
 @media print{textarea{height:auto !important;min-height:0 !important;overflow:visible !important;resize:none}}
+@media print{.no-print{display:none !important}}
+.no-print button{font-family:Arial}
 </style>
 <script src="/html2pdf.bundle.min.js">
 function blobToB64(b){return new Promise(function(res,rej){var r=new FileReader();r.onloadend=function(){res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(b);});}
+function collect8D(){ var v=[]; document.querySelectorAll('.page input, .page textarea, .page select').forEach(function(el){ v.push(el.value); }); return v; }
+function restore8D(fields){ if(!fields||!fields.length) return; var els=document.querySelectorAll('.page input, .page textarea, .page select'); fields.forEach(function(val,i){ if(els[i]!==undefined && els[i]!==null) els[i].value=val; }); document.querySelectorAll('.page textarea').forEach(function(t){ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; }); }
 async function submit8D(){
   var btn=document.getElementById('submitBtn');
   if(typeof html2pdf==='undefined'){ alert('PDF engine not loaded. Please hard-refresh (Ctrl+Shift+R) and try again.'); return; }
@@ -78,7 +82,7 @@ async function submit8D(){
   var filename=(rno+'_'+d+'_8D').replace(/[\\/:*?"<>|]/g,'-')+'.pdf';
   var page=document.querySelector('.page');
   document.querySelectorAll('.page textarea').forEach(function(t){ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; t.dataset.h=t.offsetHeight; });
-  var opt={margin:0,filename:filename,image:{type:'jpeg',quality:0.96},
+  var opt={margin:0,filename:filename,image:{type:'jpeg',quality:0.85},
     html2canvas:{scale:2,useCORS:true,windowWidth:page.scrollWidth,onclone:function(doc){
       doc.querySelectorAll('.page textarea').forEach(function(t){
         var inTbl=!!t.closest('.tbl');
@@ -104,12 +108,41 @@ async function submit8D(){
     try{ var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); }catch(e){}
     btn.textContent='Saving\u2026';
     var b64=await blobToB64(blob);
-    var resp=await fetch('/submit-8d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({filename:filename,pdf_base64:b64},meta))});
+    var resp=await fetch('/submit-8d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({filename:filename,pdf_base64:b64,form_data:collect8D()},meta))});
     var data=await resp.json().catch(function(){return {};});
     if(!resp.ok) throw new Error(data.error||('Server '+resp.status));
     alert('\u2713 Submitted\nReport: '+(data.report_no||rno)+'\nSaved to OneDrive + register. A PDF copy was downloaded.');
   }catch(e){ alert('Submit failed: '+((e&&e.message)||e)); }
   finally{ btn.disabled=false; btn.textContent='\u2713 Submit 8D Report'; }
+}
+
+var photos8D=[];
+function add8DPhotos(input){
+  if(!input.files||!input.files.length){return;}
+  var remaining=10-photos8D.length;
+  if(remaining<=0){ alert('Maximum 10 photos'); input.value=''; return; }
+  Array.from(input.files).slice(0,remaining).forEach(function(f){
+    var r=new FileReader();
+    r.onload=function(e){ var img=new Image(); img.onload=function(){
+      var MAX=1000,w=img.width,h=img.height;
+      if(w>h&&w>MAX){h=h*(MAX/w);w=MAX;} else if(h>MAX){w=w*(MAX/h);h=MAX;}
+      var cv=document.createElement('canvas');cv.width=w;cv.height=h;
+      var ctx=cv.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);
+      photos8D.push(cv.toDataURL('image/jpeg',0.6)); render8DPhotos();
+    }; img.src=e.target.result; };
+    r.readAsDataURL(f);
+  });
+  input.value='';
+}
+function remove8DPhoto(i){ photos8D.splice(i,1); render8DPhotos(); }
+function render8DPhotos(){
+  var g=document.getElementById('ph_grid'),c=document.getElementById('ph_count');
+  if(c)c.textContent=photos8D.length+' / 10';
+  if(!g)return;
+  g.innerHTML=photos8D.map(function(src,i){ return '<div style="position:relative">'
+    +'<img src="'+src+'" style="width:150px;height:112px;object-fit:cover;border:1px solid #c5d8ec;border-radius:4px">'
+    +'<button type="button" data-html2canvas-ignore="true" class="no-print" onclick="remove8DPhoto('+i+')" style="position:absolute;top:3px;right:3px;background:#dc2626;color:#fff;border:none;border-radius:50%;width:20px;height:20px;line-height:18px;cursor:pointer;padding:0">\u00d7</button>'
+    +'</div>'; }).join('');
 }
 </script>
 </head>
@@ -119,6 +152,7 @@ async function submit8D(){
   <button class="btn-reset" onclick="resetAll()">↺ Reset</button>
   <button class="btn-pdf" id="submitBtn" onclick="submit8D()">✓ Submit 8D Report</button>
 </div>
+<div id="editHint" style="display:none;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:11px;color:#9a3412"></div>
 <div class="page">
 
   <!-- HEADER -->
@@ -269,6 +303,20 @@ async function submit8D(){
     </div>
   </div>
 
+  <div class="d-wrap">
+    <div class="d-head"><div class="d-num">P</div><div class="d-ttl">Photographs / Evidence</div></div>
+    <div style="padding:10px">
+      <div class="no-print" data-html2canvas-ignore="true" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        <input type="file" id="ph_cam" accept="image/*" capture="environment" hidden onchange="add8DPhotos(this)">
+        <input type="file" id="ph_lib" accept="image/*" multiple hidden onchange="add8DPhotos(this)">
+        <button type="button" class="btn-reset" onclick="document.getElementById('ph_cam').click()">\uD83D\uDCF7 Camera</button>
+        <button type="button" class="btn-reset" onclick="document.getElementById('ph_lib').click()">\uD83D\uDDBC Add Photos</button>
+        <span id="ph_count" style="font-size:11px;color:#888;align-self:center">0 / 10</span>
+      </div>
+      <div id="ph_grid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
+    </div>
+  </div>
+
   <div class="footer">
     <span>Doc Ref: <b>QMS-8D-F01</b> &nbsp;|&nbsp; Bharat Steel (Chennai) Pvt. Ltd.</span>
     <span>Printed copies are uncontrolled.</span>
@@ -291,7 +339,12 @@ function agGrow(el){el.style.height='auto';el.style.height=(el.scrollHeight)+'px
 document.addEventListener('input',function(e){if(e.target&&e.target.tagName==='TEXTAREA')agGrow(e.target);});
 window.addEventListener('load',function(){document.querySelectorAll('textarea').forEach(agGrow);});
 window.addEventListener('load',async function(){
-  try{ var r=await fetch('/8d/next-number',{cache:'no-store'}); if(r.ok){ var d=await r.json(); var el=document.getElementById('rno'); if(el){ el.value=d.report_no; el.readOnly=true; el.style.background='#eef3f9'; } } }catch(e){}
+  var editRno=new URLSearchParams(location.search).get('edit');
+  if(editRno){
+    try{ var er=await fetch('/8d/get?report_no='+encodeURIComponent(editRno),{cache:'no-store'}); if(er.ok){ var ed=await er.json(); restore8D(ed.form_data); var el2=document.getElementById('rno'); if(el2){ el2.value=editRno; el2.readOnly=true; el2.style.background='#eef3f9'; } var sb=document.getElementById('submitBtn'); if(sb) sb.textContent='\u2713 Save Revision'; var hd=document.getElementById('editHint'); if(hd){ hd.style.display=''; hd.textContent='Editing '+editRno+' \u2014 saving creates a new revision (Rev '+(((ed.rev_no||0))+1)+').'; } } }catch(e){}
+  } else {
+    try{ var r=await fetch('/8d/next-number',{cache:'no-store'}); if(r.ok){ var d=await r.json(); var el=document.getElementById('rno'); if(el){ el.value=d.report_no; el.readOnly=true; el.style.background='#eef3f9'; } } }catch(e){}
+  }
   var dt=document.getElementById('rdate'); if(dt&&!dt.value) dt.value=new Date().toISOString().slice(0,10);
   try{ var cr=await fetch('/8d/complaints',{cache:'no-store'}); if(cr.ok){ var cl=await cr.json(); window._cmpMap={}; var dl=document.getElementById('ncrlist');
     if(dl && Array.isArray(cl)){ dl.innerHTML=cl.map(function(c){ window._cmpMap[c.ref]=c; return '<option value="'+c.ref+'">'+((c.company||'')+(c.grade?' \u00b7 '+c.grade:''))+'</option>'; }).join(''); } } }catch(e){}
