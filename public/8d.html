@@ -64,7 +64,8 @@ textarea{resize:none;overflow:hidden;white-space:pre-wrap;word-break:break-word;
 @media print{.no-print{display:none !important}}
 .no-print button{font-family:Arial}
 </style>
-<script src="/html2pdf.bundle.min.js">
+<script src="/html2pdf.bundle.min.js"></script>
+<script>
 function blobToB64(b){return new Promise(function(res,rej){var r=new FileReader();r.onloadend=function(){res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(b);});}
 function collect8D(){ var v=[]; document.querySelectorAll('.page input, .page textarea, .page select').forEach(function(el){ v.push(el.value); }); return v; }
 function restore8D(fields){ if(!fields||!fields.length) return; var els=document.querySelectorAll('.page input, .page textarea, .page select'); fields.forEach(function(val,i){ if(els[i]!==undefined && els[i]!==null) els[i].value=val; }); document.querySelectorAll('.page textarea').forEach(function(t){ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; }); }
@@ -309,8 +310,8 @@ function render8DPhotos(){
       <div class="no-print" data-html2canvas-ignore="true" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         <input type="file" id="ph_cam" accept="image/*" capture="environment" hidden onchange="add8DPhotos(this)">
         <input type="file" id="ph_lib" accept="image/*" multiple hidden onchange="add8DPhotos(this)">
-        <button type="button" class="btn-reset" onclick="document.getElementById('ph_cam').click()">\uD83D\uDCF7 Camera</button>
-        <button type="button" class="btn-reset" onclick="document.getElementById('ph_lib').click()">\uD83D\uDDBC Add Photos</button>
+        <button type="button" class="btn-reset" onclick="document.getElementById('ph_cam').click()">📷 Camera</button>
+        <button type="button" class="btn-reset" onclick="document.getElementById('ph_lib').click()">🖼 Add Photos</button>
         <span id="ph_count" style="font-size:11px;color:#888;align-self:center">0 / 10</span>
       </div>
       <div id="ph_grid" style="display:flex;flex-wrap:wrap;gap:8px"></div>
