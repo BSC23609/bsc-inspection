@@ -60,12 +60,13 @@ textarea{resize:none;overflow:hidden;white-space:pre-wrap;word-break:break-word;
 .tbl textarea{min-height:20px;display:block}
 .sigbox textarea{min-height:18px}
 .header-right textarea,.mf textarea{min-height:20px}
-@media print{textarea{overflow:visible !important}}
+@media print{textarea{height:auto !important;min-height:0 !important;overflow:visible !important;resize:none}}
 </style>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.2/html2pdf.bundle.min.js">
+<script src="/html2pdf.bundle.min.js">
 function blobToB64(b){return new Promise(function(res,rej){var r=new FileReader();r.onloadend=function(){res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(b);});}
-async function saveToOneDrive(){
-  var btn=document.getElementById('saveBtn');
+async function submit8D(){
+  var btn=document.getElementById('submitBtn');
+  if(typeof html2pdf==='undefined'){ alert('PDF engine not loaded. Please hard-refresh (Ctrl+Shift+R) and try again.'); return; }
   var rno=(document.getElementById('rno').value||'8D').trim();
   var d=document.getElementById('rdate').value||new Date().toISOString().slice(0,10);
   var meta={report_no:rno,report_date:d,
@@ -76,8 +77,7 @@ async function saveToOneDrive(){
     status:(document.getElementById('m_status').value||'').trim()||'Open'};
   var filename=(rno+'_'+d+'_8D').replace(/[\\/:*?"<>|]/g,'-')+'.pdf';
   var page=document.querySelector('.page');
-  // snapshot live field heights so replacement divs keep the same layout
-  document.querySelectorAll('.page textarea').forEach(function(t){ t.dataset.h=t.offsetHeight; });
+  document.querySelectorAll('.page textarea').forEach(function(t){ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; t.dataset.h=t.offsetHeight; });
   var opt={margin:0,filename:filename,image:{type:'jpeg',quality:0.96},
     html2canvas:{scale:2,useCORS:true,windowWidth:page.scrollWidth,onclone:function(doc){
       doc.querySelectorAll('.page textarea').forEach(function(t){
@@ -99,15 +99,17 @@ async function saveToOneDrive(){
     }},
     jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};
   try{
-    btn.disabled=true; btn.textContent='Saving...';
+    btn.disabled=true; btn.textContent='Generating\u2026';
     var blob=await html2pdf().set(opt).from(page).outputPdf('blob');
+    try{ var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); }catch(e){}
+    btn.textContent='Saving\u2026';
     var b64=await blobToB64(blob);
     var resp=await fetch('/submit-8d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({filename:filename,pdf_base64:b64},meta))});
     var data=await resp.json().catch(function(){return {};});
     if(!resp.ok) throw new Error(data.error||('Server '+resp.status));
-    alert('Saved to OneDrive \u2192 BSC Inspections/8D reports/'+filename);
-  }catch(e){ alert('Save failed: '+e.message); }
-  finally{ btn.disabled=false; btn.innerHTML='\u2601 Save to OneDrive'; }
+    alert('\u2713 Submitted\nReport: '+(data.report_no||rno)+'\nSaved to OneDrive + register. A PDF copy was downloaded.');
+  }catch(e){ alert('Submit failed: '+((e&&e.message)||e)); }
+  finally{ btn.disabled=false; btn.textContent='\u2713 Submit 8D Report'; }
 }
 </script>
 </head>
@@ -115,8 +117,7 @@ async function saveToOneDrive(){
 <div class="toolbar">
   <button class="btn-reset" onclick="location.href='/'">‹ QMS Home</button>
   <button class="btn-reset" onclick="resetAll()">↺ Reset</button>
-  <button class="btn-pdf" onclick="window.print()">⬇ Print / Save PDF</button>
-  <button class="btn-pdf" id="saveBtn" onclick="saveToOneDrive()">☁ Save to OneDrive</button>
+  <button class="btn-pdf" id="submitBtn" onclick="submit8D()">✓ Submit 8D Report</button>
 </div>
 <div class="page">
 
