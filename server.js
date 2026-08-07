@@ -229,6 +229,15 @@ app.get('/8d/complaints', requireAuth, requireEmployee, async (req, res) => {
     res.json(r.rows || []);
   } catch(e){ res.status(500).json({ error: e.message }); }
 });
+app.get('/8d/by-complaint', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    const keys = [String(req.query.ref||''), String(req.query.case||'')].filter(Boolean);
+    if (!keys.length) return res.json([]);
+    const r = await pgq('SELECT report_no,report_date,status,pdf_path FROM eightd_reports WHERE ncr_ref = ANY($1) ORDER BY created_at DESC', [keys]);
+    res.setHeader('Cache-Control','no-store');
+    res.json(r.rows || []);
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
 app.get('/8d/download', requireAuth, requireEmployee, async (req, res) => {
   try {
     const rno = String(req.query.report_no||'');

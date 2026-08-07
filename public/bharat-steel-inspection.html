@@ -390,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R23</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R24</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R23</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R24</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -3548,6 +3548,23 @@ function escHtml(s) {
   });
 }
 
+async function loadLinked8D(ref, cid){
+  try{
+    var r=await fetch('/8d/by-complaint?ref='+encodeURIComponent(ref||'')+'&case='+encodeURIComponent(cid||''),{cache:'no-store'});
+    if(!r.ok) return; var rows=await r.json(); if(!Array.isArray(rows)||!rows.length) return;
+    var badge={'Open':'#b45309|#fef3c7','In Progress':'#1d4ed8|#dbeafe','Closed':'#065f46|#d1fae5'};
+    var html='<div style="margin:14px 16px;padding:14px;background:#fff;border:1px solid #e5e7eb;border-radius:10px">'
+      +'<div style="font-size:12px;font-weight:700;color:#0B5793;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Linked 8D Reports ('+rows.length+')</div>'
+      +rows.map(function(x){ var b=(badge[x.status]||'#374151|#e5e7eb').split('|'); var dt=x.report_date?String(x.report_date).slice(0,10):'';
+        return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid #f1f5f9">'
+          +'<div style="flex:1;min-width:0"><span style="font-weight:700;color:#0B5793;font-size:13px">'+escHtml(x.report_no||'')+'</span> <span style="font-size:11px;color:#9ca3af">'+dt+'</span></div>'
+          +'<span style="font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;color:'+b[0]+';background:'+b[1]+'">'+escHtml(x.status||'')+'</span>'
+          +'<a href="/8d/download?report_no='+encodeURIComponent(x.report_no||'')+'" target="_blank" style="font-size:12px;font-weight:600;color:#0B5793;text-decoration:none;border:1px solid #c5d8ec;padding:5px 9px;border-radius:6px;white-space:nowrap">PDF \u2197</a>'
+          +'</div>'; }).join('')
+      +'</div>';
+    var body=document.getElementById('cmp_detail_body'); if(body) body.insertAdjacentHTML('beforeend', html);
+  }catch(e){}
+}
 async function openComplaintDetail(caseId) {
   currentCaseId = caseId;
   var c = complaintsList.find(x => x.case_id === caseId);
@@ -3652,6 +3669,7 @@ async function openComplaintDetail(caseId) {
   
   // Async load files
   renderCaseFiles(caseId);
+  loadLinked8D((c && c.ref) || caseId, caseId);
 }
 
 async function renderCaseFiles(caseId) {
