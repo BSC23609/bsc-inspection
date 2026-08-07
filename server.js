@@ -214,6 +214,29 @@ app.post('/submit-8d', requireAuth, requireEmployee, async (req, res) => {
   }
 });
 
+app.get('/8d/list', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensure8D();
+    const r = await pgq('SELECT report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by,created_at FROM eightd_reports ORDER BY created_at DESC');
+    res.setHeader('Cache-Control','no-store');
+    res.json(r.rows || []);
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
+app.get('/8d/download', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    const rno = String(req.query.report_no||'');
+    const r = await pgq('SELECT pdf_path FROM eightd_reports WHERE report_no=$1', [rno]);
+    if (!r.rows.length || !r.rows[0].pdf_path) return res.status(404).send('Report not found');
+    const token = await getToken();
+    const g = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(r.rows[0].pdf_path)+':/content', { headers:{ 'Authorization':'Bearer '+token } });
+    if (!g.ok) return res.status(502).send('Could not fetch PDF');
+    const buf = Buffer.from(await g.arrayBuffer());
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition','inline; filename="'+rno.replace(/[^A-Za-z0-9._-]/g,'_')+'.pdf"');
+    res.send(buf);
+  } catch(e){ res.status(500).send(e.message); }
+});
+
 // ===================================================
 // CUSTOMER PORTAL (brick 3) — Postgres-backed intake
 // ===================================================

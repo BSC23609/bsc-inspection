@@ -390,7 +390,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R22</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R23</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +438,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R22</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R23</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -543,6 +543,15 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="card-body">
         <div class="card-title">8D Problem Solving Report</div>
         <div class="card-desc">8-discipline corrective action report · fills, wraps, saves PDF to OneDrive · QMS-8D-F01</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+
+    <div class="form-card" data-mod="eightdreg" onclick="showScreen('eightdreg'); loadEightDList()">
+      <div class="card-icon" style="background:#EAF3FB"><svg viewBox="0 0 24 24" fill="none" stroke="#0B5793" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+      <div class="card-body">
+        <div class="card-title">8D Report Register</div>
+        <div class="card-desc">Searchable list of every 8D report · filter by status · open the PDF</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
@@ -1494,6 +1503,26 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   </div>
   <div class="form-scroll" id="cmp_list_body">
     <div style="text-align:center;padding:40px;color:var(--gray-400)">Loading complaints...</div>
+  </div>
+</div>
+
+<div class="screen" id="screen-eightdreg">
+  <div class="form-topbar" style="background:#0B5793">
+    <button class="back-btn" onclick="showScreen('home')">‹</button>
+    <div class="topbar-info">
+      <div class="topbar-title">8D Report Register</div>
+      <div class="topbar-sub" id="e8_count">Loading...</div>
+    </div>
+    <button class="back-btn" onclick="loadEightDList()" style="font-size:14px">↻</button>
+  </div>
+  <div style="padding:10px 14px;background:#f5f8fc;border-bottom:1px solid #e5e7eb;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input id="e8_search" oninput="renderEightD()" placeholder="Search no / customer / part / ref..." style="flex:1;min-width:180px;padding:7px 10px;border:1px solid #c5d8ec;border-radius:6px;font-size:13px">
+    <select id="e8_status" onchange="renderEightD()" style="padding:7px 10px;border:1px solid #c5d8ec;border-radius:6px;font-size:13px">
+      <option value="">All statuses</option><option>Open</option><option>In Progress</option><option>Closed</option>
+    </select>
+  </div>
+  <div class="form-scroll" id="e8_body">
+    <div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div>
   </div>
 </div>
 
@@ -2850,6 +2879,40 @@ var VENDOR_EMAILS = {
   'JSW':  ''
 };
 
+var _e8data=[];
+function e8esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+async function loadEightDList(){
+  var body=document.getElementById('e8_body'); if(!body) return;
+  body.innerHTML='<div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div>';
+  try{ var r=await fetch('/8d/list',{cache:'no-store'}); _e8data=await r.json(); if(!Array.isArray(_e8data)) _e8data=[]; renderEightD(); }
+  catch(e){ body.innerHTML='<div style="text-align:center;padding:40px;color:#dc2626">Failed to load: '+e8esc(e.message)+'</div>'; }
+}
+function renderEightD(){
+  var q=(document.getElementById('e8_search').value||'').toLowerCase();
+  var st=document.getElementById('e8_status').value;
+  var rows=_e8data.filter(function(x){
+    if(st && (x.status||'')!==st) return false;
+    if(!q) return true;
+    return [x.report_no,x.customer,x.part,x.ncr_ref].join(' ').toLowerCase().indexOf(q)>=0;
+  });
+  document.getElementById('e8_count').textContent=rows.length+' report'+(rows.length===1?'':'s');
+  var body=document.getElementById('e8_body');
+  if(!rows.length){ body.innerHTML='<div style="text-align:center;padding:40px;color:var(--gray-400)">No reports found.</div>'; return; }
+  var badge={'Open':'#b45309|#fef3c7','In Progress':'#1d4ed8|#dbeafe','Closed':'#065f46|#d1fae5'};
+  body.innerHTML=rows.map(function(x){
+    var b=(badge[x.status]||'#374151|#e5e7eb').split('|');
+    var dt=x.report_date?String(x.report_date).slice(0,10):'';
+    return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin:10px 12px;display:flex;align-items:center;gap:12px">'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-weight:700;color:#0B5793;font-size:14px">'+e8esc(x.report_no||'')+'</div>'
+      +'<div style="font-size:12px;color:#374151;margin-top:2px">'+e8esc(x.customer||'\u2014')+(x.part?' \u00b7 '+e8esc(x.part):'')+'</div>'
+      +'<div style="font-size:11px;color:#9ca3af;margin-top:2px">'+dt+(x.ncr_ref?' \u00b7 NCR '+e8esc(x.ncr_ref):'')+(x.created_by?' \u00b7 '+e8esc(x.created_by):'')+'</div>'
+      +'</div>'
+      +'<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;color:'+b[0]+';background:'+b[1]+'">'+e8esc(x.status||'\u2014')+'</span>'
+      +'<a href="/8d/download?report_no='+encodeURIComponent(x.report_no||'')+'" target="_blank" style="font-size:12px;font-weight:600;color:#0B5793;text-decoration:none;border:1px solid #c5d8ec;padding:6px 10px;border-radius:6px;white-space:nowrap">PDF \u2197</a>'
+      +'</div>';
+  }).join('');
+}
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   var el = document.getElementById('screen-' + name);
