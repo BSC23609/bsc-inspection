@@ -69,6 +69,7 @@ textarea{resize:none;overflow:hidden;white-space:pre-wrap;word-break:break-word;
 function blobToB64(b){return new Promise(function(res,rej){var r=new FileReader();r.onloadend=function(){res(r.result.split(',')[1]);};r.onerror=rej;r.readAsDataURL(b);});}
 function collect8D(){ var v=[]; document.querySelectorAll('.page input, .page textarea, .page select').forEach(function(el){ v.push(el.value); }); return v; }
 function restore8D(fields){ if(!fields||!fields.length) return; var els=document.querySelectorAll('.page input, .page textarea, .page select'); fields.forEach(function(val,i){ if(els[i]!==undefined && els[i]!==null) els[i].value=val; }); document.querySelectorAll('.page textarea').forEach(function(t){ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; }); }
+function imgDims(src){ return new Promise(function(res){ var im=new Image(); im.onload=function(){ res({w:im.naturalWidth||im.width||4,h:im.naturalHeight||im.height||3}); }; im.onerror=function(){ res({w:4,h:3}); }; im.src=src; }); }
 async function submit8D(){
   var btn=document.getElementById('submitBtn');
   if(typeof html2pdf==='undefined'){ alert('PDF engine not loaded. Please hard-refresh (Ctrl+Shift+R) and try again.'); return; }
@@ -82,9 +83,10 @@ async function submit8D(){
     status:(document.getElementById('m_status').value||'').trim()||'Open'};
   var filename=(rno+'_'+d+'_8D').replace(/[\\/:*?"<>|]/g,'-')+'.pdf';
   var page=document.querySelector('.page');
+  var psec=document.getElementById('photoSection'); if(psec) psec.style.display='none';
   document.querySelectorAll('.page textarea').forEach(function(t){ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; t.dataset.h=t.offsetHeight; });
   var opt={margin:0,filename:filename,image:{type:'jpeg',quality:0.85},
-    html2canvas:{scale:2,useCORS:true,width:page.offsetWidth,windowWidth:page.offsetWidth,onclone:function(doc){
+    html2canvas:{scale:2,useCORS:true,windowWidth:page.scrollWidth,onclone:function(doc){
       doc.querySelectorAll('.page textarea').forEach(function(t){
         var inTbl=!!t.closest('.tbl');
         var div=doc.createElement('div'); div.textContent=t.value;
@@ -105,15 +107,28 @@ async function submit8D(){
     jsPDF:{unit:'mm',format:'a4',orientation:'portrait'},pagebreak:{mode:['css','legacy']}};
   try{
     btn.disabled=true; btn.textContent='Generating\u2026';
-    var blob=await html2pdf().set(opt).from(page).outputPdf('blob');
+    var pdf=await html2pdf().set(opt).from(page).toPdf().get('pdf');
+    if(psec) psec.style.display='';
+    if(photos8D.length){
+      var pw=pdf.internal.pageSize.getWidth(), ph=pdf.internal.pageSize.getHeight(), m=12;
+      for(var pi=0;pi<photos8D.length;pi++){
+        var dim=await imgDims(photos8D[pi]);
+        pdf.addPage(); pdf.setFontSize(10); pdf.setTextColor(11,87,147);
+        pdf.text('Photograph '+(pi+1)+' of '+photos8D.length, m, m);
+        var maxW=pw-2*m, maxH=ph-2*m-6, sc=Math.min(maxW/dim.w, maxH/dim.h), iw=dim.w*sc, ih=dim.h*sc;
+        pdf.addImage(photos8D[pi],'JPEG', m+(maxW-iw)/2, m+6+(maxH-ih)/2, iw, ih);
+      }
+    }
+    var blob=pdf.output('blob');
     try{ var a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=filename; document.body.appendChild(a); a.click(); a.remove(); }catch(e){}
     btn.textContent='Saving\u2026';
     var b64=await blobToB64(blob);
+    if(b64.length>5600000){ throw new Error('PDF too large ('+(b64.length/1398101).toFixed(1)+' MB). Please reduce the number or size of photos and resubmit.'); }
     var resp=await fetch('/submit-8d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({filename:filename,pdf_base64:b64,form_data:collect8D()},meta))});
     var data=await resp.json().catch(function(){return {};});
     if(!resp.ok) throw new Error(data.error||('Server '+resp.status));
     alert('\u2713 Submitted\nReport: '+(data.report_no||rno)+'\nSaved to OneDrive + register. A PDF copy was downloaded.');
-  }catch(e){ alert('Submit failed: '+((e&&e.message)||e)); }
+  }catch(e){ if(psec) psec.style.display=''; alert('Submit failed: '+((e&&e.message)||e)); }
   finally{ btn.disabled=false; btn.textContent='\u2713 Submit 8D Report'; }
 }
 
@@ -304,7 +319,7 @@ function render8DPhotos(){
     </div>
   </div>
 
-  <div class="d-wrap">
+  <div class="d-wrap" id="photoSection">
     <div class="d-head"><div class="d-num">P</div><div class="d-ttl">Photographs / Evidence</div></div>
     <div style="padding:10px">
       <div class="no-print" data-html2canvas-ignore="true" style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
