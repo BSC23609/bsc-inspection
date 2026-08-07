@@ -219,6 +219,7 @@ app.post('/submit-8d', requireAuth, requireEmployee, async (req, res) => {
     const createdBy = (req.user && (req.user.name || req.user.emp_no || req.user.employee_id)) || '';
     const fd = b.form_data ? JSON.stringify(b.form_data) : null;
     const row = { report_no: rno, report_date: (b.report_date||null)||null, customer: b.customer||'', part: b.part||'', ncr_ref: b.ncr_ref||'', priority: b.priority||'', status: b.status||'Open', pdf_path: filePath, created_by: createdBy };
+    let dbWarn = null;
     try {
       await pgq('INSERT INTO eightd_revisions (report_no,rev_no,form_data,pdf_path,created_by) VALUES ($1,$2,$3,$4,$5)',
         [rno, revNo, fd, filePath, createdBy]);
@@ -226,10 +227,10 @@ app.post('/submit-8d', requireAuth, requireEmployee, async (req, res) => {
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
         ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,customer=EXCLUDED.customer,part=EXCLUDED.part,ncr_ref=EXCLUDED.ncr_ref,priority=EXCLUDED.priority,status=EXCLUDED.status,pdf_path=EXCLUDED.pdf_path,form_data=EXCLUDED.form_data,rev_no=EXCLUDED.rev_no,updated_at=now()`,
         [rno, row.report_date, row.customer, row.part, row.ncr_ref, row.priority, row.status, row.pdf_path, row.created_by, fd, revNo]);
-    } catch(e){ console.error('[8d] neon write failed:', e.message); }
+    } catch(e){ console.error('[8d] neon write FAILED:', e.message); dbWarn = e.message; }
     append8DCsv(token, Object.assign({}, row, { rev_no: revNo }));
-    console.log('[8d] saved', filePath, buf.length, 'bytes', rno, 'rev', revNo);
-    res.json({ ok: true, path: filePath, report_no: rno, rev_no: revNo });
+    console.log('[8d] saved', filePath, buf.length, 'bytes', rno, 'rev', revNo, dbWarn?('DBWARN:'+dbWarn):'');
+    res.json({ ok: true, path: filePath, report_no: rno, rev_no: revNo, db_warning: dbWarn });
   } catch (e) {
     console.error('[8d] save failed:', e.message);
     res.status(500).json({ error: e.message });

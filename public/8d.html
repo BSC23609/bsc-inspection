@@ -86,7 +86,11 @@ async function submit8D(){
   var psec=document.getElementById('photoSection'); if(psec) psec.style.display='none';
   document.querySelectorAll('.page textarea').forEach(function(t){ t.style.height='auto'; t.style.height=t.scrollHeight+'px'; t.dataset.h=t.offsetHeight; });
   var opt={margin:0,filename:filename,image:{type:'jpeg',quality:0.85},
-    html2canvas:{scale:2,useCORS:true,windowWidth:page.scrollWidth,onclone:function(doc){
+    html2canvas:{scale:2,useCORS:true,onclone:function(doc){
+      doc.body.style.padding='0'; doc.body.style.margin='0'; doc.body.style.background='#fff';
+      var _pg=doc.querySelector('.page'); if(_pg){ _pg.style.margin='0'; _pg.style.boxShadow='none'; }
+      var _tb=doc.querySelector('.toolbar'); if(_tb) _tb.style.display='none';
+      var _eh=doc.getElementById('editHint'); if(_eh) _eh.style.display='none';
       doc.querySelectorAll('.page textarea').forEach(function(t){
         var inTbl=!!t.closest('.tbl');
         var div=doc.createElement('div'); div.textContent=t.value;
@@ -127,7 +131,8 @@ async function submit8D(){
     var resp=await fetch('/submit-8d',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(Object.assign({filename:filename,pdf_base64:b64,form_data:collect8D()},meta))});
     var data=await resp.json().catch(function(){return {};});
     if(!resp.ok) throw new Error(data.error||('Server '+resp.status));
-    alert('\u2713 Submitted\nReport: '+(data.report_no||rno)+'\nSaved to OneDrive + register. A PDF copy was downloaded.');
+    if(data.db_warning){ alert('\u26a0 PDF saved to OneDrive, but the register entry FAILED:\n'+data.db_warning+'\n\nTell your developer this exact message.'); }
+    else { alert('\u2713 Submitted\nReport: '+(data.report_no||rno)+(data.rev_no!=null?'  (Rev '+data.rev_no+')':'')+'\nSaved to OneDrive + register. A PDF copy was downloaded.'); }
   }catch(e){ if(psec) psec.style.display=''; alert('Submit failed: '+((e&&e.message)||e)); }
   finally{ btn.disabled=false; btn.textContent='\u2713 Submit 8D Report'; }
 }
