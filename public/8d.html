@@ -139,7 +139,7 @@ async function saveToOneDrive(){
   <div class="meta-row">
     <div class="mf"><label>Customer</label><textarea rows="1" class="ag" id="m_customer" placeholder="Customer / Internal"></textarea></div>
     <div class="mf"><label>Part / Product</label><textarea rows="1" class="ag" id="m_part" placeholder="Part Name"></textarea></div>
-    <div class="mf"><label>NCR / Complaint Ref.</label><textarea rows="1" class="ag" id="m_ncr" placeholder="Ref. No."></textarea></div>
+    <div class="mf"><label>NCR / Complaint Ref.</label><input list="ncrlist" id="m_ncr" placeholder="Pick or type ref" autocomplete="off" style="font-size:10px;width:100%;border:1px solid #c5d8ec;border-radius:3px;padding:3px 5px;background:#fff"><datalist id="ncrlist"></datalist></div>
     <div class="mf"><label>Priority</label><select id="m_priority"><option value="">-- Select --</option><option>Critical</option><option>High</option><option>Medium</option><option>Low</option></select></div>
   </div>
 
@@ -292,6 +292,9 @@ window.addEventListener('load',function(){document.querySelectorAll('textarea').
 window.addEventListener('load',async function(){
   try{ var r=await fetch('/8d/next-number',{cache:'no-store'}); if(r.ok){ var d=await r.json(); var el=document.getElementById('rno'); if(el){ el.value=d.report_no; el.readOnly=true; el.style.background='#eef3f9'; } } }catch(e){}
   var dt=document.getElementById('rdate'); if(dt&&!dt.value) dt.value=new Date().toISOString().slice(0,10);
+  try{ var cr=await fetch('/8d/complaints',{cache:'no-store'}); if(cr.ok){ var cl=await cr.json(); window._cmpMap={}; var dl=document.getElementById('ncrlist');
+    if(dl && Array.isArray(cl)){ dl.innerHTML=cl.map(function(c){ window._cmpMap[c.ref]=c; return '<option value="'+c.ref+'">'+((c.company||'')+(c.grade?' \u00b7 '+c.grade:''))+'</option>'; }).join(''); } } }catch(e){}
+  var ncr=document.getElementById('m_ncr'); if(ncr) ncr.addEventListener('change',function(){ var c=(window._cmpMap||{})[ncr.value]; if(c){ var cu=document.getElementById('m_customer'); if(cu && !cu.value) cu.value=c.company||''; } });
 });
 </script>
 </body>

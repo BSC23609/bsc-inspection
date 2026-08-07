@@ -222,6 +222,13 @@ app.get('/8d/list', requireAuth, requireEmployee, async (req, res) => {
     res.json(r.rows || []);
   } catch(e){ res.status(500).json({ error: e.message }); }
 });
+app.get('/8d/complaints', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    const r = await pgq("SELECT ref, company, grade FROM customer_complaints ORDER BY created_at DESC LIMIT 500");
+    res.setHeader('Cache-Control','no-store');
+    res.json(r.rows || []);
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
 app.get('/8d/download', requireAuth, requireEmployee, async (req, res) => {
   try {
     const rno = String(req.query.report_no||'');
