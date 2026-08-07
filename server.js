@@ -156,6 +156,25 @@ app.get('/reports/file/:code/:ym', async (req, res) => {
 });
 app.use('/auth', authRouter);
 
+// ---- 8D Report: store browser-generated PDF into BSC Inspections/8D reports/ ----
+app.post('/submit-8d', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    const { filename, pdf_base64 } = req.body || {};
+    if (!filename || !pdf_base64) return res.status(400).json({ error: 'filename and pdf_base64 required' });
+    const safe = String(filename).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 150) || ('8D_' + Date.now() + '.pdf');
+    const buf = Buffer.from(pdf_base64, 'base64');
+    if (!buf.length) return res.status(400).json({ error: 'empty PDF payload' });
+    const token = await getToken();
+    const filePath = 'BSC Inspections/8D reports/' + safe;
+    await uploadFile(token, filePath, buf, 'application/pdf');
+    console.log('[8d] saved', filePath, buf.length, 'bytes');
+    res.json({ ok: true, path: filePath });
+  } catch (e) {
+    console.error('[8d] save failed:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ===================================================
 // CUSTOMER PORTAL (brick 3) — Postgres-backed intake
 // ===================================================
