@@ -408,7 +408,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R28</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R29</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -456,7 +456,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R28</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R29</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -815,6 +815,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <span id="i_save_status" style="display:block;font-size:10px;margin-top:1px">All submissions are saved automatically</span>
     </div>
     <div class="submit-btns">
+      <button class="btn-sec" onclick="saveDraft('inward')">Save Draft</button>
       <button class="btn-sec" onclick="clearForm('inward')">Clear</button>
       <button class="btn-primary" id="i_submit" onclick="submitInward()">
         <div class="spinner" id="i_spin"></div>
@@ -1021,6 +1022,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <span style="display:block;font-size:10px;margin-top:1px">All submissions are saved automatically</span>
     </div>
     <div class="submit-btns">
+      <button class="btn-sec" onclick="saveDraft('quality')">Save Draft</button>
       <button class="btn-sec" onclick="clearForm('quality')">Clear</button>
       <button class="btn-primary" id="q_submit" onclick="submitQuality()">
         <div class="spinner" id="q_spin"></div>
@@ -1266,6 +1268,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <strong>Shearing Quality Inspection</strong>
     </div>
     <div class="submit-btns">
+      <button class="btn-sec" onclick="saveDraft('shearing')">Save Draft</button>
       <button class="btn-sec" onclick="clearForm('shearing')">Clear</button>
       <button class="btn-primary" id="sh_submit" onclick="submitShearing()" style="background:#b45309">
         <div class="spinner" id="sh_spin"></div>
@@ -2740,6 +2743,17 @@ function clearCurrentForm() {
   document.getElementById('q_lbl').textContent='Submit';
 }
 
+function _draftScr(w){ return document.getElementById('screen-'+w); }
+function saveDraft(w){ var sc=_draftScr(w); if(!sc) return; var data={}; sc.querySelectorAll('input,textarea,select').forEach(function(fl){ if(fl.id) data[fl.id]=fl.value; }); try{ localStorage.setItem('qms_draft_'+w, JSON.stringify({t:Date.now(),data:data})); if(typeof toast==='function') toast('ok','Draft saved on this device'); }catch(e){ if(typeof toast==='function') toast('err','Could not save draft'); } }
+function clearDraft(w){ try{ localStorage.removeItem('qms_draft_'+w); }catch(e){} var b=document.getElementById('draftbar-'+w); if(b) b.remove(); }
+function resumeDraft(w){ try{ var d=JSON.parse(localStorage.getItem('qms_draft_'+w)); if(d&&d.data){ Object.keys(d.data).forEach(function(id){ var fl=document.getElementById(id); if(fl) fl.value=d.data[id]; }); if(typeof toast==='function') toast('ok','Draft restored'); } }catch(e){} var b=document.getElementById('draftbar-'+w); if(b) b.remove(); }
+function showDraftBar(w){ var sc=_draftScr(w); if(!sc) return; var raw; try{ raw=localStorage.getItem('qms_draft_'+w); }catch(e){ return; } if(!raw) return; if(document.getElementById('draftbar-'+w)) return; var when=''; try{ when=new Date(JSON.parse(raw).t).toLocaleString(); }catch(e){}
+  var bar=document.createElement('div'); bar.id='draftbar-'+w; bar.style.cssText='margin:10px 12px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;display:flex;align-items:center;gap:8px;font-size:12px;color:#9a3412;flex-wrap:wrap';
+  var txt=document.createElement('span'); txt.style.flex='1'; txt.textContent='A saved draft exists'+(when?(' ('+when+')'):'')+'.'; bar.appendChild(txt);
+  var rb=document.createElement('button'); rb.textContent='Resume'; rb.style.cssText='background:#0B5793;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-weight:600;cursor:pointer'; rb.onclick=function(){ resumeDraft(w); }; bar.appendChild(rb);
+  var db=document.createElement('button'); db.textContent='Discard'; db.style.cssText='background:#fff;color:#9a3412;border:1px solid #fed7aa;border-radius:6px;padding:6px 12px;cursor:pointer'; db.onclick=function(){ clearDraft(w); }; bar.appendChild(db);
+  var tb=sc.querySelector('.form-topbar'); if(tb&&tb.nextSibling){ sc.insertBefore(bar, tb.nextSibling); } else { sc.insertBefore(bar, sc.firstChild); }
+}
 function openForm(f) {
   document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
   document.getElementById('screen-'+f).classList.add('active');
@@ -2748,6 +2762,7 @@ function openForm(f) {
     if(!document.querySelector('#q_groups > div')) addCutGroup();
     if(!window._qFlag){ window._qFlag=true; var qg=document.getElementById('q_groups'); if(qg) qg.addEventListener('input',flagQuality); ['q_thick','q_width'].forEach(function(idn){ var e=document.getElementById(idn); if(e) e.addEventListener('input',flagQuality); }); }
   }
+  if (['inward','quality','shearing'].indexOf(f) >= 0) { try { showDraftBar(f); } catch(e){} }
   if (f === 'shearing') { renderRefBlocks('sh'); renderTolToggle('sh');
     if(!window._shFlag){ window._shFlag=true; var sr=document.getElementById('sh_rows'); if(sr) sr.addEventListener('input',flagShearing); var so=document.getElementById('sh_osz_rows'); if(so) so.addEventListener('input',flagShearing); var st=document.getElementById('sh_thickness'); if(st) st.addEventListener('input',flagShearing); }
   }
@@ -2864,6 +2879,7 @@ function toast(type, msg) {
 }
 
 function clearForm(which) {
+  try{ clearDraft(which); }catch(e){}
   if(!confirm('Clear all fields in this form?')) return;
   var prefix = which === 'inward' ? '#screen-inward' : which === 'shearing' ? '#screen-shearing' : '#screen-quality';
   document.querySelectorAll(prefix+' input, '+prefix+' textarea').forEach(i=>i.value='');
