@@ -408,7 +408,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R29</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R30</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -456,7 +456,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R29</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R30</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -2744,9 +2744,24 @@ function clearCurrentForm() {
 }
 
 function _draftScr(w){ return document.getElementById('screen-'+w); }
-function saveDraft(w){ var sc=_draftScr(w); if(!sc) return; var data={}; sc.querySelectorAll('input,textarea,select').forEach(function(fl){ if(fl.id) data[fl.id]=fl.value; }); try{ localStorage.setItem('qms_draft_'+w, JSON.stringify({t:Date.now(),data:data})); if(typeof toast==='function') toast('ok','Draft saved on this device'); }catch(e){ if(typeof toast==='function') toast('err','Could not save draft'); } }
+function _rowsVals(contSel,rowSel){ var out=[]; document.querySelectorAll(contSel+' '+rowSel).forEach(function(tr){ var v=[]; tr.querySelectorAll('input,textarea,select').forEach(function(fl){ v.push(fl.value); }); out.push(v); }); return out; }
+function _dynSnapshot(w){ var dyn={};
+  if(w==='shearing'){ dyn.sh_osz=_rowsVals('#sh_osz_rows','tr'); dyn.sh_rows=_rowsVals('#sh_rows','tr'); }
+  else if(w==='quality'){ dyn.q_groups=[]; document.querySelectorAll('#q_groups > div').forEach(function(g){ var li=g.querySelector('input[id$="_len"]'); var len=li?li.value:''; var rows=[]; g.querySelectorAll('tbody tr').forEach(function(tr){ var v=[]; tr.querySelectorAll('input,textarea,select').forEach(function(fl){ v.push(fl.value); }); rows.push(v); }); dyn.q_groups.push({len:len,rows:rows}); }); }
+  return dyn;
+}
+function _restoreFlat(contSel,rowSel,addFn,saved){ if(!saved||!saved.length) return; var cont=document.querySelector(contSel); if(!cont) return; var guard=0; while(cont.querySelectorAll(rowSel).length < saved.length && guard++<60){ try{ addFn(); }catch(e){ break; } } var trs=document.querySelectorAll(contSel+' '+rowSel); saved.forEach(function(vals,i){ if(!trs[i]) return; var fs=trs[i].querySelectorAll('input,textarea,select'); vals.forEach(function(v,j){ if(fs[j]) fs[j].value=v; }); }); }
+function _dynRestore(w,dyn){ if(!dyn) return;
+  try{
+    if(w==='shearing'){ _restoreFlat('#sh_osz_rows','tr',addShOszRow,dyn.sh_osz); _restoreFlat('#sh_rows','tr',addShRow,dyn.sh_rows); }
+    else if(w==='quality' && dyn.q_groups){ var qg=document.getElementById('q_groups'); if(qg){ qg.innerHTML=''; cgCount=0; cgRowCount={}; }
+      dyn.q_groups.forEach(function(grp){ addCutGroup(); var gid=cgCount; var li=document.getElementById('cg'+gid+'_len'); if(li) li.value=grp.len||''; var need=Math.max(1,(grp.rows||[]).length); var guard=0; while(document.querySelectorAll('#cg'+gid+'_rows tr').length < need && guard++<60){ addSheetRow(gid); } var trs=document.querySelectorAll('#cg'+gid+'_rows tr'); (grp.rows||[]).forEach(function(vals,i){ if(!trs[i]) return; var fs=trs[i].querySelectorAll('input,textarea,select'); vals.forEach(function(v,j){ if(fs[j]) fs[j].value=v; }); }); });
+    }
+  }catch(e){}
+}
+function saveDraft(w){ var sc=_draftScr(w); if(!sc) return; var data={}; sc.querySelectorAll('input,textarea,select').forEach(function(fl){ if(fl.id) data[fl.id]=fl.value; }); try{ localStorage.setItem('qms_draft_'+w, JSON.stringify({t:Date.now(),data:data,dyn:_dynSnapshot(w)})); if(typeof toast==='function') toast('ok','Draft saved on this device'); }catch(e){ if(typeof toast==='function') toast('err','Could not save draft'); } }
 function clearDraft(w){ try{ localStorage.removeItem('qms_draft_'+w); }catch(e){} var b=document.getElementById('draftbar-'+w); if(b) b.remove(); }
-function resumeDraft(w){ try{ var d=JSON.parse(localStorage.getItem('qms_draft_'+w)); if(d&&d.data){ Object.keys(d.data).forEach(function(id){ var fl=document.getElementById(id); if(fl) fl.value=d.data[id]; }); if(typeof toast==='function') toast('ok','Draft restored'); } }catch(e){} var b=document.getElementById('draftbar-'+w); if(b) b.remove(); }
+function resumeDraft(w){ try{ var d=JSON.parse(localStorage.getItem('qms_draft_'+w)); if(d){ _dynRestore(w,d.dyn); if(d.data){ Object.keys(d.data).forEach(function(id){ var fl=document.getElementById(id); if(fl) fl.value=d.data[id]; }); } if(typeof toast==='function') toast('ok','Draft restored'); } }catch(e){} var b=document.getElementById('draftbar-'+w); if(b) b.remove(); }
 function showDraftBar(w){ var sc=_draftScr(w); if(!sc) return; var raw; try{ raw=localStorage.getItem('qms_draft_'+w); }catch(e){ return; } if(!raw) return; if(document.getElementById('draftbar-'+w)) return; var when=''; try{ when=new Date(JSON.parse(raw).t).toLocaleString(); }catch(e){}
   var bar=document.createElement('div'); bar.id='draftbar-'+w; bar.style.cssText='margin:10px 12px;padding:10px 12px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;display:flex;align-items:center;gap:8px;font-size:12px;color:#9a3412;flex-wrap:wrap';
   var txt=document.createElement('span'); txt.style.flex='1'; txt.textContent='A saved draft exists'+(when?(' ('+when+')'):'')+'.'; bar.appendChild(txt);
