@@ -162,6 +162,12 @@ function render8DPhotos(){
     +'</div>'; }).join('');
 }
 </script>
+<meta name="theme-color" content="#0B5793">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/qms-icon-180.png">
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="QMS">
 </head>
 <body>
 <div class="toolbar">
@@ -368,6 +374,13 @@ window.addEventListener('load',async function(){
     if(dl && Array.isArray(cl)){ dl.innerHTML=cl.map(function(c){ window._cmpMap[c.ref]=c; return '<option value="'+c.ref+'">'+((c.company||'')+(c.grade?' \u00b7 '+c.grade:''))+'</option>'; }).join(''); } } }catch(e){}
   var ncr=document.getElementById('m_ncr'); if(ncr) ncr.addEventListener('change',function(){ var c=(window._cmpMap||{})[ncr.value]; if(c){ var cu=document.getElementById('m_customer'); if(cu && !cu.value) cu.value=c.company||''; } });
 });
+(function(){
+  function off(el){ try{ el.setAttribute('autocomplete','off'); el.setAttribute('autocorrect','off'); el.setAttribute('autocapitalize','off'); }catch(e){} }
+  function scan(root){ try{ (root.querySelectorAll('input,textarea,select')||[]).forEach(off); }catch(e){} }
+  document.addEventListener('DOMContentLoaded',function(){ scan(document);
+    try{ new MutationObserver(function(ms){ ms.forEach(function(m){ (m.addedNodes||[]).forEach(function(n){ if(n.nodeType===1){ if(/^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)) off(n); if(n.querySelectorAll) scan(n); } }); }); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  });
+})();
 </script>
 </body>
 </html>

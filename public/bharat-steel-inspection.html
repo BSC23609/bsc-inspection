@@ -3,7 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-<title>BHARAT STEEL – Inspection Portal</title>
+<title>QMS - Bharat Steel (Chennai)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0B5793">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/qms-icon-32.png" sizes="32x32">
+  <link rel="apple-touch-icon" href="/qms-icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="QMS">
+  <meta name="mobile-web-app-capable" content="yes">
 <link rel="icon" type="image/png" href="/favicon.png?v=2">
 <link rel="icon" type="image/x-icon" href="/favicon.ico?v=2">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
@@ -258,6 +268,14 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 </style>
 </head>
 <body>
+<div id="qmsSplash" style="position:fixed;inset:0;z-index:99999;background:linear-gradient(160deg,#0a1224 0%,#0B5793 100%);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;transition:opacity .5s ease">
+  <img src="/qms-icon-192.png" alt="QMS" style="width:104px;height:104px;border-radius:24px;box-shadow:0 10px 34px rgba(0,0,0,.45)">
+  <div style="color:#e5eefb;font-size:12px;letter-spacing:3px;font-weight:600">QUALITY MANAGEMENT SYSTEM</div>
+  <div style="display:flex;align-items:center;gap:10px;margin-top:8px">
+    <span style="color:#9fb6d4;font-size:12px">by</span>
+    <img src="/qms-splash-bsc.png" alt="Bharat Steel (Chennai)" style="height:52px;background:#fff;border-radius:8px;padding:6px 8px">
+  </div>
+</div>
 
 <!-- ============================
      HOME SCREEN
@@ -390,7 +408,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R27</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R28</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -438,7 +456,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R27</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R28</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -5558,5 +5576,16 @@ body{background:var(--gray-100);color:var(--gray-800)}
 @media(max-width:639px){#bsc_authbar #bsc_user{display:none}.form-topbar{padding-right:118px}}
 </style>
 
+<script>
+(function(){
+  function off(el){ try{ el.setAttribute('autocomplete','off'); el.setAttribute('autocorrect','off'); el.setAttribute('autocapitalize','off'); el.setAttribute('spellcheck','false'); }catch(e){} }
+  function scan(root){ try{ (root.querySelectorAll('input,textarea,select')||[]).forEach(off); }catch(e){} }
+  document.addEventListener('DOMContentLoaded',function(){ scan(document);
+    try{ new MutationObserver(function(ms){ ms.forEach(function(m){ (m.addedNodes||[]).forEach(function(n){ if(n.nodeType===1){ if(/^(INPUT|TEXTAREA|SELECT)$/.test(n.tagName)) off(n); if(n.querySelectorAll) scan(n); } }); }); }).observe(document.body,{childList:true,subtree:true}); }catch(e){}
+  });
+  window.addEventListener('load',function(){ var s=document.getElementById('qmsSplash'); if(s){ setTimeout(function(){ s.style.opacity='0'; setTimeout(function(){ s.style.display='none'; },520); }, 900); } });
+  if('serviceWorker' in navigator){ window.addEventListener('load',function(){ navigator.serviceWorker.register('/sw.js').catch(function(){}); }); }
+})();
+</script>
 </body>
 </html>
