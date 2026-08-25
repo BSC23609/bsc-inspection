@@ -309,6 +309,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="lg-f"><label>Password</label><input id="lg_pw" type="password" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;" autocomplete="current-password" onkeydown="if(event.key==='Enter')bscLogin()"></div>
     <button class="lg-btn" id="lg_btn" onclick="bscLogin()">Sign in</button>
     <div class="lg-err" id="lg_err"></div>
+    <div class="lg-note" style="margin-bottom:4px"><a onclick="fpOpen()" style="color:var(--brand);font-weight:600;cursor:pointer">Forgot password?</a></div>
     <div class="lg-note">Customer? <a href="/customer.html" style="color:var(--brand);font-weight:600">Sign in to the complaint portal &rarr;</a></div>
   </div></div>
 </div>
@@ -321,6 +322,27 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div class="lg-f"><label>Confirm password</label><input id="cp_pw2" type="password" placeholder="Re-enter password" onkeydown="if(event.key==='Enter')bscChangePw()"></div>
     <button class="lg-btn" id="cp_btn" onclick="bscChangePw()">Set password &amp; continue</button>
     <div class="lg-err" id="cp_err"></div>
+  </div></div>
+</div>
+
+<div class="screen" id="screen-forgotpw">
+  <div class="lg-wrap"><div class="lg-card">
+    <div class="lg-brand">Bharat Steel (Chennai)<b>Reset password</b></div>
+    <div id="fp_step1">
+      <div class="lg-sub">Enter your Employee code. A one-time code will be sent to your registered WhatsApp number.</div>
+      <div class="lg-f"><label>Employee code</label><input id="fp_id" placeholder="BSC/098" onkeydown="if(event.key==='Enter')fpSendOtp()"></div>
+      <button class="lg-btn" id="fp_send" onclick="fpSendOtp()">Send OTP on WhatsApp</button>
+    </div>
+    <div id="fp_step2" style="display:none">
+      <div class="lg-sub">Enter the 6-digit code from WhatsApp and choose a new password.</div>
+      <div class="lg-f"><label>OTP code</label><input id="fp_otp" inputmode="numeric" maxlength="6" placeholder="6-digit code"></div>
+      <div class="lg-f"><label>New password</label><input id="fp_pw1" type="password" placeholder="At least 6 characters"></div>
+      <div class="lg-f"><label>Confirm password</label><input id="fp_pw2" type="password" placeholder="Re-enter password" onkeydown="if(event.key==='Enter')fpVerify()"></div>
+      <button class="lg-btn" id="fp_reset" onclick="fpVerify()">Reset password</button>
+      <div style="text-align:center;margin-top:8px"><a onclick="fpResend()" style="color:var(--brand);font-size:12px;cursor:pointer">&larr; Use a different code / resend</a></div>
+    </div>
+    <div class="lg-err" id="fp_err"></div>
+    <div class="lg-note"><a onclick="showScreen('login')" style="color:var(--brand);font-weight:600;cursor:pointer">&larr; Back to sign in</a></div>
   </div></div>
 </div>
 
@@ -408,7 +430,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R30</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R31</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -456,7 +478,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R30</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R31</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -4851,6 +4873,33 @@ function applyAccess(me){
   });
 }
 
+function fpOpen(){ showScreen('forgotpw'); var s1=document.getElementById('fp_step1'),s2=document.getElementById('fp_step2'); if(s1)s1.style.display=''; if(s2)s2.style.display='none'; ['fp_id','fp_otp','fp_pw1','fp_pw2'].forEach(function(i){var e=document.getElementById(i); if(e)e.value='';}); var er=document.getElementById('fp_err'); if(er)er.textContent=''; }
+function fpResend(){ var s1=document.getElementById('fp_step1'),s2=document.getElementById('fp_step2'); if(s1)s1.style.display=''; if(s2)s2.style.display='none'; var er=document.getElementById('fp_err'); if(er)er.textContent=''; }
+async function fpSendOtp(){
+  var id=(document.getElementById('fp_id').value||'').trim(); var err=document.getElementById('fp_err'); err.style.color='#dc2626'; err.textContent='';
+  if(!id){ err.textContent='Enter your Employee code.'; return; }
+  var btn=document.getElementById('fp_send'); btn.disabled=true; btn.textContent='Sending...';
+  try{ var r=await fetch(SERVER_URL+'/auth/forgot',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emp_no:id})}); var d=await r.json().catch(function(){return {};});
+    document.getElementById('fp_step1').style.display='none'; document.getElementById('fp_step2').style.display='';
+    err.style.color='#059669'; err.textContent=(d&&d.message)||'If that ID exists, a code was sent.';
+  }catch(e){ err.style.color='#dc2626'; err.textContent='Network error. Please try again.'; }
+  finally{ btn.disabled=false; btn.textContent='Send OTP on WhatsApp'; }
+}
+async function fpVerify(){
+  var id=(document.getElementById('fp_id').value||'').trim();
+  var otp=(document.getElementById('fp_otp').value||'').trim();
+  var p1=document.getElementById('fp_pw1').value||'', p2=document.getElementById('fp_pw2').value||'';
+  var err=document.getElementById('fp_err'); err.style.color='#dc2626'; err.textContent='';
+  if(!otp){ err.textContent='Enter the OTP code.'; return; }
+  if(p1.length<6){ err.textContent='Password must be at least 6 characters.'; return; }
+  if(p1!==p2){ err.textContent='Passwords do not match.'; return; }
+  var btn=document.getElementById('fp_reset'); btn.disabled=true; btn.textContent='Resetting...';
+  try{ var r=await fetch(SERVER_URL+'/auth/reset-otp',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emp_no:id,otp:otp,new_password:p1})}); var d=await r.json().catch(function(){return {};});
+    if(!r.ok||!d.ok){ err.textContent=(d&&d.error)||'Could not reset password.'; }
+    else { alert('Password updated. Please sign in with your new password.'); showScreen('login'); var li=document.getElementById('lg_id'); if(li) li.value=id; }
+  }catch(e){ err.textContent='Network error. Please try again.'; }
+  finally{ btn.disabled=false; btn.textContent='Reset password'; }
+}
 async function bscLogin(){
   var id=document.getElementById('lg_id').value.trim();
   var pw=document.getElementById('lg_pw').value;

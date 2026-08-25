@@ -154,6 +154,75 @@ app.get('/reports/file/:code/:ym', async (req, res) => {
     res.send(out.pdf);
   } catch (e) { console.error('[reports] file', e.message); res.status(500).send('error'); }
 });
+// ---- Forgot password via WhatsApp OTP (WATI otp_password2) ----
+let _bcrypt; try { _bcrypt = require('bcryptjs'); } catch(e){ try { _bcrypt = require('bcrypt'); } catch(e2){} }
+let _otpTbl = false;
+async function ensureOtpTable(){
+  if (_otpTbl) return;
+  await pgq(`CREATE TABLE IF NOT EXISTS password_otps (
+    emp_no TEXT PRIMARY KEY, otp_hash TEXT NOT NULL, expires_at TIMESTAMPTZ NOT NULL,
+    attempts INT DEFAULT 0, last_sent_at TIMESTAMPTZ DEFAULT now())`);
+  _otpTbl = true;
+}
+async function sendWatiOtp(mobile, otp){
+  if (!WATI_ENDPOINT || !WATI_TOKEN) { console.log('[otp] WATI not configured; cannot send'); return false; }
+  const auth = WATI_TOKEN.startsWith('Bearer') ? WATI_TOKEN : ('Bearer ' + WATI_TOKEN);
+  const url = WATI_ENDPOINT + '/api/v1/sendTemplateMessage?whatsappNumber=' + encodeURIComponent(mobile);
+  try {
+    const resp = await fetch(url, { method:'POST', headers:{ 'Authorization': auth, 'Content-Type':'application/json' },
+      body: JSON.stringify({ template_name: 'otp_password2', broadcast_name: 'qms_otp_' + Date.now(), parameters: [{ name:'1', value: String(otp) }] }) });
+    const txt = await resp.text();
+    if (!resp.ok) { console.error('[otp] WATI send failed', resp.status, txt); return false; }
+    console.log('[otp] sent to', mobile); return true;
+  } catch(e){ console.error('[otp] WATI error', e.message); return false; }
+}
+// Request an OTP. Neutral response either way (never reveals whether an emp_no exists).
+app.post('/auth/forgot', async (req, res) => {
+  const NEUTRAL = { ok: true, message: 'If that Employee ID exists, a one-time code has been sent to its registered WhatsApp number.' };
+  try {
+    await ensureOtpTable();
+    const empNo = String((req.body && req.body.emp_no) || '').trim();
+    if (!empNo) return res.status(400).json({ ok:false, error:'Employee ID required' });
+    const r = await pgq('SELECT emp_no, mobile, COALESCE(active,true) AS active FROM employees WHERE emp_no=$1', [empNo]);
+    if (!r.rows.length || !r.rows[0].active || !r.rows[0].mobile) { return res.json(NEUTRAL); }
+    // rate-limit: skip resend if one went out in the last 60s
+    const rl = await pgq('SELECT last_sent_at FROM password_otps WHERE emp_no=$1', [empNo]);
+    if (rl.rows.length && rl.rows[0].last_sent_at && (Date.now() - new Date(rl.rows[0].last_sent_at).getTime()) < 60000) { return res.json(NEUTRAL); }
+    const otp = String(Math.floor(100000 + Math.random()*900000));
+    if (!_bcrypt) { console.error('[otp] bcrypt unavailable'); return res.json(NEUTRAL); }
+    const hash = _bcrypt.hashSync(otp, 10);
+    await pgq(`INSERT INTO password_otps (emp_no, otp_hash, expires_at, attempts, last_sent_at)
+      VALUES ($1,$2, now() + interval '10 minutes', 0, now())
+      ON CONFLICT (emp_no) DO UPDATE SET otp_hash=EXCLUDED.otp_hash, expires_at=EXCLUDED.expires_at, attempts=0, last_sent_at=now()`, [empNo, hash]);
+    await sendWatiOtp(r.rows[0].mobile, otp);
+    return res.json(NEUTRAL);
+  } catch(e){ console.error('[otp] forgot error', e.message); return res.json(NEUTRAL); }
+});
+// Verify OTP + set new password.
+app.post('/auth/reset-otp', async (req, res) => {
+  try {
+    await ensureOtpTable();
+    const b = req.body || {};
+    const empNo = String(b.emp_no||'').trim();
+    const otp = String(b.otp||'').trim();
+    const np = String(b.new_password||'');
+    if (!empNo || !otp || !np) return res.status(400).json({ ok:false, error:'All fields are required.' });
+    if (np.length < 6) return res.status(400).json({ ok:false, error:'New password must be at least 6 characters.' });
+    if (!_bcrypt) return res.status(500).json({ ok:false, error:'Server not ready to reset passwords.' });
+    const r = await pgq('SELECT otp_hash, expires_at, attempts FROM password_otps WHERE emp_no=$1', [empNo]);
+    if (!r.rows.length) return res.status(400).json({ ok:false, error:'No active code. Please request a new OTP.' });
+    const row = r.rows[0];
+    if (new Date(row.expires_at).getTime() < Date.now()) { await pgq('DELETE FROM password_otps WHERE emp_no=$1',[empNo]); return res.status(400).json({ ok:false, error:'Code expired. Please request a new OTP.' }); }
+    if ((row.attempts||0) >= 5) { await pgq('DELETE FROM password_otps WHERE emp_no=$1',[empNo]); return res.status(400).json({ ok:false, error:'Too many attempts. Please request a new OTP.' }); }
+    if (!_bcrypt.compareSync(otp, row.otp_hash)) { await pgq('UPDATE password_otps SET attempts=attempts+1 WHERE emp_no=$1',[empNo]); return res.status(400).json({ ok:false, error:'Incorrect code.' }); }
+    const pwHash = _bcrypt.hashSync(np, 10);
+    await pgq('UPDATE employees SET password_hash=$1, must_change_password=false WHERE emp_no=$2', [pwHash, empNo]);
+    await pgq('DELETE FROM password_otps WHERE emp_no=$1', [empNo]);
+    console.log('[otp] password reset for', empNo);
+    return res.json({ ok:true, message:'Password updated. You can now sign in.' });
+  } catch(e){ console.error('[otp] reset error', e.message); return res.status(500).json({ ok:false, error:'Could not reset password. Try again.' }); }
+});
+
 app.use('/auth', authRouter);
 
 // ---- 8D Report register (Neon + OneDrive) ----
@@ -164,23 +233,8 @@ async function ensure8D(){
     id SERIAL PRIMARY KEY, report_no TEXT UNIQUE, report_date DATE, customer TEXT, part TEXT,
     ncr_ref TEXT, priority TEXT, status TEXT, pdf_path TEXT, created_by TEXT,
     created_at TIMESTAMPTZ DEFAULT now())`);
-  await pgq('ALTER TABLE eightd_reports ADD COLUMN IF NOT EXISTS form_data JSONB');
-  await pgq('ALTER TABLE eightd_reports ADD COLUMN IF NOT EXISTS rev_no INTEGER DEFAULT 0');
-  await pgq('ALTER TABLE eightd_reports ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ');
-  await pgq(`CREATE TABLE IF NOT EXISTS eightd_revisions (
-    id SERIAL PRIMARY KEY, report_no TEXT, rev_no INTEGER, form_data JSONB,
-    pdf_path TEXT, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now())`);
   _ensured8D = true;
 }
-app.get('/8d/get', requireAuth, requireEmployee, async (req, res) => {
-  try {
-    await ensure8D();
-    const r = await pgq('SELECT report_no,report_date,customer,part,ncr_ref,priority,status,form_data,rev_no FROM eightd_reports WHERE report_no=$1', [String(req.query.report_no||'')]);
-    res.setHeader('Cache-Control','no-store');
-    if(!r.rows.length) return res.status(404).json({ error:'not found' });
-    res.json(r.rows[0]);
-  } catch(e){ res.status(500).json({ error:e.message }); }
-});
 app.get('/8d/next-number', requireAuth, requireEmployee, async (req, res) => {
   try {
     await ensure8D();
@@ -205,32 +259,24 @@ app.post('/submit-8d', requireAuth, requireEmployee, async (req, res) => {
   try {
     await ensure8D();
     const b = req.body || {};
-    if (!b.report_no || !b.pdf_base64) return res.status(400).json({ error: 'report_no and pdf_base64 required' });
-    const rno = String(b.report_no).trim();
+    if (!b.filename || !b.pdf_base64) return res.status(400).json({ error: 'filename and pdf_base64 required' });
+    const safe = String(b.filename).replace(/[^A-Za-z0-9._-]/g, '_').slice(0, 150) || ('8D_'+Date.now()+'.pdf');
     const buf = Buffer.from(b.pdf_base64, 'base64');
     if (!buf.length) return res.status(400).json({ error: 'empty PDF payload' });
     const token = await getToken();
-    // next revision number (keeps every past revision)
-    const rr = await pgq('SELECT COALESCE(MAX(rev_no),-1)+1 AS n FROM eightd_revisions WHERE report_no=$1', [rno]);
-    const revNo = rr.rows[0].n || 0;
-    const safeRno = rno.replace(/[^A-Za-z0-9._-]/g, '_');
-    const filePath = 'BSC Inspections/8D reports/' + safeRno + '_Rev' + String(revNo).padStart(2,'0') + '.pdf';
+    const filePath = 'BSC Inspections/8D reports/' + safe;
     await uploadFile(token, filePath, buf, 'application/pdf');
     const createdBy = (req.user && (req.user.name || req.user.emp_no || req.user.employee_id)) || '';
-    const fd = b.form_data ? JSON.stringify(b.form_data) : null;
-    const row = { report_no: rno, report_date: (b.report_date||null)||null, customer: b.customer||'', part: b.part||'', ncr_ref: b.ncr_ref||'', priority: b.priority||'', status: b.status||'Open', pdf_path: filePath, created_by: createdBy };
-    let dbWarn = null;
+    const row = { report_no: b.report_no||'', report_date: (b.report_date||null)||null, customer: b.customer||'', part: b.part||'', ncr_ref: b.ncr_ref||'', priority: b.priority||'', status: b.status||'Open', pdf_path: filePath, created_by: createdBy };
     try {
-      await pgq('INSERT INTO eightd_revisions (report_no,rev_no,form_data,pdf_path,created_by) VALUES ($1,$2,$3,$4,$5)',
-        [rno, revNo, fd, filePath, createdBy]);
-      await pgq(`INSERT INTO eightd_reports (report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by,form_data,rev_no,updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,now())
-        ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,customer=EXCLUDED.customer,part=EXCLUDED.part,ncr_ref=EXCLUDED.ncr_ref,priority=EXCLUDED.priority,status=EXCLUDED.status,pdf_path=EXCLUDED.pdf_path,form_data=EXCLUDED.form_data,rev_no=EXCLUDED.rev_no,updated_at=now()`,
-        [rno, row.report_date, row.customer, row.part, row.ncr_ref, row.priority, row.status, row.pdf_path, row.created_by, fd, revNo]);
-    } catch(e){ console.error('[8d] neon write FAILED:', e.message); dbWarn = e.message; }
-    append8DCsv(token, Object.assign({}, row, { rev_no: revNo }));
-    console.log('[8d] saved', filePath, buf.length, 'bytes', rno, 'rev', revNo, dbWarn?('DBWARN:'+dbWarn):'');
-    res.json({ ok: true, path: filePath, report_no: rno, rev_no: revNo, db_warning: dbWarn });
+      await pgq(`INSERT INTO eightd_reports (report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+        ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,customer=EXCLUDED.customer,part=EXCLUDED.part,ncr_ref=EXCLUDED.ncr_ref,priority=EXCLUDED.priority,status=EXCLUDED.status,pdf_path=EXCLUDED.pdf_path`,
+        [row.report_no, row.report_date, row.customer, row.part, row.ncr_ref, row.priority, row.status, row.pdf_path, row.created_by]);
+    } catch(e){ console.error('[8d] neon insert failed:', e.message); }
+    append8DCsv(token, row);
+    console.log('[8d] saved', filePath, buf.length, 'bytes', row.report_no);
+    res.json({ ok: true, path: filePath, report_no: row.report_no });
   } catch (e) {
     console.error('[8d] save failed:', e.message);
     res.status(500).json({ error: e.message });
@@ -240,7 +286,7 @@ app.post('/submit-8d', requireAuth, requireEmployee, async (req, res) => {
 app.get('/8d/list', requireAuth, requireEmployee, async (req, res) => {
   try {
     await ensure8D();
-    const r = await pgq('SELECT report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by,created_at,rev_no FROM eightd_reports ORDER BY COALESCE(updated_at,created_at) DESC');
+    const r = await pgq('SELECT report_no,report_date,customer,part,ncr_ref,priority,status,pdf_path,created_by,created_at FROM eightd_reports ORDER BY created_at DESC');
     res.setHeader('Cache-Control','no-store');
     res.json(r.rows || []);
   } catch(e){ res.status(500).json({ error: e.message }); }
