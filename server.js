@@ -186,6 +186,71 @@ async function appendPdiCsv(token, row){
     await uploadFile(token, p, Buffer.from(ex+line,'utf8'), 'text/csv');
   } catch(e){ console.error('[pdi-csv]', e.message); }
 }
+
+function buildPdiPdf(rep, tol){
+  return new Promise(function(resolve, reject){
+    try {
+      const doc = new PDFDocument({ size:'A4', layout:'landscape', margin:0, bufferPages:true });
+      const bufs=[]; doc.on('data', b=>bufs.push(b)); doc.on('end', ()=>resolve(Buffer.concat(bufs))); doc.on('error', reject);
+      const PW=842, PH=595, M=22, L=M, R=PW-M, W=R-L;
+      const BRAND='#0B5793', TXT='#111111', MUT='#6b7280', BORD='#c5d8ec', RED='#dc2626', REDBG='#fdecec', HEADBG='#eaf1f9';
+      let y=M;
+      try { doc.image(path.join(__dirname,'public','bsc-logo.png'), L, y, { height:34 }); } catch(e){}
+      doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(15).text('PRE DELIVERY INSPECTION REPORT', L, y+4, { width:W, align:'center' });
+      doc.fillColor(MUT).font('Helvetica').fontSize(8).text('Bharat Steel (Chennai) Pvt. Ltd.  |  Quality Management System', L, y+24, { width:W, align:'center' });
+      const rbx=R-160, rbw=160; doc.rect(rbx, y, rbw, 42).lineWidth(0.8).strokeColor(BORD).stroke();
+      doc.fillColor(MUT).font('Helvetica').fontSize(6.5).text('DOC / REV', rbx+5, y+3);
+      doc.fillColor(TXT).font('Helvetica-Bold').fontSize(8).text('BSCQMS-PRD-009   Rev 01', rbx+5, y+11);
+      doc.fillColor(MUT).font('Helvetica').fontSize(6.5).text('REPORT NO', rbx+5, y+23);
+      doc.fillColor(TXT).font('Helvetica-Bold').fontSize(8).text(String(rep.report_no||''), rbx+5, y+31, { width:rbw-10 });
+      doc.fillColor(TXT).font('Helvetica').fontSize(8.5).text('Date: '+(rep.report_date?String(rep.report_date).slice(0,10):'')+(rep.customer?('        Customer: '+rep.customer):''), L, y+44);
+      y+=58;
+      const cols=[
+        {k:'date',t:'DATE',w:54},{k:'sl',t:'SL.No',w:30},{k:'so',t:'SO No',w:46},{k:'slip',t:'Slip No',w:46},{k:'make',t:'Make',w:50},
+        {k:'sth',t:'THK',w:36,grp:'SPECIFICATIONS'},{k:'swd',t:'WIDTH',w:40,grp:'SPECIFICATIONS'},{k:'slen',t:'LENGTH',w:44,grp:'SPECIFICATIONS'},
+        {k:'oth',t:'THK',w:36,grp:'OBSERVED DIMENSIONS'},{k:'owd',t:'WIDTH',w:40,grp:'OBSERVED DIMENSIONS'},{k:'olen',t:'LENGTH',w:44,grp:'OBSERVED DIMENSIONS'},
+        {k:'qty',t:'QTY',w:32},{k:'wt',t:'WT(T)',w:36},
+        {k:'waviness',t:'WAVINESS',w:50,chk:1},{k:'line',t:'LINE/SCR',w:50,chk:1},{k:'water',t:'WAT/OIL/RST',w:56,chk:1},{k:'colour',t:'COLOUR',w:46,chk:1},{k:'sticker',t:'STICKER',w:46,chk:1}
+      ];
+      let tot=cols.reduce((a,c)=>a+c.w,0), sc=W/tot; let cx=L; cols.forEach(c=>{ c.w=c.w*sc; c.x=cx; cx+=c.w; });
+      const ghH=13, shH=13;
+      function drawHeader(hy){
+        cols.forEach(function(c){
+          if(c.grp){ doc.rect(c.x, hy+ghH, c.w, shH).fillAndStroke(HEADBG,BORD); doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(6).text(c.t, c.x, hy+ghH+3.5, {width:c.w,align:'center'}); }
+          else { doc.rect(c.x, hy, c.w, ghH+shH).fillAndStroke(HEADBG,BORD); doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(6).text(c.t, c.x, hy+(c.chk?7:9), {width:c.w,align:'center'}); }
+        });
+        ['SPECIFICATIONS','OBSERVED DIMENSIONS'].forEach(function(name){ var g=cols.filter(c=>c.grp===name); if(!g.length) return; var gx=g[0].x, gw=g.reduce((a,c)=>a+c.w,0); doc.rect(gx,hy,gw,ghH).fillAndStroke(HEADBG,BORD); doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(6.5).text(name, gx, hy+3.5, {width:gw,align:'center'}); });
+        return hy+ghH+shH;
+      }
+      let ty=drawHeader(y);
+      const rowH=16, bottom=PH-52;
+      const f=v=>{ var n=parseFloat(v); return isFinite(n)?n:null; };
+      const tTh=(tol&&tol.thickness!=null)?+tol.thickness:0.5, tW=(tol&&tol.width!=null)?+tol.width:5, tL=(tol&&tol.length!=null)?+tol.length:10;
+      (rep.items||[]).forEach(function(it){
+        if(ty+rowH>bottom){ doc.addPage({size:'A4',layout:'landscape',margin:0}); ty=drawHeader(M); }
+        var sp=it.spec||{}, ob=it.obs||{}, ch=it.checks||{};
+        var st=f(sp.th),ot=f(ob.th), sw=f(sp.wd),ow=f(ob.wd), sln=f(sp.len),oln=f(ob.len);
+        var fTh=(st!=null&&ot!=null&&Math.abs(ot-st)>tTh), fW=(sw!=null&&ow!=null&&Math.abs(ow-sw)>tW), fL=(sln!=null&&oln!=null&&Math.abs(oln-sln)>tL);
+        cols.forEach(function(c){
+          var val='';
+          if(['date','sl','so','slip','make','qty','wt'].indexOf(c.k)>=0) val=it[c.k]||'';
+          else if(c.k==='sth')val=sp.th||''; else if(c.k==='swd')val=sp.wd||''; else if(c.k==='slen')val=sp.len||'';
+          else if(c.k==='oth')val=ob.th||''; else if(c.k==='owd')val=ob.wd||''; else if(c.k==='olen')val=ob.len||'';
+          else if(c.chk) val=ch[c.k]||'';
+          var red=(c.k==='oth'&&fTh)||(c.k==='owd'&&fW)||(c.k==='olen'&&fL)||(c.chk&&val==='NOT OK');
+          if(red) doc.rect(c.x,ty,c.w,rowH).fillAndStroke(REDBG,BORD); else doc.rect(c.x,ty,c.w,rowH).lineWidth(0.5).strokeColor(BORD).stroke();
+          doc.fillColor(red?RED:TXT).font(red?'Helvetica-Bold':'Helvetica').fontSize(6.5).text(String(val), c.x+1, ty+4.5, {width:c.w-2,align:'center'});
+        });
+        ty+=rowH;
+      });
+      var sy=Math.min(Math.max(ty+16, bottom+2), PH-30), third=W/3;
+      [['INSPECTED BY',rep.inspected_by],['REVIEWED BY',rep.reviewed_by],['APPROVED BY',rep.approved_by]].forEach(function(sg,i){
+        var sx=L+i*third; doc.fillColor(MUT).font('Helvetica-Bold').fontSize(7).text(sg[0], sx, sy); doc.fillColor(TXT).font('Helvetica').fontSize(9.5).text(String(sg[1]||''), sx, sy+11);
+      });
+      doc.end();
+    } catch(e){ reject(e); }
+  });
+}
 app.post('/pdi/submit', requireAuth, requireEmployee, async (req, res) => {
   try {
     await ensurePDI();
@@ -201,15 +266,40 @@ app.post('/pdi/submit', requireAuth, requireEmployee, async (req, res) => {
         ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,customer=EXCLUDED.customer,items=EXCLUDED.items,inspected_by=EXCLUDED.inspected_by,reviewed_by=EXCLUDED.reviewed_by,approved_by=EXCLUDED.approved_by`,
         [rno, b.report_date||null, b.customer||'', JSON.stringify(items), b.inspected_by||'', b.reviewed_by||'', b.approved_by||'', createdBy]);
     } catch(e){ console.error('[pdi] neon FAILED:', e.message); dbWarn = e.message; }
-    try { const token = await getToken(); appendPdiCsv(token, { report_no:rno, report_date:b.report_date||'', customer:b.customer||'', items:items, inspected_by:b.inspected_by||'', reviewed_by:b.reviewed_by||'', approved_by:b.approved_by||'', created_by:createdBy }); } catch(e){}
-    res.json({ ok:true, report_no:rno, db_warning:dbWarn });
+    let pdfPath=null, pdfWarn=null;
+    try {
+      const token = await getToken();
+      try {
+        const settings = await loadSettings(token);
+        const tol = (settings && settings.pdi_tolerance) || { thickness:0.5, width:5, length:10 };
+        const pdfBuf = await buildPdiPdf({ report_no:rno, report_date:b.report_date||'', customer:b.customer||'', items:items, inspected_by:b.inspected_by||'', reviewed_by:b.reviewed_by||'', approved_by:b.approved_by||'' }, tol);
+        pdfPath = 'BSC Inspections/Pre-Delivery/' + rno.replace(/[^A-Za-z0-9._-]/g,'_') + '.pdf';
+        await uploadFile(token, pdfPath, pdfBuf, 'application/pdf');
+        await pgq('UPDATE pdi_reports SET pdf_path=$1 WHERE report_no=$2', [pdfPath, rno]);
+      } catch(e){ console.error('[pdi] pdf failed', e.message); pdfWarn = e.message; }
+      appendPdiCsv(token, { report_no:rno, report_date:b.report_date||'', customer:b.customer||'', items:items, inspected_by:b.inspected_by||'', reviewed_by:b.reviewed_by||'', approved_by:b.approved_by||'', created_by:createdBy });
+    } catch(e){ console.error('[pdi] token/upload', e.message); }
+    res.json({ ok:true, report_no:rno, pdf_path:pdfPath, db_warning:dbWarn, pdf_warning:pdfWarn });
   } catch(e){ console.error('[pdi] submit error', e.message); res.status(500).json({ error: e.message }); }
 });
 app.get('/pdi/list', requireAuth, requireEmployee, async (req, res) => {
   try { await ensurePDI();
-    const r = await pgq("SELECT report_no,report_date,customer,inspected_by,created_by,created_at, COALESCE(jsonb_array_length(items),0) AS item_count FROM pdi_reports ORDER BY created_at DESC");
+    const r = await pgq("SELECT report_no,report_date,customer,inspected_by,created_by,created_at,pdf_path, COALESCE(jsonb_array_length(items),0) AS item_count FROM pdi_reports ORDER BY created_at DESC");
     res.setHeader('Cache-Control','no-store'); res.json(r.rows||[]);
   } catch(e){ res.status(500).json({ error: e.message }); }
+});
+app.get('/pdi/download', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    const r = await pgq('SELECT pdf_path FROM pdi_reports WHERE report_no=$1', [String(req.query.report_no||'')]);
+    if (!r.rows.length || !r.rows[0].pdf_path) return res.status(404).send('Report/PDF not found');
+    const token = await getToken();
+    const g = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(r.rows[0].pdf_path)+':/content', { headers:{ 'Authorization':'Bearer '+token } });
+    if (!g.ok) return res.status(502).send('Could not fetch PDF');
+    const buf = Buffer.from(await g.arrayBuffer());
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition','inline; filename="'+String(req.query.report_no||'pdi').replace(/[^A-Za-z0-9._-]/g,'_')+'.pdf"');
+    res.send(buf);
+  } catch(e){ res.status(500).send(e.message); }
 });
 app.get('/pdi/get', requireAuth, requireEmployee, async (req, res) => {
   try { await ensurePDI();

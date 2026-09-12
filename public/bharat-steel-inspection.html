@@ -479,7 +479,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R33</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R34</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -527,7 +527,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R33</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R34</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -3059,10 +3059,13 @@ var _pdiData=[];
 async function loadPdiList(){ var b=document.getElementById('pdireg_body'); if(!b) return; b.innerHTML='<div style="text-align:center;padding:40px;color:#9ca3af">Loading\u2026</div>'; try{ var r=await fetch(SERVER_URL+'/pdi/list',{cache:'no-store'}); _pdiData=await r.json(); if(!Array.isArray(_pdiData)) _pdiData=[]; renderPdi(); }catch(e){ b.innerHTML='<div style="text-align:center;padding:40px;color:#dc2626">Failed to load: '+((e&&e.message)||e)+'</div>'; } }
 function renderPdi(){ var q=(document.getElementById('pdireg_search').value||'').toLowerCase(); var rows=_pdiData.filter(function(x){ if(!q) return true; return [x.report_no,x.customer,x.inspected_by,x.created_by].join(' ').toLowerCase().indexOf(q)>=0; }); document.getElementById('pdireg_count').textContent=rows.length+' report'+(rows.length===1?'':'s'); var b=document.getElementById('pdireg_body'); if(!rows.length){ b.innerHTML='<div style="text-align:center;padding:40px;color:#9ca3af">No reports found.</div>'; return; }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
-  b.innerHTML=rows.map(function(x){ var dt=x.report_date?String(x.report_date).slice(0,10):''; return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin:10px 12px">'
+  b.innerHTML=rows.map(function(x){ var dt=x.report_date?String(x.report_date).slice(0,10):''; return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin:10px 12px;display:flex;align-items:center;gap:12px">'
+    +'<div style="flex:1;min-width:0">'
     +'<div style="font-weight:700;color:#0B5793;font-size:14px">'+esc(x.report_no||'')+'</div>'
     +'<div style="font-size:12px;color:#374151;margin-top:2px">'+esc(x.customer||'\u2014')+' \u00b7 '+(x.item_count||0)+' item(s)</div>'
     +'<div style="font-size:11px;color:#9ca3af;margin-top:2px">'+dt+(x.inspected_by?' \u00b7 Inspected: '+esc(x.inspected_by):'')+(x.created_by?' \u00b7 '+esc(x.created_by):'')+'</div>'
+    +'</div>'
+    +(x.pdf_path?('<a href="'+SERVER_URL+'/pdi/download?report_no='+encodeURIComponent(x.report_no||'')+'" target="_blank" style="font-size:12px;font-weight:600;color:#0B5793;text-decoration:none;border:1px solid #c5d8ec;padding:6px 10px;border-radius:6px;white-space:nowrap">PDF \u2197</a>'):'')
     +'</div>'; }).join(''); }
 function _pdiTd(inner){ return '<td style="padding:3px;border:1px solid #e5e7eb">'+inner+'</td>'; }
 function addPdiRow(){ pdiCount++; var id=pdiCount;
