@@ -364,6 +364,16 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   </div>
 </div>
 
+<div class="screen" id="screen-pdireg">
+  <div class="form-topbar" style="background:#0B5793">
+    <button class="back-btn" onclick="showScreen('home')">‹</button>
+    <div class="topbar-info"><div class="topbar-title">PDI Register</div><div class="topbar-sub" id="pdireg_count">Loading...</div></div>
+    <button class="back-btn" onclick="loadPdiList()" style="font-size:14px">↻</button>
+  </div>
+  <div style="padding:10px 14px;background:#f5f8fc;border-bottom:1px solid #e5e7eb"><input id="pdireg_search" oninput="renderPdi()" placeholder="Search report / customer / inspector..." style="width:100%;padding:8px 10px;border:1px solid #c5d8ec;border-radius:6px;font-size:13px"></div>
+  <div class="form-scroll" id="pdireg_body"><div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div></div>
+</div>
+
 <div class="screen" id="screen-forgotpw">
   <div class="lg-wrap"><div class="lg-card">
     <div class="lg-brand">Bharat Steel (Chennai)<b>Reset password</b></div>
@@ -469,7 +479,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R32</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R33</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -517,7 +527,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R32</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R33</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -640,6 +650,15 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="card-body">
         <div class="card-title">Pre-Delivery Inspection</div>
         <div class="card-desc">PDI per SO — dimensions, 5 surface checks, sign-offs · auto-flags out-of-spec · BSCQMS-PRD-009</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+
+    <div class="form-card" onclick="showScreen('pdireg'); loadPdiList()">
+      <div class="card-icon" style="background:#EAF3FB"><svg viewBox="0 0 24 24" fill="none" stroke="#0B5793" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+      <div class="card-body">
+        <div class="card-title">PDI Register</div>
+        <div class="card-desc">All Pre-Delivery Inspection reports · search by report no / customer / inspector</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
@@ -2096,6 +2115,9 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
         <div class="field" style="margin-top:10px"><label>Tolerance &mdash; Other coils (mm)</label>
           <input type="text" id="adm_tol_other" placeholder="width_under:20, width_over:25, threshold:1500, thickness:0.5, length:10, diagonal:5">
         </div>
+        <div class="field" style="margin-top:10px"><label>Tolerance &mdash; Pre-Delivery Inspection (mm) <span style="font-weight:400;color:var(--gray-500)">thickness, width, length</span></label>
+          <input type="text" id="adm_tol_pdi" placeholder="thickness:0.5, width:5, length:10">
+        </div>
       </div>
     </div>
     
@@ -3033,6 +3055,15 @@ function renderEightD(){
   }).join('');
 }
 var pdiCount=0; var PDI_TOL={th:0.5,wd:5,len:10};
+var _pdiData=[];
+async function loadPdiList(){ var b=document.getElementById('pdireg_body'); if(!b) return; b.innerHTML='<div style="text-align:center;padding:40px;color:#9ca3af">Loading\u2026</div>'; try{ var r=await fetch(SERVER_URL+'/pdi/list',{cache:'no-store'}); _pdiData=await r.json(); if(!Array.isArray(_pdiData)) _pdiData=[]; renderPdi(); }catch(e){ b.innerHTML='<div style="text-align:center;padding:40px;color:#dc2626">Failed to load: '+((e&&e.message)||e)+'</div>'; } }
+function renderPdi(){ var q=(document.getElementById('pdireg_search').value||'').toLowerCase(); var rows=_pdiData.filter(function(x){ if(!q) return true; return [x.report_no,x.customer,x.inspected_by,x.created_by].join(' ').toLowerCase().indexOf(q)>=0; }); document.getElementById('pdireg_count').textContent=rows.length+' report'+(rows.length===1?'':'s'); var b=document.getElementById('pdireg_body'); if(!rows.length){ b.innerHTML='<div style="text-align:center;padding:40px;color:#9ca3af">No reports found.</div>'; return; }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+  b.innerHTML=rows.map(function(x){ var dt=x.report_date?String(x.report_date).slice(0,10):''; return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin:10px 12px">'
+    +'<div style="font-weight:700;color:#0B5793;font-size:14px">'+esc(x.report_no||'')+'</div>'
+    +'<div style="font-size:12px;color:#374151;margin-top:2px">'+esc(x.customer||'\u2014')+' \u00b7 '+(x.item_count||0)+' item(s)</div>'
+    +'<div style="font-size:11px;color:#9ca3af;margin-top:2px">'+dt+(x.inspected_by?' \u00b7 Inspected: '+esc(x.inspected_by):'')+(x.created_by?' \u00b7 '+esc(x.created_by):'')+'</div>'
+    +'</div>'; }).join(''); }
 function _pdiTd(inner){ return '<td style="padding:3px;border:1px solid #e5e7eb">'+inner+'</td>'; }
 function addPdiRow(){ pdiCount++; var id=pdiCount;
   function inp(sfx,w){ return '<input id="pr'+id+'_'+sfx+'" style="width:'+(w||58)+'px;border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px" oninput="flagPdi()">'; }
@@ -3053,7 +3084,8 @@ function flagPdi(){ document.querySelectorAll('#pdi_rows tr').forEach(function(t
 }); }
 function collectPdi(){ var items=[]; document.querySelectorAll('#pdi_rows tr').forEach(function(tr){ var id=tr.id.replace('pr_',''); function v(s){ var e=document.getElementById('pr'+id+'_'+s); return e?e.value:''; }
   items.push({ date:v('date'), sl:v('sl'), so:v('so'), slip:v('slip'), make:v('make'), spec:{th:v('sth'),wd:v('swd'),len:v('slen')}, obs:{th:v('oth'),wd:v('owd'),len:v('olen')}, qty:v('qty'), wt:v('wt'), checks:{waviness:v('waviness'),line:v('line'),water:v('water'),colour:v('colour'),sticker:v('sticker')} }); }); return items; }
-async function openPdi(){ showScreen('pdi'); document.getElementById('pdi_rows').innerHTML=''; pdiCount=0; addPdiRow();
+async function openPdi(){ showScreen('pdi');
+  try{ var pt=(window.APP_SETTINGS&&APP_SETTINGS.pdi_tolerance)||{}; PDI_TOL={ th:(pt.thickness!=null?+pt.thickness:0.5), wd:(pt.width!=null?+pt.width:5), len:(pt.length!=null?+pt.length:10) }; }catch(e){} document.getElementById('pdi_rows').innerHTML=''; pdiCount=0; addPdiRow();
   document.getElementById('pdi_customer').value=''; ['pdi_inspected','pdi_reviewed','pdi_approved'].forEach(function(i){ var e=document.getElementById(i); if(e) e.value=''; });
   var dt=document.getElementById('pdi_date'); if(dt) dt.value=new Date().toISOString().slice(0,10);
   try{ var r=await fetch(SERVER_URL+'/pdi/next-number',{cache:'no-store'}); if(r.ok){ var d=await r.json(); document.getElementById('pdi_report_no').value=d.report_no; document.getElementById('pdi_rno').textContent=d.report_no; } }catch(e){}
@@ -4659,6 +4691,7 @@ async function loadAdminSettings() {
     function _tolStr(p){ return ['width_under:'+(p.width_under!=null?p.width_under:''),'width_over:'+(p.width_over!=null?p.width_over:''),'threshold:'+(p.width_threshold!=null?p.width_threshold:1500),'thickness:'+(p.thickness!=null?p.thickness:''),'length:'+(p.length!=null?p.length:''),'diagonal:'+(p.diagonal!=null?p.diagonal:'')].join(', '); }
     document.getElementById('adm_tol_wheels').value = _tolStr(_wi);
     document.getElementById('adm_tol_other').value = _tolStr(_ot);
+    var _pdi=s.pdi_tolerance||{}; var _pe=document.getElementById('adm_tol_pdi'); if(_pe) _pe.value='thickness:'+(_pdi.thickness!=null?_pdi.thickness:0.5)+', width:'+(_pdi.width!=null?_pdi.width:5)+', length:'+(_pdi.length!=null?_pdi.length:10);
     var v = s.vendors || {};
     document.getElementById('adm_vendor_sail').value = v.SAIL || '';
     document.getElementById('adm_vendor_nmdc').value = v.NMDC || '';
@@ -4806,6 +4839,7 @@ async function saveAdminSettings() {
       function pp(id){ var p=parsePairs(document.getElementById(id).value); return { width_under:p.width_under, width_over:p.width_over, width_threshold:(p.threshold!=null?p.threshold:1500), thickness:p.thickness, length:p.length, diagonal:p.diagonal }; }
       return { wheels_india: pp('adm_tol_wheels'), other: pp('adm_tol_other') };
     })(),
+    pdi_tolerance: (function(){ var p=parsePairs(document.getElementById('adm_tol_pdi').value); return { thickness:p.thickness, width:p.width, length:p.length }; })(),
     vendors: {
       SAIL: document.getElementById('adm_vendor_sail').value.trim(),
       NMDC: document.getElementById('adm_vendor_nmdc').value.trim(),

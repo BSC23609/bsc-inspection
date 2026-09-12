@@ -3477,7 +3477,8 @@ const DEFAULT_SETTINGS = {
   tolerance_profiles: {
     wheels_india: { width_under: 15, width_over: 15, width_threshold: 1500, thickness: 0.2, length: 3, diagonal: 3 },
     other:        { width_under: 20, width_over: 25, width_threshold: 1500, thickness: 0.5, length: 10, diagonal: 5 }
-  }
+  },
+  pdi_tolerance: { thickness: 0.5, width: 5, length: 10 }
 };
 
 async function loadSettings(token) {
