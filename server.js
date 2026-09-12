@@ -154,6 +154,54 @@ app.get('/reports/file/:code/:ym', async (req, res) => {
     res.send(out.pdf);
   } catch (e) { console.error('[reports] file', e.message); res.status(500).send('error'); }
 });
+// ---- Dashboard stats: mirror every submission to Neon + aggregate endpoint ----
+let _statsTbl = false;
+async function ensureStats(){
+  if (_statsTbl) return;
+  await pgq(`CREATE TABLE IF NOT EXISTS inspection_stats (
+    id SERIAL PRIMARY KEY, ref TEXT, form_type TEXT, machine TEXT, report_date DATE,
+    make TEXT, grade TEXT, thickness NUMERIC, width NUMERIC, length NUMERIC,
+    qty NUMERIC, weight NUMERIC, rejection_flag BOOLEAN, rejection_qty NUMERIC,
+    oot_count INTEGER, rework_count INTEGER, inspector TEXT, created_at TIMESTAMPTZ DEFAULT now())`);
+  _statsTbl = true;
+}
+function _n(x){ var n=parseFloat(x); return isFinite(n)?n:null; }
+async function mirrorStats(data, ref){
+  await ensureStats();
+  const ft = data.form_type || '';
+  const machine = ft==='Quality' ? (data.machine_name||'') : (ft==='Shearing' ? 'Shearing' : ft);
+  const rejFlag = String(data.rejection_flag||'').toLowerCase()==='yes';
+  let rejQty = 0; (data.rejections||[]).forEach(function(r){ var q=parseFloat(r.qty); if(isFinite(q)) rejQty+=q; });
+  const reworkCount = (String(data.has_reworks||'').toLowerCase()==='yes' && Array.isArray(data.reworks)) ? data.reworks.length : 0;
+  const thickness = (_n(data.coil_thickness)!=null) ? _n(data.coil_thickness) : _n(data.thickness);
+  let width=null, length=null;
+  var isz=String(data.input_size||''); var parts=isz.split(/[x\u00d7X]/); if(parts.length>=2){ width=_n(parts[0]); length=_n(parts[1]); }
+  try {
+    await pgq(`INSERT INTO inspection_stats (ref,form_type,machine,report_date,make,grade,thickness,width,length,rejection_flag,rejection_qty,oot_count,rework_count,inspector)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+      [ref, ft, machine, data.date||null, data.make||'', data.grade||'', thickness, width, length, rejFlag, rejQty, _n(data.oot_count)||0, reworkCount, data.qc_name||data.inspector||'']);
+  } catch(e){ console.error('[stats] insert failed', e.message); }
+}
+app.get('/stats/dashboard', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureStats();
+    const machine = String(req.query.machine||'');
+    const days = Math.min(parseInt(req.query.days||'60',10)||60, 366);
+    const mNorm = machine.toUpperCase().replace(/\s+/g,'');
+    const where = "WHERE replace(upper(machine),' ','')=$1 AND report_date >= (CURRENT_DATE - $2::int)";
+    const args = [mNorm, days];
+    const perDay   = await pgq("SELECT report_date::text AS d, count(*)::int AS reports, sum(CASE WHEN rejection_flag THEN 1 ELSE 0 END)::int AS rejected, sum(rework_count)::int AS reworks, sum(CASE WHEN oot_count>0 THEN 1 ELSE 0 END)::int AS oot_reports FROM inspection_stats "+where+" GROUP BY report_date ORDER BY report_date", args);
+    const byMake   = await pgq("SELECT COALESCE(NULLIF(make,''),'(blank)') AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY n DESC LIMIT 12", args);
+    const byGrade  = await pgq("SELECT COALESCE(NULLIF(grade,''),'(blank)') AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY n DESC LIMIT 12", args);
+    const byThk    = await pgq("SELECT CASE WHEN thickness IS NULL THEN '(blank)' WHEN thickness<3 THEN '<3' WHEN thickness<6 THEN '3-6' WHEN thickness<10 THEN '6-10' WHEN thickness<16 THEN '10-16' ELSE '16+' END AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY k", args);
+    const byWidth  = await pgq("SELECT CASE WHEN width IS NULL THEN '(blank)' WHEN width<1000 THEN '<1000' WHEN width<1250 THEN '1000-1250' WHEN width<1500 THEN '1250-1500' ELSE '1500+' END AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY k", args);
+    const byLen    = await pgq("SELECT CASE WHEN length IS NULL THEN '(blank)' WHEN length<1000 THEN '<1000' WHEN length<2000 THEN '1000-2000' WHEN length<3000 THEN '2000-3000' ELSE '3000+' END AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY k", args);
+    const kpiRow   = await pgq("SELECT count(*)::int AS reports, sum(CASE WHEN rejection_flag THEN 1 ELSE 0 END)::int AS rejected, sum(rework_count)::int AS reworks, sum(CASE WHEN oot_count>0 THEN 1 ELSE 0 END)::int AS oot_reports FROM inspection_stats "+where, args);
+    const byInsp   = await pgq("SELECT COALESCE(NULLIF(inspector,''),'(blank)') AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY n DESC LIMIT 10", args);
+    res.setHeader('Cache-Control','no-store');
+    res.json({ machine, days, kpi: kpiRow.rows[0]||{}, per_day: perDay.rows, by_make: byMake.rows, by_grade: byGrade.rows, by_thickness: byThk.rows, by_width: byWidth.rows, by_length: byLen.rows, by_inspector: byInsp.rows });
+  } catch(e){ console.error('[stats] dashboard', e.message); res.status(500).json({ error: e.message }); }
+});
 // ---- Pre-Delivery Inspection (PDI) register ----
 let _pdiTbl = false;
 async function ensurePDI(){
@@ -2268,6 +2316,7 @@ app.post('/submit', requireAuth, requireEmployee, async (req, res) => {
       appendShearingReworks(token, data).catch(e => console.error('[rework]', e.message));
     }
     const ref = data.ref || ('BSC-' + Math.random().toString(36).substr(2, 6).toUpperCase());
+    mirrorStats(data, ref).catch(e => console.error('[stats]', e.message));
     const pdfBuffer = await generatePDF(folder, data, ref);
 
     let pdfFolder = 'BSC Inspections/' + folder + '/PDF';
