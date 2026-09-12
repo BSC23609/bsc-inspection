@@ -2233,6 +2233,26 @@ app.get('/stats', requireAuth, requireEmployee, async (req, res) => {
 });
 
 // SUBMIT inspection form (existing)
+const REWORK_DEFECTS = { 'RW-01':'Length variation','RW-02':'Width variation','RW-03':'Diagonal variation / squareness','RW-04':'Burr','RW-05':'Blade impression','RW-06':'Edge crack / damaged edge','RW-07':'Camber','RW-08':'Bow / flatness issue','RW-09':'Surface damage','RW-10':'Wrong size / wrong setting','RW-11':'Marking / identification error','RW-12':'Other' };
+async function appendShearingReworks(token, data){
+  const p = 'BSC Inspections/Shearing/Shearing_Rework_Register.csv';
+  let ex = '';
+  try { const g = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}}); if(g.ok) ex = await g.text(); } catch(e){}
+  const HEADER = 'Sl. No.,Date,Batch / Coil No.,Customer,Grade,Thickness (mm),Width (mm),Required Length (mm),Original Qty,Rework Qty,Scrap Qty,Actual Length (mm),Actual Width (mm),Diagonal 1 (mm),Diagonal 2 (mm),Burr Height (mm),Blade Gap (mm),Defect Code,Defect / Rework Reason,Rework Action,Machine,Operator,QC Verification,Final Disposition,Accepted Qty,Remarks\n';
+  if (!ex) ex = HEADER;
+  const priorLines = ex.trim().split('\n').length - 1;
+  const c = v => { v=(v==null?'':String(v)); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; };
+  const date = data.date || new Date().toLocaleDateString('en-GB');
+  const thickness = data.coil_thickness || data.thickness || '';
+  let out = '';
+  (data.reworks||[]).forEach((r, i) => {
+    const code = r.defect_code || '';
+    const row = [ priorLines+i+1, date, data.batch_number||'', data.customer_name||'', data.grade||'', thickness, r.width||'', r.req_length||'', r.original_qty||'', r.rework_qty||'', r.scrap_qty||'', r.actual_length||'', r.actual_width||'', r.diag1||'', r.diag2||'', r.burr_height||'', r.blade_gap||'', code, (REWORK_DEFECTS[code]||''), r.rework_action||'', r.machine||'', r.operator||'', r.qc_verification||'', r.final_disposition||'', r.accepted_qty||'', r.remarks||'' ].map(c).join(',');
+    out += row + '\n';
+  });
+  await uploadFile(token, p, Buffer.from(ex + out, 'utf8'), 'text/csv');
+  console.log('[rework] appended', (data.reworks||[]).length, 'rows for batch', data.batch_number);
+}
 app.post('/submit', requireAuth, requireEmployee, async (req, res) => {
   try {
     const data    = req.body;
@@ -2244,6 +2264,9 @@ app.post('/submit', requireAuth, requireEmployee, async (req, res) => {
     if (!folder) return res.status(400).json({ status: 'error', message: 'Missing form_type' });
 
     const token = await getToken();
+    if (folder === 'Shearing' && data.has_reworks === 'Yes' && Array.isArray(data.reworks) && data.reworks.length) {
+      appendShearingReworks(token, data).catch(e => console.error('[rework]', e.message));
+    }
     const ref = data.ref || ('BSC-' + Math.random().toString(36).substr(2, 6).toUpperCase());
     const pdfBuffer = await generatePDF(folder, data, ref);
 

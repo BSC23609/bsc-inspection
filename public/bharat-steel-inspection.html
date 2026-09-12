@@ -479,7 +479,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R34</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R36</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -527,7 +527,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R34</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R36</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -1327,6 +1327,31 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="sec-head"><span class="sec-head-icon">📝</span> Overall Observation</div>
       <div class="sec-body">
         <div class="field"><textarea id="sh_observation" rows="4" placeholder="Overall observation..."></textarea></div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🔧</span> Reworks</div>
+      <div class="sec-body">
+        <div class="field"><label>Any Reworks?</label>
+          <div class="pills" id="sg_rework">
+            <div class="pill" onclick="rp('sg_rework',this,'No'); setReworkFlag('No')">No</div>
+            <div class="pill" onclick="rp('sg_rework',this,'Yes'); setReworkFlag('Yes')">Yes</div>
+          </div>
+        </div>
+        <div id="sh_rework_wrap" style="display:none;margin-top:12px">
+          <div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:8px;background:#fff">
+            <table style="border-collapse:collapse;min-width:1900px">
+              <thead><tr style="background:#f5f8fc;color:#0B5793">
+                <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Width</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Req Len</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Orig Qty</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Rework Qty</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Scrap Qty</th>
+                <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Act Len</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Act W</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Diag 1</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Diag 2</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Burr Ht</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Blade Gap</th>
+                <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Defect Code</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Rework Action</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Machine</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Operator</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">QC Verify</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Disposition</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Accepted Qty</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Remarks</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px"></th>
+              </tr></thead>
+              <tbody id="sh_rework_rows"></tbody>
+            </table>
+          </div>
+          <button type="button" class="btn-sec" style="margin-top:10px" onclick="addReworkRow()">+ Add Rework</button>
+        </div>
       </div>
     </div>
 
@@ -2871,6 +2896,7 @@ function openForm(f) {
   }
   if (['inward','quality','shearing'].indexOf(f) >= 0) { try { showDraftBar(f); } catch(e){} }
   if (f === 'shearing') { renderRefBlocks('sh'); renderTolToggle('sh');
+    try{ var _rwp=document.querySelector('#sg_rework .pill'); if(_rwp && !document.querySelector('#sg_rework .pill.sel')){ rp('sg_rework',_rwp,'No'); setReworkFlag('No'); } }catch(e){}
     if(!window._shFlag){ window._shFlag=true; var sr=document.getElementById('sh_rows'); if(sr) sr.addEventListener('input',flagShearing); var so=document.getElementById('sh_osz_rows'); if(so) so.addEventListener('input',flagShearing); var st=document.getElementById('sh_thickness'); if(st) st.addEventListener('input',flagShearing); }
   }
   window.scrollTo(0,0);
@@ -2987,6 +3013,7 @@ function toast(type, msg) {
 
 function clearForm(which) {
   try{ clearDraft(which); }catch(e){}
+  if(which==='shearing'){ try{ shReworkFlag='No'; shReworkCount=0; var _rw=document.getElementById('sh_rework_wrap'); if(_rw)_rw.style.display='none'; var _rr=document.getElementById('sh_rework_rows'); if(_rr)_rr.innerHTML=''; document.querySelectorAll('#sg_rework .pill').forEach(function(p){p.classList.remove('sel');}); }catch(e){} }
   if(!confirm('Clear all fields in this form?')) return;
   var prefix = which === 'inward' ? '#screen-inward' : which === 'shearing' ? '#screen-shearing' : '#screen-quality';
   document.querySelectorAll(prefix+' input, '+prefix+' textarea').forEach(i=>i.value='');
@@ -4554,6 +4581,25 @@ function updateQRejAddBtn() {
   else { btn.style.display = ''; btn.textContent = '+ Add Row (' + visible + '/10)'; }
 }
 
+var shReworkFlag='No', shReworkCount=0;
+var DEFECT_CODES=[['RW-01','Length variation'],['RW-02','Width variation'],['RW-03','Diagonal variation / squareness'],['RW-04','Burr'],['RW-05','Blade impression'],['RW-06','Edge crack / damaged edge'],['RW-07','Camber'],['RW-08','Bow / flatness issue'],['RW-09','Surface damage'],['RW-10','Wrong size / wrong setting'],['RW-11','Marking / identification error'],['RW-12','Other']];
+function setReworkFlag(v){ shReworkFlag=v; var w=document.getElementById('sh_rework_wrap'); if(w)w.style.display=(v==='Yes')?'':'none'; if(v==='Yes' && !document.querySelector('#sh_rework_rows tr')) addReworkRow(); }
+function _rwTd(inner){ return '<td style="padding:3px;border:1px solid #e5e7eb">'+inner+'</td>'; }
+function addReworkRow(){ shReworkCount++; var id=shReworkCount;
+  function inp(sfx,w){ return '<input id="rw'+id+'_'+sfx+'" style="width:'+(w||58)+'px;border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px">'; }
+  function sel(sfx,opts){ return '<select id="rw'+id+'_'+sfx+'" style="border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px">'+opts+'</select>'; }
+  var codeOpts='<option value="">\u2014</option>'+DEFECT_CODES.map(function(c){return '<option value="'+c[0]+'">'+c[0]+' \u00b7 '+c[1]+'</option>';}).join('');
+  var qcOpts='<option value="">\u2014</option><option>OK</option><option>NOT OK</option>';
+  var dispOpts='<option value="">\u2014</option><option>Accepted</option><option>Rejected</option><option>Rework again</option>';
+  var tr=document.createElement('tr'); tr.id='rw_'+id;
+  tr.innerHTML=_rwTd(inp('width',56))+_rwTd(inp('req_length',62))+_rwTd(inp('original_qty',54))+_rwTd(inp('rework_qty',54))+_rwTd(inp('scrap_qty',54))
+    +_rwTd(inp('actual_length',62))+_rwTd(inp('actual_width',56))+_rwTd(inp('diag1',58))+_rwTd(inp('diag2',58))+_rwTd(inp('burr_height',54))+_rwTd(inp('blade_gap',54))
+    +_rwTd(sel('defect_code',codeOpts))+_rwTd(inp('rework_action',120))+_rwTd(inp('machine',80))+_rwTd(inp('operator',80))+_rwTd(sel('qc_verification',qcOpts))+_rwTd(sel('final_disposition',dispOpts))+_rwTd(inp('accepted_qty',54))+_rwTd(inp('remarks',130))
+    +_rwTd('<button type="button" onclick="this.parentNode.parentNode.remove()" style="background:#fee2e2;color:#dc2626;border:none;border-radius:4px;width:22px;height:22px;cursor:pointer">\u00d7</button>');
+  document.getElementById('sh_rework_rows').appendChild(tr);
+}
+function collectReworks(){ var out=[]; document.querySelectorAll('#sh_rework_rows tr').forEach(function(tr){ var id=tr.id.replace('rw_',''); function v(s){ var e=document.getElementById('rw'+id+'_'+s); return e?e.value:''; }
+  out.push({ width:v('width'), req_length:v('req_length'), original_qty:v('original_qty'), rework_qty:v('rework_qty'), scrap_qty:v('scrap_qty'), actual_length:v('actual_length'), actual_width:v('actual_width'), diag1:v('diag1'), diag2:v('diag2'), burr_height:v('burr_height'), blade_gap:v('blade_gap'), defect_code:v('defect_code'), rework_action:v('rework_action'), machine:v('machine'), operator:v('operator'), qc_verification:v('qc_verification'), final_disposition:v('final_disposition'), accepted_qty:v('accepted_qty'), remarks:v('remarks') }); }); return out; }
 function collectShearing() {
   var rows = [];
   document.querySelectorAll('#sh_rows tr').forEach(function(tr) {
@@ -4617,6 +4663,8 @@ function collectShearing() {
     sample_frequency: refFreq(), calc_constants: refCalc(), tolerances: activeProfile('sh'), tolerance_profile: profileName('sh'),
     remarks: gv('sh_remarks'),
     overall_observation: gv('sh_observation'),
+    has_reworks: (typeof shReworkFlag!=='undefined'?shReworkFlag:'No'),
+    reworks: ((typeof shReworkFlag!=='undefined' && shReworkFlag==='Yes' && typeof collectReworks==='function')?collectReworks():[]),
     timestamp: new Date().toISOString()
   };
 }
@@ -4637,6 +4685,7 @@ function submitShearing() {
     if (srj.length === 0) { toast('err','Add at least one rejected size'); return; }
     if (srj.some(function(r){ return !r.types || r.types.length===0; })) { toast('err','Select a rejection type for each rejected size'); return; }
   }
+  if (d.has_reworks === 'Yes') { var rws=(d.reworks||[]).filter(function(r){ return r.rework_qty||r.defect_code||r.rework_action; }); if (rws.length===0) { toast('err','Add at least one rework row, or mark reworks as No'); return; } }
   runSubmit('sh_submit','sh_spin','sh_lbl', d, 'Shearing');
 }
 
