@@ -223,12 +223,25 @@ app.get('/stats/backfill', requireAuth, requireAdmin, async (req, res) => {
     const cfg = MAP[which];
     if (!cfg) return res.status(400).json({ error: 'form must be quality | shearing | inward' });
     const token = await getToken();
-    const meta = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(cfg.file)+':/?$select=id', { headers:{ 'Authorization':'Bearer '+token } });
-    if (!meta.ok) return res.status(502).json({ error: 'Cannot open '+cfg.file+' ('+meta.status+') - if this is the Quality log it may be corrupt and must be repaired first.' });
-    const fileId = (await meta.json()).id;
-    const rr = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/items/'+fileId+'/workbook/tables/'+cfg.table+'/rows?$select=values&$top=5000', { headers:{ 'Authorization':'Bearer '+token } });
-    if (!rr.ok) { const t = await rr.text(); return res.status(502).json({ error: 'Cannot read '+cfg.table+' rows ('+rr.status+'). '+t.slice(0,180) }); }
-    const rows = ((await rr.json()).value) || [];
+    // Path-addressed workbook read (same root:/{path}:/{action} pattern the app uses for CSV content)
+    const base = 'https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(cfg.file)+':';
+    let rows = [];
+    let rr = await fetch(base+'/workbook/tables/'+cfg.table+'/rows?$select=values&$top=5000', { headers:{ 'Authorization':'Bearer '+token } });
+    if (rr.ok) {
+      rows = ((await rr.json()).value || []).map(x => Array.isArray(x.values) ? x.values[0] : x);
+    } else {
+      // fallback: read the used range of the first worksheet (works even if the table isn't named)
+      const errTxt = await rr.text();
+      const wsResp = await fetch(base+'/workbook/worksheets?$select=name', { headers:{ 'Authorization':'Bearer '+token } });
+      if (!wsResp.ok) { const t = await wsResp.text(); return res.status(502).json({ error: 'Cannot open '+cfg.file+' ('+wsResp.status+'). '+ (t||errTxt).slice(0,200) + ' - if this is the Quality log it may be corrupt.' }); }
+      const wss = ((await wsResp.json()).value || []);
+      if (!wss.length) return res.status(502).json({ error: 'No worksheets found in '+cfg.file });
+      const sheet = wss[0].name;
+      const urResp = await fetch(base+'/workbook/worksheets/'+encodeURIComponent(sheet)+"/usedRange(valuesOnly=true)?$select=values", { headers:{ 'Authorization':'Bearer '+token } });
+      if (!urResp.ok) { const t = await urResp.text(); return res.status(502).json({ error: 'Table "'+cfg.table+'" not found ('+rr.status+') and usedRange failed ('+urResp.status+'). '+t.slice(0,160) }); }
+      const vals = ((await urResp.json()).values) || [];
+      rows = vals.slice(1); // drop header row
+    }
     // idempotent: clear only prior backfill rows for this form, keep live-mirrored rows
     await pgq("DELETE FROM inspection_stats WHERE form_type=$1 AND ref LIKE 'BF-%'", [cfg.label]);
     let inserted = 0, failed = 0;
