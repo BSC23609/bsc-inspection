@@ -389,6 +389,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <label style="font-size:11px;color:#6b7280;font-weight:600">From</label><input type="date" id="dash_from" style="padding:6px 8px;border:1px solid #c5d8ec;border-radius:6px;font-size:12px">
     <label style="font-size:11px;color:#6b7280;font-weight:600">To</label><input type="date" id="dash_to" style="padding:6px 8px;border:1px solid #c5d8ec;border-radius:6px;font-size:12px">
     <button onclick="loadDashboard(dashMachine)" style="background:#0B5793;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">Apply</button>
+    <button onclick="backfillHistory()" title="One-time: load older reports from the OneDrive logs" style="background:#fff;color:#0B5793;border:1px solid #0B5793;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">Load history</button>
     <select id="dash_preset" onchange="dashPreset(this.value)" style="padding:6px 8px;border:1px solid #c5d8ec;border-radius:6px;font-size:12px;margin-left:auto"><option value="">Range…</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="60" selected>Last 60 days</option><option value="90">Last 90 days</option><option value="365">Last 1 year</option></select>
   </div>
   <div class="form-scroll" id="dash_body"><div style="padding:40px;text-align:center;color:var(--gray-400)">Loading…</div></div>
@@ -499,7 +500,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R39</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R40</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -547,7 +548,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R39</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R40</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -3163,6 +3164,7 @@ async function submitPdi(){ var rno=document.getElementById('pdi_report_no').val
 var dashMachine='CTL - 1';
 function _dEsc(s){ return String(s==null?'':s).replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c];}); }
 function dashPreset(days){ if(!days) return; var to=new Date(), from=new Date(); from.setDate(from.getDate()-parseInt(days,10)); var tI=document.getElementById('dash_to'), fI=document.getElementById('dash_from'); if(tI)tI.value=to.toISOString().slice(0,10); if(fI)fI.value=from.toISOString().slice(0,10); loadDashboard(dashMachine); }
+async function backfillHistory(){ var form=(dashMachine==='Shearing')?'shearing':'quality'; if(!confirm('Load older '+(form==='shearing'?'Shearing':'CTL / Quality')+' reports from the OneDrive log into the dashboard? (one-time; safe to repeat)')) return; try{ var r=await fetch(SERVER_URL+'/stats/backfill?form='+form,{cache:'no-store'}); var d=await r.json().catch(function(){return{};}); if(!r.ok){ alert('Backfill failed: '+((d&&d.error)||('Server '+r.status))); return; } alert('Loaded '+d.inserted+' historical '+d.form+' report(s) from the log.'+(d.failed?(' ('+d.failed+' skipped)'):'')); loadDashboard(dashMachine); }catch(e){ alert('Backfill error: '+((e&&e.message)||e)); } }
 function openDashboard(){ showScreen('dashboard'); var to=new Date(), from=new Date(); from.setDate(from.getDate()-60); var tI=document.getElementById('dash_to'), fI=document.getElementById('dash_from'); if(tI&&!tI.value)tI.value=to.toISOString().slice(0,10); if(fI&&!fI.value)fI.value=from.toISOString().slice(0,10); setDashTab('CTL - 1'); }
 function setDashTab(m){ dashMachine=m; [['dtab_ctl1','CTL - 1'],['dtab_ctl2','CTL - 2'],['dtab_sh','Shearing']].forEach(function(t){ var e=document.getElementById(t[0]); if(e){ var on=(t[1]===m); e.style.borderBottomColor=on?'#0B5793':'transparent'; e.style.color=on?'#0B5793':'#6b7280'; } }); loadDashboard(m); }
 async function loadDashboard(m){ var b=document.getElementById('dash_body'); if(!b) return; b.innerHTML='<div style="padding:40px;text-align:center;color:#9ca3af">Loading\u2026</div>'; try{ var _f=(document.getElementById('dash_from')||{}).value, _t=(document.getElementById('dash_to')||{}).value; var _q='machine='+encodeURIComponent(m)+((_f&&_t)?('&from='+_f+'&to='+_t):'&days=60');

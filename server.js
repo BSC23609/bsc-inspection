@@ -211,6 +211,39 @@ app.get('/stats/dashboard', requireAuth, requireAdmin, async (req, res) => {
     res.json({ machine, days, kpi: kpiRow.rows[0]||{}, per_day: perDay.rows, by_make: byMake.rows, by_grade: byGrade.rows, by_thickness: byThk.rows, by_width: byWidth.rows, by_length: byLen.rows, by_inspector: byInsp.rows, by_reject_reason: rejReason.rows, by_defect_code: defMapped });
   } catch(e){ console.error('[stats] dashboard', e.message); res.status(500).json({ error: e.message }); }
 });
+app.get('/stats/backfill', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    await ensureStats();
+    const which = String(req.query.form||'').toLowerCase();
+    const MAP = {
+      quality:  { file:'BSC Inspections/Quality/Quality_Log.xlsx',   table:'QualityLog',  parse: rowToQualityData,  label:'Quality'  },
+      shearing: { file:'BSC Inspections/Shearing/Shearing_Log.xlsx', table:'ShearingLog', parse: rowToShearingData, label:'Shearing' },
+      inward:   { file:'BSC Inspections/Inward/Inward_Log.xlsx',     table:'InwardLog',   parse: rowToInwardData,   label:'Inward'   }
+    };
+    const cfg = MAP[which];
+    if (!cfg) return res.status(400).json({ error: 'form must be quality | shearing | inward' });
+    const token = await getToken();
+    const meta = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(cfg.file)+':/?$select=id', { headers:{ 'Authorization':'Bearer '+token } });
+    if (!meta.ok) return res.status(502).json({ error: 'Cannot open '+cfg.file+' ('+meta.status+') - if this is the Quality log it may be corrupt and must be repaired first.' });
+    const fileId = (await meta.json()).id;
+    const rr = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/items/'+fileId+'/workbook/tables/'+cfg.table+'/rows?$select=values&$top=5000', { headers:{ 'Authorization':'Bearer '+token } });
+    if (!rr.ok) { const t = await rr.text(); return res.status(502).json({ error: 'Cannot read '+cfg.table+' rows ('+rr.status+'). '+t.slice(0,180) }); }
+    const rows = ((await rr.json()).value) || [];
+    // idempotent: clear only prior backfill rows for this form, keep live-mirrored rows
+    await pgq("DELETE FROM inspection_stats WHERE form_type=$1 AND ref LIKE 'BF-%'", [cfg.label]);
+    let inserted = 0, failed = 0;
+    for (let i=0; i<rows.length; i++) {
+      try {
+        const v = Array.isArray(rows[i].values) ? rows[i].values[0] : rows[i];
+        const data = cfg.parse(v) || {};
+        data.form_type = cfg.label;
+        await mirrorStats(data, 'BF-'+cfg.label+'-'+(i+1));
+        inserted++;
+      } catch(e){ failed++; }
+    }
+    res.json({ ok:true, form: cfg.label, rows_in_log: rows.length, inserted, failed });
+  } catch(e){ console.error('[backfill]', e.message); res.status(500).json({ error: e.message }); }
+});
 // ---- Pre-Delivery Inspection (PDI) register ----
 let _pdiTbl = false;
 async function ensurePDI(){
