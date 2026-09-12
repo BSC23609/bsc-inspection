@@ -163,6 +163,8 @@ async function ensureStats(){
     make TEXT, grade TEXT, thickness NUMERIC, width NUMERIC, length NUMERIC,
     qty NUMERIC, weight NUMERIC, rejection_flag BOOLEAN, rejection_qty NUMERIC,
     oot_count INTEGER, rework_count INTEGER, inspector TEXT, created_at TIMESTAMPTZ DEFAULT now())`);
+  await pgq('ALTER TABLE inspection_stats ADD COLUMN IF NOT EXISTS rejection_types JSONB');
+  await pgq('ALTER TABLE inspection_stats ADD COLUMN IF NOT EXISTS rework_codes JSONB');
   _statsTbl = true;
 }
 function _n(x){ var n=parseFloat(x); return isFinite(n)?n:null; }
@@ -176,10 +178,12 @@ async function mirrorStats(data, ref){
   const thickness = (_n(data.coil_thickness)!=null) ? _n(data.coil_thickness) : _n(data.thickness);
   let width=null, length=null;
   var isz=String(data.input_size||''); var parts=isz.split(/[x\u00d7X]/); if(parts.length>=2){ width=_n(parts[0]); length=_n(parts[1]); }
+  let rejTypes=[]; (data.rejections||[]).forEach(function(r){ if(Array.isArray(r.types)) rejTypes=rejTypes.concat(r.types); else if(r.types) rejTypes.push(r.types); });
+  let rwCodes=[]; if(Array.isArray(data.reworks)) data.reworks.forEach(function(r){ if(r.defect_code) rwCodes.push(r.defect_code); });
   try {
-    await pgq(`INSERT INTO inspection_stats (ref,form_type,machine,report_date,make,grade,thickness,width,length,rejection_flag,rejection_qty,oot_count,rework_count,inspector)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
-      [ref, ft, machine, data.date||null, data.make||'', data.grade||'', thickness, width, length, rejFlag, rejQty, _n(data.oot_count)||0, reworkCount, data.qc_name||data.inspector||'']);
+    await pgq(`INSERT INTO inspection_stats (ref,form_type,machine,report_date,make,grade,thickness,width,length,rejection_flag,rejection_qty,oot_count,rework_count,inspector,rejection_types,rework_codes)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [ref, ft, machine, data.date||null, data.make||'', data.grade||'', thickness, width, length, rejFlag, rejQty, _n(data.oot_count)||0, reworkCount, data.qc_name||data.inspector||'', JSON.stringify(rejTypes), JSON.stringify(rwCodes)]);
   } catch(e){ console.error('[stats] insert failed', e.message); }
 }
 app.get('/stats/dashboard', requireAuth, requireAdmin, async (req, res) => {
@@ -198,8 +202,11 @@ app.get('/stats/dashboard', requireAuth, requireAdmin, async (req, res) => {
     const byLen    = await pgq("SELECT CASE WHEN length IS NULL THEN '(blank)' WHEN length<1000 THEN '<1000' WHEN length<2000 THEN '1000-2000' WHEN length<3000 THEN '2000-3000' ELSE '3000+' END AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY k", args);
     const kpiRow   = await pgq("SELECT count(*)::int AS reports, sum(CASE WHEN rejection_flag THEN 1 ELSE 0 END)::int AS rejected, sum(rework_count)::int AS reworks, sum(CASE WHEN oot_count>0 THEN 1 ELSE 0 END)::int AS oot_reports FROM inspection_stats "+where, args);
     const byInsp   = await pgq("SELECT COALESCE(NULLIF(inspector,''),'(blank)') AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY n DESC LIMIT 10", args);
+    const rejReason= await pgq("SELECT elem AS k, count(*)::int AS n FROM inspection_stats, jsonb_array_elements_text(COALESCE(rejection_types,'[]'::jsonb)) AS elem "+where+" GROUP BY elem ORDER BY n DESC LIMIT 12", args);
+    const defCode  = await pgq("SELECT elem AS k, count(*)::int AS n FROM inspection_stats, jsonb_array_elements_text(COALESCE(rework_codes,'[]'::jsonb)) AS elem "+where+" GROUP BY elem ORDER BY n DESC LIMIT 12", args);
+    const defMapped= defCode.rows.map(function(r){ return { k: r.k + (REWORK_DEFECTS[r.k]?(' \u00b7 '+REWORK_DEFECTS[r.k]):''), n: r.n }; });
     res.setHeader('Cache-Control','no-store');
-    res.json({ machine, days, kpi: kpiRow.rows[0]||{}, per_day: perDay.rows, by_make: byMake.rows, by_grade: byGrade.rows, by_thickness: byThk.rows, by_width: byWidth.rows, by_length: byLen.rows, by_inspector: byInsp.rows });
+    res.json({ machine, days, kpi: kpiRow.rows[0]||{}, per_day: perDay.rows, by_make: byMake.rows, by_grade: byGrade.rows, by_thickness: byThk.rows, by_width: byWidth.rows, by_length: byLen.rows, by_inspector: byInsp.rows, by_reject_reason: rejReason.rows, by_defect_code: defMapped });
   } catch(e){ console.error('[stats] dashboard', e.message); res.status(500).json({ error: e.message }); }
 });
 // ---- Pre-Delivery Inspection (PDI) register ----
