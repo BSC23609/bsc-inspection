@@ -192,8 +192,10 @@ app.get('/stats/dashboard', requireAuth, requireAdmin, async (req, res) => {
     const machine = String(req.query.machine||'');
     const days = Math.min(parseInt(req.query.days||'60',10)||60, 366);
     const mNorm = machine.toUpperCase().replace(/\s+/g,'');
-    const where = "WHERE replace(upper(machine),' ','')=$1 AND report_date >= (CURRENT_DATE - $2::int)";
-    const args = [mNorm, days];
+    const from = req.query.from, to = req.query.to;
+    let where, args;
+    if (from && to) { where = "WHERE replace(upper(machine),' ','')=$1 AND report_date BETWEEN $2 AND $3"; args = [mNorm, from, to]; }
+    else { where = "WHERE replace(upper(machine),' ','')=$1 AND report_date >= (CURRENT_DATE - $2::int)"; args = [mNorm, days]; }
     const perDay   = await pgq("SELECT report_date::text AS d, count(*)::int AS reports, sum(CASE WHEN rejection_flag THEN 1 ELSE 0 END)::int AS rejected, sum(rework_count)::int AS reworks, sum(CASE WHEN oot_count>0 THEN 1 ELSE 0 END)::int AS oot_reports FROM inspection_stats "+where+" GROUP BY report_date ORDER BY report_date", args);
     const byMake   = await pgq("SELECT COALESCE(NULLIF(make,''),'(blank)') AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY n DESC LIMIT 12", args);
     const byGrade  = await pgq("SELECT COALESCE(NULLIF(grade,''),'(blank)') AS k, count(*)::int AS n FROM inspection_stats "+where+" GROUP BY k ORDER BY n DESC LIMIT 12", args);
