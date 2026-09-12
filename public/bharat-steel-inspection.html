@@ -325,6 +325,45 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   </div></div>
 </div>
 
+<div class="screen" id="screen-pdi">
+  <div class="form-topbar" style="background:#0B5793">
+    <button class="back-btn" onclick="showScreen('home')">‹</button>
+    <div class="topbar-info"><div class="topbar-title">Pre-Delivery Inspection</div><div class="topbar-sub" id="pdi_rno">—</div></div>
+  </div>
+  <div class="form-scroll">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin:10px 12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        <div><label style="font-size:11px;font-weight:600;color:#6b7280">Report No</label><input id="pdi_report_no" readonly style="width:100%;background:#eef3f9;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
+        <div><label style="font-size:11px;font-weight:600;color:#6b7280">Overall Date</label><input id="pdi_date" type="date" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
+      </div>
+      <div style="margin-top:10px"><label style="font-size:11px;font-weight:600;color:#6b7280">Customer (optional)</label><input id="pdi_customer" placeholder="Customer" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
+    </div>
+    <div style="margin:10px 12px;overflow-x:auto;border:1px solid #e5e7eb;border-radius:10px;background:#fff">
+      <table style="border-collapse:collapse;font-size:11px;min-width:1500px">
+        <thead><tr style="background:#f5f8fc;color:#0B5793">
+          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Date</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">SL.No</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">SO No</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Slip No</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Make</th>
+          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Spec Thk</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Spec W</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Spec L</th>
+          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Obs Thk</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Obs W</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Obs L</th>
+          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Qty</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Wt(T)</th>
+          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Waviness</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Line/Scratch</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Water/Oil/Rust</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Colour</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Sticker</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700"></th>
+        </tr></thead>
+        <tbody id="pdi_rows"></tbody>
+      </table>
+    </div>
+    <button class="btn-sec" style="margin:0 12px 12px" onclick="addPdiRow()">+ Add Item Row</button>
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin:0 12px 12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
+        <div><label style="font-size:11px;font-weight:600;color:#6b7280">Inspected By</label><input id="pdi_inspected" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
+        <div><label style="font-size:11px;font-weight:600;color:#6b7280">Reviewed By</label><input id="pdi_reviewed" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
+        <div><label style="font-size:11px;font-weight:600;color:#6b7280">Approved By</label><input id="pdi_approved" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
+      </div>
+    </div>
+    <div style="margin:0 12px 28px;display:flex;justify-content:flex-end">
+      <button class="lg-btn" id="pdi_submit" style="max-width:220px" onclick="submitPdi()">Submit PDI Report</button>
+    </div>
+  </div>
+</div>
+
 <div class="screen" id="screen-forgotpw">
   <div class="lg-wrap"><div class="lg-card">
     <div class="lg-brand">Bharat Steel (Chennai)<b>Reset password</b></div>
@@ -430,7 +469,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R31</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R32</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -478,7 +517,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R31</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R32</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -592,6 +631,15 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="card-body">
         <div class="card-title">8D Report Register</div>
         <div class="card-desc">Searchable list of every 8D report · filter by status · open the PDF</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+
+    <div class="form-card" onclick="openPdi()">
+      <div class="card-icon" style="background:#EAF3FB"><svg viewBox="0 0 24 24" fill="none" stroke="#0B5793" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3 8-8"/><path d="M20 12v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h9"/></svg></div>
+      <div class="card-body">
+        <div class="card-title">Pre-Delivery Inspection</div>
+        <div class="card-desc">PDI per SO — dimensions, 5 surface checks, sign-offs · auto-flags out-of-spec · BSCQMS-PRD-009</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
@@ -2983,6 +3031,43 @@ function renderEightD(){
       +'<a href="/8d.html?edit='+encodeURIComponent(x.report_no||'')+'" style="font-size:12px;font-weight:600;color:#0f766e;text-decoration:none;border:1px solid #99f6e4;background:#f0fdfa;padding:6px 10px;border-radius:6px;white-space:nowrap">Edit</a>'+'<a href="/8d/download?report_no='+encodeURIComponent(x.report_no||'')+'" target="_blank" style="font-size:12px;font-weight:600;color:#0B5793;text-decoration:none;border:1px solid #c5d8ec;padding:6px 10px;border-radius:6px;white-space:nowrap">PDF \u2197</a>'
       +'</div>';
   }).join('');
+}
+var pdiCount=0; var PDI_TOL={th:0.5,wd:5,len:10};
+function _pdiTd(inner){ return '<td style="padding:3px;border:1px solid #e5e7eb">'+inner+'</td>'; }
+function addPdiRow(){ pdiCount++; var id=pdiCount;
+  function inp(sfx,w){ return '<input id="pr'+id+'_'+sfx+'" style="width:'+(w||58)+'px;border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px" oninput="flagPdi()">'; }
+  function chk(sfx){ return '<select id="pr'+id+'_'+sfx+'" onchange="flagPdi()" style="border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px"><option value="">\u2014</option><option>OK</option><option>NOT OK</option></select>'; }
+  var tr=document.createElement('tr'); tr.id='pr_'+id;
+  tr.innerHTML = _pdiTd('<input id="pr'+id+'_date" type="date" style="width:118px;border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px">')
+    + _pdiTd(inp('sl',52)) + _pdiTd(inp('so',78)) + _pdiTd(inp('slip',78)) + _pdiTd(inp('make',86))
+    + _pdiTd(inp('sth',52)) + _pdiTd(inp('swd',52)) + _pdiTd(inp('slen',60))
+    + _pdiTd(inp('oth',52)) + _pdiTd(inp('owd',52)) + _pdiTd(inp('olen',60))
+    + _pdiTd(inp('qty',46)) + _pdiTd(inp('wt',52))
+    + _pdiTd(chk('waviness')) + _pdiTd(chk('line')) + _pdiTd(chk('water')) + _pdiTd(chk('colour')) + _pdiTd(chk('sticker'))
+    + _pdiTd('<button onclick="this.parentNode.parentNode.remove()" style="background:#fee2e2;color:#dc2626;border:none;border-radius:4px;width:22px;height:22px;cursor:pointer">\u00d7</button>');
+  document.getElementById('pdi_rows').appendChild(tr);
+}
+function flagPdi(){ document.querySelectorAll('#pdi_rows tr').forEach(function(tr){ var id=tr.id.replace('pr_','');
+  [['sth','oth','th'],['swd','owd','wd'],['slen','olen','len']].forEach(function(p){ var spEl=document.getElementById('pr'+id+'_'+p[0]); var ob=document.getElementById('pr'+id+'_'+p[1]); if(!ob) return; var sp=parseFloat((spEl||{}).value), ov=parseFloat(ob.value); var bad=isFinite(sp)&&isFinite(ov)&&Math.abs(ov-sp)>PDI_TOL[p[2]]; ob.style.background=bad?'#fee2e2':''; ob.style.borderColor=bad?'#dc2626':'#d1d5db'; });
+  ['waviness','line','water','colour','sticker'].forEach(function(c){ var el=document.getElementById('pr'+id+'_'+c); if(el){ var bad=el.value==='NOT OK'; el.style.background=bad?'#fee2e2':''; el.style.color=bad?'#dc2626':''; el.style.fontWeight=bad?'700':''; } });
+}); }
+function collectPdi(){ var items=[]; document.querySelectorAll('#pdi_rows tr').forEach(function(tr){ var id=tr.id.replace('pr_',''); function v(s){ var e=document.getElementById('pr'+id+'_'+s); return e?e.value:''; }
+  items.push({ date:v('date'), sl:v('sl'), so:v('so'), slip:v('slip'), make:v('make'), spec:{th:v('sth'),wd:v('swd'),len:v('slen')}, obs:{th:v('oth'),wd:v('owd'),len:v('olen')}, qty:v('qty'), wt:v('wt'), checks:{waviness:v('waviness'),line:v('line'),water:v('water'),colour:v('colour'),sticker:v('sticker')} }); }); return items; }
+async function openPdi(){ showScreen('pdi'); document.getElementById('pdi_rows').innerHTML=''; pdiCount=0; addPdiRow();
+  document.getElementById('pdi_customer').value=''; ['pdi_inspected','pdi_reviewed','pdi_approved'].forEach(function(i){ var e=document.getElementById(i); if(e) e.value=''; });
+  var dt=document.getElementById('pdi_date'); if(dt) dt.value=new Date().toISOString().slice(0,10);
+  try{ var r=await fetch(SERVER_URL+'/pdi/next-number',{cache:'no-store'}); if(r.ok){ var d=await r.json(); document.getElementById('pdi_report_no').value=d.report_no; document.getElementById('pdi_rno').textContent=d.report_no; } }catch(e){}
+}
+async function submitPdi(){ var rno=document.getElementById('pdi_report_no').value; var items=collectPdi();
+  if(!items.length){ alert('Add at least one item row.'); return; }
+  var btn=document.getElementById('pdi_submit'); btn.disabled=true; btn.textContent='Submitting\u2026';
+  try{ var r=await fetch(SERVER_URL+'/pdi/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ report_no:rno, report_date:document.getElementById('pdi_date').value, customer:document.getElementById('pdi_customer').value, items:items, inspected_by:document.getElementById('pdi_inspected').value, reviewed_by:document.getElementById('pdi_reviewed').value, approved_by:document.getElementById('pdi_approved').value })});
+    var d=await r.json().catch(function(){return {};});
+    if(!r.ok||!d.ok) throw new Error((d&&d.error)||'Submit failed');
+    if(d.db_warning) alert('\u26a0 Saved to CSV, but register write warning:\n'+d.db_warning); else alert('\u2713 PDI '+(d.report_no||rno)+' submitted and logged.');
+    showScreen('home');
+  }catch(e){ alert('Submit failed: '+((e&&e.message)||e)); }
+  finally{ btn.disabled=false; btn.textContent='Submit PDI Report'; }
 }
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));

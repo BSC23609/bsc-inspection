@@ -154,6 +154,72 @@ app.get('/reports/file/:code/:ym', async (req, res) => {
     res.send(out.pdf);
   } catch (e) { console.error('[reports] file', e.message); res.status(500).send('error'); }
 });
+// ---- Pre-Delivery Inspection (PDI) register ----
+let _pdiTbl = false;
+async function ensurePDI(){
+  if (_pdiTbl) return;
+  await pgq(`CREATE TABLE IF NOT EXISTS pdi_reports (
+    id SERIAL PRIMARY KEY, report_no TEXT UNIQUE, report_date DATE, customer TEXT,
+    items JSONB, inspected_by TEXT, reviewed_by TEXT, approved_by TEXT,
+    pdf_path TEXT, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now())`);
+  _pdiTbl = true;
+}
+app.get('/pdi/next-number', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensurePDI();
+    const d = new Date();
+    const ddmmyy = String(d.getDate()).padStart(2,'0') + String(d.getMonth()+1).padStart(2,'0') + String(d.getFullYear()).slice(-2);
+    const prefix = 'BSCQMS-PRD-009-' + ddmmyy + '-';
+    const r = await pgq("SELECT COALESCE(MAX((split_part(report_no,'-',5))::int),0) AS n FROM pdi_reports WHERE report_no LIKE $1", [prefix + '%']);
+    res.setHeader('Cache-Control','no-store');
+    res.json({ report_no: prefix + String((r.rows[0].n||0)+1).padStart(2,'0') });
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
+async function appendPdiCsv(token, row){
+  try {
+    const p = 'BSC Inspections/Pre-Delivery/PDI_Register.csv';
+    let ex = '';
+    try { const g = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}}); if(g.ok) ex = await g.text(); } catch(e){}
+    if (!ex) ex = 'Report No,Date,Customer,Items,Inspected By,Reviewed By,Approved By,Created By,Created At\n';
+    const c = v => { v=(v==null?'':String(v)); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; };
+    const line = [row.report_no,row.report_date,row.customer,(row.items||[]).length+' item(s)',row.inspected_by,row.reviewed_by,row.approved_by,row.created_by,new Date().toISOString()].map(c).join(',')+'\n';
+    await uploadFile(token, p, Buffer.from(ex+line,'utf8'), 'text/csv');
+  } catch(e){ console.error('[pdi-csv]', e.message); }
+}
+app.post('/pdi/submit', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensurePDI();
+    const b = req.body || {};
+    if (!b.report_no) return res.status(400).json({ error: 'report_no required' });
+    const rno = String(b.report_no).trim();
+    const createdBy = (req.user && (req.user.name||req.user.emp_no||req.user.employee_id)) || '';
+    const items = Array.isArray(b.items) ? b.items : [];
+    let dbWarn = null;
+    try {
+      await pgq(`INSERT INTO pdi_reports (report_no,report_date,customer,items,inspected_by,reviewed_by,approved_by,created_by)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,customer=EXCLUDED.customer,items=EXCLUDED.items,inspected_by=EXCLUDED.inspected_by,reviewed_by=EXCLUDED.reviewed_by,approved_by=EXCLUDED.approved_by`,
+        [rno, b.report_date||null, b.customer||'', JSON.stringify(items), b.inspected_by||'', b.reviewed_by||'', b.approved_by||'', createdBy]);
+    } catch(e){ console.error('[pdi] neon FAILED:', e.message); dbWarn = e.message; }
+    try { const token = await getToken(); appendPdiCsv(token, { report_no:rno, report_date:b.report_date||'', customer:b.customer||'', items:items, inspected_by:b.inspected_by||'', reviewed_by:b.reviewed_by||'', approved_by:b.approved_by||'', created_by:createdBy }); } catch(e){}
+    res.json({ ok:true, report_no:rno, db_warning:dbWarn });
+  } catch(e){ console.error('[pdi] submit error', e.message); res.status(500).json({ error: e.message }); }
+});
+app.get('/pdi/list', requireAuth, requireEmployee, async (req, res) => {
+  try { await ensurePDI();
+    const r = await pgq("SELECT report_no,report_date,customer,inspected_by,created_by,created_at, COALESCE(jsonb_array_length(items),0) AS item_count FROM pdi_reports ORDER BY created_at DESC");
+    res.setHeader('Cache-Control','no-store'); res.json(r.rows||[]);
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
+app.get('/pdi/get', requireAuth, requireEmployee, async (req, res) => {
+  try { await ensurePDI();
+    const r = await pgq('SELECT * FROM pdi_reports WHERE report_no=$1', [String(req.query.report_no||'')]);
+    res.setHeader('Cache-Control','no-store');
+    if(!r.rows.length) return res.status(404).json({ error:'not found' });
+    res.json(r.rows[0]);
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
+
 // ---- Forgot password via WhatsApp OTP (WATI otp_password2) ----
 let _bcrypt; try { _bcrypt = require('bcryptjs'); } catch(e){ try { _bcrypt = require('bcrypt'); } catch(e2){} }
 let _otpTbl = false;
