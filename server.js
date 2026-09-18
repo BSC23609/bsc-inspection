@@ -211,6 +211,31 @@ app.get('/stats/dashboard', requireAuth, requireAdmin, async (req, res) => {
     res.json({ machine, days, kpi: kpiRow.rows[0]||{}, per_day: perDay.rows, by_make: byMake.rows, by_grade: byGrade.rows, by_thickness: byThk.rows, by_width: byWidth.rows, by_length: byLen.rows, by_inspector: byInsp.rows, by_reject_reason: rejReason.rows, by_defect_code: defMapped });
   } catch(e){ console.error('[stats] dashboard', e.message); res.status(500).json({ error: e.message }); }
 });
+function parseCsvLine(line){ const out=[]; let cur='',q=false; for(let i=0;i<line.length;i++){ const c=line[i]; if(q){ if(c==='"'){ if(line[i+1]==='"'){cur+='"';i++;} else q=false; } else cur+=c; } else { if(c===','){out.push(cur);cur='';} else if(c==='"'){q=true;} else cur+=c; } } out.push(cur); return out; }
+// Regenerate shearing PDFs that had reworks (reads log + rework register, overwrites the PDF)
+app.get('/regen-shearing-rework', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const token = await getToken();
+    let csv=''; try { const g=await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent('BSC Inspections/Shearing/Shearing_Rework_Register.csv')+':/content',{headers:{'Authorization':'Bearer '+token}}); if(g.ok) csv=await g.text(); } catch(e){}
+    if(!csv.trim()) return res.json({ ok:true, regenerated:0, note:'rework register empty or not found' });
+    const lines=csv.replace(/\r/g,'').trim().split('\n'); const hdr=parseCsvLine(lines[0]); const ix=n=>hdr.indexOf(n);
+    const groups={};
+    for(let i=1;i<lines.length;i++){ const c=parseCsvLine(lines[i]); if(c.length<3) continue;
+      const batch=(c[ix('Batch / Coil No.')]||'').trim(), date=(c[ix('Date')]||'').trim(); const key=batch+'||'+date;
+      (groups[key]=groups[key]||[]).push({ width:c[ix('Width (mm)')], req_length:c[ix('Required Length (mm)')], original_qty:c[ix('Original Qty')], rework_qty:c[ix('Rework Qty')], scrap_qty:c[ix('Scrap Qty')], actual_length:c[ix('Actual Length (mm)')], actual_width:c[ix('Actual Width (mm)')], diag1:c[ix('Diagonal 1 (mm)')], diag2:c[ix('Diagonal 2 (mm)')], burr_height:c[ix('Burr Height (mm)')], blade_gap:c[ix('Blade Gap (mm)')], defect_code:c[ix('Defect Code')], rework_action:c[ix('Rework Action')], machine:c[ix('Machine')], operator:c[ix('Operator')], qc_verification:c[ix('QC Verification')], final_disposition:c[ix('Final Disposition')], accepted_qty:c[ix('Accepted Qty')], remarks:c[ix('Remarks')] });
+    }
+    const base='https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent('BSC Inspections/Shearing/Shearing_Log.xlsx')+':';
+    let rows=[]; const rr=await fetch(base+'/workbook/tables/ShearingLog/rows?$select=values&$top=5000',{headers:{'Authorization':'Bearer '+token}});
+    if(rr.ok) rows=((await rr.json()).value||[]).map(x=>Array.isArray(x.values)?x.values[0]:x);
+    let regen=0, matched=0; const used=new Set();
+    for(const v of rows){ if(!v||!v[0]) continue; const data=rowToShearingData(v); const key=String(data.batch_number||'').trim()+'||'+String(data.date||'').trim();
+      if(groups[key]){ matched++; used.add(key); data.form_type='Shearing'; data.has_reworks='Yes'; data.reworks=groups[key];
+        try { const pdf=await generatePDF('Shearing', data, data.ref||v[1]||v[0]); await uploadFile(token, 'BSC Inspections/Shearing/'+String(v[0])+'.pdf', pdf, 'application/pdf'); regen++; } catch(e){ console.error('[regen]', v[0], e.message); }
+      }
+    }
+    res.json({ ok:true, rework_reports:Object.keys(groups).length, matched_in_log:matched, regenerated:regen, unmatched:Object.keys(groups).filter(k=>!used.has(k)) });
+  } catch(e){ console.error('[regen]', e.message); res.status(500).json({ error:e.message }); }
+});
 app.get('/stats/backfill', requireAuth, requireAdmin, async (req, res) => {
   try {
     await ensureStats();
@@ -1506,6 +1531,48 @@ function drawRejectionTable(doc, y, data, hdr) {
   return y;
 }
 
+function drawReworkTable(doc, y, data, hdr) {
+  const rw = (data.reworks || []).filter(r => r && (r.rework_qty || r.defect_code || r.rework_action || r.remarks));
+  if (String(data.has_reworks||'').toLowerCase() !== 'yes' || rw.length === 0) return y;
+  y = ensureSpace(doc, y, 60, hdr);
+  y = drawSectionTitle(doc, y, 'REWORKS');
+  const tblW = doc.page.width - 80;
+  const c1=tblW*0.26, c2=tblW*0.15, c3=tblW*0.25, c4=tblW*0.17, c5=tblW*0.17;
+  const off=[0,c1,c1+c2,c1+c2+c3,c1+c2+c3+c4];
+  doc.lineWidth(0.5).strokeColor(BORDER);
+  doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
+  doc.strokeColor(BORDER).rect(40, y, tblW, 18).stroke();
+  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(7.5);
+  doc.text('Defect', 44+off[0], y+5, {width:c1-8});
+  doc.text('Qty (RW/Scr/Acc)', 44+off[1], y+5, {width:c2-8});
+  doc.text('Rework Action', 44+off[2], y+5, {width:c3-8});
+  doc.text('Machine / Operator', 44+off[3], y+5, {width:c4-8});
+  doc.text('QC / Disposition', 44+off[4], y+5, {width:c5-8});
+  [c1,c1+c2,c1+c2+c3,c1+c2+c3+c4].forEach(o=>doc.moveTo(40+o,y).lineTo(40+o,y+18).stroke());
+  y += 18;
+  rw.forEach((r,i)=>{
+    const defect = ((r.defect_code||'') + (REWORK_DEFECTS[r.defect_code]?(' - '+REWORK_DEFECTS[r.defect_code]):'')) || '-';
+    const qty = 'RW '+(r.rework_qty||'-')+'\n Scr '+(r.scrap_qty||'-')+'\n Acc '+(r.accepted_qty||'-');
+    const mo = (r.machine||'-')+'\n'+(r.operator||'-');
+    const qd = (r.qc_verification||'-')+'\n'+(r.final_disposition||'-');
+    doc.font('Helvetica').fontSize(8);
+    const h1=doc.heightOfString(defect,{width:c1-8}), h3=doc.heightOfString(String(r.rework_action||'-'),{width:c3-8});
+    const rowH=Math.max(30, h1+8, h3+8);
+    y=ensureSpace(doc,y,rowH,hdr);
+    if(i%2===1) doc.rect(40,y,tblW,rowH).fill(ROW_ALT);
+    doc.strokeColor(BORDER).rect(40,y,tblW,rowH).stroke();
+    [c1,c1+c2,c1+c2+c3,c1+c2+c3+c4].forEach(o=>doc.moveTo(40+o,y).lineTo(40+o,y+rowH).stroke());
+    doc.fillColor(TEXT).font('Helvetica').fontSize(8);
+    doc.text(defect, 44+off[0], y+4, {width:c1-8});
+    doc.text(qty, 44+off[1], y+4, {width:c2-8});
+    doc.text(String(r.rework_action||'-'), 44+off[2], y+4, {width:c3-8});
+    doc.text(mo, 44+off[3], y+4, {width:c4-8});
+    doc.text(qd, 44+off[4], y+4, {width:c5-8});
+    y+=rowH;
+  });
+  y += 6;
+  return y;
+}
 function drawFrequencyTable(doc, y, data, hdr) {
   const freq = data.sample_frequency || [];
   if (!freq.length) return y;
@@ -1948,6 +2015,7 @@ function generatePDF(folder, data, ref) {
         ]);
         
         y = drawRejectionTable(doc, y, data, hdr);
+        y = drawReworkTable(doc, y, data, hdr);
         y = drawFrequencyTable(doc, y, data, hdr);
         y = drawNumberCalc(doc, y, data, hdr);
         
