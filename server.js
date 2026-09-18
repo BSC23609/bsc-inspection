@@ -218,19 +218,21 @@ app.get('/regen-shearing-rework', requireAuth, requireAdmin, async (req, res) =>
     const token = await getToken();
     let csv=''; try { const g=await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent('BSC Inspections/Shearing/Shearing_Rework_Register.csv')+':/content',{headers:{'Authorization':'Bearer '+token}}); if(g.ok) csv=await g.text(); } catch(e){}
     if(!csv.trim()) return res.json({ ok:true, regenerated:0, note:'rework register empty or not found' });
+    const ddmmyyyy=d=>{ d=String(d||'').trim(); let m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return m[3].padStart(2,'0')+'-'+m[2].padStart(2,'0')+'-'+m[1]; m=d.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/); if(m) return m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0')+'-'+m[3]; return d; };
     const lines=csv.replace(/\r/g,'').trim().split('\n'); const hdr=parseCsvLine(lines[0]); const ix=n=>hdr.indexOf(n);
     const groups={};
     for(let i=1;i<lines.length;i++){ const c=parseCsvLine(lines[i]); if(c.length<3) continue;
-      const batch=(c[ix('Batch / Coil No.')]||'').trim(), date=(c[ix('Date')]||'').trim(); const key=batch+'||'+date;
-      (groups[key]=groups[key]||[]).push({ width:c[ix('Width (mm)')], req_length:c[ix('Required Length (mm)')], original_qty:c[ix('Original Qty')], rework_qty:c[ix('Rework Qty')], scrap_qty:c[ix('Scrap Qty')], actual_length:c[ix('Actual Length (mm)')], actual_width:c[ix('Actual Width (mm)')], diag1:c[ix('Diagonal 1 (mm)')], diag2:c[ix('Diagonal 2 (mm)')], burr_height:c[ix('Burr Height (mm)')], blade_gap:c[ix('Blade Gap (mm)')], defect_code:c[ix('Defect Code')], rework_action:c[ix('Rework Action')], machine:c[ix('Machine')], operator:c[ix('Operator')], qc_verification:c[ix('QC Verification')], final_disposition:c[ix('Final Disposition')], accepted_qty:c[ix('Accepted Qty')], remarks:c[ix('Remarks')] });
+      const batch=(c[ix('Batch / Coil No.')]||'').trim(), date=(c[ix('Date')]||'').trim();
+      const fn = batch+'_('+ddmmyyyy(date)+')_Shearing';   // matches the log's File Name column exactly
+      (groups[fn]=groups[fn]||[]).push({ width:c[ix('Width (mm)')], req_length:c[ix('Required Length (mm)')], original_qty:c[ix('Original Qty')], rework_qty:c[ix('Rework Qty')], scrap_qty:c[ix('Scrap Qty')], actual_length:c[ix('Actual Length (mm)')], actual_width:c[ix('Actual Width (mm)')], diag1:c[ix('Diagonal 1 (mm)')], diag2:c[ix('Diagonal 2 (mm)')], burr_height:c[ix('Burr Height (mm)')], blade_gap:c[ix('Blade Gap (mm)')], defect_code:c[ix('Defect Code')], rework_action:c[ix('Rework Action')], machine:c[ix('Machine')], operator:c[ix('Operator')], qc_verification:c[ix('QC Verification')], final_disposition:c[ix('Final Disposition')], accepted_qty:c[ix('Accepted Qty')], remarks:c[ix('Remarks')] });
     }
     const base='https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent('BSC Inspections/Shearing/Shearing_Log.xlsx')+':';
     let rows=[]; const rr=await fetch(base+'/workbook/tables/ShearingLog/rows?$select=values&$top=5000',{headers:{'Authorization':'Bearer '+token}});
     if(rr.ok) rows=((await rr.json()).value||[]).map(x=>Array.isArray(x.values)?x.values[0]:x);
     let regen=0, matched=0; const used=new Set();
-    for(const v of rows){ if(!v||!v[0]) continue; const data=rowToShearingData(v); const key=String(data.batch_number||'').trim()+'||'+String(data.date||'').trim();
-      if(groups[key]){ matched++; used.add(key); data.form_type='Shearing'; data.has_reworks='Yes'; data.reworks=groups[key];
-        try { const pdf=await generatePDF('Shearing', data, data.ref||v[1]||v[0]); await uploadFile(token, 'BSC Inspections/Shearing/'+String(v[0])+'.pdf', pdf, 'application/pdf'); regen++; } catch(e){ console.error('[regen]', v[0], e.message); }
+    for(const v of rows){ if(!v||!v[0]) continue; const fnLog=String(v[0]).trim();
+      if(groups[fnLog]){ matched++; used.add(fnLog); const data=rowToShearingData(v); data.form_type='Shearing'; data.has_reworks='Yes'; data.reworks=groups[fnLog];
+        try { const pdf=await generatePDF('Shearing', data, data.ref||v[1]||fnLog); await uploadFile(token, 'BSC Inspections/Shearing/'+fnLog+'.pdf', pdf, 'application/pdf'); regen++; } catch(e){ console.error('[regen]', fnLog, e.message); }
       }
     }
     res.json({ ok:true, rework_reports:Object.keys(groups).length, matched_in_log:matched, regenerated:regen, unmatched:Object.keys(groups).filter(k=>!used.has(k)) });
