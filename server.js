@@ -226,9 +226,35 @@ app.get('/regen-shearing-rework', requireAuth, requireAdmin, async (req, res) =>
       const fn = batch+'_('+ddmmyyyy(date)+')_Shearing';   // matches the log's File Name column exactly
       (groups[fn]=groups[fn]||[]).push({ width:c[ix('Width (mm)')], req_length:c[ix('Required Length (mm)')], original_qty:c[ix('Original Qty')], rework_qty:c[ix('Rework Qty')], scrap_qty:c[ix('Scrap Qty')], actual_length:c[ix('Actual Length (mm)')], actual_width:c[ix('Actual Width (mm)')], diag1:c[ix('Diagonal 1 (mm)')], diag2:c[ix('Diagonal 2 (mm)')], burr_height:c[ix('Burr Height (mm)')], blade_gap:c[ix('Blade Gap (mm)')], defect_code:c[ix('Defect Code')], rework_action:c[ix('Rework Action')], machine:c[ix('Machine')], operator:c[ix('Operator')], qc_verification:c[ix('QC Verification')], final_disposition:c[ix('Final Disposition')], accepted_qty:c[ix('Accepted Qty')], remarks:c[ix('Remarks')] });
     }
+    // ordered list of register rows (each row = one rework), in file order
+    const regList=[];
+    for(let i=1;i<lines.length;i++){ const c=parseCsvLine(lines[i]); if(c.length<3) continue;
+      regList.push({ width:c[ix('Width (mm)')], req_length:c[ix('Required Length (mm)')], original_qty:c[ix('Original Qty')], rework_qty:c[ix('Rework Qty')], scrap_qty:c[ix('Scrap Qty')], actual_length:c[ix('Actual Length (mm)')], actual_width:c[ix('Actual Width (mm)')], diag1:c[ix('Diagonal 1 (mm)')], diag2:c[ix('Diagonal 2 (mm)')], burr_height:c[ix('Burr Height (mm)')], blade_gap:c[ix('Blade Gap (mm)')], defect_code:c[ix('Defect Code')], rework_action:c[ix('Rework Action')], machine:c[ix('Machine')], operator:c[ix('Operator')], qc_verification:c[ix('QC Verification')], final_disposition:c[ix('Final Disposition')], accepted_qty:c[ix('Accepted Qty')], remarks:c[ix('Remarks')] });
+    }
     const base='https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent('BSC Inspections/Shearing/Shearing_Log.xlsx')+':';
     let rows=[]; const rr=await fetch(base+'/workbook/tables/ShearingLog/rows?$select=values&$top=5000',{headers:{'Authorization':'Bearer '+token}});
     if(rr.ok) rows=((await rr.json()).value||[]).map(x=>Array.isArray(x.values)?x.values[0]:x);
+    // Explicit mode: ?files=fname1,fname2  (pair with register rows 1..N in order). Bulletproof, no matching.
+    if(req.query.files){
+      const wanted=String(req.query.files).split(',').map(x=>x.trim()).filter(Boolean);
+      const byName={}; rows.forEach(v=>{ if(v&&v[0]) byName[String(v[0]).trim()]=v; });
+      const out=[];
+      for(let i=0;i<wanted.length;i++){
+        const v=byName[wanted[i]];
+        if(!v){ out.push({file:wanted[i], status:'NOT FOUND in log'}); continue; }
+        const data=rowToShearingData(v); data.form_type='Shearing'; data.has_reworks='Yes'; data.reworks=[ regList[i] || {} ];
+        try{ const pdf=await generatePDF('Shearing', data, data.ref||v[1]||wanted[i]); await uploadFile(token, 'BSC Inspections/Shearing/'+wanted[i]+'.pdf', pdf, 'application/pdf'); out.push({file:wanted[i], status:'regenerated', rework:(regList[i]||{}).defect_code||''}); }
+        catch(e){ out.push({file:wanted[i], status:'error: '+e.message}); }
+      }
+      return res.json({ ok:true, mode:'explicit', register_rows:regList.length, results:out });
+    }
+    if(String(req.query.debug||'')==='1'){
+      // show what the log actually holds, and how the register keys were built
+      const wantBatches = Object.keys(groups).map(k=>k.split('_(')[0]);
+      const logSample = rows.slice(-12).map(v=>({ fileName:v&&v[0], date:v&&v[3], batch:v&&v[4], grade:v&&v[5], input:v&&v[10] }));
+      const logMatchingBatch = rows.filter(v=>v&&wantBatches.some(b=>String(v[0]||'').indexOf(String(b).slice(0,8))>=0 || String(v[4]||'').indexOf(String(b).slice(0,8))>=0)).map(v=>({ fileName:v[0], date:v[3], batch:v[4] }));
+      return res.json({ debug:true, register_keys:Object.keys(groups), log_rows_total:rows.length, log_last12:logSample, log_rows_matching_batch_prefix:logMatchingBatch });
+    }
     let regen=0, matched=0; const used=new Set();
     for(const v of rows){ if(!v||!v[0]) continue; const fnLog=String(v[0]).trim();
       if(groups[fnLog]){ matched++; used.add(fnLog); const data=rowToShearingData(v); data.form_type='Shearing'; data.has_reworks='Yes'; data.reworks=groups[fnLog];
