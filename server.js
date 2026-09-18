@@ -216,6 +216,23 @@ function parseCsvLine(line){ const out=[]; let cur='',q=false; for(let i=0;i<lin
 app.get('/regen-shearing-rework', requireAuth, requireAdmin, async (req, res) => {
   try {
     const token = await getToken();
+    // Direct mode (no CSV needed): ?file=<exact log File Name>&rw=<url-encoded JSON array of rework rows>
+    if (req.query.file) {
+      const fname = String(req.query.file).trim();
+      let reworks = [];
+      try { reworks = req.query.rw ? JSON.parse(req.query.rw) : []; } catch(e){ return res.status(400).json({ error:'rw is not valid JSON: '+e.message }); }
+      if (!Array.isArray(reworks)) reworks = [reworks];
+      const base2='https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent('BSC Inspections/Shearing/Shearing_Log.xlsx')+':';
+      const rr2=await fetch(base2+'/workbook/tables/ShearingLog/rows?$select=values&$top=5000',{headers:{'Authorization':'Bearer '+token}});
+      if(!rr2.ok){ const t=await rr2.text(); return res.status(502).json({ error:'cannot read Shearing_Log ('+rr2.status+'). '+t.slice(0,160) }); }
+      const rows2=((await rr2.json()).value||[]).map(x=>Array.isArray(x.values)?x.values[0]:x);
+      const v=rows2.find(x=>x&&String(x[0]).trim()===fname);
+      if(!v) return res.status(404).json({ error:'File Name not found in log', looked_for:fname, sample:rows2.slice(-6).map(x=>x&&x[0]) });
+      const data=rowToShearingData(v); data.form_type='Shearing'; data.has_reworks='Yes'; data.reworks=reworks;
+      const pdf=await generatePDF('Shearing', data, data.ref||v[1]||fname);
+      await uploadFile(token, 'BSC Inspections/Shearing/'+fname+'.pdf', pdf, 'application/pdf');
+      return res.json({ ok:true, mode:'direct', regenerated:fname, reworks:reworks.length });
+    }
     let csv=''; try { const g=await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent('BSC Inspections/Shearing/Shearing_Rework_Register.csv')+':/content',{headers:{'Authorization':'Bearer '+token}}); if(g.ok) csv=await g.text(); } catch(e){}
     if(!csv.trim()) return res.json({ ok:true, regenerated:0, note:'rework register empty or not found' });
     const ddmmyyyy=d=>{ d=String(d||'').trim(); let m=d.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); if(m) return m[3].padStart(2,'0')+'-'+m[2].padStart(2,'0')+'-'+m[1]; m=d.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})$/); if(m) return m[1].padStart(2,'0')+'-'+m[2].padStart(2,'0')+'-'+m[3]; return d; };
@@ -226,9 +243,28 @@ app.get('/regen-shearing-rework', requireAuth, requireAdmin, async (req, res) =>
       const fn = batch+'_('+ddmmyyyy(date)+')_Shearing';   // matches the log's File Name column exactly
       (groups[fn]=groups[fn]||[]).push({ width:c[ix('Width (mm)')], req_length:c[ix('Required Length (mm)')], original_qty:c[ix('Original Qty')], rework_qty:c[ix('Rework Qty')], scrap_qty:c[ix('Scrap Qty')], actual_length:c[ix('Actual Length (mm)')], actual_width:c[ix('Actual Width (mm)')], diag1:c[ix('Diagonal 1 (mm)')], diag2:c[ix('Diagonal 2 (mm)')], burr_height:c[ix('Burr Height (mm)')], blade_gap:c[ix('Blade Gap (mm)')], defect_code:c[ix('Defect Code')], rework_action:c[ix('Rework Action')], machine:c[ix('Machine')], operator:c[ix('Operator')], qc_verification:c[ix('QC Verification')], final_disposition:c[ix('Final Disposition')], accepted_qty:c[ix('Accepted Qty')], remarks:c[ix('Remarks')] });
     }
+    // ordered list of register rows (each row = one rework), in file order
+    const regList=[];
+    for(let i=1;i<lines.length;i++){ const c=parseCsvLine(lines[i]); if(c.length<3) continue;
+      regList.push({ width:c[ix('Width (mm)')], req_length:c[ix('Required Length (mm)')], original_qty:c[ix('Original Qty')], rework_qty:c[ix('Rework Qty')], scrap_qty:c[ix('Scrap Qty')], actual_length:c[ix('Actual Length (mm)')], actual_width:c[ix('Actual Width (mm)')], diag1:c[ix('Diagonal 1 (mm)')], diag2:c[ix('Diagonal 2 (mm)')], burr_height:c[ix('Burr Height (mm)')], blade_gap:c[ix('Blade Gap (mm)')], defect_code:c[ix('Defect Code')], rework_action:c[ix('Rework Action')], machine:c[ix('Machine')], operator:c[ix('Operator')], qc_verification:c[ix('QC Verification')], final_disposition:c[ix('Final Disposition')], accepted_qty:c[ix('Accepted Qty')], remarks:c[ix('Remarks')] });
+    }
     const base='https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent('BSC Inspections/Shearing/Shearing_Log.xlsx')+':';
     let rows=[]; const rr=await fetch(base+'/workbook/tables/ShearingLog/rows?$select=values&$top=5000',{headers:{'Authorization':'Bearer '+token}});
     if(rr.ok) rows=((await rr.json()).value||[]).map(x=>Array.isArray(x.values)?x.values[0]:x);
+    // Explicit mode: ?files=fname1,fname2  (pair with register rows 1..N in order). Bulletproof, no matching.
+    if(req.query.files){
+      const wanted=String(req.query.files).split(',').map(x=>x.trim()).filter(Boolean);
+      const byName={}; rows.forEach(v=>{ if(v&&v[0]) byName[String(v[0]).trim()]=v; });
+      const out=[];
+      for(let i=0;i<wanted.length;i++){
+        const v=byName[wanted[i]];
+        if(!v){ out.push({file:wanted[i], status:'NOT FOUND in log'}); continue; }
+        const data=rowToShearingData(v); data.form_type='Shearing'; data.has_reworks='Yes'; data.reworks=[ regList[i] || {} ];
+        try{ const pdf=await generatePDF('Shearing', data, data.ref||v[1]||wanted[i]); await uploadFile(token, 'BSC Inspections/Shearing/'+wanted[i]+'.pdf', pdf, 'application/pdf'); out.push({file:wanted[i], status:'regenerated', rework:(regList[i]||{}).defect_code||''}); }
+        catch(e){ out.push({file:wanted[i], status:'error: '+e.message}); }
+      }
+      return res.json({ ok:true, mode:'explicit', register_rows:regList.length, results:out });
+    }
     if(String(req.query.debug||'')==='1'){
       // show what the log actually holds, and how the register keys were built
       const wantBatches = Object.keys(groups).map(k=>k.split('_(')[0]);
