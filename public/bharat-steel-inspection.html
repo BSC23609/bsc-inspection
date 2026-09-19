@@ -374,27 +374,6 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   <div class="form-scroll" id="pdireg_body"><div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div></div>
 </div>
 
-<div class="screen" id="screen-dashboard">
-  <div class="form-topbar" style="background:#0B5793">
-    <button class="back-btn" onclick="showScreen('home')">‹</button>
-    <div class="topbar-info"><div class="topbar-title">Management Dashboard</div><div class="topbar-sub">Last 60 days</div></div>
-    <button class="back-btn" onclick="loadDashboard(dashMachine)" style="font-size:14px">↻</button>
-  </div>
-  <div style="display:flex;background:#fff;border-bottom:1px solid #e5e7eb">
-    <button id="dtab_ctl1" onclick="setDashTab('CTL - 1')" style="flex:1;padding:12px;border:none;background:none;font-weight:700;font-size:13px;border-bottom:2px solid transparent;color:#6b7280;cursor:pointer;font-family:inherit">CTL-1</button>
-    <button id="dtab_ctl2" onclick="setDashTab('CTL - 2')" style="flex:1;padding:12px;border:none;background:none;font-weight:700;font-size:13px;border-bottom:2px solid transparent;color:#6b7280;cursor:pointer;font-family:inherit">CTL-2</button>
-    <button id="dtab_sh" onclick="setDashTab('Shearing')" style="flex:1;padding:12px;border:none;background:none;font-weight:700;font-size:13px;border-bottom:2px solid transparent;color:#6b7280;cursor:pointer;font-family:inherit">Shearing</button>
-  </div>
-  <div style="display:flex;gap:8px;align-items:center;padding:10px 14px;background:#f5f8fc;border-bottom:1px solid #e5e7eb;flex-wrap:wrap">
-    <label style="font-size:11px;color:#6b7280;font-weight:600">From</label><input type="date" id="dash_from" style="padding:6px 8px;border:1px solid #c5d8ec;border-radius:6px;font-size:12px">
-    <label style="font-size:11px;color:#6b7280;font-weight:600">To</label><input type="date" id="dash_to" style="padding:6px 8px;border:1px solid #c5d8ec;border-radius:6px;font-size:12px">
-    <button onclick="loadDashboard(dashMachine)" style="background:#0B5793;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">Apply</button>
-    <button onclick="backfillHistory()" title="One-time: load older reports from the OneDrive logs" style="background:#fff;color:#0B5793;border:1px solid #0B5793;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer">Load history</button>
-    <select id="dash_preset" onchange="dashPreset(this.value)" style="padding:6px 8px;border:1px solid #c5d8ec;border-radius:6px;font-size:12px;margin-left:auto"><option value="">Range…</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="60" selected>Last 60 days</option><option value="90">Last 90 days</option><option value="365">Last 1 year</option></select>
-  </div>
-  <div class="form-scroll" id="dash_body"><div style="padding:40px;text-align:center;color:var(--gray-400)">Loading…</div></div>
-</div>
-
 <div class="screen" id="screen-forgotpw">
   <div class="lg-wrap"><div class="lg-card">
     <div class="lg-brand">Bharat Steel (Chennai)<b>Reset password</b></div>
@@ -500,7 +479,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R40</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R37</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -548,7 +527,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R40</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R37</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -680,15 +659,6 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="card-body">
         <div class="card-title">PDI Register</div>
         <div class="card-desc">All Pre-Delivery Inspection reports · search by report no / customer / inspector</div>
-      </div>
-      <div class="card-arrow">›</div>
-    </div>
-
-    <div class="form-card" data-mod="admin" onclick="openDashboard()">
-      <div class="card-icon" style="background:#EAF3FB"><svg viewBox="0 0 24 24" fill="none" stroke="#0B5793" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l3-4 3 3 4-6"/></svg></div>
-      <div class="card-body">
-        <div class="card-title">Management Dashboard</div>
-        <div class="card-desc">Live analytics — reports, rejection & rework trends, tolerance errors, make/size split · CTL-1 / CTL-2 / Shearing</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
@@ -1370,17 +1340,8 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           </div>
         </div>
         <div id="sh_rework_wrap" style="display:none;margin-top:12px">
-          <div style="overflow-x:auto;border:1px solid #e5e7eb;border-radius:8px;background:#fff">
-            <table style="border-collapse:collapse;min-width:1900px">
-              <thead><tr style="background:#f5f8fc;color:#0B5793">
-                <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Width</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Req Len</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Orig Qty</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Rework Qty</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Scrap Qty</th>
-                <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Act Len</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Act W</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Diag 1</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Diag 2</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Burr Ht</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Blade Gap</th>
-                <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Defect Code</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Rework Action</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Machine</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Operator</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">QC Verify</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Disposition</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Accepted Qty</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px">Remarks</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700;font-size:10px"></th>
-              </tr></thead>
-              <tbody id="sh_rework_rows"></tbody>
-            </table>
-          </div>
-          <button type="button" class="btn-sec" style="margin-top:10px" onclick="addReworkRow()">+ Add Rework</button>
+          <div id="sh_rework_cards"></div>
+          <button type="button" class="btn-sec" style="margin-top:6px" onclick="addReworkCard()">+ Add Rework</button>
         </div>
       </div>
     </div>
@@ -3043,7 +3004,7 @@ function toast(type, msg) {
 
 function clearForm(which) {
   try{ clearDraft(which); }catch(e){}
-  if(which==='shearing'){ try{ shReworkFlag='No'; shReworkCount=0; var _rw=document.getElementById('sh_rework_wrap'); if(_rw)_rw.style.display='none'; var _rr=document.getElementById('sh_rework_rows'); if(_rr)_rr.innerHTML=''; document.querySelectorAll('#sg_rework .pill').forEach(function(p){p.classList.remove('sel');}); }catch(e){} }
+  if(which==='shearing'){ try{ shReworkFlag='No'; shReworkCount=0; var _rw=document.getElementById('sh_rework_wrap'); if(_rw)_rw.style.display='none'; var _rr=document.getElementById('sh_rework_cards'); if(_rr)_rr.innerHTML=''; document.querySelectorAll('#sg_rework .pill').forEach(function(p){p.classList.remove('sel');}); }catch(e){} }
   if(!confirm('Clear all fields in this form?')) return;
   var prefix = which === 'inward' ? '#screen-inward' : which === 'shearing' ? '#screen-shearing' : '#screen-quality';
   document.querySelectorAll(prefix+' input, '+prefix+' textarea').forEach(i=>i.value='');
@@ -3160,33 +3121,6 @@ async function submitPdi(){ var rno=document.getElementById('pdi_report_no').val
     showScreen('home');
   }catch(e){ alert('Submit failed: '+((e&&e.message)||e)); }
   finally{ btn.disabled=false; btn.textContent='Submit PDI Report'; }
-}
-var dashMachine='CTL - 1';
-function _dEsc(s){ return String(s==null?'':s).replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c];}); }
-function dashPreset(days){ if(!days) return; var to=new Date(), from=new Date(); from.setDate(from.getDate()-parseInt(days,10)); var tI=document.getElementById('dash_to'), fI=document.getElementById('dash_from'); if(tI)tI.value=to.toISOString().slice(0,10); if(fI)fI.value=from.toISOString().slice(0,10); loadDashboard(dashMachine); }
-async function backfillHistory(){ var form=(dashMachine==='Shearing')?'shearing':'quality'; if(!confirm('Load older '+(form==='shearing'?'Shearing':'CTL / Quality')+' reports from the OneDrive log into the dashboard? (one-time; safe to repeat)')) return; try{ var r=await fetch(SERVER_URL+'/stats/backfill?form='+form,{cache:'no-store'}); var d=await r.json().catch(function(){return{};}); if(!r.ok){ alert('Backfill failed: '+((d&&d.error)||('Server '+r.status))); return; } alert('Loaded '+d.inserted+' historical '+d.form+' report(s) from the log.'+(d.failed?(' ('+d.failed+' skipped)'):'')); loadDashboard(dashMachine); }catch(e){ alert('Backfill error: '+((e&&e.message)||e)); } }
-function openDashboard(){ showScreen('dashboard'); var to=new Date(), from=new Date(); from.setDate(from.getDate()-60); var tI=document.getElementById('dash_to'), fI=document.getElementById('dash_from'); if(tI&&!tI.value)tI.value=to.toISOString().slice(0,10); if(fI&&!fI.value)fI.value=from.toISOString().slice(0,10); setDashTab('CTL - 1'); }
-function setDashTab(m){ dashMachine=m; [['dtab_ctl1','CTL - 1'],['dtab_ctl2','CTL - 2'],['dtab_sh','Shearing']].forEach(function(t){ var e=document.getElementById(t[0]); if(e){ var on=(t[1]===m); e.style.borderBottomColor=on?'#0B5793':'transparent'; e.style.color=on?'#0B5793':'#6b7280'; } }); loadDashboard(m); }
-async function loadDashboard(m){ var b=document.getElementById('dash_body'); if(!b) return; b.innerHTML='<div style="padding:40px;text-align:center;color:#9ca3af">Loading\u2026</div>'; try{ var _f=(document.getElementById('dash_from')||{}).value, _t=(document.getElementById('dash_to')||{}).value; var _q='machine='+encodeURIComponent(m)+((_f&&_t)?('&from='+_f+'&to='+_t):'&days=60');
-  var r=await fetch(SERVER_URL+'/stats/dashboard?'+_q,{cache:'no-store'}); if(!r.ok){ var er=await r.json().catch(function(){return{};}); throw new Error(er.error||('Server '+r.status)); } var d=await r.json(); renderDashboard(d); }catch(e){ b.innerHTML='<div style="padding:40px;text-align:center;color:#dc2626">'+_dEsc((e&&e.message)||e)+'</div>'; } }
-function _card(t,inner){ return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px"><div style="font-size:12px;font-weight:700;color:#0B5793;text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px">'+t+'</div>'+inner+'</div>'; }
-function _kpi(label,val,sub){ return '<div style="flex:1;min-width:130px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px"><div style="font-size:10.5px;color:#6b7280;text-transform:uppercase;letter-spacing:.5px">'+label+'</div><div style="font-size:22px;font-weight:800;color:#0B5793;margin-top:4px">'+val+'</div>'+(sub?'<div style="font-size:11px;color:#9ca3af;margin-top:2px">'+sub+'</div>':'')+'</div>'; }
-function _hbars(title,rows){ if(!rows||!rows.length) return _card(title,'<div style="color:#9ca3af;font-size:12px">No data</div>'); var max=1; rows.forEach(function(r){ if(r.n>max)max=r.n; }); var body=rows.map(function(r){ var pct=Math.round(r.n/max*100); return '<div style="display:flex;align-items:center;gap:8px;margin:5px 0"><div style="width:120px;font-size:11px;color:#374151;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+_dEsc(r.k)+'</div><div style="flex:1;background:#eef2f7;border-radius:4px;height:16px"><div style="width:'+pct+'%;background:#0B5793;height:16px;border-radius:4px"></div></div><div style="width:34px;font-size:11px;font-weight:700;color:#0B5793;text-align:right">'+r.n+'</div></div>'; }).join(''); return _card(title,body); }
-function _dayBars(rows){ if(!rows||!rows.length) return _card('Reports per day','<div style="color:#9ca3af;font-size:12px">No data</div>'); var max=1; rows.forEach(function(r){ if(r.reports>max)max=r.reports; }); var bw=16,gap=6,H=150,W=Math.max(rows.length*(bw+gap)+16,300); var g=rows.map(function(r,i){ var hh=Math.round(r.reports/max*(H-30)); var x=i*(bw+gap)+8, y=H-hh-18; return '<rect x="'+x+'" y="'+y+'" width="'+bw+'" height="'+hh+'" fill="#0B5793" rx="2"/><text x="'+(x+bw/2)+'" y="'+(H-5)+'" font-size="6.5" fill="#9ca3af" text-anchor="middle">'+(r.d||'').slice(5)+'</text><text x="'+(x+bw/2)+'" y="'+(y-2)+'" font-size="7" fill="#374151" text-anchor="middle">'+r.reports+'</text>'; }).join(''); return _card('Reports per day','<div style="overflow-x:auto"><svg width="'+W+'" height="'+H+'">'+g+'</svg></div>'); }
-function _lineChart(title,rows,series){ if(!rows||!rows.length) return _card(title,'<div style="color:#9ca3af;font-size:12px">No data</div>'); var H=160,pad=22,W=Math.max(rows.length*22,300),max=1; series.forEach(function(s){ rows.forEach(function(r){ if((r[s.k]||0)>max)max=r[s.k]||0; }); }); var poly=series.map(function(s){ var pts=rows.map(function(r,i){ var x=pad+i*((W-2*pad)/Math.max(1,rows.length-1)); var y=H-pad-((r[s.k]||0)/max)*(H-2*pad); return x.toFixed(1)+','+y.toFixed(1); }).join(' '); return '<polyline points="'+pts+'" fill="none" stroke="'+s.c+'" stroke-width="2"/>'; }).join(''); var leg=series.map(function(s){ return '<span style="font-size:10px;color:#374151;margin-right:12px"><span style="display:inline-block;width:10px;height:10px;background:'+s.c+';border-radius:2px;margin-right:4px;vertical-align:middle"></span>'+s.t+'</span>'; }).join(''); return _card(title,'<div style="overflow-x:auto"><svg width="'+W+'" height="'+H+'">'+poly+'</svg></div><div style="margin-top:6px">'+leg+'</div>'); }
-function renderDashboard(d){ var k=d.kpi||{}, reports=k.reports||0, rejected=k.rejected||0, reworks=k.reworks||0, oot=k.oot_reports||0; var rejPct=reports?Math.round(rejected/reports*100):0, errPct=reports?Math.round(oot/reports*100):0;
-  var html='<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px">'+_kpi('Reports',reports,'last '+d.days+'d')+_kpi('Rejection %',rejPct+'%',rejected+' rejected')+_kpi('Reworks',reworks,'logged')+_kpi('Error %',errPct+'%',oot+' out-of-tol')+'</div>';
-  html+=_dayBars(d.per_day||[]);
-  html+=_lineChart('Trend \u2014 Rejected / Reworks / Out-of-tolerance', d.per_day||[], [{k:'rejected',c:'#dc2626',t:'Rejected'},{k:'reworks',c:'#d97706',t:'Reworks'},{k:'oot_reports',c:'#7c3aed',t:'Out-of-tol'}]);
-  html+=_hbars('Make-wise', d.by_make||[]);
-  html+=_hbars('Grade-wise', d.by_grade||[]);
-  html+=_hbars('Thickness-wise (mm)', d.by_thickness||[]);
-  html+=_hbars('Width-wise (mm)', d.by_width||[]);
-  html+=_hbars('Length-wise (mm)', d.by_length||[]);
-  html+=_hbars('Top rejection reasons (Pareto)', d.by_reject_reason||[]);
-  html+=_hbars('Top rework defect codes (Pareto)', d.by_defect_code||[]);
-  html+=_hbars('Inspector-wise', d.by_inspector||[]);
-  document.getElementById('dash_body').innerHTML='<div style="padding:12px">'+html+'</div>';
 }
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -4639,24 +4573,67 @@ function updateQRejAddBtn() {
 }
 
 var shReworkFlag='No', shReworkCount=0;
-var DEFECT_CODES=[['RW-01','Length variation'],['RW-02','Width variation'],['RW-03','Diagonal variation / squareness'],['RW-04','Burr'],['RW-05','Blade impression'],['RW-06','Edge crack / damaged edge'],['RW-07','Camber'],['RW-08','Bow / flatness issue'],['RW-09','Surface damage'],['RW-10','Wrong size / wrong setting'],['RW-11','Marking / identification error'],['RW-12','Other']];
-function setReworkFlag(v){ shReworkFlag=v; var w=document.getElementById('sh_rework_wrap'); if(w)w.style.display=(v==='Yes')?'':'none'; if(v==='Yes' && !document.querySelector('#sh_rework_rows tr')) addReworkRow(); }
-function _rwTd(inner){ return '<td style="padding:3px;border:1px solid #e5e7eb">'+inner+'</td>'; }
-function addReworkRow(){ shReworkCount++; var id=shReworkCount;
-  function inp(sfx,w){ return '<input id="rw'+id+'_'+sfx+'" style="width:'+(w||58)+'px;border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px">'; }
-  function sel(sfx,opts){ return '<select id="rw'+id+'_'+sfx+'" style="border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px">'+opts+'</select>'; }
-  var codeOpts='<option value="">\u2014</option>'+DEFECT_CODES.map(function(c){return '<option value="'+c[0]+'">'+c[0]+' \u00b7 '+c[1]+'</option>';}).join('');
-  var qcOpts='<option value="">\u2014</option><option>OK</option><option>NOT OK</option>';
-  var dispOpts='<option value="">\u2014</option><option>Accepted</option><option>Rejected</option><option>Rework again</option>';
-  var tr=document.createElement('tr'); tr.id='rw_'+id;
-  tr.innerHTML=_rwTd(inp('width',56))+_rwTd(inp('req_length',62))+_rwTd(inp('original_qty',54))+_rwTd(inp('rework_qty',54))+_rwTd(inp('scrap_qty',54))
-    +_rwTd(inp('actual_length',62))+_rwTd(inp('actual_width',56))+_rwTd(inp('diag1',58))+_rwTd(inp('diag2',58))+_rwTd(inp('burr_height',54))+_rwTd(inp('blade_gap',54))
-    +_rwTd(sel('defect_code',codeOpts))+_rwTd(inp('rework_action',120))+_rwTd(inp('machine',80))+_rwTd(inp('operator',80))+_rwTd(sel('qc_verification',qcOpts))+_rwTd(sel('final_disposition',dispOpts))+_rwTd(inp('accepted_qty',54))+_rwTd(inp('remarks',130))
-    +_rwTd('<button type="button" onclick="this.parentNode.parentNode.remove()" style="background:#fee2e2;color:#dc2626;border:none;border-radius:4px;width:22px;height:22px;cursor:pointer">\u00d7</button>');
-  document.getElementById('sh_rework_rows').appendChild(tr);
+var DEFECT_SPEC={
+ 'RW-01':{l:'Length variation',t:'0 to 3 mm',k:'meas',m:'Length'},
+ 'RW-02':{l:'Width variation',t:'0 to 3 mm',k:'meas',m:'Width'},
+ 'RW-03':{l:'Diagonal variation / squareness',t:'0 to 3 mm',k:'meas',m:'Diagonal'},
+ 'RW-04':{l:'Burr',t:'< 10% of thickness',k:'meas',m:'Burr Height'},
+ 'RW-05':{l:'Blade impression',t:'< 7% of thickness',k:'meas',m:'Blade Impression Height'},
+ 'RW-06':{l:'Edge crack / damaged edge',t:'Zero tolerance',k:'reject'},
+ 'RW-07':{l:'Camber',t:'3 to 6 mm per 1.5 mtr of length',k:'meas',m:'Camber'},
+ 'RW-08':{l:'Bow / flatness issue',t:'< thickness (visual inspection)',k:'reason'},
+ 'RW-09':{l:'Surface damage',t:'0.3 to 0.4',k:'reason'},
+ 'RW-10':{l:'Other',t:'-',k:'other'}
+};
+function setReworkFlag(v){ shReworkFlag=v; var w=document.getElementById('sh_rework_wrap'); if(w)w.style.display=(v==='Yes')?'':'none'; if(v==='Yes' && !document.querySelector('#sh_rework_cards > div')) addReworkCard(); }
+function _rwIn(id,sfx,ph,ro){ return '<input id="rw'+id+'_'+sfx+'" '+(ro?'readonly ':'')+'placeholder="'+(ph||'')+'" oninput="reworkCalc('+id+')" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px'+(ro?';background:#f3f4f6;font-weight:600':'')+'">'; }
+function _rwSel(id,sfx,opts){ return '<select id="rw'+id+'_'+sfx+'" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px">'+opts+'</select>'; }
+function _rwFld(label,inner){ return '<div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">'+label+'</label>'+inner+'</div>'; }
+function addReworkCard(){ shReworkCount++; var id=shReworkCount;
+  var codeOpts='<option value="">-- Select defect --</option>'+Object.keys(DEFECT_SPEC).map(function(c){return '<option value="'+c+'">'+c+' \u00b7 '+DEFECT_SPEC[c].l+'</option>';}).join('');
+  var card=document.createElement('div'); card.id='rwc_'+id;
+  card.style.cssText='border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px;background:#fafbfc';
+  card.innerHTML='<div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:10px">'
+    +'<div style="flex:1"><label style="font-size:11px;font-weight:700;color:#0B5793;display:block;margin-bottom:3px">DEFECT</label>'
+    +'<select id="rw'+id+'_defect_code" onchange="renderReworkFields('+id+')" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px;font-weight:600">'+codeOpts+'</select></div>'
+    +'<button type="button" onclick="var c=document.getElementById(\'rwc_'+id+'\');c&&c.remove();" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;width:34px;height:36px;cursor:pointer;font-size:16px">\u00d7</button>'
+    +'</div>'
+    +'<div id="rw'+id+'_tol" style="display:none;font-size:11px;color:#9a3412;background:#fff7ed;border:1px solid #fed7aa;border-radius:6px;padding:6px 10px;margin-bottom:10px"></div>'
+    +'<div id="rw'+id+'_fields"></div>';
+  document.getElementById('sh_rework_cards').appendChild(card);
 }
-function collectReworks(){ var out=[]; document.querySelectorAll('#sh_rework_rows tr').forEach(function(tr){ var id=tr.id.replace('rw_',''); function v(s){ var e=document.getElementById('rw'+id+'_'+s); return e?e.value:''; }
-  out.push({ width:v('width'), req_length:v('req_length'), original_qty:v('original_qty'), rework_qty:v('rework_qty'), scrap_qty:v('scrap_qty'), actual_length:v('actual_length'), actual_width:v('actual_width'), diag1:v('diag1'), diag2:v('diag2'), burr_height:v('burr_height'), blade_gap:v('blade_gap'), defect_code:v('defect_code'), rework_action:v('rework_action'), machine:v('machine'), operator:v('operator'), qc_verification:v('qc_verification'), final_disposition:v('final_disposition'), accepted_qty:v('accepted_qty'), remarks:v('remarks') }); }); return out; }
+function renderReworkFields(id){
+  var code=document.getElementById('rw'+id+'_defect_code').value; var spec=DEFECT_SPEC[code];
+  var host=document.getElementById('rw'+id+'_fields'), tol=document.getElementById('rw'+id+'_tol');
+  if(!spec){ host.innerHTML=''; tol.style.display='none'; return; }
+  tol.style.display=''; tol.textContent='Permitted tolerance: '+spec.t;
+  var qc='<option value="">--</option><option>OK</option><option>NOT OK</option>';
+  var disp='<option value="">--</option><option>Accepted</option><option>Rejected</option><option>Rework again</option>';
+  function grid(inner){ return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+inner+'</div>'; }
+  var g='';
+  if(spec.k==='reject'){
+    g='<div style="font-weight:700;color:#dc2626;background:#fee2e2;border-radius:6px;padding:8px 10px;margin-bottom:10px">Direct rejection \u2014 this defect is not reworkable.</div>'
+      +grid(_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition','<select id="rw'+id+'_disposition" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px"><option>Rejected</option></select>'));
+  } else if(spec.k==='meas'){
+    g=grid(_rwFld('Required '+spec.m,_rwIn(id,'required','required'))+_rwFld('Actual '+spec.m,_rwIn(id,'actual','measured'))
+      +_rwFld('Variation (auto)',_rwIn(id,'variation','',true))+_rwFld('Blade Gap',_rwIn(id,'blade_gap'))
+      +_rwFld('Action Taken',_rwIn(id,'action_taken'))+_rwFld('QC Verify',_rwSel(id,'qc_verification',qc))
+      +_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition',_rwSel(id,'disposition',disp)));
+  } else if(spec.k==='reason'){
+    g=grid(_rwFld('Reason',_rwIn(id,'reason'))+_rwFld('Action Taken',_rwIn(id,'action_taken'))
+      +_rwFld('QC Verify',_rwSel(id,'qc_verification',qc))+_rwFld('Remarks',_rwIn(id,'remarks'))
+      +_rwFld('Disposition',_rwSel(id,'disposition',disp)));
+  } else {
+    g=grid(_rwFld('Details',_rwIn(id,'details'))+_rwFld('Reason',_rwIn(id,'reason'))
+      +_rwFld('Action Taken',_rwIn(id,'action_taken'))+_rwFld('QC Verify',_rwSel(id,'qc_verification',qc))
+      +_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition',_rwSel(id,'disposition',disp)));
+  }
+  host.innerHTML=g;
+}
+function reworkCalc(id){ var r=parseFloat((document.getElementById('rw'+id+'_required')||{}).value), a=parseFloat((document.getElementById('rw'+id+'_actual')||{}).value); var v=document.getElementById('rw'+id+'_variation'); if(v){ v.value=(isFinite(r)&&isFinite(a))?(a-r).toFixed(2):''; } }
+function collectReworks(){ var out=[]; document.querySelectorAll('#sh_rework_cards > div').forEach(function(card){ var id=card.id.replace('rwc_',''); function v(s){ var e=document.getElementById('rw'+id+'_'+s); return e?e.value:''; }
+  var code=v('defect_code'); if(!code) return;
+  out.push({ defect_code:code, defect_desc:(DEFECT_SPEC[code]?DEFECT_SPEC[code].l:''), required:v('required'), actual:v('actual'), variation:v('variation'), blade_gap:v('blade_gap'), reason:v('reason'), details:v('details'), action_taken:v('action_taken'), qc_verification:v('qc_verification'), disposition:v('disposition'), remarks:v('remarks') }); }); return out; }
 function collectShearing() {
   var rows = [];
   document.querySelectorAll('#sh_rows tr').forEach(function(tr) {

@@ -1589,30 +1589,35 @@ function drawReworkTable(doc, y, data, hdr) {
   doc.strokeColor(BORDER).rect(40, y, tblW, 18).stroke();
   doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(7.5);
   doc.text('Defect', 44+off[0], y+5, {width:c1-8});
-  doc.text('Qty (RW/Scr/Acc)', 44+off[1], y+5, {width:c2-8});
-  doc.text('Rework Action', 44+off[2], y+5, {width:c3-8});
-  doc.text('Machine / Operator', 44+off[3], y+5, {width:c4-8});
-  doc.text('QC / Disposition', 44+off[4], y+5, {width:c5-8});
+  doc.text('Measurement / Reason', 44+off[1], y+5, {width:c2-8});
+  doc.text('Action Taken', 44+off[2], y+5, {width:c3-8});
+  doc.text('QC / Disposition', 44+off[3], y+5, {width:c4-8});
+  doc.text('Remarks', 44+off[4], y+5, {width:c5-8});
   [c1,c1+c2,c1+c2+c3,c1+c2+c3+c4].forEach(o=>doc.moveTo(40+o,y).lineTo(40+o,y+18).stroke());
   y += 18;
   rw.forEach((r,i)=>{
-    const defect = ((r.defect_code||'') + (REWORK_DEFECTS[r.defect_code]?(' - '+REWORK_DEFECTS[r.defect_code]):'')) || '-';
-    const qty = 'RW '+(r.rework_qty||'-')+'\n Scr '+(r.scrap_qty||'-')+'\n Acc '+(r.accepted_qty||'-');
-    const mo = (r.machine||'-')+'\n'+(r.operator||'-');
-    const qd = (r.qc_verification||'-')+'\n'+(r.final_disposition||'-');
+    const defect = ((r.defect_code||'') + (REWORK_DEFECTS[r.defect_code]?(' - '+REWORK_DEFECTS[r.defect_code]):(r.defect_desc?(' - '+r.defect_desc):''))) || '-';
+    let det='';
+    if(r.required||r.actual||r.variation){ det='Req '+(r.required||'-')+' \u2192 Act '+(r.actual||'-')+(r.variation?(' (Var '+r.variation+')'):''); if(r.blade_gap) det+='\nBlade gap '+r.blade_gap; }
+    else if(r.details||r.reason){ det=[r.details,r.reason].filter(Boolean).join(' \u2014 '); }
+    else { const p2=[]; if(r.actual_length)p2.push('Len '+r.actual_length); if(r.actual_width)p2.push('W '+r.actual_width); if(r.rework_qty)p2.push('RW qty '+r.rework_qty); det=p2.join(', '); }
+    if(!det) det='-';
+    const action = String(r.action_taken||r.rework_action||'-');
+    const qd = (r.qc_verification||'-')+'\n'+(r.disposition||r.final_disposition||'-');
+    const rem = String(r.remarks||'-');
     doc.font('Helvetica').fontSize(8);
-    const h1=doc.heightOfString(defect,{width:c1-8}), h3=doc.heightOfString(String(r.rework_action||'-'),{width:c3-8});
-    const rowH=Math.max(30, h1+8, h3+8);
+    const h1=doc.heightOfString(defect,{width:c1-8}), h2=doc.heightOfString(det,{width:c2-8}), h3=doc.heightOfString(action,{width:c3-8}), h5=doc.heightOfString(rem,{width:c5-8});
+    const rowH=Math.max(30, h1+8, h2+8, h3+8, h5+8);
     y=ensureSpace(doc,y,rowH,hdr);
     if(i%2===1) doc.rect(40,y,tblW,rowH).fill(ROW_ALT);
     doc.strokeColor(BORDER).rect(40,y,tblW,rowH).stroke();
     [c1,c1+c2,c1+c2+c3,c1+c2+c3+c4].forEach(o=>doc.moveTo(40+o,y).lineTo(40+o,y+rowH).stroke());
     doc.fillColor(TEXT).font('Helvetica').fontSize(8);
     doc.text(defect, 44+off[0], y+4, {width:c1-8});
-    doc.text(qty, 44+off[1], y+4, {width:c2-8});
-    doc.text(String(r.rework_action||'-'), 44+off[2], y+4, {width:c3-8});
-    doc.text(mo, 44+off[3], y+4, {width:c4-8});
-    doc.text(qd, 44+off[4], y+4, {width:c5-8});
+    doc.text(det, 44+off[1], y+4, {width:c2-8});
+    doc.text(action, 44+off[2], y+4, {width:c3-8});
+    doc.text(qd, 44+off[3], y+4, {width:c4-8});
+    doc.text(rem, 44+off[4], y+4, {width:c5-8});
     y+=rowH;
   });
   y += 6;
@@ -2449,12 +2454,12 @@ app.get('/stats', requireAuth, requireEmployee, async (req, res) => {
 });
 
 // SUBMIT inspection form (existing)
-const REWORK_DEFECTS = { 'RW-01':'Length variation','RW-02':'Width variation','RW-03':'Diagonal variation / squareness','RW-04':'Burr','RW-05':'Blade impression','RW-06':'Edge crack / damaged edge','RW-07':'Camber','RW-08':'Bow / flatness issue','RW-09':'Surface damage','RW-10':'Wrong size / wrong setting','RW-11':'Marking / identification error','RW-12':'Other' };
+const REWORK_DEFECTS = { 'RW-01':'Length variation','RW-02':'Width variation','RW-03':'Diagonal variation / squareness','RW-04':'Burr','RW-05':'Blade impression','RW-06':'Edge crack / damaged edge','RW-07':'Camber','RW-08':'Bow / flatness issue','RW-09':'Surface damage','RW-10':'Other' };
 async function appendShearingReworks(token, data){
   const p = 'BSC Inspections/Shearing/Shearing_Rework_Register.csv';
   let ex = '';
   try { const g = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}}); if(g.ok) ex = await g.text(); } catch(e){}
-  const HEADER = 'Sl. No.,Date,Batch / Coil No.,Customer,Grade,Thickness (mm),Width (mm),Required Length (mm),Original Qty,Rework Qty,Scrap Qty,Actual Length (mm),Actual Width (mm),Diagonal 1 (mm),Diagonal 2 (mm),Burr Height (mm),Blade Gap (mm),Defect Code,Defect / Rework Reason,Rework Action,Machine,Operator,QC Verification,Final Disposition,Accepted Qty,Remarks\n';
+  const HEADER = 'Sl. No.,Date,Batch / Coil No.,Customer,Grade,Thickness (mm),Defect Code,Defect Description,Required,Actual,Variation,Blade Gap,Reason,Details,Action Taken,QC Verify,Disposition,Remarks\n';
   if (!ex) ex = HEADER;
   const priorLines = ex.trim().split('\n').length - 1;
   const c = v => { v=(v==null?'':String(v)); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; };
@@ -2463,7 +2468,7 @@ async function appendShearingReworks(token, data){
   let out = '';
   (data.reworks||[]).forEach((r, i) => {
     const code = r.defect_code || '';
-    const row = [ priorLines+i+1, date, data.batch_number||'', data.customer_name||'', data.grade||'', thickness, r.width||'', r.req_length||'', r.original_qty||'', r.rework_qty||'', r.scrap_qty||'', r.actual_length||'', r.actual_width||'', r.diag1||'', r.diag2||'', r.burr_height||'', r.blade_gap||'', code, (REWORK_DEFECTS[code]||''), r.rework_action||'', r.machine||'', r.operator||'', r.qc_verification||'', r.final_disposition||'', r.accepted_qty||'', r.remarks||'' ].map(c).join(',');
+    const row = [ priorLines+i+1, date, data.batch_number||'', data.customer_name||'', data.grade||'', thickness, code, (r.defect_desc||REWORK_DEFECTS[code]||''), r.required||'', r.actual||'', r.variation||'', r.blade_gap||'', r.reason||'', r.details||'', r.action_taken||'', r.qc_verification||'', r.disposition||'', r.remarks||'' ].map(c).join(',');
     out += row + '\n';
   });
   await uploadFile(token, p, Buffer.from(ex + out, 'utf8'), 'text/csv');
