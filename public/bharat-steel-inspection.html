@@ -338,19 +338,8 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       </div>
       <div style="margin-top:10px"><label style="font-size:11px;font-weight:600;color:#6b7280">Customer (optional)</label><input id="pdi_customer" placeholder="Customer" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
     </div>
-    <div style="margin:10px 12px;overflow-x:auto;border:1px solid #e5e7eb;border-radius:10px;background:#fff">
-      <table style="border-collapse:collapse;font-size:11px;min-width:1500px">
-        <thead><tr style="background:#f5f8fc;color:#0B5793">
-          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Date</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">SL.No</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">SO No</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Slip No</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Make</th>
-          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Spec Thk</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Spec W</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Spec L</th>
-          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Obs Thk</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Obs W</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Obs L</th>
-          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Qty</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Wt(T)</th>
-          <th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Waviness</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Line/Scratch</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Water/Oil/Rust</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Colour</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700">Sticker</th><th style="padding:6px 5px;border:1px solid #e5e7eb;white-space:nowrap;font-weight:700"></th>
-        </tr></thead>
-        <tbody id="pdi_rows"></tbody>
-      </table>
-    </div>
-    <button class="btn-sec" style="margin:0 12px 12px" onclick="addPdiRow()">+ Add Item Row</button>
+    <div id="pdi_cards" style="margin:10px 12px"></div>
+    <button class="btn-sec" style="margin:0 12px 12px" onclick="addPdiCard()">+ Add Item Row</button>
     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin:0 12px 12px">
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
         <div><label style="font-size:11px;font-weight:600;color:#6b7280">Inspected By</label><input id="pdi_inspected" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
@@ -479,7 +468,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R37</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R38</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -527,7 +516,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R37</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R38</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -3086,27 +3075,33 @@ function renderPdi(){ var q=(document.getElementById('pdireg_search').value||'')
     +(x.pdf_path?('<a href="'+SERVER_URL+'/pdi/download?report_no='+encodeURIComponent(x.report_no||'')+'" target="_blank" style="font-size:12px;font-weight:600;color:#0B5793;text-decoration:none;border:1px solid #c5d8ec;padding:6px 10px;border-radius:6px;white-space:nowrap">PDF \u2197</a>'):'')
     +'</div>'; }).join(''); }
 function _pdiTd(inner){ return '<td style="padding:3px;border:1px solid #e5e7eb">'+inner+'</td>'; }
-function addPdiRow(){ pdiCount++; var id=pdiCount;
-  function inp(sfx,w){ return '<input id="pr'+id+'_'+sfx+'" style="width:'+(w||58)+'px;border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px" oninput="flagPdi()">'; }
-  function chk(sfx){ return '<select id="pr'+id+'_'+sfx+'" onchange="flagPdi()" style="border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px"><option value="">\u2014</option><option>OK</option><option>NOT OK</option></select>'; }
-  var tr=document.createElement('tr'); tr.id='pr_'+id;
-  tr.innerHTML = _pdiTd('<input id="pr'+id+'_date" type="date" style="width:118px;border:1px solid #d1d5db;border-radius:4px;padding:4px;font-size:11px">')
-    + _pdiTd(inp('sl',52)) + _pdiTd(inp('so',78)) + _pdiTd(inp('slip',78)) + _pdiTd(inp('make',86))
-    + _pdiTd(inp('sth',52)) + _pdiTd(inp('swd',52)) + _pdiTd(inp('slen',60))
-    + _pdiTd(inp('oth',52)) + _pdiTd(inp('owd',52)) + _pdiTd(inp('olen',60))
-    + _pdiTd(inp('qty',46)) + _pdiTd(inp('wt',52))
-    + _pdiTd(chk('waviness')) + _pdiTd(chk('line')) + _pdiTd(chk('water')) + _pdiTd(chk('colour')) + _pdiTd(chk('sticker'))
-    + _pdiTd('<button onclick="this.parentNode.parentNode.remove()" style="background:#fee2e2;color:#dc2626;border:none;border-radius:4px;width:22px;height:22px;cursor:pointer">\u00d7</button>');
-  document.getElementById('pdi_rows').appendChild(tr);
+function addPdiCard(){ pdiCount++; var id=pdiCount;
+  function fld(label,inner){ return '<div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">'+label+'</label>'+inner+'</div>'; }
+  function inp(sfx,ph,type){ return '<input id="pr'+id+'_'+sfx+'" '+(type?('type="'+type+'" '):'')+'placeholder="'+(ph||'')+'" oninput="flagPdi()" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px">'; }
+  function chk(sfx){ return '<select id="pr'+id+'_'+sfx+'" onchange="flagPdi()" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px"><option value="">\u2014</option><option>OK</option><option>NOT OK</option></select>'; }
+  function grid(cols,inner){ return '<div style="display:grid;grid-template-columns:'+cols+';gap:10px;margin-bottom:10px">'+inner+'</div>'; }
+  var card=document.createElement('div'); card.id='pr_'+id;
+  card.style.cssText='border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px;background:#fafbfc';
+  card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:700;color:#0B5793;font-size:13px">Item</div>'
+    +'<button type="button" onclick="var c=document.getElementById(\'pr_'+id+'\');c&&c.remove();" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:15px">\u00d7</button></div>'
+    +grid('1fr 1fr 1fr', fld('Date',inp('date','','date'))+fld('SL.No',inp('sl'))+fld('SO No',inp('so'))+fld('Slip No',inp('slip'))+fld('Make',inp('make')))
+    +'<div style="font-size:11px;font-weight:700;color:#0B5793;margin-bottom:4px;letter-spacing:.3px">SPECIFICATIONS (mm)</div>'
+    +grid('1fr 1fr 1fr', fld('Thickness',inp('sth'))+fld('Width',inp('swd'))+fld('Length',inp('slen')))
+    +'<div style="font-size:11px;font-weight:700;color:#0B5793;margin-bottom:4px;letter-spacing:.3px">OBSERVED DIMENSIONS (mm)</div>'
+    +grid('1fr 1fr 1fr', fld('Thickness',inp('oth'))+fld('Width',inp('owd'))+fld('Length',inp('olen')))
+    +grid('1fr 1fr', fld('Qty (Nos)',inp('qty'))+fld('Weight (T)',inp('wt')))
+    +'<div style="font-size:11px;font-weight:700;color:#0B5793;margin-bottom:4px;letter-spacing:.3px">SURFACE CHECKS</div>'
+    +grid('1fr 1fr 1fr', fld('Waviness',chk('waviness'))+fld('Line/Scratch',chk('line'))+fld('Water/Oil/Rust',chk('water'))+fld('Colour',chk('colour'))+fld('Sticker',chk('sticker')));
+  document.getElementById('pdi_cards').appendChild(card);
 }
-function flagPdi(){ document.querySelectorAll('#pdi_rows tr').forEach(function(tr){ var id=tr.id.replace('pr_','');
+function flagPdi(){ document.querySelectorAll('#pdi_cards > div').forEach(function(tr){ var id=tr.id.replace('pr_','');
   [['sth','oth','th'],['swd','owd','wd'],['slen','olen','len']].forEach(function(p){ var spEl=document.getElementById('pr'+id+'_'+p[0]); var ob=document.getElementById('pr'+id+'_'+p[1]); if(!ob) return; var sp=parseFloat((spEl||{}).value), ov=parseFloat(ob.value); var bad=isFinite(sp)&&isFinite(ov)&&Math.abs(ov-sp)>PDI_TOL[p[2]]; ob.style.background=bad?'#fee2e2':''; ob.style.borderColor=bad?'#dc2626':'#d1d5db'; });
   ['waviness','line','water','colour','sticker'].forEach(function(c){ var el=document.getElementById('pr'+id+'_'+c); if(el){ var bad=el.value==='NOT OK'; el.style.background=bad?'#fee2e2':''; el.style.color=bad?'#dc2626':''; el.style.fontWeight=bad?'700':''; } });
 }); }
-function collectPdi(){ var items=[]; document.querySelectorAll('#pdi_rows tr').forEach(function(tr){ var id=tr.id.replace('pr_',''); function v(s){ var e=document.getElementById('pr'+id+'_'+s); return e?e.value:''; }
+function collectPdi(){ var items=[]; document.querySelectorAll('#pdi_cards > div').forEach(function(tr){ var id=tr.id.replace('pr_',''); function v(s){ var e=document.getElementById('pr'+id+'_'+s); return e?e.value:''; }
   items.push({ date:v('date'), sl:v('sl'), so:v('so'), slip:v('slip'), make:v('make'), spec:{th:v('sth'),wd:v('swd'),len:v('slen')}, obs:{th:v('oth'),wd:v('owd'),len:v('olen')}, qty:v('qty'), wt:v('wt'), checks:{waviness:v('waviness'),line:v('line'),water:v('water'),colour:v('colour'),sticker:v('sticker')} }); }); return items; }
 async function openPdi(){ showScreen('pdi');
-  try{ var pt=(window.APP_SETTINGS&&APP_SETTINGS.pdi_tolerance)||{}; PDI_TOL={ th:(pt.thickness!=null?+pt.thickness:0.5), wd:(pt.width!=null?+pt.width:5), len:(pt.length!=null?+pt.length:10) }; }catch(e){} document.getElementById('pdi_rows').innerHTML=''; pdiCount=0; addPdiRow();
+  try{ var pt=(window.APP_SETTINGS&&APP_SETTINGS.pdi_tolerance)||{}; PDI_TOL={ th:(pt.thickness!=null?+pt.thickness:0.5), wd:(pt.width!=null?+pt.width:5), len:(pt.length!=null?+pt.length:10) }; }catch(e){} document.getElementById('pdi_cards').innerHTML=''; pdiCount=0; addPdiCard();
   document.getElementById('pdi_customer').value=''; ['pdi_inspected','pdi_reviewed','pdi_approved'].forEach(function(i){ var e=document.getElementById(i); if(e) e.value=''; });
   var dt=document.getElementById('pdi_date'); if(dt) dt.value=new Date().toISOString().slice(0,10);
   try{ var r=await fetch(SERVER_URL+'/pdi/next-number',{cache:'no-store'}); if(r.ok){ var d=await r.json(); document.getElementById('pdi_report_no').value=d.report_no; document.getElementById('pdi_rno').textContent=d.report_no; } }catch(e){}
