@@ -383,7 +383,7 @@ function buildPdiPdf(rep, tol){
         {k:'sth',t:'THK',w:36,grp:'SPECIFICATIONS'},{k:'swd',t:'WIDTH',w:40,grp:'SPECIFICATIONS'},{k:'slen',t:'LENGTH',w:44,grp:'SPECIFICATIONS'},
         {k:'oth',t:'THK',w:36,grp:'OBSERVED DIMENSIONS'},{k:'owd',t:'WIDTH',w:40,grp:'OBSERVED DIMENSIONS'},{k:'olen',t:'LENGTH',w:44,grp:'OBSERVED DIMENSIONS'},
         {k:'qty',t:'QTY',w:32},{k:'wt',t:'WT(T)',w:36},
-        {k:'waviness',t:'WAVINESS',w:50,chk:1},{k:'line',t:'LINE/SCR',w:50,chk:1},{k:'water',t:'WAT/OIL/RST',w:56,chk:1},{k:'colour',t:'COLOUR',w:46,chk:1},{k:'sticker',t:'STICKER',w:46,chk:1}
+        {k:'waviness',t:'WAVINESS',w:50,chk:1},{k:'line',t:'LINE/SCR',w:50,chk:1},{k:'water',t:'WAT/OIL',w:56,chk:1},{k:'colour',t:'COLOUR',w:46,chk:1},{k:'sticker',t:'STICKER',w:46,chk:1}
       ];
       let tot=cols.reduce((a,c)=>a+c.w,0), sc=W/tot; let cx=L; cols.forEach(c=>{ c.w=c.w*sc; c.x=cx; cx+=c.w; });
       const ghH=13, shH=13;
@@ -417,7 +417,7 @@ function buildPdiPdf(rep, tol){
         ty+=rowH;
       });
       var sy=Math.min(Math.max(ty+16, bottom+2), PH-30), third=W/3;
-      [['INSPECTED BY',rep.inspected_by],['REVIEWED BY',rep.reviewed_by],['APPROVED BY',rep.approved_by]].forEach(function(sg,i){
+      [['INSPECTED BY',rep.inspected_by]].forEach(function(sg,i){
         var sx=L+i*third; doc.fillColor(MUT).font('Helvetica-Bold').fontSize(7).text(sg[0], sx, sy); doc.fillColor(TXT).font('Helvetica').fontSize(9.5).text(String(sg[1]||''), sx, sy+11);
       });
       doc.end();
@@ -481,6 +481,136 @@ app.get('/pdi/get', requireAuth, requireEmployee, async (req, res) => {
     if(!r.rows.length) return res.status(404).json({ error:'not found' });
     res.json(r.rows[0]);
   } catch(e){ res.status(500).json({ error: e.message }); }
+});
+
+// ---- Visitor Gate Pass ----
+let _gpTbl = false;
+async function ensureGP(){
+  if (_gpTbl) return;
+  await pgq(`CREATE TABLE IF NOT EXISTS gate_passes (
+    id SERIAL PRIMARY KEY, gp_no TEXT UNIQUE, gp_date DATE, visitor_name TEXT, company TEXT,
+    contact TEXT, persons INTEGER, vehicle_no TEXT, purpose TEXT, whom_to_meet TEXT, department TEXT,
+    belongings TEXT, in_time TEXT, out_time TEXT, status TEXT DEFAULT 'Open', approved_by TEXT,
+    remarks TEXT, pdf_path TEXT, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now(), closed_at TIMESTAMPTZ)`);
+  _gpTbl = true;
+}
+app.get('/gp/next-number', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensureGP();
+    const yr = new Date().getFullYear();
+    const c = await pgq("SELECT COALESCE(MAX((split_part(gp_no,'-',4))::int),0) AS n FROM gate_passes WHERE gp_no LIKE $1", ['BSCQMS-GP-'+yr+'-%']);
+    res.setHeader('Cache-Control','no-store');
+    res.json({ gp_no: 'BSCQMS-GP-'+yr+'-'+String((c.rows[0].n||0)+1).padStart(3,'0') });
+  } catch(e){ res.status(500).json({ error: e.message }); }
+});
+function buildGatePassPdf(g){
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size:'A4', margin:40, bufferPages:true });
+      const bufs=[]; doc.on('data', b=>bufs.push(b)); doc.on('end', ()=>resolve(Buffer.concat(bufs))); doc.on('error', reject);
+      const BRAND='#0B5793', TXT='#111111', MUT='#6b7280', BORD='#c5d8ec';
+      const L=40, R=555, W=R-L; let y=40;
+      try { doc.image(path.join(__dirname,'public','bsc-logo.png'), L, y, { height:36 }); } catch(e){}
+      doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(18).text('VISITOR GATE PASS', L, y+4, { width:W, align:'center' });
+      doc.fillColor(MUT).font('Helvetica').fontSize(9).text('Bharat Steel (Chennai) Pvt. Ltd.', L, y+27, { width:W, align:'center' });
+      y+=52; doc.moveTo(L,y).lineTo(R,y).lineWidth(1).strokeColor(BRAND).stroke(); y+=16;
+      doc.roundedRect(L, y, W, 34, 4).strokeColor(BORD).lineWidth(0.8).stroke();
+      doc.fillColor(MUT).font('Helvetica-Bold').fontSize(8).text('GATE PASS NO', L+10, y+6);
+      doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(13).text(String(g.gp_no||'-'), L+10, y+16);
+      doc.fillColor(MUT).font('Helvetica-Bold').fontSize(8).text('DATE', L+230, y+6);
+      doc.fillColor(TXT).font('Helvetica').fontSize(11).text(String(g.gp_date||'-'), L+230, y+17);
+      doc.fillColor(MUT).font('Helvetica-Bold').fontSize(8).text('STATUS', L+380, y+6);
+      doc.fillColor(String(g.status)==='Closed'?'#065f46':'#b45309').font('Helvetica-Bold').fontSize(11).text(String(g.status||'Open'), L+380, y+17);
+      y+=46;
+      const pair=(l1,v1,l2,v2)=>{
+        const colW=W/2;
+        doc.fillColor(MUT).font('Helvetica-Bold').fontSize(8).text(l1.toUpperCase(), L, y);
+        doc.fillColor(TXT).font('Helvetica').fontSize(11).text(String(v1||'-'), L, y+11, { width:colW-14 });
+        if(l2!==null){ doc.fillColor(MUT).font('Helvetica-Bold').fontSize(8).text(l2.toUpperCase(), L+colW, y);
+          doc.fillColor(TXT).font('Helvetica').fontSize(11).text(String(v2||'-'), L+colW, y+11, { width:colW-14 }); }
+        y+=34;
+      };
+      pair('Visitor Name', g.visitor_name, 'Company / From', g.company);
+      pair('Contact No', g.contact, 'No. of Persons', g.persons);
+      pair('Whom to Meet', g.whom_to_meet, 'Department', g.department);
+      pair('Purpose of Visit', g.purpose, 'Vehicle No', g.vehicle_no);
+      pair('In Time', g.in_time, 'Out Time', g.out_time);
+      pair('Belongings / Materials Carried', g.belongings, null, null);
+      pair('Remarks', g.remarks, null, null);
+      y+=10; doc.moveTo(L,y).lineTo(R,y).lineWidth(0.6).strokeColor(BORD).stroke(); y+=24;
+      const third=W/3;
+      [['VISITOR SIGN',''],['APPROVED BY', g.approved_by],['SECURITY SIGN','']].forEach((sg,i)=>{
+        const sx=L+i*third; doc.moveTo(sx, y+18).lineTo(sx+third-20, y+18).lineWidth(0.6).strokeColor(BORD).stroke();
+        doc.fillColor(MUT).font('Helvetica-Bold').fontSize(8).text(sg[0], sx, y+22);
+        if(sg[1]) doc.fillColor(TXT).font('Helvetica').fontSize(10).text(String(sg[1]), sx, y+4);
+      });
+      doc.end();
+    } catch(e){ reject(e); }
+  });
+}
+async function appendGpCsv(token, g){
+  try {
+    const p='BSC Inspections/Gate Pass/GatePass_Register.csv'; let ex='';
+    try { const r=await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}}); if(r.ok) ex=await r.text(); } catch(e){}
+    if(!ex) ex='GP No,Date,Visitor,Company,Contact,Persons,Vehicle,Whom To Meet,Department,Purpose,In Time,Out Time,Status,Approved By,Belongings,Remarks,Created By,Created At\n';
+    const c=v=>{ v=(v==null?'':String(v)); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; };
+    const line=[g.gp_no,g.gp_date,g.visitor_name,g.company,g.contact,g.persons,g.vehicle_no,g.whom_to_meet,g.department,g.purpose,g.in_time,g.out_time||'',g.status||'Open',g.approved_by,g.belongings,g.remarks,g.created_by,new Date().toISOString()].map(c).join(',')+'\n';
+    await uploadFile(token, p, Buffer.from(ex+line,'utf8'), 'text/csv');
+  } catch(e){ console.error('[gp-csv]', e.message); }
+}
+app.post('/gp/submit', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensureGP();
+    const b = req.body || {};
+    if (!b.gp_no || !b.visitor_name) return res.status(400).json({ error:'gp_no and visitor_name required' });
+    const gp = String(b.gp_no).trim();
+    const createdBy = (req.user && (req.user.name||req.user.emp_no||req.user.employee_id)) || '';
+    const persons = parseInt(b.persons,10); const personsVal = isFinite(persons)?persons:null;
+    let dbWarn=null;
+    try {
+      await pgq(`INSERT INTO gate_passes (gp_no,gp_date,visitor_name,company,contact,persons,vehicle_no,purpose,whom_to_meet,department,belongings,in_time,status,approved_by,remarks,created_by)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'Open',$13,$14,$15)
+        ON CONFLICT (gp_no) DO UPDATE SET gp_date=EXCLUDED.gp_date,visitor_name=EXCLUDED.visitor_name,company=EXCLUDED.company,contact=EXCLUDED.contact,persons=EXCLUDED.persons,vehicle_no=EXCLUDED.vehicle_no,purpose=EXCLUDED.purpose,whom_to_meet=EXCLUDED.whom_to_meet,department=EXCLUDED.department,belongings=EXCLUDED.belongings,in_time=EXCLUDED.in_time,approved_by=EXCLUDED.approved_by,remarks=EXCLUDED.remarks`,
+        [gp, b.gp_date||null, b.visitor_name||'', b.company||'', b.contact||'', personsVal, b.vehicle_no||'', b.purpose||'', b.whom_to_meet||'', b.department||'', b.belongings||'', b.in_time||'', b.approved_by||'', b.remarks||'', createdBy]);
+    } catch(e){ console.error('[gp] neon FAILED:', e.message); dbWarn=e.message; }
+    let pdfPath=null;
+    try {
+      const token = await getToken();
+      const pdf = await buildGatePassPdf(Object.assign({ status:'Open' }, b, { gp_no:gp }));
+      pdfPath = 'BSC Inspections/Gate Pass/' + gp.replace(/[^A-Za-z0-9._-]/g,'_') + '.pdf';
+      await uploadFile(token, pdfPath, pdf, 'application/pdf');
+      await pgq('UPDATE gate_passes SET pdf_path=$1 WHERE gp_no=$2', [pdfPath, gp]);
+      appendGpCsv(token, Object.assign({}, b, { gp_no:gp, status:'Open', created_by:createdBy }));
+    } catch(e){ console.error('[gp] pdf', e.message); }
+    res.json({ ok:true, gp_no:gp, pdf_path:pdfPath, db_warning:dbWarn });
+  } catch(e){ console.error('[gp] submit', e.message); res.status(500).json({ error:e.message }); }
+});
+app.post('/gp/close', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensureGP();
+    const b=req.body||{}; const gp=String(b.gp_no||'').trim();
+    if(!gp) return res.status(400).json({ error:'gp_no required' });
+    const out = b.out_time || new Date().toLocaleTimeString('en-IN',{ hour:'2-digit', minute:'2-digit' });
+    await pgq("UPDATE gate_passes SET out_time=$1, status='Closed', closed_at=now() WHERE gp_no=$2", [out, gp]);
+    res.json({ ok:true, gp_no:gp, out_time:out });
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
+app.get('/gp/list', requireAuth, requireEmployee, async (req, res) => {
+  try { await ensureGP();
+    const r = await pgq('SELECT gp_no,gp_date,visitor_name,company,contact,persons,vehicle_no,purpose,whom_to_meet,department,in_time,out_time,status,approved_by,pdf_path,created_by,created_at FROM gate_passes ORDER BY created_at DESC LIMIT 500');
+    res.setHeader('Cache-Control','no-store'); res.json(r.rows||[]);
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
+app.get('/gp/download', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    const r = await pgq('SELECT pdf_path FROM gate_passes WHERE gp_no=$1', [String(req.query.gp_no||'')]);
+    if(!r.rows.length || !r.rows[0].pdf_path) return res.status(404).send('Not found');
+    const token = await getToken();
+    const g = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(r.rows[0].pdf_path)+':/content',{headers:{'Authorization':'Bearer '+token}});
+    if(!g.ok) return res.status(502).send('Fetch failed');
+    const buf=Buffer.from(await g.arrayBuffer());
+    res.setHeader('Content-Type','application/pdf'); res.setHeader('Content-Disposition','inline; filename="'+String(req.query.gp_no||'gatepass').replace(/[^A-Za-z0-9._-]/g,'_')+'.pdf"'); res.send(buf);
+  } catch(e){ res.status(500).send(e.message); }
 });
 
 // ---- Forgot password via WhatsApp OTP (WATI otp_password2) ----

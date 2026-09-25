@@ -341,10 +341,9 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     <div id="pdi_cards" style="margin:10px 12px"></div>
     <button class="btn-sec" style="margin:0 12px 12px" onclick="addPdiCard()">+ Add Item Row</button>
     <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin:0 12px 12px">
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">
-        <div><label style="font-size:11px;font-weight:600;color:#6b7280">Inspected By</label><input id="pdi_inspected" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
-        <div><label style="font-size:11px;font-weight:600;color:#6b7280">Reviewed By</label><input id="pdi_reviewed" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
-        <div><label style="font-size:11px;font-weight:600;color:#6b7280">Approved By</label><input id="pdi_approved" style="width:100%;border:1px solid #c5d8ec;border-radius:6px;padding:7px;font-size:13px"></div>
+      <div style="max-width:300px">
+        <label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Inspected By</label>
+        <select id="pdi_inspected" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></select>
       </div>
     </div>
     <div style="margin:0 12px 28px;display:flex;justify-content:flex-end">
@@ -361,6 +360,41 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   </div>
   <div style="padding:10px 14px;background:#f5f8fc;border-bottom:1px solid #e5e7eb"><input id="pdireg_search" oninput="renderPdi()" placeholder="Search report / customer / inspector..." style="width:100%;padding:8px 10px;border:1px solid #c5d8ec;border-radius:6px;font-size:13px"></div>
   <div class="form-scroll" id="pdireg_body"><div style="text-align:center;padding:40px;color:var(--gray-400)">Loading...</div></div>
+</div>
+
+<div class="screen" id="screen-gatepass">
+  <div class="form-topbar" style="background:#0B5793">
+    <button class="back-btn" onclick="showScreen('home')">‹</button>
+    <div class="topbar-info"><div class="topbar-title">Visitor Gate Pass</div><div class="topbar-sub" id="gp_no_lbl">—</div></div>
+  </div>
+  <div class="form-scroll">
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin:10px 12px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px"><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Gate Pass No</label><input id="gp_no" readonly style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px;background:#eef3f9"></div><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Date</label><input id="gp_date" type="date" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px"><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">In Time</label><input id="gp_intime" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">No. of Persons</label><input id="gp_persons" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px"><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Visitor Name *</label><input id="gp_visitor" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Company / From</label><input id="gp_company" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px"><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Contact No</label><input id="gp_contact" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Vehicle No</label><input id="gp_vehicle" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px"><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Whom to Meet</label><input id="gp_whom" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Department</label><input id="gp_dept" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div></div>
+      <div style="margin-bottom:10px"><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Purpose of Visit</label><input id="gp_purpose" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div></div>
+      <div style="margin-bottom:10px"><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Belongings / Materials Carried</label><textarea id="gp_belongings" rows="2" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></textarea></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Approved By</label><input id="gp_approved" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div><div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">Remarks</label><input id="gp_remarks" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px"></div></div>
+    </div>
+    <div style="margin:0 12px 28px;display:flex;justify-content:flex-end">
+      <button class="lg-btn" id="gp_submit" style="max-width:220px" onclick="submitGatePass()">Issue Gate Pass</button>
+    </div>
+  </div>
+</div>
+
+<div class="screen" id="screen-gpreg">
+  <div class="form-topbar" style="background:#0B5793">
+    <button class="back-btn" onclick="showScreen('home')">‹</button>
+    <div class="topbar-info"><div class="topbar-title">Gate Pass Register</div><div class="topbar-sub" id="gpreg_count">Loading...</div></div>
+    <button class="back-btn" onclick="loadGpList()" style="font-size:14px">↻</button>
+  </div>
+  <div style="padding:10px 14px;background:#f5f8fc;border-bottom:1px solid #e5e7eb;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+    <input id="gpreg_search" oninput="renderGp()" placeholder="Search name / company / GP no..." style="flex:1;min-width:160px;padding:7px 10px;border:1px solid #c5d8ec;border-radius:6px;font-size:13px">
+    <select id="gpreg_filter" onchange="renderGp()" style="padding:7px 10px;border:1px solid #c5d8ec;border-radius:6px;font-size:13px"><option value="inside">Currently inside</option><option value="all">All</option><option value="closed">Closed</option></select>
+  </div>
+  <div class="form-scroll" id="gpreg_body"><div style="text-align:center;padding:40px;color:var(--gray-400)">Loading…</div></div>
 </div>
 
 <div class="screen" id="screen-forgotpw">
@@ -468,7 +502,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R38</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R40</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -516,7 +550,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R38</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R40</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -648,6 +682,24 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="card-body">
         <div class="card-title">PDI Register</div>
         <div class="card-desc">All Pre-Delivery Inspection reports · search by report no / customer / inspector</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+
+    <div class="form-card" onclick="openGatePass()">
+      <div class="card-icon" style="background:#EAF3FB"><svg viewBox="0 0 24 24" fill="none" stroke="#0B5793" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-8 0v2"/><circle cx="12" cy="7" r="4"/></svg></div>
+      <div class="card-body">
+        <div class="card-title">Visitor Gate Pass</div>
+        <div class="card-desc">Issue a visitor pass · auto-numbered · saves PDF to OneDrive · BSCQMS-GP</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+
+    <div class="form-card" onclick="showScreen('gpreg'); loadGpList()">
+      <div class="card-icon" style="background:#EAF3FB"><svg viewBox="0 0 24 24" fill="none" stroke="#0B5793" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+      <div class="card-body">
+        <div class="card-title">Gate Pass Register</div>
+        <div class="card-desc">All visitor passes · see who is currently inside · Mark Out on exit</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
@@ -3084,14 +3136,14 @@ function addPdiCard(){ pdiCount++; var id=pdiCount;
   card.style.cssText='border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px;background:#fafbfc';
   card.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="font-weight:700;color:#0B5793;font-size:13px">Item</div>'
     +'<button type="button" onclick="var c=document.getElementById(\'pr_'+id+'\');c&&c.remove();" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;width:30px;height:30px;cursor:pointer;font-size:15px">\u00d7</button></div>'
-    +grid('1fr 1fr 1fr', fld('Date',inp('date','','date'))+fld('SL.No',inp('sl'))+fld('SO No',inp('so'))+fld('Slip No',inp('slip'))+fld('Make',inp('make')))
+    +grid('1fr 1fr', fld('Date',inp('date','','date'))+fld('SO No',inp('so'))+fld('Slip No',inp('slip'))+fld('Make',inp('make')))
     +'<div style="font-size:11px;font-weight:700;color:#0B5793;margin-bottom:4px;letter-spacing:.3px">SPECIFICATIONS (mm)</div>'
     +grid('1fr 1fr 1fr', fld('Thickness',inp('sth'))+fld('Width',inp('swd'))+fld('Length',inp('slen')))
     +'<div style="font-size:11px;font-weight:700;color:#0B5793;margin-bottom:4px;letter-spacing:.3px">OBSERVED DIMENSIONS (mm)</div>'
     +grid('1fr 1fr 1fr', fld('Thickness',inp('oth'))+fld('Width',inp('owd'))+fld('Length',inp('olen')))
     +grid('1fr 1fr', fld('Qty (Nos)',inp('qty'))+fld('Weight (T)',inp('wt')))
     +'<div style="font-size:11px;font-weight:700;color:#0B5793;margin-bottom:4px;letter-spacing:.3px">SURFACE CHECKS</div>'
-    +grid('1fr 1fr 1fr', fld('Waviness',chk('waviness'))+fld('Line/Scratch',chk('line'))+fld('Water/Oil/Rust',chk('water'))+fld('Colour',chk('colour'))+fld('Sticker',chk('sticker')));
+    +grid('1fr 1fr 1fr', fld('Waviness',chk('waviness'))+fld('Line/Scratch',chk('line'))+fld('Water/Oil',chk('water'))+fld('Colour',chk('colour'))+fld('Sticker',chk('sticker')));
   document.getElementById('pdi_cards').appendChild(card);
 }
 function flagPdi(){ document.querySelectorAll('#pdi_cards > div').forEach(function(tr){ var id=tr.id.replace('pr_','');
@@ -3099,17 +3151,18 @@ function flagPdi(){ document.querySelectorAll('#pdi_cards > div').forEach(functi
   ['waviness','line','water','colour','sticker'].forEach(function(c){ var el=document.getElementById('pr'+id+'_'+c); if(el){ var bad=el.value==='NOT OK'; el.style.background=bad?'#fee2e2':''; el.style.color=bad?'#dc2626':''; el.style.fontWeight=bad?'700':''; } });
 }); }
 function collectPdi(){ var items=[]; document.querySelectorAll('#pdi_cards > div').forEach(function(tr){ var id=tr.id.replace('pr_',''); function v(s){ var e=document.getElementById('pr'+id+'_'+s); return e?e.value:''; }
-  items.push({ date:v('date'), sl:v('sl'), so:v('so'), slip:v('slip'), make:v('make'), spec:{th:v('sth'),wd:v('swd'),len:v('slen')}, obs:{th:v('oth'),wd:v('owd'),len:v('olen')}, qty:v('qty'), wt:v('wt'), checks:{waviness:v('waviness'),line:v('line'),water:v('water'),colour:v('colour'),sticker:v('sticker')} }); }); return items; }
+  items.push({ date:v('date'), so:v('so'), slip:v('slip'), make:v('make'), spec:{th:v('sth'),wd:v('swd'),len:v('slen')}, obs:{th:v('oth'),wd:v('owd'),len:v('olen')}, qty:v('qty'), wt:v('wt'), checks:{waviness:v('waviness'),line:v('line'),water:v('water'),colour:v('colour'),sticker:v('sticker')} }); }); return items; }
 async function openPdi(){ showScreen('pdi');
   try{ var pt=(window.APP_SETTINGS&&APP_SETTINGS.pdi_tolerance)||{}; PDI_TOL={ th:(pt.thickness!=null?+pt.thickness:0.5), wd:(pt.width!=null?+pt.width:5), len:(pt.length!=null?+pt.length:10) }; }catch(e){} document.getElementById('pdi_cards').innerHTML=''; pdiCount=0; addPdiCard();
-  document.getElementById('pdi_customer').value=''; ['pdi_inspected','pdi_reviewed','pdi_approved'].forEach(function(i){ var e=document.getElementById(i); if(e) e.value=''; });
+  document.getElementById('pdi_customer').value='';
+  var _ins=document.getElementById('pdi_inspected'); if(_ins){ var _names=(window.APP_SETTINGS&&APP_SETTINGS.inspectors_inward&&APP_SETTINGS.inspectors_inward.length)?APP_SETTINGS.inspectors_inward:['Sathya','Sam','Kumar','Mahendran','Dhanush']; _ins.innerHTML='<option value="">-- Select --</option>'+_names.map(function(n){return '<option>'+n+'</option>';}).join(''); _ins.value=''; }
   var dt=document.getElementById('pdi_date'); if(dt) dt.value=new Date().toISOString().slice(0,10);
   try{ var r=await fetch(SERVER_URL+'/pdi/next-number',{cache:'no-store'}); if(r.ok){ var d=await r.json(); document.getElementById('pdi_report_no').value=d.report_no; document.getElementById('pdi_rno').textContent=d.report_no; } }catch(e){}
 }
 async function submitPdi(){ var rno=document.getElementById('pdi_report_no').value; var items=collectPdi();
   if(!items.length){ alert('Add at least one item row.'); return; }
   var btn=document.getElementById('pdi_submit'); btn.disabled=true; btn.textContent='Submitting\u2026';
-  try{ var r=await fetch(SERVER_URL+'/pdi/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ report_no:rno, report_date:document.getElementById('pdi_date').value, customer:document.getElementById('pdi_customer').value, items:items, inspected_by:document.getElementById('pdi_inspected').value, reviewed_by:document.getElementById('pdi_reviewed').value, approved_by:document.getElementById('pdi_approved').value })});
+  try{ var r=await fetch(SERVER_URL+'/pdi/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ report_no:rno, report_date:document.getElementById('pdi_date').value, customer:document.getElementById('pdi_customer').value, items:items, inspected_by:document.getElementById('pdi_inspected').value })});
     var d=await r.json().catch(function(){return {};});
     if(!r.ok||!d.ok) throw new Error((d&&d.error)||'Submit failed');
     if(d.db_warning) alert('\u26a0 Saved to CSV, but register write warning:\n'+d.db_warning); else alert('\u2713 PDI '+(d.report_no||rno)+' submitted and logged.');
@@ -3117,6 +3170,43 @@ async function submitPdi(){ var rno=document.getElementById('pdi_report_no').val
   }catch(e){ alert('Submit failed: '+((e&&e.message)||e)); }
   finally{ btn.disabled=false; btn.textContent='Submit PDI Report'; }
 }
+function _gpv(id){ var e=document.getElementById(id); return e?e.value:''; }
+async function openGatePass(){ showScreen('gatepass');
+  ['gp_visitor','gp_company','gp_contact','gp_persons','gp_whom','gp_dept','gp_purpose','gp_vehicle','gp_belongings','gp_approved','gp_remarks'].forEach(function(i){ var e=document.getElementById(i); if(e)e.value=''; });
+  var d=new Date(); var dt=document.getElementById('gp_date'); if(dt)dt.value=d.toISOString().slice(0,10);
+  var it=document.getElementById('gp_intime'); if(it)it.value=d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});
+  try{ var r=await fetch(SERVER_URL+'/gp/next-number',{cache:'no-store'}); if(r.ok){ var j=await r.json(); document.getElementById('gp_no').value=j.gp_no; document.getElementById('gp_no_lbl').textContent=j.gp_no; } }catch(e){}
+}
+async function submitGatePass(){ var gp=_gpv('gp_no'); var name=_gpv('gp_visitor').trim();
+  if(!name){ alert('Please enter the visitor name.'); return; }
+  var btn=document.getElementById('gp_submit'); btn.disabled=true; btn.textContent='Submitting\u2026';
+  try{ var r=await fetch(SERVER_URL+'/gp/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ gp_no:gp, gp_date:_gpv('gp_date'), visitor_name:name, company:_gpv('gp_company'), contact:_gpv('gp_contact'), persons:_gpv('gp_persons'), whom_to_meet:_gpv('gp_whom'), department:_gpv('gp_dept'), purpose:_gpv('gp_purpose'), vehicle_no:_gpv('gp_vehicle'), belongings:_gpv('gp_belongings'), in_time:_gpv('gp_intime'), approved_by:_gpv('gp_approved'), remarks:_gpv('gp_remarks') })});
+    var d=await r.json().catch(function(){return{};}); if(!r.ok||!d.ok) throw new Error(d.error||'Submit failed');
+    if(d.db_warning) alert('\u26a0 Saved to OneDrive, but register write warning:\n'+d.db_warning); else alert('\u2713 Gate pass '+(d.gp_no||gp)+' issued. PDF saved to OneDrive.');
+    showScreen('home');
+  }catch(e){ alert('Failed: '+((e&&e.message)||e)); } finally{ btn.disabled=false; btn.textContent='Issue Gate Pass'; }
+}
+var _gpData=[];
+async function loadGpList(){ var b=document.getElementById('gpreg_body'); if(!b)return; b.innerHTML='<div style="text-align:center;padding:40px;color:#9ca3af">Loading\u2026</div>';
+  try{ var r=await fetch(SERVER_URL+'/gp/list',{cache:'no-store'}); _gpData=await r.json(); if(!Array.isArray(_gpData))_gpData=[]; renderGp(); }catch(e){ b.innerHTML='<div style="text-align:center;padding:40px;color:#dc2626">Failed to load</div>'; } }
+function _gEsc(s){ return String(s==null?'':s).replace(/[&<>\"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;'}[c];}); }
+function renderGp(){ var q=(document.getElementById('gpreg_search').value||'').toLowerCase(); var f=document.getElementById('gpreg_filter').value;
+  var rows=_gpData.filter(function(x){ if(f==='inside'&&x.status!=='Open')return false; if(f==='closed'&&x.status!=='Closed')return false; if(!q)return true; return [x.gp_no,x.visitor_name,x.company,x.whom_to_meet].join(' ').toLowerCase().indexOf(q)>=0; });
+  document.getElementById('gpreg_count').textContent=rows.length+(f==='inside'?' inside now':(' pass'+(rows.length===1?'':'es')));
+  var b=document.getElementById('gpreg_body'); if(!rows.length){ b.innerHTML='<div style="text-align:center;padding:40px;color:#9ca3af">No gate passes.</div>'; return; }
+  b.innerHTML=rows.map(function(x){ var open=x.status==='Open';
+    return '<div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;margin:10px 12px;display:flex;align-items:center;gap:12px">'
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-weight:700;color:#0B5793;font-size:13px">'+_gEsc(x.visitor_name||'')+' <span style="font-size:11px;color:#9ca3af">'+_gEsc(x.gp_no||'')+'</span></div>'
+      +'<div style="font-size:12px;color:#374151;margin-top:2px">'+_gEsc(x.company||'\u2014')+(x.whom_to_meet?(' \u00b7 meets '+_gEsc(x.whom_to_meet)):'')+'</div>'
+      +'<div style="font-size:11px;color:#9ca3af;margin-top:2px">In '+_gEsc(x.in_time||'-')+(x.out_time?(' \u00b7 Out '+_gEsc(x.out_time)):'')+' \u00b7 '+(x.gp_date?String(x.gp_date).slice(0,10):'')+'</div>'
+      +'</div>'
+      +'<span style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:999px;color:'+(open?'#b45309':'#065f46')+';background:'+(open?'#fef3c7':'#d1fae5')+'">'+(open?'Inside':'Out')+'</span>'
+      +(open?('<button onclick="markGpOut(\''+_gEsc(x.gp_no)+'\')" style="font-size:12px;font-weight:600;color:#fff;background:#0B5793;border:none;padding:6px 10px;border-radius:6px;cursor:pointer;white-space:nowrap">Mark Out</button>'):'')
+      +'<a href="'+SERVER_URL+'/gp/download?gp_no='+encodeURIComponent(x.gp_no||'')+'" target="_blank" style="font-size:12px;font-weight:600;color:#0B5793;text-decoration:none;border:1px solid #c5d8ec;padding:6px 10px;border-radius:6px;white-space:nowrap">PDF \u2197</a>'
+      +'</div>'; }).join('');
+}
+async function markGpOut(gp){ if(!confirm('Mark '+gp+' as OUT now?')) return; try{ var r=await fetch(SERVER_URL+'/gp/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({gp_no:gp})}); var d=await r.json().catch(function(){return{};}); if(!r.ok||!d.ok) throw new Error(d.error||'failed'); loadGpList(); }catch(e){ alert('Failed: '+((e&&e.message)||e)); } }
 function showScreen(name) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   var el = document.getElementById('screen-' + name);
