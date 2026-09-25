@@ -1707,51 +1707,41 @@ function drawRejectionTable(doc, y, data, hdr) {
 }
 
 function drawReworkTable(doc, y, data, hdr) {
-  const rw = (data.reworks || []).filter(r => r && (r.rework_qty || r.defect_code || r.rework_action || r.remarks));
+  const rw = (data.reworks || []).filter(r => r && (r.rework_qty || r.defect_code || r.rework_action || r.action_taken || r.remarks));
   if (String(data.has_reworks||'').toLowerCase() !== 'yes' || rw.length === 0) return y;
   y = ensureSpace(doc, y, 60, hdr);
   y = drawSectionTitle(doc, y, 'REWORKS');
   const tblW = doc.page.width - 80;
-  const c1=tblW*0.26, c2=tblW*0.15, c3=tblW*0.25, c4=tblW*0.17, c5=tblW*0.17;
-  const off=[0,c1,c1+c2,c1+c2+c3,c1+c2+c3+c4];
+  const props=[0.16,0.07,0.085,0.085,0.085,0.075,0.14,0.11,0.19];
+  const cw=props.map(p=>tblW*p); const off=[]; { let a=0; for(const w of cw){ off.push(a); a+=w; } }
+  const heads=['Defect','RW Qty','Req','Actual','Var','Blade','Action Taken','QC / Disp','Remarks'];
   doc.lineWidth(0.5).strokeColor(BORDER);
-  doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
-  doc.strokeColor(BORDER).rect(40, y, tblW, 18).stroke();
-  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(7.5);
-  doc.text('Defect', 44+off[0], y+5, {width:c1-8});
-  doc.text('Measurement / Reason', 44+off[1], y+5, {width:c2-8});
-  doc.text('Action Taken', 44+off[2], y+5, {width:c3-8});
-  doc.text('QC / Disposition', 44+off[3], y+5, {width:c4-8});
-  doc.text('Remarks', 44+off[4], y+5, {width:c5-8});
-  [c1,c1+c2,c1+c2+c3,c1+c2+c3+c4].forEach(o=>doc.moveTo(40+o,y).lineTo(40+o,y+18).stroke());
-  y += 18;
-  rw.forEach((r,i)=>{
-    const defect = ((r.defect_code||'') + (REWORK_DEFECTS[r.defect_code]?(' - '+REWORK_DEFECTS[r.defect_code]):(r.defect_desc?(' - '+r.defect_desc):''))) || '-';
-    let det='';
-    if(r.required||r.actual||r.variation){ det='Req '+(r.required||'-')+' \u2192 Act '+(r.actual||'-')+(r.variation?(' (Var '+r.variation+')'):''); if(r.blade_gap) det+='\nBlade gap '+r.blade_gap; }
-    else if(r.details||r.reason){ det=[r.details,r.reason].filter(Boolean).join(' \u2014 '); }
-    else { const p2=[]; if(r.actual_length)p2.push('Len '+r.actual_length); if(r.actual_width)p2.push('W '+r.actual_width); if(r.rework_qty)p2.push('RW qty '+r.rework_qty); det=p2.join(', '); }
-    if(!det) det='-';
-    const action = String(r.action_taken||r.rework_action||'-');
-    const qd = (r.qc_verification||'-')+'\n'+(r.disposition||r.final_disposition||'-');
-    const rem = String(r.remarks||'-');
-    doc.font('Helvetica').fontSize(8);
-    const h1=doc.heightOfString(defect,{width:c1-8}), h2=doc.heightOfString(det,{width:c2-8}), h3=doc.heightOfString(action,{width:c3-8}), h5=doc.heightOfString(rem,{width:c5-8});
-    const rowH=Math.max(30, h1+8, h2+8, h3+8, h5+8);
+  doc.rect(40,y,tblW,16).fill(BRAND_LIGHT); doc.strokeColor(BORDER).rect(40,y,tblW,16).stroke();
+  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(6.5);
+  heads.forEach((hh,i)=>doc.text(hh, 43+off[i], y+5, {width:cw[i]-6}));
+  for(let i=1;i<off.length;i++) doc.moveTo(40+off[i],y).lineTo(40+off[i],y+16).stroke();
+  y+=16;
+  rw.forEach((r,idx)=>{
+    const defect=((r.defect_code||'')+(REWORK_DEFECTS[r.defect_code]?(' - '+REWORK_DEFECTS[r.defect_code]):(r.defect_desc?(' - '+r.defect_desc):'')))||'-';
+    const meas=(r.required||r.actual||r.variation);
+    const req=meas?(r.required||'-'):'-', act=meas?(r.actual||'-'):'-', varn=meas?(r.variation||'-'):'-', blade=r.blade_gap||'-';
+    const action=String(r.action_taken||r.rework_action||'-');
+    const qd=(r.qc_verification||'-')+'\n'+(r.disposition||r.final_disposition||'-');
+    let rem=String(r.remarks||'');
+    if(!meas){ const rr=[r.details,r.reason].filter(Boolean).join(' - '); if(rr) rem=(rem?(rr+' | '+rem):rr); }
+    if(!rem) rem='-';
+    const cells=[defect,(r.rework_qty||'-'),req,act,varn,blade,action,qd,rem];
+    doc.font('Helvetica').fontSize(6.5);
+    let rowH=22; cells.forEach((c,i)=>{ rowH=Math.max(rowH, doc.heightOfString(String(c),{width:cw[i]-6})+8); });
     y=ensureSpace(doc,y,rowH,hdr);
-    if(i%2===1) doc.rect(40,y,tblW,rowH).fill(ROW_ALT);
+    if(idx%2===1) doc.rect(40,y,tblW,rowH).fill(ROW_ALT);
     doc.strokeColor(BORDER).rect(40,y,tblW,rowH).stroke();
-    [c1,c1+c2,c1+c2+c3,c1+c2+c3+c4].forEach(o=>doc.moveTo(40+o,y).lineTo(40+o,y+rowH).stroke());
-    doc.fillColor(TEXT).font('Helvetica').fontSize(8);
-    doc.text(defect, 44+off[0], y+4, {width:c1-8});
-    doc.text(det, 44+off[1], y+4, {width:c2-8});
-    doc.text(action, 44+off[2], y+4, {width:c3-8});
-    doc.text(qd, 44+off[3], y+4, {width:c4-8});
-    doc.text(rem, 44+off[4], y+4, {width:c5-8});
+    for(let i=1;i<off.length;i++) doc.moveTo(40+off[i],y).lineTo(40+off[i],y+rowH).stroke();
+    doc.fillColor(TEXT).font('Helvetica').fontSize(6.5);
+    cells.forEach((c,i)=>doc.text(String(c), 43+off[i], y+4, {width:cw[i]-6}));
     y+=rowH;
   });
-  y += 6;
-  return y;
+  y+=6; return y;
 }
 function drawFrequencyTable(doc, y, data, hdr) {
   const freq = data.sample_frequency || [];
@@ -2589,7 +2579,7 @@ async function appendShearingReworks(token, data){
   const p = 'BSC Inspections/Shearing/Shearing_Rework_Register.csv';
   let ex = '';
   try { const g = await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}}); if(g.ok) ex = await g.text(); } catch(e){}
-  const HEADER = 'Sl. No.,Date,Batch / Coil No.,Customer,Grade,Thickness (mm),Defect Code,Defect Description,Required,Actual,Variation,Blade Gap,Reason,Details,Action Taken,QC Verify,Disposition,Remarks\n';
+  const HEADER = 'Sl. No.,Date,Batch / Coil No.,Customer,Grade,Thickness (mm),Defect Code,Defect Description,Rework Qty,Required,Actual,Variation,Blade Gap,Reason,Details,Action Taken,QC Verify,Disposition,Remarks\n';
   if (!ex) ex = HEADER;
   const priorLines = ex.trim().split('\n').length - 1;
   const c = v => { v=(v==null?'':String(v)); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; };
@@ -2598,7 +2588,7 @@ async function appendShearingReworks(token, data){
   let out = '';
   (data.reworks||[]).forEach((r, i) => {
     const code = r.defect_code || '';
-    const row = [ priorLines+i+1, date, data.batch_number||'', data.customer_name||'', data.grade||'', thickness, code, (r.defect_desc||REWORK_DEFECTS[code]||''), r.required||'', r.actual||'', r.variation||'', r.blade_gap||'', r.reason||'', r.details||'', r.action_taken||'', r.qc_verification||'', r.disposition||'', r.remarks||'' ].map(c).join(',');
+    const row = [ priorLines+i+1, date, data.batch_number||'', data.customer_name||'', data.grade||'', thickness, code, (r.defect_desc||REWORK_DEFECTS[code]||''), r.rework_qty||'', r.required||'', r.actual||'', r.variation||'', r.blade_gap||'', r.reason||'', r.details||'', r.action_taken||'', r.qc_verification||'', r.disposition||'', r.remarks||'' ].map(c).join(',');
     out += row + '\n';
   });
   await uploadFile(token, p, Buffer.from(ex + out, 'utf8'), 'text/csv');

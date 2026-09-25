@@ -502,7 +502,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R40</span></h2>
+    <h2>HRC Stock<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R41</span></h2>
   </div>
   <div class="us-body">
     <div class="stk-tabs" style="display:block;margin-bottom:14px">
@@ -550,7 +550,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 <div class="screen" id="screen-stock-entry">
   <div class="us-top">
     <button class="us-back" onclick="showScreen('home')">&lsaquo; Home</button>
-    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R40</span></h2>
+    <h2>Stock Entry<span style="background:#067647;color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:6px;margin-left:10px;vertical-align:middle">BUILD R41</span></h2>
     <button id="stke_admin_link" onclick="openStock()" style="margin-left:auto;display:none;background:#0B5793;color:#fff;border:none;border-radius:8px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer">&#9881; Manage items &amp; opening stock</button>
   </div>
   <div class="us-body">
@@ -4698,18 +4698,18 @@ function renderReworkFields(id){
   var g='';
   if(spec.k==='reject'){
     g='<div style="font-weight:700;color:#dc2626;background:#fee2e2;border-radius:6px;padding:8px 10px;margin-bottom:10px">Direct rejection \u2014 this defect is not reworkable.</div>'
-      +grid(_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition','<select id="rw'+id+'_disposition" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px"><option>Rejected</option></select>'));
+      +grid(_rwFld('Rework Qty',_rwIn(id,'rework_qty'))+_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition','<select id="rw'+id+'_disposition" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px"><option>Rejected</option></select>'));
   } else if(spec.k==='meas'){
-    g=grid(_rwFld('Required '+spec.m,_rwIn(id,'required','required'))+_rwFld('Actual '+spec.m,_rwIn(id,'actual','measured'))
+    g=grid(_rwFld('Rework Qty',_rwIn(id,'rework_qty'))+_rwFld('Required '+spec.m,_rwIn(id,'required','required'))+_rwFld('Actual '+spec.m,_rwIn(id,'actual','measured'))
       +_rwFld('Variation (auto)',_rwIn(id,'variation','',true))+_rwFld('Blade Gap',_rwIn(id,'blade_gap'))
       +_rwFld('Action Taken',_rwIn(id,'action_taken'))+_rwFld('QC Verify',_rwSel(id,'qc_verification',qc))
       +_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition',_rwSel(id,'disposition',disp)));
   } else if(spec.k==='reason'){
-    g=grid(_rwFld('Reason',_rwIn(id,'reason'))+_rwFld('Action Taken',_rwIn(id,'action_taken'))
+    g=grid(_rwFld('Rework Qty',_rwIn(id,'rework_qty'))+_rwFld('Reason',_rwIn(id,'reason'))+_rwFld('Action Taken',_rwIn(id,'action_taken'))
       +_rwFld('QC Verify',_rwSel(id,'qc_verification',qc))+_rwFld('Remarks',_rwIn(id,'remarks'))
       +_rwFld('Disposition',_rwSel(id,'disposition',disp)));
   } else {
-    g=grid(_rwFld('Details',_rwIn(id,'details'))+_rwFld('Reason',_rwIn(id,'reason'))
+    g=grid(_rwFld('Rework Qty',_rwIn(id,'rework_qty'))+_rwFld('Details',_rwIn(id,'details'))+_rwFld('Reason',_rwIn(id,'reason'))
       +_rwFld('Action Taken',_rwIn(id,'action_taken'))+_rwFld('QC Verify',_rwSel(id,'qc_verification',qc))
       +_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition',_rwSel(id,'disposition',disp)));
   }
@@ -4718,7 +4718,7 @@ function renderReworkFields(id){
 function reworkCalc(id){ var r=parseFloat((document.getElementById('rw'+id+'_required')||{}).value), a=parseFloat((document.getElementById('rw'+id+'_actual')||{}).value); var v=document.getElementById('rw'+id+'_variation'); if(v){ v.value=(isFinite(r)&&isFinite(a))?(a-r).toFixed(2):''; } }
 function collectReworks(){ var out=[]; document.querySelectorAll('#sh_rework_cards > div').forEach(function(card){ var id=card.id.replace('rwc_',''); function v(s){ var e=document.getElementById('rw'+id+'_'+s); return e?e.value:''; }
   var code=v('defect_code'); if(!code) return;
-  out.push({ defect_code:code, defect_desc:(DEFECT_SPEC[code]?DEFECT_SPEC[code].l:''), required:v('required'), actual:v('actual'), variation:v('variation'), blade_gap:v('blade_gap'), reason:v('reason'), details:v('details'), action_taken:v('action_taken'), qc_verification:v('qc_verification'), disposition:v('disposition'), remarks:v('remarks') }); }); return out; }
+  out.push({ defect_code:code, defect_desc:(DEFECT_SPEC[code]?DEFECT_SPEC[code].l:''), rework_qty:v('rework_qty'), required:v('required'), actual:v('actual'), variation:v('variation'), blade_gap:v('blade_gap'), reason:v('reason'), details:v('details'), action_taken:v('action_taken'), qc_verification:v('qc_verification'), disposition:v('disposition'), remarks:v('remarks') }); }); return out; }
 function collectShearing() {
   var rows = [];
   document.querySelectorAll('#sh_rows tr').forEach(function(tr) {
