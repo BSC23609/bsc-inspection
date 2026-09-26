@@ -361,65 +361,51 @@ async function appendPdiCsv(token, row){
 }
 
 function buildPdiPdf(rep, tol){
-  return new Promise(function(resolve, reject){
+  return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size:'A4', layout:'landscape', margin:0, bufferPages:true });
+      const doc = new PDFDocument({ size:'A4', margin:0, bufferPages:true }); // portrait, same as Inward
       const bufs=[]; doc.on('data', b=>bufs.push(b)); doc.on('end', ()=>resolve(Buffer.concat(bufs))); doc.on('error', reject);
-      const PW=842, PH=595, M=22, L=M, R=PW-M, W=R-L;
-      const BRAND='#0B5793', TXT='#111111', MUT='#6b7280', BORD='#c5d8ec', RED='#dc2626', REDBG='#fdecec', HEADBG='#eaf1f9';
-      let y=M;
-      try { doc.image(path.join(__dirname,'public','bsc-logo.png'), L, y, { height:34 }); } catch(e){}
-      doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(15).text('PRE DELIVERY INSPECTION REPORT', L, y+4, { width:W, align:'center' });
-      doc.fillColor(MUT).font('Helvetica').fontSize(8).text('Bharat Steel (Chennai) Pvt. Ltd.  |  Quality Management System', L, y+24, { width:W, align:'center' });
-      const rbx=R-160, rbw=160; doc.rect(rbx, y, rbw, 42).lineWidth(0.8).strokeColor(BORD).stroke();
-      doc.fillColor(MUT).font('Helvetica').fontSize(6.5).text('DOC / REV', rbx+5, y+3);
-      doc.fillColor(TXT).font('Helvetica-Bold').fontSize(8).text('BSCQMS-PRD-009   Rev 01', rbx+5, y+11);
-      doc.fillColor(MUT).font('Helvetica').fontSize(6.5).text('REPORT NO', rbx+5, y+23);
-      doc.fillColor(TXT).font('Helvetica-Bold').fontSize(8).text(String(rep.report_no||''), rbx+5, y+31, { width:rbw-10 });
-      doc.fillColor(TXT).font('Helvetica').fontSize(8.5).text('Date: '+(rep.report_date?String(rep.report_date).slice(0,10):'')+(rep.customer?('        Customer: '+rep.customer):''), L, y+44);
-      y+=58;
-      const cols=[
-        {k:'date',t:'DATE',w:54},{k:'sl',t:'SL.No',w:30},{k:'so',t:'SO No',w:46},{k:'slip',t:'Slip No',w:46},{k:'make',t:'Make',w:50},
-        {k:'sth',t:'THK',w:36,grp:'SPECIFICATIONS'},{k:'swd',t:'WIDTH',w:40,grp:'SPECIFICATIONS'},{k:'slen',t:'LENGTH',w:44,grp:'SPECIFICATIONS'},
-        {k:'oth',t:'THK',w:36,grp:'OBSERVED DIMENSIONS'},{k:'owd',t:'WIDTH',w:40,grp:'OBSERVED DIMENSIONS'},{k:'olen',t:'LENGTH',w:44,grp:'OBSERVED DIMENSIONS'},
-        {k:'qty',t:'QTY',w:32},{k:'wt',t:'WT(T)',w:36},
-        {k:'waviness',t:'WAVINESS',w:50,chk:1},{k:'line',t:'LINE/SCR',w:50,chk:1},{k:'water',t:'WAT/OIL',w:56,chk:1},{k:'colour',t:'COLOUR',w:46,chk:1},{k:'sticker',t:'STICKER',w:46,chk:1}
-      ];
-      let tot=cols.reduce((a,c)=>a+c.w,0), sc=W/tot; let cx=L; cols.forEach(c=>{ c.w=c.w*sc; c.x=cx; cx+=c.w; });
-      const ghH=13, shH=13;
-      function drawHeader(hy){
-        cols.forEach(function(c){
-          if(c.grp){ doc.rect(c.x, hy+ghH, c.w, shH).fillAndStroke(HEADBG,BORD); doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(6).text(c.t, c.x, hy+ghH+3.5, {width:c.w,align:'center'}); }
-          else { doc.rect(c.x, hy, c.w, ghH+shH).fillAndStroke(HEADBG,BORD); doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(6).text(c.t, c.x, hy+(c.chk?7:9), {width:c.w,align:'center'}); }
-        });
-        ['SPECIFICATIONS','OBSERVED DIMENSIONS'].forEach(function(name){ var g=cols.filter(c=>c.grp===name); if(!g.length) return; var gx=g[0].x, gw=g.reduce((a,c)=>a+c.w,0); doc.rect(gx,hy,gw,ghH).fillAndStroke(HEADBG,BORD); doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(6.5).text(name, gx, hy+3.5, {width:gw,align:'center'}); });
-        return hy+ghH+shH;
-      }
-      let ty=drawHeader(y);
-      const rowH=16, bottom=PH-52;
-      const f=v=>{ var n=parseFloat(v); return isFinite(n)?n:null; };
+      const HDR = { title:'PRE DELIVERY INSPECTION', subtitle:'Pre-Delivery Inspection \u00b7 BSCQMS-PRD-009 REV 01', refLabel:'Ref: '+(rep.report_no||'-') };
+      let y = drawBrandedHeader(doc, HDR);
+      y = drawSectionTitle(doc, y, 'REPORT DETAILS');
+      y = drawDataTable(doc, y, [ ['Date', rep.report_date||'-'], ['Customer', rep.customer||'-'] ]);
+      y += 6;
       const tTh=(tol&&tol.thickness!=null)?+tol.thickness:0.5, tW=(tol&&tol.width!=null)?+tol.width:5, tL=(tol&&tol.length!=null)?+tol.length:10;
-      (rep.items||[]).forEach(function(it){
-        if(ty+rowH>bottom){ doc.addPage({size:'A4',layout:'landscape',margin:0}); ty=drawHeader(M); }
+      const f=v=>{ var n=parseFloat(v); return isFinite(n)?n:null; };
+      (rep.items||[]).forEach((it, idx) => {
+        y = ensureSpace(doc, y, 170, HDR);
         var sp=it.spec||{}, ob=it.obs||{}, ch=it.checks||{};
-        var st=f(sp.th),ot=f(ob.th), sw=f(sp.wd),ow=f(ob.wd), sln=f(sp.len),oln=f(ob.len);
-        var fTh=(st!=null&&ot!=null&&Math.abs(ot-st)>tTh), fW=(sw!=null&&ow!=null&&Math.abs(ow-sw)>tW), fL=(sln!=null&&oln!=null&&Math.abs(oln-sln)>tL);
-        cols.forEach(function(c){
-          var val='';
-          if(['date','sl','so','slip','make','qty','wt'].indexOf(c.k)>=0) val=it[c.k]||'';
-          else if(c.k==='sth')val=sp.th||''; else if(c.k==='swd')val=sp.wd||''; else if(c.k==='slen')val=sp.len||'';
-          else if(c.k==='oth')val=ob.th||''; else if(c.k==='owd')val=ob.wd||''; else if(c.k==='olen')val=ob.len||'';
-          else if(c.chk) val=ch[c.k]||'';
-          var red=(c.k==='oth'&&fTh)||(c.k==='owd'&&fW)||(c.k==='olen'&&fL)||(c.chk&&val==='NOT OK');
-          if(red) doc.rect(c.x,ty,c.w,rowH).fillAndStroke(REDBG,BORD); else doc.rect(c.x,ty,c.w,rowH).lineWidth(0.5).strokeColor(BORD).stroke();
-          doc.fillColor(red?RED:TXT).font(red?'Helvetica-Bold':'Helvetica').fontSize(6.5).text(String(val), c.x+1, ty+4.5, {width:c.w-2,align:'center'});
-        });
-        ty+=rowH;
+        y = drawSectionTitle(doc, y, 'ITEM '+(idx+1)+(it.so?('  \u2014  SO '+it.so):''));
+        y = drawDataTable(doc, y, [
+          ['Date', it.date||'-'], ['SO No', it.so||'-'],
+          ['Slip No', it.slip||'-'], ['Make', it.make||'-'],
+          ['Spec Thickness', sp.th||'-'], ['Obs Thickness', ob.th||'-'],
+          ['Spec Width', sp.wd||'-'], ['Obs Width', ob.wd||'-'],
+          ['Spec Length', sp.len||'-'], ['Obs Length', ob.len||'-'],
+          ['Qty (Nos)', it.qty||'-'], ['Weight (T)', it.wt||'-']
+        ]);
+        y = drawDataTable(doc, y, [
+          ['Waviness', ch.waviness||'-'], ['Line / Scratch', ch.line||'-'],
+          ['Water / Oil', ch.water||'-'], ['Colour Coding', ch.colour||'-'],
+          ['Sticker', ch.sticker||'-'], ['', '']
+        ]);
+        // out-of-tolerance / NOT-OK flag line
+        var oot=[];
+        var st=f(sp.th),ot=f(ob.th); if(st!=null&&ot!=null&&Math.abs(ot-st)>tTh) oot.push('Thickness');
+        var sw=f(sp.wd),ow=f(ob.wd); if(sw!=null&&ow!=null&&Math.abs(ow-sw)>tW) oot.push('Width');
+        var sl=f(sp.len),ol=f(ob.len); if(sl!=null&&ol!=null&&Math.abs(ol-sl)>tL) oot.push('Length');
+        var notok=['waviness','line','water','colour','sticker'].filter(k=>String(ch[k]||'').toUpperCase()==='NOT OK');
+        if(oot.length||notok.length){
+          doc.rect(40, y, doc.page.width-80, 18).fill('#FDECEC'); doc.lineWidth(0.5).strokeColor(BORDER).rect(40, y, doc.page.width-80, 18).stroke();
+          doc.fillColor('#DC2626').font('Helvetica-Bold').fontSize(8.5).text('\u26A0  Out of tolerance: '+(oot.join(', ')||'none')+(notok.length?('   |   NOT OK: '+notok.join(', ')):''), 46, y+5, {width:doc.page.width-92});
+          doc.fillColor(TEXT).font('Helvetica'); y+=18;
+        }
+        y += 10;
       });
-      var sy=Math.min(Math.max(ty+16, bottom+2), PH-30), third=W/3;
-      [['INSPECTED BY',rep.inspected_by]].forEach(function(sg,i){
-        var sx=L+i*third; doc.fillColor(MUT).font('Helvetica-Bold').fontSize(7).text(sg[0], sx, sy); doc.fillColor(TXT).font('Helvetica').fontSize(9.5).text(String(sg[1]||''), sx, sy+11);
-      });
+      y = ensureSpace(doc, y, 50, HDR);
+      y = drawSectionTitle(doc, y, 'SIGN-OFF');
+      y = drawDataTable(doc, y, [ ['Inspected By', rep.inspected_by||'-'] ]);
+      doc.fillColor(MUTED).font('Helvetica').fontSize(8).text('Generated: '+new Date().toLocaleString('en-IN',{ timeZone:'Asia/Kolkata' }), 0, doc.page.height-22, { width: doc.page.width-40, align:'right' });
       doc.end();
     } catch(e){ reject(e); }
   });
@@ -1984,27 +1970,22 @@ function generatePDF(folder, data, ref) {
           y = drawSectionTitle(doc, y, 'SHEET MEASUREMENTS');
           const tblWQ = doc.page.width - 80;
           const colWQ = tblWQ / 6;
-          doc.rect(40, y, tblWQ, 18).fill(BRAND_LIGHT);
-          doc.lineWidth(0.5).strokeColor(BORDER);
-          doc.rect(40, y, tblWQ, 18).stroke();
-          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
           const hdrs = ['Sheet No', 'Thickness', 'Width', 'Length', 'Diag 1', 'Diag 2'];
-          hdrs.forEach((h, idx) => {
-            doc.text(h, 40 + colWQ * idx + 4, y + 5, { width: colWQ - 8 });
-            if (idx > 0) doc.moveTo(40 + colWQ * idx, y).lineTo(40 + colWQ * idx, y + 18).stroke();
-          });
-          y += 18;
-          doc.font('Helvetica').fontSize(8).fillColor(TEXT);
+          function qHdrRow(){
+            doc.rect(40, y, tblWQ, 20).fill(BRAND_LIGHT);
+            doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(40, y, tblWQ, 20).stroke();
+            doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+            hdrs.forEach((h, idx) => { doc.text(h, 40 + colWQ*idx + 5, y + 6, { width: colWQ - 10 }); if(idx>0) doc.moveTo(40+colWQ*idx, y).lineTo(40+colWQ*idx, y+20).stroke(); });
+            y += 20;
+          }
+          qHdrRow();
           ctlSheets.forEach((r, i) => {
-            y = ensureSpace(doc, y, 16, hdr);
-            if (i % 2 === 1) doc.rect(40, y, tblWQ, 16).fill(ROW_ALT);
-            doc.rect(40, y, tblWQ, 16).stroke();
+            const ny = ensureSpace(doc, y, 20, hdr); if(ny < y){ y = ny; qHdrRow(); } else { y = ny; }
+            if (i % 2 === 1) doc.rect(40, y, tblWQ, 20).fill(ROW_ALT);
+            doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(40, y, tblWQ, 20).stroke();
             const cells = [r.sheet_no, r.thickness, r.width, r.length, r.d1, r.d2];
-            cells.forEach((c, ci) => {
-              doc.fillColor(TEXT).text(String(c || '-'), 40 + colWQ * ci + 4, y + 4, { width: colWQ - 8 });
-              if (ci > 0) doc.moveTo(40 + colWQ * ci, y).lineTo(40 + colWQ * ci, y + 16).stroke();
-            });
-            y += 16;
+            cells.forEach((c, ci) => { doc.fillColor(TEXT).font('Helvetica').fontSize(9).text(String(c || '-'), 40 + colWQ*ci + 5, y + 6, { width: colWQ - 10 }); if(ci>0) doc.moveTo(40+colWQ*ci, y).lineTo(40+colWQ*ci, y+20).stroke(); });
+            y += 20;
           });
           y += 6;
         }
@@ -2152,27 +2133,22 @@ function generatePDF(folder, data, ref) {
           y = drawSectionTitle(doc, y, 'SHEET MEASUREMENTS');
           const tblW = doc.page.width - 80;
           const colW = tblW / 6;
-          doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
-          doc.lineWidth(0.5).strokeColor(BORDER);
-          doc.rect(40, y, tblW, 18).stroke();
-          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
           const headers = ['Sheet No', 'Width 1', 'Width 2', 'Diag 1', 'Diag 2', 'Remarks'];
-          headers.forEach((h, idx) => {
-            doc.text(h, 40 + colW * idx + 4, y + 5, { width: colW - 8 });
-            if (idx > 0) doc.moveTo(40 + colW * idx, y).lineTo(40 + colW * idx, y + 18).stroke();
-          });
-          y += 18;
-          doc.font('Helvetica').fontSize(8).fillColor(TEXT);
+          function shHdrRow(){
+            doc.rect(40, y, tblW, 20).fill(BRAND_LIGHT);
+            doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(40, y, tblW, 20).stroke();
+            doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+            headers.forEach((h, idx) => { doc.text(h, 40 + colW*idx + 5, y + 6, { width: colW - 10 }); if(idx>0) doc.moveTo(40+colW*idx, y).lineTo(40+colW*idx, y+20).stroke(); });
+            y += 20;
+          }
+          shHdrRow();
           data.measurements.forEach((row, idx) => {
-            y = ensureSpace(doc, y, 16, hdr);
-            if (idx % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
-            doc.rect(40, y, tblW, 16).stroke();
+            const ny = ensureSpace(doc, y, 20, hdr); if(ny < y){ y = ny; shHdrRow(); } else { y = ny; }
+            if (idx % 2 === 1) doc.rect(40, y, tblW, 20).fill(ROW_ALT);
+            doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(40, y, tblW, 20).stroke();
             const cells = [row.sheet_no, row.width1, row.width2, row.diag1, row.diag2, row.remarks];
-            cells.forEach((c, i) => {
-              doc.fillColor(TEXT).text(String(c || '-'), 40 + colW * i + 4, y + 4, { width: colW - 8 });
-              if (i > 0) doc.moveTo(40 + colW * i, y).lineTo(40 + colW * i, y + 16).stroke();
-            });
-            y += 16;
+            cells.forEach((c, i) => { doc.fillColor(TEXT).font('Helvetica').fontSize(9).text(String(c || '-'), 40 + colW*i + 5, y + 6, { width: colW - 10 }); if(i>0) doc.moveTo(40+colW*i, y).lineTo(40+colW*i, y+20).stroke(); });
+            y += 20;
           });
           y += 6;
         }
