@@ -590,7 +590,7 @@ app.post('/gp/close', requireAuth, requireEmployee, async (req, res) => {
     await ensureGP();
     const b=req.body||{}; const gp=String(b.gp_no||'').trim();
     if(!gp) return res.status(400).json({ error:'gp_no required' });
-    const out = b.out_time || new Date().toLocaleTimeString('en-IN',{ hour:'2-digit', minute:'2-digit' });
+    const out = b.out_time || new Date().toLocaleTimeString('en-IN',{ hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata' });
     await pgq("UPDATE gate_passes SET out_time=$1, status='Closed', closed_at=now() WHERE gp_no=$2", [out, gp]);
     res.json({ ok:true, gp_no:gp, out_time:out });
   } catch(e){ res.status(500).json({ error:e.message }); }
@@ -1343,7 +1343,7 @@ function buildCustomerComplaintPDF(c, photoBuffers){
       doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9).text(STLABEL.toUpperCase(), R-120, y+4, { width:120, align:'center' });
       y += 22;
       doc.fillColor(MUTED).font('Helvetica').fontSize(9)
-         .text('Raised: ' + (c.created_at ? new Date(c.created_at).toLocaleString('en-IN') : '-')
+         .text('Raised: ' + (c.created_at ? new Date(c.created_at).toLocaleString('en-IN',{ timeZone:'Asia/Kolkata' }) : '-')
              + (c.filed_by ? ('     Filed by: ' + c.filed_by) : '')
              + (c.handler_emp ? ('     Handler: ' + c.handler_emp) : ''), L, y, { width: W });
       y += 20;
@@ -1424,7 +1424,7 @@ function buildCustomerComplaintPDF(c, photoBuffers){
       for (var i=0;i<range.count;i++){
         doc.switchToPage(range.start+i);
         doc.fillColor(MUTED).font('Helvetica').fontSize(7.5)
-           .text('Generated ' + new Date().toLocaleString('en-IN') + '   \u00b7   Bharat Steel (Chennai) Pvt. Ltd.', L, 812, { width: W, lineBreak:false })
+           .text('Generated ' + new Date().toLocaleString('en-IN',{ timeZone:'Asia/Kolkata' }) + '   \u00b7   Bharat Steel (Chennai) Pvt. Ltd.', L, 812, { width: W, lineBreak:false })
            .text('Page ' + (i+1) + ' of ' + range.count, L, 812, { width: W, align:'right', lineBreak:false });
       }
       doc.end();
@@ -1495,19 +1495,23 @@ function drawBrandedHeader(doc, opts) {
     doc.fontSize(10).text('(CHENNAI) PVT. LTD.', 30, 52);
   }
   
-  // Right side - report title (dark text on white bg)
-  const boxW = 240;
+  // Right side - report title (dark text on white bg), stacked dynamically so nothing overlaps
+  const boxW = 265;
   const boxX = pageW - boxW - 30;
-  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(15);
-  doc.text(opts2.title || 'INSPECTION REPORT', boxX, 22, { width: boxW, align: 'right' });
-  
+  const title = opts2.title || 'INSPECTION REPORT';
+  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(14);
+  const titleH = doc.heightOfString(title, { width: boxW, align: 'right' });
+  doc.text(title, boxX, 16, { width: boxW, align: 'right' });
+  let ry = 16 + titleH + 2;
   if (opts2.subtitle) {
-    doc.fillColor(MUTED).font('Helvetica').fontSize(9);
-    doc.text(opts2.subtitle, boxX, 48, { width: boxW, align: 'right' });
+    doc.fillColor(MUTED).font('Helvetica').fontSize(8.5);
+    const sh = doc.heightOfString(opts2.subtitle, { width: boxW, align: 'right' });
+    doc.text(opts2.subtitle, boxX, ry, { width: boxW, align: 'right' });
+    ry += sh + 3;
   }
   if (opts2.refLabel) {
-    doc.fillColor(BRAND_BLUE).font('Helvetica-Bold').fontSize(9);
-    doc.text(opts2.refLabel, boxX, 64, { width: boxW, align: 'right' });
+    doc.fillColor(BRAND_BLUE).font('Helvetica-Bold').fontSize(9.5);
+    doc.text(opts2.refLabel, boxX, ry, { width: boxW, align: 'right' });
   }
   
   // Thick brand-blue bottom border
@@ -1586,7 +1590,7 @@ function drawFooter(doc, pageNum, totalPages) {
   doc.rect(0, pageH - 30, pageW, 30).fill(BRAND_LIGHT);
   doc.fillColor(MUTED).font('Helvetica').fontSize(8);
   doc.text('Bharat Steel (Chennai) Pvt. Ltd.', 40, pageH - 22);
-  doc.text('Generated: ' + new Date().toLocaleString('en-IN'), 0, pageH - 22, { width: pageW - 40, align: 'right' });
+  doc.text('Generated: ' + new Date().toLocaleString('en-IN',{ timeZone:'Asia/Kolkata' }), 0, pageH - 22, { width: pageW - 40, align: 'right' });
   doc.fillColor(TEXT);
 }
 
@@ -1874,7 +1878,7 @@ function generatePDF(folder, data, ref) {
       
       // Submission summary strip
       const submitDate = new Date(data.timestamp || Date.now()).toLocaleString('en-IN', { 
-        day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' 
+        day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata' 
       });
       doc.fillColor(MUTED).font('Helvetica').fontSize(9);
       doc.text('Submitted: ' + submitDate, 40, y);
@@ -2249,7 +2253,7 @@ async function generateComplaintPDF(data, photos) {
       const pageW = doc.page.width;
       const tblW = pageW - 80;
       doc.fillColor(MUTED).font('Helvetica').fontSize(9);
-      doc.text('QC Date: ' + (data.qc_date || new Date().toLocaleDateString('en-IN')), 40, y);
+      doc.text('QC Date: ' + (data.qc_date || new Date().toLocaleDateString('en-IN',{ timeZone:'Asia/Kolkata' })), 40, y);
       doc.text('Internal No.: ' + (data.case_id || '-'), 0, y, { width: pageW - 40, align: 'right' });
       doc.fillColor(TEXT);
       y += 20;
@@ -2599,7 +2603,7 @@ app.post('/submit', requireAuth, requireEmployee, async (req, res) => {
     const data    = req.body;
     const folder  = data.form_type;
     const batchNo = (data.batch_number || 'NOBATCH').replace(/[^a-zA-Z0-9\-_]/g, '_');
-    const dateStr = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' }).replace(/\//g, '-');
+    const dateStr = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric', timeZone:'Asia/Kolkata' }).replace(/\//g, '-');
     const suffix  = folder === 'Inward' ? 'Inward' : folder === 'Shearing' ? 'Shearing' : 'CTL_Inspection';
     const fileName = batchNo + '_(' + dateStr + ')_' + suffix;
     if (!folder) return res.status(400).json({ status: 'error', message: 'Missing form_type' });
