@@ -4030,12 +4030,24 @@ app.get('/api/print-jobs/next', agentAuth, async (req, res) => {
   try {
     await ensurePrintJobs();
     const agent = String(req.query.agent || 'agent');
-    const r = await pgq(`UPDATE print_jobs SET status='printing', agent_id=$1
-      WHERE id = (SELECT id FROM print_jobs WHERE status='queued' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED)
-      RETURNING id, printer_key, copies, tspl_base64`, [agent]);
-    if (!r.rows.length) return res.json({ none:true });
-    res.json(r.rows[0]);
-  } catch(e){ res.status(500).json({ error:e.message }); }
+    // Long-poll: wait up to PRINT_POLL_SECONDS (capped to stay within the serverless time limit)
+    // for a queued job, returning the instant one appears. Vercel Hobby functions cap ~10s, so
+    // default 9s; on Pro set PRINT_POLL_SECONDS up to ~25.
+    const waitS = Math.max(1, Math.min(parseInt(process.env.PRINT_POLL_SECONDS, 10) || 9, 25));
+    const deadline = Date.now() + waitS * 1000;
+    const claim = async () => {
+      const r = await pgq(`UPDATE print_jobs SET status='printing', agent_id=$1
+        WHERE id = (SELECT id FROM print_jobs WHERE status='queued' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED)
+        RETURNING id, printer_key, copies, tspl_base64`, [agent]);
+      return r.rows.length ? r.rows[0] : null;
+    };
+    while (true) {
+      const job = await claim();
+      if (job) return res.json(job);
+      if (Date.now() >= deadline) return res.json({ none: true });
+      await new Promise(rr => setTimeout(rr, 600));
+    }
+  } catch(e){ res.status(500).json({ error: e.message }); }
 });
 app.post('/api/print-jobs/:id/done', agentAuth, async (req, res) => {
   try { await ensurePrintJobs(); await pgq("UPDATE print_jobs SET status='done', printed_at=now() WHERE id=$1",[parseInt(req.params.id,10)]); res.json({ ok:true }); }
