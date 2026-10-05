@@ -361,65 +361,51 @@ async function appendPdiCsv(token, row){
 }
 
 function buildPdiPdf(rep, tol){
-  return new Promise(function(resolve, reject){
+  return new Promise((resolve, reject) => {
     try {
-      const doc = new PDFDocument({ size:'A4', layout:'landscape', margin:0, bufferPages:true });
+      const doc = new PDFDocument({ size:'A4', margin:0, bufferPages:true }); // portrait, same as Inward
       const bufs=[]; doc.on('data', b=>bufs.push(b)); doc.on('end', ()=>resolve(Buffer.concat(bufs))); doc.on('error', reject);
-      const PW=842, PH=595, M=22, L=M, R=PW-M, W=R-L;
-      const BRAND='#0B5793', TXT='#111111', MUT='#6b7280', BORD='#c5d8ec', RED='#dc2626', REDBG='#fdecec', HEADBG='#eaf1f9';
-      let y=M;
-      try { doc.image(path.join(__dirname,'public','bsc-logo.png'), L, y, { height:34 }); } catch(e){}
-      doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(15).text('PRE DELIVERY INSPECTION REPORT', L, y+4, { width:W, align:'center' });
-      doc.fillColor(MUT).font('Helvetica').fontSize(8).text('Bharat Steel (Chennai) Pvt. Ltd.  |  Quality Management System', L, y+24, { width:W, align:'center' });
-      const rbx=R-160, rbw=160; doc.rect(rbx, y, rbw, 42).lineWidth(0.8).strokeColor(BORD).stroke();
-      doc.fillColor(MUT).font('Helvetica').fontSize(6.5).text('DOC / REV', rbx+5, y+3);
-      doc.fillColor(TXT).font('Helvetica-Bold').fontSize(8).text('BSCQMS-PRD-009   Rev 01', rbx+5, y+11);
-      doc.fillColor(MUT).font('Helvetica').fontSize(6.5).text('REPORT NO', rbx+5, y+23);
-      doc.fillColor(TXT).font('Helvetica-Bold').fontSize(8).text(String(rep.report_no||''), rbx+5, y+31, { width:rbw-10 });
-      doc.fillColor(TXT).font('Helvetica').fontSize(8.5).text('Date: '+(rep.report_date?String(rep.report_date).slice(0,10):'')+(rep.customer?('        Customer: '+rep.customer):''), L, y+44);
-      y+=58;
-      const cols=[
-        {k:'date',t:'DATE',w:54},{k:'sl',t:'SL.No',w:30},{k:'so',t:'SO No',w:46},{k:'slip',t:'Slip No',w:46},{k:'make',t:'Make',w:50},
-        {k:'sth',t:'THK',w:36,grp:'SPECIFICATIONS'},{k:'swd',t:'WIDTH',w:40,grp:'SPECIFICATIONS'},{k:'slen',t:'LENGTH',w:44,grp:'SPECIFICATIONS'},
-        {k:'oth',t:'THK',w:36,grp:'OBSERVED DIMENSIONS'},{k:'owd',t:'WIDTH',w:40,grp:'OBSERVED DIMENSIONS'},{k:'olen',t:'LENGTH',w:44,grp:'OBSERVED DIMENSIONS'},
-        {k:'qty',t:'QTY',w:32},{k:'wt',t:'WT(T)',w:36},
-        {k:'waviness',t:'WAVINESS',w:50,chk:1},{k:'line',t:'LINE/SCR',w:50,chk:1},{k:'water',t:'WAT/OIL',w:56,chk:1},{k:'colour',t:'COLOUR',w:46,chk:1},{k:'sticker',t:'STICKER',w:46,chk:1}
-      ];
-      let tot=cols.reduce((a,c)=>a+c.w,0), sc=W/tot; let cx=L; cols.forEach(c=>{ c.w=c.w*sc; c.x=cx; cx+=c.w; });
-      const ghH=13, shH=13;
-      function drawHeader(hy){
-        cols.forEach(function(c){
-          if(c.grp){ doc.rect(c.x, hy+ghH, c.w, shH).fillAndStroke(HEADBG,BORD); doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(6).text(c.t, c.x, hy+ghH+3.5, {width:c.w,align:'center'}); }
-          else { doc.rect(c.x, hy, c.w, ghH+shH).fillAndStroke(HEADBG,BORD); doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(6).text(c.t, c.x, hy+(c.chk?7:9), {width:c.w,align:'center'}); }
-        });
-        ['SPECIFICATIONS','OBSERVED DIMENSIONS'].forEach(function(name){ var g=cols.filter(c=>c.grp===name); if(!g.length) return; var gx=g[0].x, gw=g.reduce((a,c)=>a+c.w,0); doc.rect(gx,hy,gw,ghH).fillAndStroke(HEADBG,BORD); doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(6.5).text(name, gx, hy+3.5, {width:gw,align:'center'}); });
-        return hy+ghH+shH;
-      }
-      let ty=drawHeader(y);
-      const rowH=16, bottom=PH-52;
-      const f=v=>{ var n=parseFloat(v); return isFinite(n)?n:null; };
+      const HDR = { title:'PRE DELIVERY INSPECTION', subtitle:'Pre-Delivery Inspection \u00b7 BSCQMS-PRD-009 REV 01', refLabel:'Ref: '+(rep.report_no||'-') };
+      let y = drawBrandedHeader(doc, HDR);
+      y = drawSectionTitle(doc, y, 'REPORT DETAILS');
+      y = drawDataTable(doc, y, [ ['Date', rep.report_date||'-'], ['Customer', rep.customer||'-'] ]);
+      y += 6;
       const tTh=(tol&&tol.thickness!=null)?+tol.thickness:0.5, tW=(tol&&tol.width!=null)?+tol.width:5, tL=(tol&&tol.length!=null)?+tol.length:10;
-      (rep.items||[]).forEach(function(it){
-        if(ty+rowH>bottom){ doc.addPage({size:'A4',layout:'landscape',margin:0}); ty=drawHeader(M); }
+      const f=v=>{ var n=parseFloat(v); return isFinite(n)?n:null; };
+      (rep.items||[]).forEach((it, idx) => {
+        y = ensureSpace(doc, y, 170, HDR);
         var sp=it.spec||{}, ob=it.obs||{}, ch=it.checks||{};
-        var st=f(sp.th),ot=f(ob.th), sw=f(sp.wd),ow=f(ob.wd), sln=f(sp.len),oln=f(ob.len);
-        var fTh=(st!=null&&ot!=null&&Math.abs(ot-st)>tTh), fW=(sw!=null&&ow!=null&&Math.abs(ow-sw)>tW), fL=(sln!=null&&oln!=null&&Math.abs(oln-sln)>tL);
-        cols.forEach(function(c){
-          var val='';
-          if(['date','sl','so','slip','make','qty','wt'].indexOf(c.k)>=0) val=it[c.k]||'';
-          else if(c.k==='sth')val=sp.th||''; else if(c.k==='swd')val=sp.wd||''; else if(c.k==='slen')val=sp.len||'';
-          else if(c.k==='oth')val=ob.th||''; else if(c.k==='owd')val=ob.wd||''; else if(c.k==='olen')val=ob.len||'';
-          else if(c.chk) val=ch[c.k]||'';
-          var red=(c.k==='oth'&&fTh)||(c.k==='owd'&&fW)||(c.k==='olen'&&fL)||(c.chk&&val==='NOT OK');
-          if(red) doc.rect(c.x,ty,c.w,rowH).fillAndStroke(REDBG,BORD); else doc.rect(c.x,ty,c.w,rowH).lineWidth(0.5).strokeColor(BORD).stroke();
-          doc.fillColor(red?RED:TXT).font(red?'Helvetica-Bold':'Helvetica').fontSize(6.5).text(String(val), c.x+1, ty+4.5, {width:c.w-2,align:'center'});
-        });
-        ty+=rowH;
+        y = drawSectionTitle(doc, y, 'ITEM '+(idx+1)+(it.so?('  \u2014  SO '+it.so):''));
+        y = drawDataTable(doc, y, [
+          ['Date', it.date||'-'], ['SO No', it.so||'-'],
+          ['Slip No', it.slip||'-'], ['Make', it.make||'-'],
+          ['Spec Thickness', sp.th||'-'], ['Obs Thickness', ob.th||'-'],
+          ['Spec Width', sp.wd||'-'], ['Obs Width', ob.wd||'-'],
+          ['Spec Length', sp.len||'-'], ['Obs Length', ob.len||'-'],
+          ['Qty (Nos)', it.qty||'-'], ['Weight (T)', it.wt||'-']
+        ]);
+        y = drawDataTable(doc, y, [
+          ['Waviness', ch.waviness||'-'], ['Line / Scratch', ch.line||'-'],
+          ['Water / Oil', ch.water||'-'], ['Colour Coding', ch.colour||'-'],
+          ['Sticker', ch.sticker||'-'], ['', '']
+        ]);
+        // out-of-tolerance / NOT-OK flag line
+        var oot=[];
+        var st=f(sp.th),ot=f(ob.th); if(st!=null&&ot!=null&&Math.abs(ot-st)>tTh) oot.push('Thickness');
+        var sw=f(sp.wd),ow=f(ob.wd); if(sw!=null&&ow!=null&&Math.abs(ow-sw)>tW) oot.push('Width');
+        var sl=f(sp.len),ol=f(ob.len); if(sl!=null&&ol!=null&&Math.abs(ol-sl)>tL) oot.push('Length');
+        var notok=['waviness','line','water','colour','sticker'].filter(k=>String(ch[k]||'').toUpperCase()==='NOT OK');
+        if(oot.length||notok.length){
+          doc.rect(40, y, doc.page.width-80, 18).fill('#FDECEC'); doc.lineWidth(0.5).strokeColor(BORDER).rect(40, y, doc.page.width-80, 18).stroke();
+          doc.fillColor('#DC2626').font('Helvetica-Bold').fontSize(8.5).text('\u26A0  Out of tolerance: '+(oot.join(', ')||'none')+(notok.length?('   |   NOT OK: '+notok.join(', ')):''), 46, y+5, {width:doc.page.width-92});
+          doc.fillColor(TEXT).font('Helvetica'); y+=18;
+        }
+        y += 10;
       });
-      var sy=Math.min(Math.max(ty+16, bottom+2), PH-30), third=W/3;
-      [['INSPECTED BY',rep.inspected_by]].forEach(function(sg,i){
-        var sx=L+i*third; doc.fillColor(MUT).font('Helvetica-Bold').fontSize(7).text(sg[0], sx, sy); doc.fillColor(TXT).font('Helvetica').fontSize(9.5).text(String(sg[1]||''), sx, sy+11);
-      });
+      y = ensureSpace(doc, y, 50, HDR);
+      y = drawSectionTitle(doc, y, 'SIGN-OFF');
+      y = drawDataTable(doc, y, [ ['Inspected By', rep.inspected_by||'-'] ]);
+      doc.fillColor(MUTED).font('Helvetica').fontSize(8).text('Generated: '+new Date().toLocaleString('en-IN',{ timeZone:'Asia/Kolkata' }), 0, doc.page.height-22, { width: doc.page.width-40, align:'right' });
       doc.end();
     } catch(e){ reject(e); }
   });
@@ -590,7 +576,7 @@ app.post('/gp/close', requireAuth, requireEmployee, async (req, res) => {
     await ensureGP();
     const b=req.body||{}; const gp=String(b.gp_no||'').trim();
     if(!gp) return res.status(400).json({ error:'gp_no required' });
-    const out = b.out_time || new Date().toLocaleTimeString('en-IN',{ hour:'2-digit', minute:'2-digit' });
+    const out = b.out_time || new Date().toLocaleTimeString('en-IN',{ hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata' });
     await pgq("UPDATE gate_passes SET out_time=$1, status='Closed', closed_at=now() WHERE gp_no=$2", [out, gp]);
     res.json({ ok:true, gp_no:gp, out_time:out });
   } catch(e){ res.status(500).json({ error:e.message }); }
@@ -1343,7 +1329,7 @@ function buildCustomerComplaintPDF(c, photoBuffers){
       doc.fillColor('#fff').font('Helvetica-Bold').fontSize(9).text(STLABEL.toUpperCase(), R-120, y+4, { width:120, align:'center' });
       y += 22;
       doc.fillColor(MUTED).font('Helvetica').fontSize(9)
-         .text('Raised: ' + (c.created_at ? new Date(c.created_at).toLocaleString('en-IN') : '-')
+         .text('Raised: ' + (c.created_at ? new Date(c.created_at).toLocaleString('en-IN',{ timeZone:'Asia/Kolkata' }) : '-')
              + (c.filed_by ? ('     Filed by: ' + c.filed_by) : '')
              + (c.handler_emp ? ('     Handler: ' + c.handler_emp) : ''), L, y, { width: W });
       y += 20;
@@ -1424,7 +1410,7 @@ function buildCustomerComplaintPDF(c, photoBuffers){
       for (var i=0;i<range.count;i++){
         doc.switchToPage(range.start+i);
         doc.fillColor(MUTED).font('Helvetica').fontSize(7.5)
-           .text('Generated ' + new Date().toLocaleString('en-IN') + '   \u00b7   Bharat Steel (Chennai) Pvt. Ltd.', L, 812, { width: W, lineBreak:false })
+           .text('Generated ' + new Date().toLocaleString('en-IN',{ timeZone:'Asia/Kolkata' }) + '   \u00b7   Bharat Steel (Chennai) Pvt. Ltd.', L, 812, { width: W, lineBreak:false })
            .text('Page ' + (i+1) + ' of ' + range.count, L, 812, { width: W, align:'right', lineBreak:false });
       }
       doc.end();
@@ -1495,19 +1481,23 @@ function drawBrandedHeader(doc, opts) {
     doc.fontSize(10).text('(CHENNAI) PVT. LTD.', 30, 52);
   }
   
-  // Right side - report title (dark text on white bg)
-  const boxW = 240;
+  // Right side - report title (dark text on white bg), stacked dynamically so nothing overlaps
+  const boxW = 265;
   const boxX = pageW - boxW - 30;
-  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(15);
-  doc.text(opts2.title || 'INSPECTION REPORT', boxX, 22, { width: boxW, align: 'right' });
-  
+  const title = opts2.title || 'INSPECTION REPORT';
+  doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(14);
+  const titleH = doc.heightOfString(title, { width: boxW, align: 'right' });
+  doc.text(title, boxX, 16, { width: boxW, align: 'right' });
+  let ry = 16 + titleH + 2;
   if (opts2.subtitle) {
-    doc.fillColor(MUTED).font('Helvetica').fontSize(9);
-    doc.text(opts2.subtitle, boxX, 48, { width: boxW, align: 'right' });
+    doc.fillColor(MUTED).font('Helvetica').fontSize(8.5);
+    const sh = doc.heightOfString(opts2.subtitle, { width: boxW, align: 'right' });
+    doc.text(opts2.subtitle, boxX, ry, { width: boxW, align: 'right' });
+    ry += sh + 3;
   }
   if (opts2.refLabel) {
-    doc.fillColor(BRAND_BLUE).font('Helvetica-Bold').fontSize(9);
-    doc.text(opts2.refLabel, boxX, 64, { width: boxW, align: 'right' });
+    doc.fillColor(BRAND_BLUE).font('Helvetica-Bold').fontSize(9.5);
+    doc.text(opts2.refLabel, boxX, ry, { width: boxW, align: 'right' });
   }
   
   // Thick brand-blue bottom border
@@ -1586,7 +1576,7 @@ function drawFooter(doc, pageNum, totalPages) {
   doc.rect(0, pageH - 30, pageW, 30).fill(BRAND_LIGHT);
   doc.fillColor(MUTED).font('Helvetica').fontSize(8);
   doc.text('Bharat Steel (Chennai) Pvt. Ltd.', 40, pageH - 22);
-  doc.text('Generated: ' + new Date().toLocaleString('en-IN'), 0, pageH - 22, { width: pageW - 40, align: 'right' });
+  doc.text('Generated: ' + new Date().toLocaleString('en-IN',{ timeZone:'Asia/Kolkata' }), 0, pageH - 22, { width: pageW - 40, align: 'right' });
   doc.fillColor(TEXT);
 }
 
@@ -1874,7 +1864,7 @@ function generatePDF(folder, data, ref) {
       
       // Submission summary strip
       const submitDate = new Date(data.timestamp || Date.now()).toLocaleString('en-IN', { 
-        day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' 
+        day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata' 
       });
       doc.fillColor(MUTED).font('Helvetica').fontSize(9);
       doc.text('Submitted: ' + submitDate, 40, y);
@@ -1980,27 +1970,22 @@ function generatePDF(folder, data, ref) {
           y = drawSectionTitle(doc, y, 'SHEET MEASUREMENTS');
           const tblWQ = doc.page.width - 80;
           const colWQ = tblWQ / 6;
-          doc.rect(40, y, tblWQ, 18).fill(BRAND_LIGHT);
-          doc.lineWidth(0.5).strokeColor(BORDER);
-          doc.rect(40, y, tblWQ, 18).stroke();
-          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
           const hdrs = ['Sheet No', 'Thickness', 'Width', 'Length', 'Diag 1', 'Diag 2'];
-          hdrs.forEach((h, idx) => {
-            doc.text(h, 40 + colWQ * idx + 4, y + 5, { width: colWQ - 8 });
-            if (idx > 0) doc.moveTo(40 + colWQ * idx, y).lineTo(40 + colWQ * idx, y + 18).stroke();
-          });
-          y += 18;
-          doc.font('Helvetica').fontSize(8).fillColor(TEXT);
+          function qHdrRow(){
+            doc.rect(40, y, tblWQ, 20).fill(BRAND_LIGHT);
+            doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(40, y, tblWQ, 20).stroke();
+            doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+            hdrs.forEach((h, idx) => { doc.text(h, 40 + colWQ*idx + 5, y + 6, { width: colWQ - 10 }); if(idx>0) doc.moveTo(40+colWQ*idx, y).lineTo(40+colWQ*idx, y+20).stroke(); });
+            y += 20;
+          }
+          qHdrRow();
           ctlSheets.forEach((r, i) => {
-            y = ensureSpace(doc, y, 16, hdr);
-            if (i % 2 === 1) doc.rect(40, y, tblWQ, 16).fill(ROW_ALT);
-            doc.rect(40, y, tblWQ, 16).stroke();
+            const ny = ensureSpace(doc, y, 20, hdr); if(ny < y){ y = ny; qHdrRow(); } else { y = ny; }
+            if (i % 2 === 1) doc.rect(40, y, tblWQ, 20).fill(ROW_ALT);
+            doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(40, y, tblWQ, 20).stroke();
             const cells = [r.sheet_no, r.thickness, r.width, r.length, r.d1, r.d2];
-            cells.forEach((c, ci) => {
-              doc.fillColor(TEXT).text(String(c || '-'), 40 + colWQ * ci + 4, y + 4, { width: colWQ - 8 });
-              if (ci > 0) doc.moveTo(40 + colWQ * ci, y).lineTo(40 + colWQ * ci, y + 16).stroke();
-            });
-            y += 16;
+            cells.forEach((c, ci) => { doc.fillColor(TEXT).font('Helvetica').fontSize(9).text(String(c || '-'), 40 + colWQ*ci + 5, y + 6, { width: colWQ - 10 }); if(ci>0) doc.moveTo(40+colWQ*ci, y).lineTo(40+colWQ*ci, y+20).stroke(); });
+            y += 20;
           });
           y += 6;
         }
@@ -2148,27 +2133,22 @@ function generatePDF(folder, data, ref) {
           y = drawSectionTitle(doc, y, 'SHEET MEASUREMENTS');
           const tblW = doc.page.width - 80;
           const colW = tblW / 6;
-          doc.rect(40, y, tblW, 18).fill(BRAND_LIGHT);
-          doc.lineWidth(0.5).strokeColor(BORDER);
-          doc.rect(40, y, tblW, 18).stroke();
-          doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
           const headers = ['Sheet No', 'Width 1', 'Width 2', 'Diag 1', 'Diag 2', 'Remarks'];
-          headers.forEach((h, idx) => {
-            doc.text(h, 40 + colW * idx + 4, y + 5, { width: colW - 8 });
-            if (idx > 0) doc.moveTo(40 + colW * idx, y).lineTo(40 + colW * idx, y + 18).stroke();
-          });
-          y += 18;
-          doc.font('Helvetica').fontSize(8).fillColor(TEXT);
+          function shHdrRow(){
+            doc.rect(40, y, tblW, 20).fill(BRAND_LIGHT);
+            doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(40, y, tblW, 20).stroke();
+            doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+            headers.forEach((h, idx) => { doc.text(h, 40 + colW*idx + 5, y + 6, { width: colW - 10 }); if(idx>0) doc.moveTo(40+colW*idx, y).lineTo(40+colW*idx, y+20).stroke(); });
+            y += 20;
+          }
+          shHdrRow();
           data.measurements.forEach((row, idx) => {
-            y = ensureSpace(doc, y, 16, hdr);
-            if (idx % 2 === 1) doc.rect(40, y, tblW, 16).fill(ROW_ALT);
-            doc.rect(40, y, tblW, 16).stroke();
+            const ny = ensureSpace(doc, y, 20, hdr); if(ny < y){ y = ny; shHdrRow(); } else { y = ny; }
+            if (idx % 2 === 1) doc.rect(40, y, tblW, 20).fill(ROW_ALT);
+            doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(40, y, tblW, 20).stroke();
             const cells = [row.sheet_no, row.width1, row.width2, row.diag1, row.diag2, row.remarks];
-            cells.forEach((c, i) => {
-              doc.fillColor(TEXT).text(String(c || '-'), 40 + colW * i + 4, y + 4, { width: colW - 8 });
-              if (i > 0) doc.moveTo(40 + colW * i, y).lineTo(40 + colW * i, y + 16).stroke();
-            });
-            y += 16;
+            cells.forEach((c, i) => { doc.fillColor(TEXT).font('Helvetica').fontSize(9).text(String(c || '-'), 40 + colW*i + 5, y + 6, { width: colW - 10 }); if(i>0) doc.moveTo(40+colW*i, y).lineTo(40+colW*i, y+20).stroke(); });
+            y += 20;
           });
           y += 6;
         }
@@ -2249,7 +2229,7 @@ async function generateComplaintPDF(data, photos) {
       const pageW = doc.page.width;
       const tblW = pageW - 80;
       doc.fillColor(MUTED).font('Helvetica').fontSize(9);
-      doc.text('QC Date: ' + (data.qc_date || new Date().toLocaleDateString('en-IN')), 40, y);
+      doc.text('QC Date: ' + (data.qc_date || new Date().toLocaleDateString('en-IN',{ timeZone:'Asia/Kolkata' })), 40, y);
       doc.text('Internal No.: ' + (data.case_id || '-'), 0, y, { width: pageW - 40, align: 'right' });
       doc.fillColor(TEXT);
       y += 20;
@@ -2599,7 +2579,7 @@ app.post('/submit', requireAuth, requireEmployee, async (req, res) => {
     const data    = req.body;
     const folder  = data.form_type;
     const batchNo = (data.batch_number || 'NOBATCH').replace(/[^a-zA-Z0-9\-_]/g, '_');
-    const dateStr = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric' }).replace(/\//g, '-');
+    const dateStr = new Date().toLocaleDateString('en-IN', { day:'2-digit', month:'2-digit', year:'numeric', timeZone:'Asia/Kolkata' }).replace(/\//g, '-');
     const suffix  = folder === 'Inward' ? 'Inward' : folder === 'Shearing' ? 'Shearing' : 'CTL_Inspection';
     const fileName = batchNo + '_(' + dateStr + ')_' + suffix;
     if (!folder) return res.status(400).json({ status: 'error', message: 'Missing form_type' });
@@ -4003,6 +3983,67 @@ app.post('/admin/verify', requireAuth, requireAdmin, (req, res) => {
     return res.json({ status: 'success' });
   }
   res.status(403).json({ error: 'Invalid password' });
+});
+
+// ---- Sticker print jobs (Path B: app -> server -> Windows agent -> USB printer) ----
+let _pjTbl = false;
+async function ensurePrintJobs(){
+  if (_pjTbl) return;
+  await pgq(`CREATE TABLE IF NOT EXISTS print_jobs (
+    id SERIAL PRIMARY KEY, created_at TIMESTAMPTZ DEFAULT now(), created_by TEXT,
+    sticker_type TEXT, printer_key TEXT, copies INTEGER DEFAULT 1, tspl_base64 TEXT,
+    status TEXT DEFAULT 'queued', error TEXT, agent_id TEXT, printed_at TIMESTAMPTZ)`);
+  _pjTbl = true;
+}
+function agentAuth(req, res, next){
+  const tok = req.get('X-Agent-Token') || '';
+  const expected = process.env.AGENT_TOKEN || process.env.CRON_SECRET || '';
+  if (!expected || tok !== expected) return res.status(401).json({ error:'bad agent token' });
+  next();
+}
+app.post('/api/print-jobs', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensurePrintJobs();
+    const b = req.body || {};
+    if (!b.tspl_base64 || !b.printer_key) return res.status(400).json({ error:'tspl_base64 and printer_key required' });
+    const by = (req.user && (req.user.name || req.user.emp_no || req.user.employee_id)) || '';
+    const r = await pgq(`INSERT INTO print_jobs (created_by,sticker_type,printer_key,copies,tspl_base64,status)
+      VALUES ($1,$2,$3,$4,$5,'queued') RETURNING id`,
+      [by, String(b.sticker_type||''), String(b.printer_key), Math.max(1,parseInt(b.copies,10)||1), String(b.tspl_base64)]);
+    res.json({ ok:true, id: r.rows[0].id });
+  } catch(e){ console.error('[print-jobs] post', e.message); res.status(500).json({ error:e.message }); }
+});
+app.get('/api/print-jobs', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensurePrintJobs();
+    let r;
+    if (String(req.query.mine||'') === '1') {
+      const by = (req.user && (req.user.name || req.user.emp_no || req.user.employee_id)) || '';
+      r = await pgq('SELECT id,created_at,created_by,sticker_type,printer_key,copies,status,error,printed_at FROM print_jobs WHERE created_by=$1 ORDER BY id DESC LIMIT 100',[by]);
+    } else {
+      r = await pgq('SELECT id,created_at,created_by,sticker_type,printer_key,copies,status,error,printed_at FROM print_jobs ORDER BY id DESC LIMIT 100');
+    }
+    res.setHeader('Cache-Control','no-store'); res.json(r.rows || []);
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
+app.get('/api/print-jobs/next', agentAuth, async (req, res) => {
+  try {
+    await ensurePrintJobs();
+    const agent = String(req.query.agent || 'agent');
+    const r = await pgq(`UPDATE print_jobs SET status='printing', agent_id=$1
+      WHERE id = (SELECT id FROM print_jobs WHERE status='queued' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED)
+      RETURNING id, printer_key, copies, tspl_base64`, [agent]);
+    if (!r.rows.length) return res.json({ none:true });
+    res.json(r.rows[0]);
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
+app.post('/api/print-jobs/:id/done', agentAuth, async (req, res) => {
+  try { await ensurePrintJobs(); await pgq("UPDATE print_jobs SET status='done', printed_at=now() WHERE id=$1",[parseInt(req.params.id,10)]); res.json({ ok:true }); }
+  catch(e){ res.status(500).json({ error:e.message }); }
+});
+app.post('/api/print-jobs/:id/failed', agentAuth, async (req, res) => {
+  try { await ensurePrintJobs(); await pgq("UPDATE print_jobs SET status='failed', error=$1 WHERE id=$2",[String((req.body&&req.body.error)||'').slice(0,500), parseInt(req.params.id,10)]); res.json({ ok:true }); }
+  catch(e){ res.status(500).json({ error:e.message }); }
 });
 
 const PORT = process.env.PORT || 3000;

@@ -1,0 +1,11 @@
+{
+  "server_url": "https://qms.bharatsteels.in",
+  "agent_id": "office-pc-1",
+  "agent_token": "PUT-THE-SAME-SECRET-AS-SERVER-AGENT_TOKEN",
+  "poll_seconds": 2,
+  "printers": {
+    "small_25x100": "H30C-lite (Sticker)",
+    "large_100x150": "H30C-lite (Sticker)",
+    "default": "H30C-lite (Sticker)"
+  }
+}
