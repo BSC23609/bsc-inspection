@@ -15,7 +15,12 @@ app.use((req, res, next) => {
 });
 
 const path = require('path');
-app.use(express.static(path.join(__dirname, 'public')));
+// Never cache HTML pages, so phones/PCs always load the current sticker page
+app.use((req, res, next) => {
+  if (req.path === '/' || req.path.endsWith('.html')) res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  next();
+});
+app.use(express.static(path.join(__dirname, 'public'), { setHeaders: (res, p) => { if (p.endsWith('.html')) res.set('Cache-Control', 'no-store, no-cache, must-revalidate'); } }));
 
 // ---- Auth & DB (Neon Postgres + JWT cookie sessions) ----
 // Additive: this does NOT gate existing routes yet. Login lives under /auth/*.
