@@ -1574,6 +1574,103 @@ function drawDataTable(doc, y, rows) {
   return y + 8;
 }
 
+// ---- Machine Setting Parameters (CTL / Shearing) ----
+const MP_SPEC_SRV = {
+  Quality: [
+    ['coil_car_pressure','Coil Car Monitor Pressure'],
+    ['coil_center_align','Coil Center Alignment'],
+    ['bound_spreader_roller','Bound Spreader Roller'],
+    ['rack_angle','Rack Angle'],
+    ['leveller_gap','Leveller Entry and Exit Gap'],
+    ['blade_gap_clearance','Blade Gap Clearance']
+  ],
+  Shearing: [
+    ['blade_clearance','Blade Clearance'],
+    ['blade_condition','Blade Condition'],
+    ['backgage_reading','Backgage Reading'],
+    ['main_pressure','Main Pressure'],
+    ['hold_down_pressure','Hold Down Pressure'],
+    ['rack_angle','Rack Angle']
+  ]
+};
+function mpByKey(data){ const m={}; (data.machine_params||[]).forEach(p=>{ if(p&&p.key) m[p.key]=p; }); return m; }
+function mpAdjCell(a){ if(!a) return ''; const v=(a.value==null?'':String(a.value)).trim(); const t=(a.time==null?'':String(a.time)).trim(); if(v&&t) return v+' @ '+t; return v || (t?('@ '+t):''); }
+// Excel: one readable column per parameter, holding the full setting -> adjustments progression.
+function mpHeaders(folder){
+  const spec = MP_SPEC_SRV[folder]; if(!spec) return [];
+  return spec.map(p => 'MP: '+p[1]);
+}
+function mpProgression(rec){
+  if(!rec) return '';
+  const init = (rec.initial==null?'':String(rec.initial).trim());
+  const adjs = (rec.adjustments||[]).filter(a=>a&&((a.value&&String(a.value).trim())||(a.time&&String(a.time).trim())));
+  const parts = [];
+  if(init!=='') parts.push('Set: '+init);
+  adjs.forEach((a,i)=> parts.push('Adj'+(i+1)+': '+mpAdjCell(a)));
+  return parts.join('  |  ');
+}
+function mpValues(folder,data){
+  const spec = MP_SPEC_SRV[folder]; if(!spec) return [];
+  const m = mpByKey(data);
+  return spec.map(p => mpProgression(m[p[0]]));
+}
+// Render the Machine Setting Parameters section: Parameter | Initial Setting | Adjustments
+function drawMachineParams(doc, y, folder, data, hdr) {
+  const spec = MP_SPEC_SRV[folder]; if (!spec) return y;
+  const params = Array.isArray(data.machine_params) ? data.machine_params : [];
+  const m = mpByKey(data);
+  // skip if nothing was entered anywhere
+  const any = spec.some(p => { const r = m[p[0]]||{}; return (r.initial && String(r.initial).trim()) || ((r.adjustments||[]).some(a => a && ((a.value&&String(a.value).trim())||(a.time&&String(a.time).trim())))); });
+  if (!any) return y;
+
+  const pageW = doc.page.width;
+  const startX = 40;
+  const tblW = pageW - 80;
+  const cParam = 168, cInit = 95, cAdj = tblW - cParam - cInit;
+
+  y = ensureSpace(doc, y, 60, hdr);
+  y = drawSectionTitle(doc, y, 'MACHINE SETTING PARAMETERS');
+
+  function headRow(){
+    doc.rect(startX, y, tblW, 20).fill(BRAND_LIGHT);
+    doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(startX, y, tblW, 20).stroke();
+    doc.moveTo(startX+cParam, y).lineTo(startX+cParam, y+20).stroke();
+    doc.moveTo(startX+cParam+cInit, y).lineTo(startX+cParam+cInit, y+20).stroke();
+    doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8);
+    doc.text('Parameter', startX+5, y+6, { width:cParam-10 });
+    doc.text('Initial Setting', startX+cParam+5, y+6, { width:cInit-10 });
+    doc.text('Adjustments (after initial setting)', startX+cParam+cInit+5, y+6, { width:cAdj-10 });
+    y += 20;
+  }
+  headRow();
+
+  spec.forEach((p, ri) => {
+    const rec = m[p[0]] || {};
+    const adjs = (rec.adjustments||[]).filter(a => a && ((a.value&&String(a.value).trim())||(a.time&&String(a.time).trim())));
+    const adjStr = adjs.length ? adjs.map((a,i)=> (i+1)+') ' + mpAdjCell(a)).join('\n') : '—';
+    doc.font('Helvetica').fontSize(8.5);
+    const adjH = doc.heightOfString(adjStr, { width: cAdj-10 });
+    const rowH = Math.max(20, adjH + 10);
+    // page break: redraw section header continuation if needed
+    const ny = ensureSpace(doc, y, rowH, hdr);
+    if (ny < y) { y = ny; y = drawSectionTitle(doc, y, 'MACHINE SETTING PARAMETERS (contd.)'); headRow(); }
+    else { y = ny; }
+    if (ri % 2 === 1) doc.rect(startX, y, tblW, rowH).fill(ROW_ALT);
+    doc.lineWidth(0.5).strokeColor(BORDER); doc.rect(startX, y, tblW, rowH).stroke();
+    doc.moveTo(startX+cParam, y).lineTo(startX+cParam, y+rowH).stroke();
+    doc.moveTo(startX+cParam+cInit, y).lineTo(startX+cParam+cInit, y+rowH).stroke();
+    doc.fillColor(BRAND_DARK).font('Helvetica-Bold').fontSize(8.5);
+    doc.text(p[1], startX+5, y+5, { width: cParam-10 });
+    doc.fillColor(TEXT).font('Helvetica').fontSize(9);
+    doc.text(String(rec.initial || '-'), startX+cParam+5, y+5, { width: cInit-10 });
+    doc.fontSize(8.5).fillColor(adjs.length ? TEXT : MUTED);
+    doc.text(adjStr, startX+cParam+cInit+5, y+5, { width: cAdj-10 });
+    doc.fillColor(TEXT);
+    y += rowH;
+  });
+  return y + 8;
+}
+
 // Draw footer on every page
 function drawFooter(doc, pageNum, totalPages) {
   const pageW = doc.page.width;
@@ -1942,7 +2039,9 @@ function generatePDF(folder, data, ref) {
           ['Weight (T)', data.coil_weight],
           ['', '']
         ]);
-        
+
+        y = drawMachineParams(doc, y, 'Quality', data, hdr);
+
         y = drawSectionTitle(doc, y, 'FINAL MEASUREMENTS');
         y = drawDataTable(doc, y, [
           ['First Bit Length', data.first_bit],
@@ -2064,7 +2163,9 @@ function generatePDF(folder, data, ref) {
           ['Operator', data.operator],
           ['QC', data.qc_name]
         ]);
-        
+
+        y = drawMachineParams(doc, y, 'Shearing', data, hdr);
+
         // Output Sizes table
         const outputSizes = (data.output_sizes || []).filter(s => s && String(s).trim() !== '');
         if (outputSizes.length > 0) {
@@ -3190,6 +3291,7 @@ function logSchemaHeaders(folder) {
     h.push('Rejection Flag');
     for (let i=1;i<=10;i++) h.push('Rej '+i+' Size','Rej '+i+' Qty','Rej '+i+' Types');
     h.push('Lot Size','Required Samples','Tolerance Profile','Cut Lengths','Sheets Measured','Out Of Tolerance Count','Cut Groups');
+    mpHeaders('Quality').forEach(x => h.push(x));
     return h;
   }
   if (folder === 'Shearing') {
@@ -3202,6 +3304,7 @@ function logSchemaHeaders(folder) {
     h.push('Lot Size','Required Samples','Tolerance Profile');
     for (let i=1;i<=30;i++) h.push('Sheet '+i+' Thickness');
     h.push('Coil Thickness');
+    mpHeaders('Shearing').forEach(x => h.push(x));
     return h;
   }
   return null; // Inward not yet schema-managed
@@ -3270,7 +3373,8 @@ async function appendExcelRow(token, folder, data, fileName) {
       ...[...Array(10)].map((_,i) => (rjGet(i).types||[]).join(', ')),
       data.lot_size||'', data.required_samples||'', data.tolerance_profile||'',
       ...[...Array(30)].map((_,i) => { const m=(data.measurements||[])[i]||{}; return m.thickness||''; }),
-      data.coil_thickness||''
+      data.coil_thickness||'',
+      ...mpValues('Shearing', data)
     ]];
   })() : [[
     fileName, data.timestamp||'', data.customer_name||'', data.date||'', data.time||'',
@@ -3286,7 +3390,8 @@ async function appendExcelRow(token, folder, data, fileName) {
     data.rejection_flag||'No',
     ...[...Array(10)].flatMap((_,i) => { const r = (data.rejections||[])[i]||{}; return [r.size||'', r.qty||'', ((r.types||[]).join(', '))]; }),
     data.lot_size||'', data.required_samples||'', data.tolerance_profile||'',
-    data.cut_lengths||'', data.sheets_measured||'', data.oot_count||'', JSON.stringify(data.cut_groups||[])
+    data.cut_lengths||'', data.sheets_measured||'', data.oot_count||'', JSON.stringify(data.cut_groups||[]),
+    ...mpValues('Quality', data)
   ]];
   // Use workbook session for faster writes on large tables. Retry on timeout.
   const addUrl = 'https://graph.microsoft.com/v1.0/users/' + USER_ID + '/drive/items/' + fileId + '/workbook/tables/' + tableName + '/rows/add';
@@ -3998,6 +4103,8 @@ async function ensurePrintJobs(){
     id SERIAL PRIMARY KEY, created_at TIMESTAMPTZ DEFAULT now(), created_by TEXT,
     sticker_type TEXT, printer_key TEXT, copies INTEGER DEFAULT 1, tspl_base64 TEXT,
     status TEXT DEFAULT 'queued', error TEXT, agent_id TEXT, printed_at TIMESTAMPTZ)`);
+  // Partial index so the agent's "any queued job?" claim is a tiny index scan, not a table scan.
+  await pgq(`CREATE INDEX IF NOT EXISTS ix_print_jobs_queued ON print_jobs (id) WHERE status='queued'`);
   _pjTbl = true;
 }
 function agentAuth(req, res, next){
@@ -4032,26 +4139,19 @@ app.get('/api/print-jobs', requireAuth, requireEmployee, async (req, res) => {
   } catch(e){ res.status(500).json({ error:e.message }); }
 });
 app.get('/api/print-jobs/next', agentAuth, async (req, res) => {
+  // CHEAP POLL: agentAuth already did a token-only check (no session / user DB lookup).
+  // This runs exactly ONE indexed query - an atomic claim of the oldest queued job.
+  // No long-poll loop: the agent polls on an interval, so there is nothing to wait on.
+  // Empty queue -> 204 No Content with no body (nothing to parse, minimal egress).
   try {
     await ensurePrintJobs();
     const agent = String(req.query.agent || 'agent');
-    // Long-poll: wait up to PRINT_POLL_SECONDS (capped to stay within the serverless time limit)
-    // for a queued job, returning the instant one appears. Vercel Hobby functions cap ~10s, so
-    // default 9s; on Pro set PRINT_POLL_SECONDS up to ~25.
-    const waitS = Math.max(1, Math.min(parseInt(process.env.PRINT_POLL_SECONDS, 10) || 9, 25));
-    const deadline = Date.now() + waitS * 1000;
-    const claim = async () => {
-      const r = await pgq(`UPDATE print_jobs SET status='printing', agent_id=$1
-        WHERE id = (SELECT id FROM print_jobs WHERE status='queued' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED)
-        RETURNING id, printer_key, copies, tspl_base64`, [agent]);
-      return r.rows.length ? r.rows[0] : null;
-    };
-    while (true) {
-      const job = await claim();
-      if (job) return res.json(job);
-      if (Date.now() >= deadline) return res.json({ none: true });
-      await new Promise(rr => setTimeout(rr, 600));
-    }
+    const r = await pgq(`UPDATE print_jobs SET status='printing', agent_id=$1
+      WHERE id = (SELECT id FROM print_jobs WHERE status='queued' ORDER BY id ASC LIMIT 1 FOR UPDATE SKIP LOCKED)
+      RETURNING id, printer_key, copies, tspl_base64`, [agent]);
+    if (!r.rows.length) return res.status(204).end();   // nothing queued
+    res.setHeader('Cache-Control', 'no-store');
+    return res.json(r.rows[0]);
   } catch(e){ res.status(500).json({ error: e.message }); }
 });
 app.post('/api/print-jobs/:id/done', agentAuth, async (req, res) => {
