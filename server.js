@@ -1581,7 +1581,8 @@ const MP_SPEC_SRV = {
     ['coil_center_align','Coil Center Alignment'],
     ['bound_spreader_roller','Bound Spreader Roller'],
     ['rack_angle','Rack Angle'],
-    ['leveller_gap','Leveller Entry and Exit Gap'],
+    ['leveller_entry_gap','Leveller Entry Gap'],
+    ['leveller_exit_gap','Leveller Exit Gap'],
     ['blade_gap_clearance','Blade Gap Clearance']
   ],
   Shearing: [
