@@ -653,7 +653,7 @@ async function appendDgCsv(token, g){
   try {
     const p='BSC Inspections/DG Log/DG_Log.csv'; let ex='';
     try { const r=await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}}); if(r.ok) ex=await r.text(); } catch(e){}
-    if(!ex) ex='DG Set,Date,Start At,Stop At,Running Hours,Fuel Added (L),Diesel Level (L),Start kWh,End kWh,Units (kWh),Remarks,Sign,Entered By,Entered At\n';
+    if(!ex) ex='DG Set,Date,Start Time,End Time,Running Hours,Fuel Added (L),Diesel Level (L),Start Load kWh,End Load kWh,Units (kWh),Remarks,Sign,Entered By,Entered At\n';
     const c=v=>{ v=(v==null?'':String(v)); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; };
     const line=[g.dg_set,g.log_date,g.start_at,g.stop_at,dgFmtMinSrv(g.running_minutes),g.fuel_added,g.diesel_level,g.kwh_start,g.kwh_end,g.units,g.remarks,g.sign,g.created_by,new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})].map(c).join(',')+'\n';
     await uploadFile(token, p, Buffer.from(ex+line,'utf8'), 'text/csv');
@@ -721,9 +721,9 @@ function buildDgLogPdf(rows, dgSet, month){
       }
       // columns: label, width, align
       const cols=[
-        ['Date',70,'left'],['Start',44,'center'],['Stop',44,'center'],['Run Hrs',56,'center'],
-        ['Fuel Added',60,'center'],['Diesel Level',62,'center'],['Start kWh',64,'center'],['End kWh',64,'center'],
-        ['Units',52,'center'],['Remarks',0,'left'],['Sign',72,'left']
+        ['Date',66,'left'],['Start Time',50,'center'],['End Time',50,'center'],['Run Hrs',50,'center'],
+        ['Fuel (L)',48,'center'],['Diesel (L)',54,'center'],['Start Load kWh',72,'center'],['End Load kWh',72,'center'],
+        ['Units',48,'center'],['Remarks',0,'left'],['Sign',66,'left']
       ];
       const fixed = cols.reduce((s,c)=>s+c[1],0);
       cols.forEach(c=>{ if(c[1]===0) c[1]=Math.max(90, W-fixed); });

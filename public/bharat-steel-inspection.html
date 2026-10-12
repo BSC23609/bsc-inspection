@@ -454,8 +454,8 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           <div class="field"><label>Sign / Operated By</label><input type="text" id="dg_sign" placeholder="Name" autocomplete="off"></div>
         </div>
         <div class="fg fg-3">
-          <div class="field"><label>Start At <span class="req">*</span></label><input type="time" id="dg_start" oninput="dgCalc()"></div>
-          <div class="field"><label>Stop At</label><input type="time" id="dg_stop" oninput="dgCalc()"></div>
+          <div class="field"><label>Start Time <span class="req">*</span></label><input type="time" id="dg_start" oninput="dgCalc()"></div>
+          <div class="field"><label>End Time</label><input type="time" id="dg_stop" oninput="dgCalc()"></div>
           <div class="field"><label>Running Hours</label><input type="text" id="dg_run" placeholder="auto" readonly style="background:#f3f4f6"></div>
         </div>
         <div class="fg fg-2">
@@ -463,8 +463,8 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           <div class="field"><label>Diesel Level (L)</label><input type="number" id="dg_level" step="1" placeholder="tank level"></div>
         </div>
         <div class="fg fg-3">
-          <div class="field"><label>Start kWh</label><input type="number" id="dg_kwh_start" step="0.1" oninput="dgCalc()" placeholder="meter start"></div>
-          <div class="field"><label>End kWh</label><input type="number" id="dg_kwh_end" step="0.1" oninput="dgCalc()" placeholder="meter end"></div>
+          <div class="field"><label>Start Load kWh</label><input type="number" id="dg_kwh_start" step="0.1" oninput="dgCalc()" placeholder="meter start"></div>
+          <div class="field"><label>End Load kWh</label><input type="number" id="dg_kwh_end" step="0.1" oninput="dgCalc()" placeholder="meter end"></div>
           <div class="field"><label>Units (kWh)</label><input type="text" id="dg_units" placeholder="auto" readonly style="background:#f3f4f6"></div>
         </div>
         <div class="fg fg-1">
@@ -482,24 +482,8 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
 
     <div class="sec-card">
       <div class="sec-head"><span class="sec-head-icon">📋</span> Log — <span id="dg_month_lbl">this month</span></div>
-      <div class="sec-body" style="padding:0;overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap" id="dg_table">
-          <thead><tr style="background:#fff7ed">
-            <th style="padding:8px;border:1px solid #fed7aa">Date</th>
-            <th style="padding:8px;border:1px solid #fed7aa">Start</th>
-            <th style="padding:8px;border:1px solid #fed7aa">Stop</th>
-            <th style="padding:8px;border:1px solid #fed7aa">Run Hrs</th>
-            <th style="padding:8px;border:1px solid #fed7aa">Fuel Added</th>
-            <th style="padding:8px;border:1px solid #fed7aa">Diesel Level</th>
-            <th style="padding:8px;border:1px solid #fed7aa">Start kWh</th>
-            <th style="padding:8px;border:1px solid #fed7aa">End kWh</th>
-            <th style="padding:8px;border:1px solid #fed7aa">Units</th>
-            <th style="padding:8px;border:1px solid #fed7aa">Remarks</th>
-            <th style="padding:8px;border:1px solid #fed7aa">Sign</th>
-            <th style="padding:8px;border:1px solid #fed7aa"></th>
-          </tr></thead>
-          <tbody id="dg_rows"><tr><td colspan="12" style="padding:24px;text-align:center;color:#9ca3af">Loading…</td></tr></tbody>
-        </table>
+      <div class="sec-body">
+        <div id="dg_rows"><div style="text-align:center;padding:24px;color:#9ca3af">Loading…</div></div>
       </div>
     </div>
 
@@ -3490,14 +3474,20 @@ function dgUpdatePdfBtn(){
   a.href=SERVER_URL+'/dg/pdf?month='+encodeURIComponent(mo)+'&dg='+encodeURIComponent(dg);
 }
 async function loadDgList(){
-  var tb=document.getElementById('dg_rows'); if(tb) tb.innerHTML='<tr><td colspan="12" style="padding:24px;text-align:center;color:#9ca3af">Loading…</td></tr>';
+  var tb=document.getElementById('dg_rows'); if(tb) tb.innerHTML='<div style="text-align:center;padding:24px;color:#9ca3af">Loading…</div>';
   try{ var r=await fetch(SERVER_URL+'/dg/list',{cache:'no-store'}); _dgData=await r.json(); if(!Array.isArray(_dgData)) _dgData=[]; }
-  catch(e){ if(tb) tb.innerHTML='<tr><td colspan="12" style="padding:24px;text-align:center;color:#dc2626">Failed to load</td></tr>'; return; }
+  catch(e){ if(tb) tb.innerHTML='<div style="text-align:center;padding:24px;color:#dc2626">Failed to load</div>'; return; }
   // populate DG set options from data (keep default first)
   try{ var sel=document.getElementById('dg_set'); var have={}; Array.prototype.forEach.call(sel.options,function(o){have[o.value]=1;});
     _dgData.forEach(function(x){ if(x.dg_set && !have[x.dg_set]){ var o=document.createElement('option'); o.value=x.dg_set; o.textContent=x.dg_set; sel.appendChild(o); have[x.dg_set]=1; } });
   }catch(e){}
   dgUpdatePdfBtn(); renderDg();
+}
+function _dgTile(label, val){
+  return '<div style="background:#fffaf2;border:1px solid #fde3c4;border-radius:7px;padding:5px 8px;min-width:0">'
+    +'<div style="font-size:9.5px;font-weight:700;color:#b45309;text-transform:uppercase;letter-spacing:.2px">'+label+'</div>'
+    +'<div style="font-size:13px;color:#1f2937;font-weight:600;margin-top:1px;word-break:break-word">'+(val===''||val==null?'—':_dgEsc(val))+'</div>'
+    +'</div>';
 }
 function renderDg(){
   var dg=_dgv('dg_set'); var mo=_dgv('dg_month');
@@ -3510,45 +3500,44 @@ function renderDg(){
   });
   // sort by date then start time ascending
   rows.sort(function(a,b){ var k1=(String(a.log_date||'')+ (a.start_at||'')); var k2=(String(b.log_date||'')+(b.start_at||'')); return k1<k2?-1:(k1>k2?1:0); });
-  var tb=document.getElementById('dg_rows');
-  if(!rows.length){ tb.innerHTML='<tr><td colspan="12" style="padding:24px;text-align:center;color:#9ca3af">No entries for this month.</td></tr>'; dgRenderTotals(); return; }
+  var host=document.getElementById('dg_rows');
+  if(!rows.length){ host.innerHTML='<div style="text-align:center;padding:24px;color:#9ca3af">No entries for this month.</div>'; dgRenderTotals(); return; }
   var tf=0, tu=0, tm=0;
-  tb.innerHTML=rows.map(function(x){
+  var grid='display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));gap:6px;margin-top:8px';
+  var cards=rows.map(function(x){
     var mins = (x.running_minutes!=null && isFinite(x.running_minutes)) ? Number(x.running_minutes) : _dgMinutes(x.start_at,x.stop_at);
     if(mins!=null) tm+=mins;
     var units = (x.units!=null&&x.units!=='')?Number(x.units):((_dgNum(x.kwh_end)!=null&&_dgNum(x.kwh_start)!=null)?(x.kwh_end-x.kwh_start):null);
     if(units!=null&&isFinite(units)) tu+=units;
     if(_dgNum(x.fuel_added)!=null) tf+=Number(x.fuel_added);
-    var td='padding:7px 8px;border:1px solid #fed7aa;text-align:center';
-    var tdl='padding:7px 8px;border:1px solid #fed7aa';
-    return '<tr>'
-      +'<td style="'+td+'">'+_dgEsc(String(x.log_date||'').slice(0,10))+'</td>'
-      +'<td style="'+td+'">'+_dgEsc(x.start_at||'')+'</td>'
-      +'<td style="'+td+'">'+_dgEsc(x.stop_at||'')+'</td>'
-      +'<td style="'+td+'">'+_dgEsc(_dgFmtMin(mins))+'</td>'
-      +'<td style="'+td+'">'+_dgEsc(x.fuel_added!=null&&x.fuel_added!==''?x.fuel_added:'')+'</td>'
-      +'<td style="'+td+'">'+_dgEsc(x.diesel_level!=null&&x.diesel_level!==''?x.diesel_level:'')+'</td>'
-      +'<td style="'+td+'">'+_dgEsc(x.kwh_start!=null&&x.kwh_start!==''?x.kwh_start:'')+'</td>'
-      +'<td style="'+td+'">'+_dgEsc(x.kwh_end!=null&&x.kwh_end!==''?x.kwh_end:'')+'</td>'
-      +'<td style="'+td+'">'+_dgEsc(units!=null&&isFinite(units)?(Math.round(units*100)/100):'')+'</td>'
-      +'<td style="'+tdl+'">'+_dgEsc(x.remarks||'')+'</td>'
-      +'<td style="'+td+'">'+_dgEsc(x.sign||'')+'</td>'
-      +'<td style="'+td+';white-space:nowrap">'
-        +'<a href="#" onclick="dgEdit('+x.id+');return false" style="color:#0B5793;text-decoration:none;font-weight:600;margin-right:8px">Edit</a>'
-        +'<a href="#" onclick="dgDelete('+x.id+');return false" style="color:#dc2626;text-decoration:none;font-weight:600">Del</a>'
-      +'</td>'
-    +'</tr>';
-  }).join('')
-  + '<tr style="background:#fffaf2;font-weight:700">'
-    +'<td style="padding:8px;border:1px solid #fed7aa" colspan="3">TOTAL ('+rows.length+' entr'+(rows.length===1?'y':'ies')+')</td>'
-    +'<td style="padding:8px;border:1px solid #fed7aa;text-align:center">'+_dgEsc(_dgFmtMin(tm))+'</td>'
-    +'<td style="padding:8px;border:1px solid #fed7aa;text-align:center">'+(Math.round(tf*100)/100)+'</td>'
-    +'<td style="padding:8px;border:1px solid #fed7aa"></td>'
-    +'<td style="padding:8px;border:1px solid #fed7aa"></td>'
-    +'<td style="padding:8px;border:1px solid #fed7aa"></td>'
-    +'<td style="padding:8px;border:1px solid #fed7aa;text-align:center">'+(Math.round(tu*100)/100)+'</td>'
-    +'<td style="padding:8px;border:1px solid #fed7aa" colspan="2"></td>'
-  +'</tr>';
+    return '<div style="border:1px solid #fed7aa;border-radius:10px;padding:11px 12px;background:#fff">'
+      +'<div style="display:flex;align-items:center;gap:8px">'
+        +'<div style="font-weight:800;color:#b45309;font-size:14px">'+_dgEsc(String(x.log_date||'').slice(0,10))+'</div>'
+        +(x.sign?'<div style="font-size:11.5px;color:#9a3412;background:#fff7ed;border:1px solid #fed7aa;border-radius:999px;padding:1px 8px">'+_dgEsc(x.sign)+'</div>':'')
+        +'<div style="flex:1"></div>'
+        +'<a href="#" onclick="dgEdit('+x.id+');return false" style="color:#0B5793;text-decoration:none;font-weight:700;font-size:12px;margin-right:10px">Edit</a>'
+        +'<a href="#" onclick="dgDelete('+x.id+');return false" style="color:#dc2626;text-decoration:none;font-weight:700;font-size:12px">Delete</a>'
+      +'</div>'
+      +'<div style="'+grid+'">'
+        +_dgTile('Start Time', x.start_at||'')
+        +_dgTile('End Time', x.stop_at||'')
+        +_dgTile('Run Hrs', _dgFmtMin(mins))
+        +_dgTile('Fuel (L)', (x.fuel_added!=null&&x.fuel_added!==''?x.fuel_added:''))
+        +_dgTile('Diesel (L)', (x.diesel_level!=null&&x.diesel_level!==''?x.diesel_level:''))
+        +_dgTile('Start Load kWh', (x.kwh_start!=null&&x.kwh_start!==''?x.kwh_start:''))
+        +_dgTile('End Load kWh', (x.kwh_end!=null&&x.kwh_end!==''?x.kwh_end:''))
+        +_dgTile('Units (kWh)', (units!=null&&isFinite(units)?(Math.round(units*100)/100):''))
+      +'</div>'
+      +(x.remarks?('<div style="margin-top:8px;font-size:12px;color:#374151"><span style="font-weight:700;color:#b45309">Remarks: </span>'+_dgEsc(x.remarks)+'</div>'):'')
+    +'</div>';
+  }).join('');
+  var totalCard='<div style="border:1px solid #fcd9a6;border-radius:10px;padding:11px 12px;background:#fff7ed;display:flex;flex-wrap:wrap;gap:16px;align-items:center">'
+    +'<div style="font-weight:800;color:#b45309;font-size:13px">TOTAL · '+rows.length+' entr'+(rows.length===1?'y':'ies')+'</div>'
+    +'<div style="font-size:13px;color:#1f2937"><b>Run:</b> '+(_dgFmtMin(tm)||'—')+'</div>'
+    +'<div style="font-size:13px;color:#1f2937"><b>Fuel:</b> '+(Math.round(tf*100)/100)+' L</div>'
+    +'<div style="font-size:13px;color:#1f2937"><b>Units:</b> '+(Math.round(tu*100)/100)+' kWh</div>'
+    +'</div>';
+  host.innerHTML='<div style="display:flex;flex-direction:column;gap:10px">'+totalCard+cards+'</div>';
   dgRenderTotals();
 }
 function dgRenderTotals(){
