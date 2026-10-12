@@ -411,6 +411,101 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
   <div class="form-scroll" id="gpreg_body"><div style="text-align:center;padding:40px;color:var(--gray-400)">Loading…</div></div>
 </div>
 
+<div class="screen" id="screen-dglog">
+  <div class="form-topbar" style="background:#b45309">
+    <button class="back-btn" onclick="showScreen('home')">‹</button>
+    <div class="topbar-info"><div class="topbar-title">Diesel Generator Log</div><div class="topbar-sub" id="dg_sub">—</div></div>
+    <button class="back-btn" onclick="loadDgList()" style="font-size:14px">↻</button>
+  </div>
+  <div style="padding:10px 12px;background:#fff7ed;border-bottom:1px solid #fed7aa;display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+    <div><label style="font-size:11px;font-weight:600;color:#9a3412;display:block;margin-bottom:3px">DG Set</label>
+      <select id="dg_set" onchange="dgOnFilter()" style="padding:7px 10px;border:1px solid #fed7aa;border-radius:6px;font-size:13px;background:#fff">
+        <option value="DG-320 kVA">DG-320 kVA</option>
+      </select></div>
+    <div><label style="font-size:11px;font-weight:600;color:#9a3412;display:block;margin-bottom:3px">Month</label>
+      <input id="dg_month" type="month" onchange="dgOnFilter()" style="padding:7px 10px;border:1px solid #fed7aa;border-radius:6px;font-size:13px;background:#fff"></div>
+    <div style="flex:1"></div>
+    <a id="dg_pdf_btn" href="#" target="_blank" style="font-size:12px;font-weight:600;color:#b45309;text-decoration:none;border:1px solid #fed7aa;background:#fff;padding:8px 12px;border-radius:6px">⬇ Month PDF</a>
+  </div>
+  <div class="form-scroll">
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📊</span> Monthly Totals</div>
+      <div class="sec-body" style="padding:0;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:var(--gray-50)">
+            <th style="padding:9px 10px;border:1px solid var(--gray-200);text-align:left">Month</th>
+            <th style="padding:9px 10px;border:1px solid var(--gray-200);text-align:right">Days</th>
+            <th style="padding:9px 10px;border:1px solid var(--gray-200);text-align:right">Run Time</th>
+            <th style="padding:9px 10px;border:1px solid var(--gray-200);text-align:right">Fuel Added (L)</th>
+            <th style="padding:9px 10px;border:1px solid var(--gray-200);text-align:right">Units (kWh)</th>
+          </tr></thead>
+          <tbody id="dg_totals_body"><tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af">—</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">➕</span> <span id="dg_form_title">New Entry</span></div>
+      <div class="sec-body">
+        <input type="hidden" id="dg_edit_id" value="">
+        <div class="fg fg-2">
+          <div class="field"><label>Date <span class="req">*</span></label><input type="date" id="dg_date"></div>
+          <div class="field"><label>Sign / Operated By</label><input type="text" id="dg_sign" placeholder="Name" autocomplete="off"></div>
+        </div>
+        <div class="fg fg-3">
+          <div class="field"><label>Start At <span class="req">*</span></label><input type="time" id="dg_start" oninput="dgCalc()"></div>
+          <div class="field"><label>Stop At</label><input type="time" id="dg_stop" oninput="dgCalc()"></div>
+          <div class="field"><label>Running Hours</label><input type="text" id="dg_run" placeholder="auto" readonly style="background:#f3f4f6"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Fuel Added (L)</label><input type="number" id="dg_fuel" step="0.1" placeholder="e.g. 60"></div>
+          <div class="field"><label>Diesel Level (L)</label><input type="number" id="dg_level" step="1" placeholder="tank level"></div>
+        </div>
+        <div class="fg fg-3">
+          <div class="field"><label>Start kWh</label><input type="number" id="dg_kwh_start" step="0.1" oninput="dgCalc()" placeholder="meter start"></div>
+          <div class="field"><label>End kWh</label><input type="number" id="dg_kwh_end" step="0.1" oninput="dgCalc()" placeholder="meter end"></div>
+          <div class="field"><label>Units (kWh)</label><input type="text" id="dg_units" placeholder="auto" readonly style="background:#f3f4f6"></div>
+        </div>
+        <div class="fg fg-1">
+          <div class="field"><label>Remarks</label><input type="text" id="dg_remarks" placeholder="Any note"></div>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:6px">
+          <button class="btn-sec" id="dg_cancel_btn" style="display:none" onclick="dgCancelEdit()">Cancel edit</button>
+          <div style="flex:1"></div>
+          <button class="btn-primary" id="dg_save_btn" style="background:#b45309;max-width:200px" onclick="submitDg()">
+            <div class="spinner" id="dg_spin"></div><span id="dg_save_lbl">Save Entry</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📋</span> Log — <span id="dg_month_lbl">this month</span></div>
+      <div class="sec-body" style="padding:0;overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;font-size:12px;white-space:nowrap" id="dg_table">
+          <thead><tr style="background:#fff7ed">
+            <th style="padding:8px;border:1px solid #fed7aa">Date</th>
+            <th style="padding:8px;border:1px solid #fed7aa">Start</th>
+            <th style="padding:8px;border:1px solid #fed7aa">Stop</th>
+            <th style="padding:8px;border:1px solid #fed7aa">Run Hrs</th>
+            <th style="padding:8px;border:1px solid #fed7aa">Fuel Added</th>
+            <th style="padding:8px;border:1px solid #fed7aa">Diesel Level</th>
+            <th style="padding:8px;border:1px solid #fed7aa">Start kWh</th>
+            <th style="padding:8px;border:1px solid #fed7aa">End kWh</th>
+            <th style="padding:8px;border:1px solid #fed7aa">Units</th>
+            <th style="padding:8px;border:1px solid #fed7aa">Remarks</th>
+            <th style="padding:8px;border:1px solid #fed7aa">Sign</th>
+            <th style="padding:8px;border:1px solid #fed7aa"></th>
+          </tr></thead>
+          <tbody id="dg_rows"><tr><td colspan="12" style="padding:24px;text-align:center;color:#9ca3af">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <div class="screen" id="screen-forgotpw">
   <div class="lg-wrap"><div class="lg-card">
     <div class="lg-brand">Bharat Steel (Chennai)<b>Reset password</b></div>
@@ -714,6 +809,15 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
       <div class="card-body">
         <div class="card-title">Gate Pass Register</div>
         <div class="card-desc">All visitor passes · see who is currently inside · Mark Out on exit</div>
+      </div>
+      <div class="card-arrow">›</div>
+    </div>
+
+    <div class="form-card" onclick="openDgLog()">
+      <div class="card-icon" style="background:#FFF4E5"><svg viewBox="0 0 24 24" fill="none" stroke="#b45309" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7z"/></svg></div>
+      <div class="card-body">
+        <div class="card-title">Diesel Generator Log</div>
+        <div class="card-desc">DG running log — start/stop, running hours, diesel, start &amp; end kWh · monthly totals &amp; PDF</div>
       </div>
       <div class="card-arrow">›</div>
     </div>
@@ -1028,7 +1132,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     </div>
 
     <div class="sec-card">
-      <div class="sec-head"><span class="sec-head-icon">⚙️</span> Machine Setting Parameters</div>
+      <div class="sec-head"><span class="sec-head-icon">⚙️</span> Machine Setting Parameters <span style="font-size:10px;font-weight:700;color:#1A6DAF;background:#E8F2FB;padding:1px 7px;border-radius:6px;margin-left:6px;vertical-align:middle">v2</span></div>
       <div class="sec-body">
         <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px">Record the initial setting for each parameter. Use &ldquo;+ Add adjustment&rdquo; to log any change made after the initial setting (up to 10 per parameter).</div>
         <div id="q_mp_body"></div>
@@ -1275,7 +1379,7 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
     </div>
 
     <div class="sec-card">
-      <div class="sec-head"><span class="sec-head-icon">⚙️</span> Machine Setting Parameters</div>
+      <div class="sec-head"><span class="sec-head-icon">⚙️</span> Machine Setting Parameters <span style="font-size:10px;font-weight:700;color:#1A6DAF;background:#E8F2FB;padding:1px 7px;border-radius:6px;margin-left:6px;vertical-align:middle">v2</span></div>
       <div class="sec-body">
         <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px">Record the initial setting for each parameter. Use &ldquo;+ Add adjustment&rdquo; to log any change made after the initial setting (up to 10 per parameter).</div>
         <div id="sh_mp_body"></div>
@@ -3334,6 +3438,197 @@ function showScreen(name) {
   var el = document.getElementById('screen-' + name);
   if (el) el.classList.add('active');
   window.scrollTo(0, 0);
+}
+
+// ============================================================
+//  DIESEL GENERATOR LOG
+// ============================================================
+var _dgData = [];
+function _dgv(id){ var e=document.getElementById(id); return e?e.value:''; }
+function _dgEsc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+function _dgNum(v){ v=parseFloat(v); return isFinite(v)?v:null; }
+function _dgPad(n){ return ('0'+n).slice(-2); }
+function _dgMinutes(start, stop){
+  if(!start||!stop) return null;
+  var a=start.split(':'), b=stop.split(':');
+  if(a.length<2||b.length<2) return null;
+  var m1=parseInt(a[0],10)*60+parseInt(a[1],10), m2=parseInt(b[0],10)*60+parseInt(b[1],10);
+  if(!isFinite(m1)||!isFinite(m2)) return null;
+  var d=m2-m1; if(d<0) d+=24*60; return d;
+}
+function _dgFmtMin(mins){
+  if(mins==null||!isFinite(mins)) return '';
+  mins=Math.round(mins); var h=Math.floor(mins/60), m=mins%60;
+  if(h&&m) return h+'h '+m+'m'; if(h) return h+'h'; return m+'m';
+}
+function dgCalc(){
+  var mins=_dgMinutes(_dgv('dg_start'), _dgv('dg_stop'));
+  var r=document.getElementById('dg_run'); if(r) r.value=_dgFmtMin(mins);
+  var ks=_dgNum(_dgv('dg_kwh_start')), ke=_dgNum(_dgv('dg_kwh_end')); var u=document.getElementById('dg_units');
+  if(u) u.value=(ks!=null&&ke!=null)?String(Math.round((ke-ks)*100)/100):'';
+}
+function openDgLog(){
+  showScreen('dglog');
+  var now=new Date();
+  var mo=document.getElementById('dg_month'); if(mo&&!mo.value) mo.value=now.getFullYear()+'-'+_dgPad(now.getMonth()+1);
+  dgResetForm();
+  loadDgList();
+}
+function dgResetForm(){
+  document.getElementById('dg_edit_id').value='';
+  ['dg_sign','dg_start','dg_stop','dg_run','dg_fuel','dg_level','dg_kwh_start','dg_kwh_end','dg_units','dg_remarks'].forEach(function(i){ var e=document.getElementById(i); if(e)e.value=''; });
+  var now=new Date(); var d=document.getElementById('dg_date'); if(d) d.value=now.getFullYear()+'-'+_dgPad(now.getMonth()+1)+'-'+_dgPad(now.getDate());
+  document.getElementById('dg_form_title').textContent='New Entry';
+  document.getElementById('dg_save_lbl').textContent='Save Entry';
+  document.getElementById('dg_cancel_btn').style.display='none';
+}
+function dgCancelEdit(){ dgResetForm(); }
+function dgOnFilter(){ dgUpdatePdfBtn(); renderDg(); }
+function dgUpdatePdfBtn(){
+  var a=document.getElementById('dg_pdf_btn'); if(!a) return;
+  var mo=_dgv('dg_month')||''; var dg=_dgv('dg_set')||'';
+  a.href=SERVER_URL+'/dg/pdf?month='+encodeURIComponent(mo)+'&dg='+encodeURIComponent(dg);
+}
+async function loadDgList(){
+  var tb=document.getElementById('dg_rows'); if(tb) tb.innerHTML='<tr><td colspan="12" style="padding:24px;text-align:center;color:#9ca3af">Loading…</td></tr>';
+  try{ var r=await fetch(SERVER_URL+'/dg/list',{cache:'no-store'}); _dgData=await r.json(); if(!Array.isArray(_dgData)) _dgData=[]; }
+  catch(e){ if(tb) tb.innerHTML='<tr><td colspan="12" style="padding:24px;text-align:center;color:#dc2626">Failed to load</td></tr>'; return; }
+  // populate DG set options from data (keep default first)
+  try{ var sel=document.getElementById('dg_set'); var have={}; Array.prototype.forEach.call(sel.options,function(o){have[o.value]=1;});
+    _dgData.forEach(function(x){ if(x.dg_set && !have[x.dg_set]){ var o=document.createElement('option'); o.value=x.dg_set; o.textContent=x.dg_set; sel.appendChild(o); have[x.dg_set]=1; } });
+  }catch(e){}
+  dgUpdatePdfBtn(); renderDg();
+}
+function renderDg(){
+  var dg=_dgv('dg_set'); var mo=_dgv('dg_month');
+  document.getElementById('dg_month_lbl').textContent = mo || 'this month';
+  document.getElementById('dg_sub').textContent = dg + (mo?(' · '+mo):'');
+  var rows=_dgData.filter(function(x){
+    if(dg && x.dg_set!==dg) return false;
+    if(mo && String(x.log_date||'').slice(0,7)!==mo) return false;
+    return true;
+  });
+  // sort by date then start time ascending
+  rows.sort(function(a,b){ var k1=(String(a.log_date||'')+ (a.start_at||'')); var k2=(String(b.log_date||'')+(b.start_at||'')); return k1<k2?-1:(k1>k2?1:0); });
+  var tb=document.getElementById('dg_rows');
+  if(!rows.length){ tb.innerHTML='<tr><td colspan="12" style="padding:24px;text-align:center;color:#9ca3af">No entries for this month.</td></tr>'; dgRenderTotals(); return; }
+  var tf=0, tu=0, tm=0;
+  tb.innerHTML=rows.map(function(x){
+    var mins = (x.running_minutes!=null && isFinite(x.running_minutes)) ? Number(x.running_minutes) : _dgMinutes(x.start_at,x.stop_at);
+    if(mins!=null) tm+=mins;
+    var units = (x.units!=null&&x.units!=='')?Number(x.units):((_dgNum(x.kwh_end)!=null&&_dgNum(x.kwh_start)!=null)?(x.kwh_end-x.kwh_start):null);
+    if(units!=null&&isFinite(units)) tu+=units;
+    if(_dgNum(x.fuel_added)!=null) tf+=Number(x.fuel_added);
+    var td='padding:7px 8px;border:1px solid #fed7aa;text-align:center';
+    var tdl='padding:7px 8px;border:1px solid #fed7aa';
+    return '<tr>'
+      +'<td style="'+td+'">'+_dgEsc(String(x.log_date||'').slice(0,10))+'</td>'
+      +'<td style="'+td+'">'+_dgEsc(x.start_at||'')+'</td>'
+      +'<td style="'+td+'">'+_dgEsc(x.stop_at||'')+'</td>'
+      +'<td style="'+td+'">'+_dgEsc(_dgFmtMin(mins))+'</td>'
+      +'<td style="'+td+'">'+_dgEsc(x.fuel_added!=null&&x.fuel_added!==''?x.fuel_added:'')+'</td>'
+      +'<td style="'+td+'">'+_dgEsc(x.diesel_level!=null&&x.diesel_level!==''?x.diesel_level:'')+'</td>'
+      +'<td style="'+td+'">'+_dgEsc(x.kwh_start!=null&&x.kwh_start!==''?x.kwh_start:'')+'</td>'
+      +'<td style="'+td+'">'+_dgEsc(x.kwh_end!=null&&x.kwh_end!==''?x.kwh_end:'')+'</td>'
+      +'<td style="'+td+'">'+_dgEsc(units!=null&&isFinite(units)?(Math.round(units*100)/100):'')+'</td>'
+      +'<td style="'+tdl+'">'+_dgEsc(x.remarks||'')+'</td>'
+      +'<td style="'+td+'">'+_dgEsc(x.sign||'')+'</td>'
+      +'<td style="'+td+';white-space:nowrap">'
+        +'<a href="#" onclick="dgEdit('+x.id+');return false" style="color:#0B5793;text-decoration:none;font-weight:600;margin-right:8px">Edit</a>'
+        +'<a href="#" onclick="dgDelete('+x.id+');return false" style="color:#dc2626;text-decoration:none;font-weight:600">Del</a>'
+      +'</td>'
+    +'</tr>';
+  }).join('')
+  + '<tr style="background:#fffaf2;font-weight:700">'
+    +'<td style="padding:8px;border:1px solid #fed7aa" colspan="3">TOTAL ('+rows.length+' entr'+(rows.length===1?'y':'ies')+')</td>'
+    +'<td style="padding:8px;border:1px solid #fed7aa;text-align:center">'+_dgEsc(_dgFmtMin(tm))+'</td>'
+    +'<td style="padding:8px;border:1px solid #fed7aa;text-align:center">'+(Math.round(tf*100)/100)+'</td>'
+    +'<td style="padding:8px;border:1px solid #fed7aa"></td>'
+    +'<td style="padding:8px;border:1px solid #fed7aa"></td>'
+    +'<td style="padding:8px;border:1px solid #fed7aa"></td>'
+    +'<td style="padding:8px;border:1px solid #fed7aa;text-align:center">'+(Math.round(tu*100)/100)+'</td>'
+    +'<td style="padding:8px;border:1px solid #fed7aa" colspan="2"></td>'
+  +'</tr>';
+  dgRenderTotals();
+}
+function dgRenderTotals(){
+  var dg=_dgv('dg_set');
+  var map={};
+  _dgData.forEach(function(x){ if(dg && x.dg_set!==dg) return; var mo=String(x.log_date||'').slice(0,7); if(!mo) return;
+    if(!map[mo]) map[mo]={days:{},mins:0,fuel:0,units:0};
+    map[mo].days[String(x.log_date||'').slice(0,10)]=1;
+    var mins=(x.running_minutes!=null&&isFinite(x.running_minutes))?Number(x.running_minutes):_dgMinutes(x.start_at,x.stop_at); if(mins!=null) map[mo].mins+=mins;
+    if(_dgNum(x.fuel_added)!=null) map[mo].fuel+=Number(x.fuel_added);
+    var u=(x.units!=null&&x.units!=='')?Number(x.units):((_dgNum(x.kwh_end)!=null&&_dgNum(x.kwh_start)!=null)?(x.kwh_end-x.kwh_start):null); if(u!=null&&isFinite(u)) map[mo].units+=u;
+  });
+  var months=Object.keys(map).sort().reverse().slice(0,12);
+  var tb=document.getElementById('dg_totals_body');
+  if(!months.length){ tb.innerHTML='<tr><td colspan="5" style="padding:16px;text-align:center;color:#9ca3af">No data yet</td></tr>'; return; }
+  tb.innerHTML=months.map(function(mo){ var t=map[mo];
+    return '<tr>'
+      +'<td style="padding:8px 10px;border:1px solid var(--gray-200)">'+_dgEsc(mo)+'</td>'
+      +'<td style="padding:8px 10px;border:1px solid var(--gray-200);text-align:right">'+Object.keys(t.days).length+'</td>'
+      +'<td style="padding:8px 10px;border:1px solid var(--gray-200);text-align:right">'+_dgEsc(_dgFmtMin(t.mins)||'—')+'</td>'
+      +'<td style="padding:8px 10px;border:1px solid var(--gray-200);text-align:right">'+(Math.round(t.fuel*100)/100)+'</td>'
+      +'<td style="padding:8px 10px;border:1px solid var(--gray-200);text-align:right">'+(Math.round(t.units*100)/100)+'</td>'
+    +'</tr>';
+  }).join('');
+}
+function dgEdit(id){
+  var x=_dgData.filter(function(r){return r.id===id;})[0]; if(!x){ return; }
+  document.getElementById('dg_edit_id').value=x.id;
+  document.getElementById('dg_set').value=x.dg_set||document.getElementById('dg_set').value;
+  document.getElementById('dg_date').value=String(x.log_date||'').slice(0,10);
+  document.getElementById('dg_sign').value=x.sign||'';
+  document.getElementById('dg_start').value=x.start_at||'';
+  document.getElementById('dg_stop').value=x.stop_at||'';
+  document.getElementById('dg_fuel').value=(x.fuel_added!=null?x.fuel_added:'');
+  document.getElementById('dg_level').value=(x.diesel_level!=null?x.diesel_level:'');
+  document.getElementById('dg_kwh_start').value=(x.kwh_start!=null?x.kwh_start:'');
+  document.getElementById('dg_kwh_end').value=(x.kwh_end!=null?x.kwh_end:'');
+  document.getElementById('dg_remarks').value=x.remarks||'';
+  dgCalc();
+  document.getElementById('dg_form_title').textContent='Edit Entry #'+x.id;
+  document.getElementById('dg_save_lbl').textContent='Update Entry';
+  document.getElementById('dg_cancel_btn').style.display='';
+  document.getElementById('screen-dglog').querySelector('.form-scroll').scrollTop=0; window.scrollTo(0,0);
+}
+async function submitDg(){
+  var date=_dgv('dg_date'), start=_dgv('dg_start');
+  if(!date){ toast('err','Date is required'); return; }
+  if(!start){ toast('err','Start time is required'); return; }
+  var mins=_dgMinutes(start,_dgv('dg_stop'));
+  var ks=_dgNum(_dgv('dg_kwh_start')), ke=_dgNum(_dgv('dg_kwh_end'));
+  var payload={
+    id: _dgv('dg_edit_id')||null,
+    dg_set: _dgv('dg_set')||'DG-320 kVA',
+    log_date: date, start_at: start, stop_at: _dgv('dg_stop')||'',
+    running_minutes: (mins!=null?mins:null),
+    fuel_added: _dgNum(_dgv('dg_fuel')),
+    diesel_level: _dgNum(_dgv('dg_level')),
+    kwh_start: ks, kwh_end: ke,
+    units: (ks!=null&&ke!=null)?(Math.round((ke-ks)*100)/100):null,
+    remarks: _dgv('dg_remarks'), sign: _dgv('dg_sign')
+  };
+  var btn=document.getElementById('dg_save_btn'), sp=document.getElementById('dg_spin'), lb=document.getElementById('dg_save_lbl');
+  btn.disabled=true; sp.style.display='block'; var prev=lb.textContent; lb.textContent='Saving…';
+  try{
+    var url=payload.id?'/dg/update':'/dg/submit';
+    var r=await fetch(SERVER_URL+url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    var d=await r.json().catch(function(){return{};}); if(!r.ok||!d.ok) throw new Error(d.error||'Save failed');
+    toast('ok', payload.id?'Entry updated':'Entry saved');
+    var savedMonth=date.slice(0,7); var mo=document.getElementById('dg_month'); if(mo) mo.value=savedMonth;
+    dgResetForm();
+    await loadDgList();
+  }catch(e){ toast('err','Failed: '+((e&&e.message)||e)); }
+  finally{ btn.disabled=false; sp.style.display='none'; lb.textContent=prev; }
+}
+async function dgDelete(id){
+  if(!confirm('Delete this log entry?')) return;
+  try{ var r=await fetch(SERVER_URL+'/dg/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    var d=await r.json().catch(function(){return{};}); if(!r.ok||!d.ok) throw new Error(d.error||'failed');
+    toast('ok','Deleted'); await loadDgList();
+  }catch(e){ toast('err','Failed: '+((e&&e.message)||e)); }
 }
 
 function openComplaintMenu() {

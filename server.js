@@ -604,6 +604,193 @@ app.get('/gp/download', requireAuth, requireEmployee, async (req, res) => {
   } catch(e){ res.status(500).send(e.message); }
 });
 
+// =====================================================
+// DIESEL GENERATOR LOG
+// =====================================================
+let _dgTbl = false;
+async function ensureDgLog(){
+  if (_dgTbl) return;
+  await pgq(`CREATE TABLE IF NOT EXISTS dg_log (
+    id SERIAL PRIMARY KEY, dg_set TEXT DEFAULT 'DG-320 kVA', log_date DATE,
+    start_at TEXT, stop_at TEXT, running_minutes INTEGER,
+    fuel_added NUMERIC, diesel_level NUMERIC, kwh_start NUMERIC, kwh_end NUMERIC, units NUMERIC,
+    remarks TEXT, sign TEXT, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ)`);
+  await pgq(`CREATE INDEX IF NOT EXISTS ix_dg_log_date ON dg_log (log_date)`);
+  _dgTbl = true;
+}
+function dgNumSrv(v){ v=parseFloat(v); return isFinite(v)?v:null; }
+function dgMinutesSrv(start, stop){
+  if(!start||!stop) return null;
+  const a=String(start).split(':'), b=String(stop).split(':');
+  if(a.length<2||b.length<2) return null;
+  const m1=parseInt(a[0],10)*60+parseInt(a[1],10), m2=parseInt(b[0],10)*60+parseInt(b[1],10);
+  if(!isFinite(m1)||!isFinite(m2)) return null;
+  let d=m2-m1; if(d<0) d+=1440; return d;
+}
+function dgFmtMinSrv(mins){
+  if(mins==null||!isFinite(mins)) return '';
+  mins=Math.round(mins); const h=Math.floor(mins/60), m=mins%60;
+  if(h&&m) return h+'h '+m+'m'; if(h) return h+'h'; return m+'m';
+}
+function dgRowFromBody(b){
+  const mins = (b.running_minutes!=null && isFinite(parseInt(b.running_minutes,10))) ? parseInt(b.running_minutes,10) : dgMinutesSrv(b.start_at, b.stop_at);
+  const ks=dgNumSrv(b.kwh_start), ke=dgNumSrv(b.kwh_end);
+  const units = (b.units!=null && b.units!=='' && isFinite(parseFloat(b.units))) ? parseFloat(b.units) : ((ks!=null&&ke!=null)?Math.round((ke-ks)*100)/100:null);
+  return {
+    dg_set: String(b.dg_set||'DG-320 kVA').slice(0,60),
+    log_date: b.log_date||null,
+    start_at: String(b.start_at||'').slice(0,8),
+    stop_at: String(b.stop_at||'').slice(0,8),
+    running_minutes: mins,
+    fuel_added: dgNumSrv(b.fuel_added),
+    diesel_level: dgNumSrv(b.diesel_level),
+    kwh_start: ks, kwh_end: ke, units: units,
+    remarks: String(b.remarks||'').slice(0,500),
+    sign: String(b.sign||'').slice(0,120)
+  };
+}
+async function appendDgCsv(token, g){
+  try {
+    const p='BSC Inspections/DG Log/DG_Log.csv'; let ex='';
+    try { const r=await fetch('https://graph.microsoft.com/v1.0/users/'+USER_ID+'/drive/root:/'+encodeURIComponent(p)+':/content',{headers:{'Authorization':'Bearer '+token}}); if(r.ok) ex=await r.text(); } catch(e){}
+    if(!ex) ex='DG Set,Date,Start At,Stop At,Running Hours,Fuel Added (L),Diesel Level (L),Start kWh,End kWh,Units (kWh),Remarks,Sign,Entered By,Entered At\n';
+    const c=v=>{ v=(v==null?'':String(v)); return /[",\n]/.test(v)?('"'+v.replace(/"/g,'""')+'"'):v; };
+    const line=[g.dg_set,g.log_date,g.start_at,g.stop_at,dgFmtMinSrv(g.running_minutes),g.fuel_added,g.diesel_level,g.kwh_start,g.kwh_end,g.units,g.remarks,g.sign,g.created_by,new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})].map(c).join(',')+'\n';
+    await uploadFile(token, p, Buffer.from(ex+line,'utf8'), 'text/csv');
+  } catch(e){ console.error('[dg-csv]', e.message); }
+}
+app.post('/dg/submit', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensureDgLog();
+    const b = req.body || {};
+    if (!b.log_date || !b.start_at) return res.status(400).json({ error:'log_date and start_at required' });
+    const row = dgRowFromBody(b);
+    const createdBy = (req.user && (req.user.name||req.user.emp_no||req.user.employee_id)) || '';
+    const r = await pgq(`INSERT INTO dg_log (dg_set,log_date,start_at,stop_at,running_minutes,fuel_added,diesel_level,kwh_start,kwh_end,units,remarks,sign,created_by)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING id`,
+      [row.dg_set,row.log_date,row.start_at,row.stop_at,row.running_minutes,row.fuel_added,row.diesel_level,row.kwh_start,row.kwh_end,row.units,row.remarks,row.sign,createdBy]);
+    getToken().then(tok => appendDgCsv(tok, Object.assign({}, row, { created_by:createdBy }))).catch(()=>{});
+    res.json({ ok:true, id: r.rows[0].id });
+  } catch(e){ console.error('[dg] submit', e.message); res.status(500).json({ error:e.message }); }
+});
+app.post('/dg/update', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensureDgLog();
+    const b = req.body || {};
+    const id = parseInt(b.id,10);
+    if (!id) return res.status(400).json({ error:'id required' });
+    if (!b.log_date || !b.start_at) return res.status(400).json({ error:'log_date and start_at required' });
+    const row = dgRowFromBody(b);
+    await pgq(`UPDATE dg_log SET dg_set=$1,log_date=$2,start_at=$3,stop_at=$4,running_minutes=$5,fuel_added=$6,diesel_level=$7,kwh_start=$8,kwh_end=$9,units=$10,remarks=$11,sign=$12,updated_at=now() WHERE id=$13`,
+      [row.dg_set,row.log_date,row.start_at,row.stop_at,row.running_minutes,row.fuel_added,row.diesel_level,row.kwh_start,row.kwh_end,row.units,row.remarks,row.sign,id]);
+    res.json({ ok:true, id });
+  } catch(e){ console.error('[dg] update', e.message); res.status(500).json({ error:e.message }); }
+});
+app.post('/dg/delete', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensureDgLog();
+    const id = parseInt((req.body||{}).id,10);
+    if (!id) return res.status(400).json({ error:'id required' });
+    await pgq('DELETE FROM dg_log WHERE id=$1', [id]);
+    res.json({ ok:true });
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
+app.get('/dg/list', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensureDgLog();
+    const r = await pgq('SELECT id,dg_set,log_date,start_at,stop_at,running_minutes,fuel_added,diesel_level,kwh_start,kwh_end,units,remarks,sign,created_by,created_at FROM dg_log ORDER BY log_date DESC NULLS LAST, start_at DESC LIMIT 2000');
+    res.setHeader('Cache-Control','no-store'); res.json(r.rows||[]);
+  } catch(e){ res.status(500).json({ error:e.message }); }
+});
+function buildDgLogPdf(rows, dgSet, month){
+  return new Promise((resolve, reject) => {
+    try {
+      const doc = new PDFDocument({ size:'A4', layout:'landscape', margin:30, bufferPages:true });
+      const bufs=[]; doc.on('data', b=>bufs.push(b)); doc.on('end', ()=>resolve(Buffer.concat(bufs))); doc.on('error', reject);
+      const BRAND='#b45309', DARK='#7c3f08', TXT='#111111', MUT='#6b7280', BORD='#d8c3a5', HEAD='#fdebd2', ALT='#fff9f1';
+      const pageW = doc.page.width, pageH = doc.page.height;
+      const L=30, R=pageW-30, W=R-L;
+      function header(){
+        let y=30;
+        try { doc.image(path.join(__dirname,'public','bsc-logo.png'), L, y, { height:30 }); } catch(e){}
+        doc.fillColor(BRAND).font('Helvetica-Bold').fontSize(16).text('DIESEL GENERATOR LOG', L, y+2, { width:W, align:'center' });
+        doc.fillColor(MUT).font('Helvetica').fontSize(9).text('Bharat Steel (Chennai) Pvt. Ltd.', L, y+22, { width:W, align:'center' });
+        doc.fillColor(DARK).font('Helvetica-Bold').fontSize(10).text((dgSet||'')+(month?('   ·   '+month):''), L, y+2, { width:W, align:'right' });
+        y+=42; doc.moveTo(L,y).lineTo(R,y).lineWidth(1).strokeColor(BRAND).stroke();
+        return y+10;
+      }
+      // columns: label, width, align
+      const cols=[
+        ['Date',70,'left'],['Start',44,'center'],['Stop',44,'center'],['Run Hrs',56,'center'],
+        ['Fuel Added',60,'center'],['Diesel Level',62,'center'],['Start kWh',64,'center'],['End kWh',64,'center'],
+        ['Units',52,'center'],['Remarks',0,'left'],['Sign',72,'left']
+      ];
+      const fixed = cols.reduce((s,c)=>s+c[1],0);
+      cols.forEach(c=>{ if(c[1]===0) c[1]=Math.max(90, W-fixed); });
+      function headRow(y){
+        let x=L; const h=20;
+        doc.rect(L,y,W,h).fill(HEAD);
+        doc.lineWidth(0.6).strokeColor(BORD).rect(L,y,W,h).stroke();
+        doc.fillColor(DARK).font('Helvetica-Bold').fontSize(7.5);
+        cols.forEach(c=>{ doc.text(c[0], x+3, y+6, { width:c[1]-6, align:c[2] }); x+=c[1]; if(x<R) doc.moveTo(x,y).lineTo(x,y+h).stroke(); });
+        return y+h;
+      }
+      let y=header(); y=headRow(y);
+      let tf=0, tu=0, tm=0;
+      doc.font('Helvetica').fontSize(8).fillColor(TXT);
+      rows.forEach((r, i) => {
+        const mins = (r.running_minutes!=null && isFinite(Number(r.running_minutes))) ? Number(r.running_minutes) : dgMinutesSrv(r.start_at, r.stop_at);
+        if(mins!=null) tm+=mins;
+        const units = (r.units!=null && r.units!=='') ? Number(r.units) : ((dgNumSrv(r.kwh_start)!=null&&dgNumSrv(r.kwh_end)!=null)?(r.kwh_end-r.kwh_start):null);
+        if(units!=null&&isFinite(units)) tu+=units;
+        if(dgNumSrv(r.fuel_added)!=null) tf+=Number(r.fuel_added);
+        const cells=[
+          String(r.log_date||'').slice(0,10), r.start_at||'', r.stop_at||'', dgFmtMinSrv(mins),
+          (r.fuel_added!=null&&r.fuel_added!==''?String(r.fuel_added):''), (r.diesel_level!=null&&r.diesel_level!==''?String(r.diesel_level):''),
+          (r.kwh_start!=null&&r.kwh_start!==''?String(r.kwh_start):''), (r.kwh_end!=null&&r.kwh_end!==''?String(r.kwh_end):''),
+          (units!=null&&isFinite(units)?String(Math.round(units*100)/100):''), String(r.remarks||''), String(r.sign||'')
+        ];
+        // row height from remarks wrapping
+        const remIdx=9; doc.font('Helvetica').fontSize(8);
+        const remH = doc.heightOfString(cells[remIdx]||' ', { width: cols[remIdx][1]-6 });
+        const rowH = Math.max(16, remH+6);
+        if (y+rowH > pageH-34) { doc.addPage(); y=header(); y=headRow(y); doc.font('Helvetica').fontSize(8).fillColor(TXT); }
+        if (i%2===1) doc.rect(L,y,W,rowH).fill(ALT);
+        doc.lineWidth(0.5).strokeColor(BORD).rect(L,y,W,rowH).stroke();
+        let x=L; doc.fillColor(TXT).font('Helvetica').fontSize(8);
+        cols.forEach((c,ci)=>{ doc.text(cells[ci]||'', x+3, y+4, { width:c[1]-6, align:c[2] }); x+=c[1]; if(x<R) doc.moveTo(x,y).lineTo(x,y+rowH).stroke(); });
+        y+=rowH;
+      });
+      // totals row
+      const th=18; if (y+th>pageH-34){ doc.addPage(); y=header(); y=headRow(y); }
+      doc.rect(L,y,W,th).fill(HEAD); doc.lineWidth(0.6).strokeColor(BORD).rect(L,y,W,th).stroke();
+      let x=L; doc.fillColor(DARK).font('Helvetica-Bold').fontSize(8);
+      const tcells=['TOTAL','','',dgFmtMinSrv(tm),(Math.round(tf*100)/100).toString(),'','','',(Math.round(tu*100)/100).toString(),'',''];
+      cols.forEach((c,ci)=>{ doc.text(tcells[ci]||'', x+3, y+5, { width:c[1]-6, align:(ci===0?'left':c[2]) }); x+=c[1]; if(x<R) doc.moveTo(x,y).lineTo(x,y+th).stroke(); });
+      y+=th+10;
+      doc.fillColor(MUT).font('Helvetica').fontSize(7.5).text('Generated '+new Date().toLocaleString('en-IN',{timeZone:'Asia/Kolkata'})+'  ·  '+rows.length+' entries', L, pageH-24, { width:W, align:'right' });
+      doc.end();
+    } catch(e){ reject(e); }
+  });
+}
+app.get('/dg/pdf', requireAuth, requireEmployee, async (req, res) => {
+  try {
+    await ensureDgLog();
+    const month = String(req.query.month||'').slice(0,7);
+    const dg = String(req.query.dg||'').slice(0,60);
+    const params=[]; const where=[];
+    if (dg){ params.push(dg); where.push('dg_set=$'+params.length); }
+    if (/^\d{4}-\d{2}$/.test(month)){ params.push(month+'-01'); where.push("date_trunc('month',log_date)=date_trunc('month',$"+params.length+"::date)"); }
+    const sql='SELECT * FROM dg_log'+(where.length?(' WHERE '+where.join(' AND ')):'')+' ORDER BY log_date ASC NULLS LAST, start_at ASC';
+    const r = await pgq(sql, params);
+    const pdf = await buildDgLogPdf(r.rows||[], dg||'All DG sets', month||'All months');
+    res.setHeader('Content-Type','application/pdf');
+    res.setHeader('Content-Disposition','inline; filename="DG_Log_'+((dg||'all').replace(/[^A-Za-z0-9._-]/g,'_'))+'_'+(month||'all')+'.pdf"');
+    res.setHeader('Cache-Control','no-store');
+    res.send(pdf);
+  } catch(e){ console.error('[dg] pdf', e.message); res.status(500).send(e.message); }
+});
+
 // ---- Forgot password via WhatsApp OTP (WATI otp_password2) ----
 let _bcrypt; try { _bcrypt = require('bcryptjs'); } catch(e){ try { _bcrypt = require('bcrypt'); } catch(e2){} }
 let _otpTbl = false;
