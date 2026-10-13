@@ -463,8 +463,8 @@ body{font-family:var(--font);color:var(--gray-800);background:var(--gray-100);fo
           <div class="field"><label>Diesel Level (L)</label><input type="number" id="dg_level" step="1" placeholder="tank level"></div>
         </div>
         <div class="fg fg-3">
-          <div class="field"><label>Start Load kWh</label><input type="number" id="dg_kwh_start" step="0.1" oninput="dgCalc()" placeholder="meter start"></div>
-          <div class="field"><label>End Load kWh</label><input type="number" id="dg_kwh_end" step="0.1" oninput="dgCalc()" placeholder="meter end"></div>
+          <div class="field"><label>Start Load (kWh)</label><input type="number" id="dg_kwh_start" step="0.1" oninput="dgCalc()" placeholder="meter start"></div>
+          <div class="field"><label>End Load (kWh)</label><input type="number" id="dg_kwh_end" step="0.1" oninput="dgCalc()" placeholder="meter end"></div>
           <div class="field"><label>Units (kWh)</label><input type="text" id="dg_units" placeholder="auto" readonly style="background:#f3f4f6"></div>
         </div>
         <div class="fg fg-1">
@@ -3502,7 +3502,7 @@ function renderDg(){
   var cC='border:'+B+';padding:3px 2px;font-size:10px;text-align:center;overflow:hidden;word-break:break-word;line-height:1.15';
   var cL='border:'+B+';padding:3px 4px;font-size:10px;text-align:left;overflow:hidden;word-break:break-word;line-height:1.15';
   var th='border:'+B+';padding:4px 2px;font-size:9.5px;font-weight:700;color:#7c3f08;background:#fdebd2;text-align:center;word-break:break-word;line-height:1.1';
-  var cols=[['Date','9%'],['Start Time','7%'],['End Time','7%'],['Run Hrs','7%'],['Fuel (L)','6%'],['Diesel (L)','7%'],['Start Load kWh','9%'],['End Load kWh','9%'],['Units (kWh)','8%'],['Remarks','15%'],['Sign','9%'],['','7%']];
+  var cols=[['Date','9%'],['Start Time','7%'],['End Time','7%'],['Run Hrs','7%'],['Fuel (L)','6%'],['Diesel (L)','7%'],['Start Load (kWh)','9%'],['End Load (kWh)','9%'],['Units (kWh)','8%'],['Remarks','15%'],['Sign','9%'],['','7%']];
   var colgroup='<colgroup>'+cols.map(function(c){return '<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
   var header='<tr>'+cols.map(function(c){return '<th style="'+th+'">'+c[0]+'</th>';}).join('')+'</tr>';
   var body=rows.map(function(x){
