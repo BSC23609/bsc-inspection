@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Raise a Quality Complaint · {{ app_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--blue:#0069aa;--blue-ink:#00537f;--blue-soft:#e4f1fb;--ink:#0e1524;--ink2:#38445a;--muted:#5d6879;--line:#e2e8f2;--line2:#d2dbe8;--bg:#eef3f9}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,-apple-system,Arial,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.top{background:linear-gradient(160deg,#082438,#0d3a5c);color:#fff;padding:22px 20px}
+.top-in{max-width:680px;margin:0 auto;display:flex;align-items:center;gap:14px}
+.top .mark{background:#fff;border-radius:10px;padding:7px 10px;display:flex}.top .mark img{height:26px;display:block}
+.top h1{font-size:18px;font-weight:700;margin:0;letter-spacing:-.3px}
+.top p{margin:2px 0 0;font-size:12.5px;color:#aecbe3}
+.wrap{max-width:680px;margin:20px auto;padding:0 16px 48px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 6px 20px rgba(8,36,56,.06);padding:22px;margin-bottom:16px}
+.card h2{font-size:16px;margin:0 0 4px;font-weight:700}
+.card .lead{color:var(--muted);font-size:13px;margin:0 0 16px}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink2);margin-bottom:5px}
+.field .rq{color:#e5484d}
+input,textarea{width:100%;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;font-family:inherit;font-size:14px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+textarea{min-height:90px;resize:vertical;line-height:1.5}
+input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+.row{display:grid;gap:12px}.r2{grid-template-columns:1fr 1fr}
+@media(max-width:560px){.r2{grid-template-columns:1fr}}
+.photos{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.ph{width:72px;height:72px;border-radius:10px;border:1px solid var(--line2);background-size:cover;background-position:center;cursor:pointer}
+.addph{display:inline-flex;align-items:center;gap:8px;border:1.5px dashed var(--line2);border-radius:10px;padding:10px 14px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:600;background:#fff}
+.btn{border:none;border-radius:11px;padding:13px 20px;font-weight:700;font-size:14.5px;font-family:inherit;cursor:pointer;width:100%;background:var(--blue);color:#fff;box-shadow:0 6px 16px rgba(0,105,170,.28)}
+.btn:hover{background:var(--blue-ink)}.btn:disabled{opacity:.6}
+.btn-sm{width:auto;padding:10px 16px;font-size:13.5px}
+.ok{text-align:center;padding:10px 4px}
+.ok .big{width:64px;height:64px;border-radius:50%;background:#e3f6ee;color:#0a7d55;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:30px}
+.ok .ref{font-size:22px;font-weight:800;color:var(--blue-ink);letter-spacing:.5px;margin:6px 0}
+.muted{color:var(--muted)}.err{background:#fdecec;color:#b4302f;border:1px solid #f3c7c7;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:12px;display:none}
+.track-box{display:flex;gap:10px;flex-wrap:wrap}.track-box input{flex:1;min-width:180px}
+.tr-res{margin-top:12px;display:none;background:var(--blue-soft);border:1px solid #bcdcf3;border-radius:10px;padding:12px;font-size:13px}
+.tr-res .st{font-weight:700;color:var(--blue-ink);font-size:15px}
+.foot{text-align:center;color:var(--muted);font-size:11.5px;margin-top:6px}
+.foot a{color:var(--blue-ink)}
+</style>
+</head>
+<body>
+<div class="top"><div class="top-in">
+  <span class="mark"><img src="/static/bsc-logo.png" alt="Bharat Steel"></span>
+  <div><h1>Quality Complaint</h1><p>Bharat Steel (Chennai) Pvt. Ltd.</p></div>
+</div></div>
+
+<div class="wrap">
+  <div class="card" id="form_card">
+    <h2>Tell us what went wrong</h2>
+    <p class="lead">Fill in the details below and attach photos if you have them. You’ll get a reference number to track your complaint.</p>
+    <div class="err" id="err"></div>
+    <div class="row r2">
+      <div class="field"><label>Company name <span class="rq">*</span></label><input id="f_company" placeholder="Your company"></div>
+      <div class="field"><label>Contact person</label><input id="f_contact" placeholder="Your name"></div>
+    </div>
+    <div class="row r2">
+      <div class="field"><label>Email</label><input id="f_email" type="email" placeholder="you@company.com"></div>
+      <div class="field"><label>Phone</label><input id="f_phone" placeholder="Mobile number"></div>
+    </div>
+    <div class="row r2">
+      <div class="field"><label>Invoice No</label><input id="f_inv" placeholder="e.g. OS0020007759"></div>
+      <div class="field"><label>Batch / Coil No</label><input id="f_batch" placeholder="e.g. C105940205"></div>
+    </div>
+    <div class="row r2">
+      <div class="field"><label>Grade</label><input id="f_grade" placeholder="e.g. E250BR"></div>
+      <div class="field"><label>Dimensions</label><input id="f_dim" placeholder="e.g. HR 4.8×1250"></div>
+    </div>
+    <div class="field"><label>Quantity affected</label><input id="f_qty" placeholder="e.g. 20.9 T / 40 sheets"></div>
+    <div class="field"><label>Describe the issue <span class="rq">*</span></label><textarea id="f_defect" placeholder="What is the problem? When and how did you notice it?"></textarea></div>
+    <div class="field"><label>Photos (optional)</label>
+      <div class="photos" id="ph_prev"></div>
+      <label class="addph" style="margin-top:8px"><input type="file" accept="image/*" multiple hidden onchange="addPhotos(this)">📷 Add photos</label>
+    </div>
+    <button class="btn" id="submit" onclick="submitComplaint()">Submit complaint</button>
+    <div class="foot" style="margin-top:14px">Or reach us on WhatsApp: <a href="https://wa.me/919500680093" target="_blank">+91 95006 80093</a></div>
+  </div>
+
+  <div class="card" id="ok_card" style="display:none">
+    <div class="ok">
+      <div class="big">✓</div>
+      <h2>Complaint received</h2>
+      <p class="muted">Thank you. Our quality team will review it shortly.</p>
+      <div class="ref" id="ok_ref"></div>
+      <p class="muted" style="font-size:12.5px">Save this reference number to track your complaint.</p>
+      <button class="btn btn-sm" style="margin-top:8px" onclick="location.reload()">File another</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Track a complaint</h2>
+    <p class="lead">Enter your reference number to see the latest status.</p>
+    <div class="track-box">
+      <input id="t_ref" placeholder="e.g. BSC-QC-2026-014">
+      <button class="btn btn-sm" onclick="trackComplaint()">Check status</button>
+    </div>
+    <div class="tr-res" id="t_res"></div>
+  </div>
+</div>
+
+<script>
+var PHOTOS=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function showErr(m){var e=document.getElementById('err');e.textContent=m;e.style.display='block';window.scrollTo({top:0,behavior:'smooth'});}
+function addPhotos(inp){Array.from(inp.files||[]).slice(0,6).forEach(function(f){var img=new Image(),rd=new FileReader();
+  rd.onload=function(){img.onload=function(){var max=1400,w=img.width,h=img.height;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;}}
+    var cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+    if(PHOTOS.length<6){PHOTOS.push(cv.toDataURL('image/jpeg',0.8));renderPhotos();}};img.src=rd.result;};rd.readAsDataURL(f);});inp.value='';}
+function renderPhotos(){document.getElementById('ph_prev').innerHTML=PHOTOS.map(function(p,i){return '<div class="ph" style="background-image:url('+p+')" title="Remove" onclick="PHOTOS.splice('+i+',1);renderPhotos()"></div>';}).join('');}
+async function submitComplaint(){
+  document.getElementById('err').style.display='none';
+  var p={company:v('f_company').trim(),contact_name:v('f_contact').trim(),email:v('f_email').trim(),phone:v('f_phone').trim(),
+    invoice_no:v('f_inv').trim(),batch_number:v('f_batch').trim(),grade:v('f_grade').trim(),dimensions:v('f_dim').trim(),
+    quantity:v('f_qty').trim(),defect_description:v('f_defect').trim(),photos:PHOTOS};
+  if(!p.company){showErr('Please enter your company name.');return;}
+  if(!p.defect_description){showErr('Please describe the issue.');return;}
+  var b=document.getElementById('submit');b.disabled=true;var lbl=b.textContent;b.textContent='Submitting…';
+  try{var r=await fetch('/customer/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Submit failed');
+    document.getElementById('ok_ref').textContent=d.ref;
+    document.getElementById('form_card').style.display='none';
+    document.getElementById('ok_card').style.display='';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){showErr('Couldn’t submit: '+((e&&e.message)||e));b.disabled=false;b.textContent=lbl;}
+}
+async function trackComplaint(){
+  var ref=v('t_ref').trim();var box=document.getElementById('t_res');
+  if(!ref){box.style.display='none';return;}
+  box.style.display='block';box.innerHTML='Checking…';
+  try{var r=await fetch('/customer/track?ref='+encodeURIComponent(ref),{cache:'no-store'});
+    if(r.status===404){box.innerHTML='<span class="muted">No complaint found with that reference.</span>';return;}
+    var d=await r.json();
+    box.innerHTML='<div class="st">'+esc(d.status)+'</div>'
+      +'<div class="muted" style="margin:3px 0 8px">Ref '+esc(d.ref)+(d.updated?(' · updated '+esc(d.updated)):'')+'</div>'
+      +(d.message?('<div><b>From our team:</b> '+esc(d.message)+'</div>'):'<div class="muted">We’ll update this as your complaint progresses.</div>');
+  }catch(e){box.innerHTML='<span class="muted">Couldn’t check right now. Please try again.</span>';}
+}
+</script>
+</body>
+</html>
