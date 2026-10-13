@@ -46,7 +46,26 @@ async def ensure_table():
             created_by TEXT, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ)
     """)
     await db.execute("CREATE INDEX IF NOT EXISTS ix_qc_date ON quality_complaints (qc_date)")
+    # workflow columns (added safely)
+    for col, typ in (("decision", "TEXT"), ("handler", "TEXT"), ("sales_reviewer", "TEXT"),
+                     ("customer_message", "TEXT"), ("stage_log", "JSONB")):
+        await db.execute(f"ALTER TABLE quality_complaints ADD COLUMN IF NOT EXISTS {col} {typ}")
     _ensured = True
+
+
+# ---- workflow state machine ----
+PROD_PENDING = {"Open", "Under Review", "Vendor Notified", "Escalated for Re-review"}
+SALES_PENDING = {"Pending Sales Review", "Awaiting Customer Response"}
+DONE = {"Resolved", "Closed", "Declined"}
+
+
+def _queue_of(status: str) -> str:
+    s = status or "Open"
+    if s in SALES_PENDING:
+        return "sales"
+    if s in DONE:
+        return "done"
+    return "production"
 
 
 def _emp_name(emp: dict) -> str:
@@ -190,10 +209,14 @@ async def qc_list(emp: dict = Depends(require_employee)):
     await ensure_table()
     rows = await db.fetch(
         "SELECT complaint_no,source,qc_date,customer_name,grade,batch_number,invoice_no,"
-        "quantity,mill,vendor_name,status,defect_description,pdf_path,created_by,created_at "
-        "FROM quality_complaints ORDER BY created_at DESC LIMIT 3000")
-    return JSONResponse(jsonable_encoder([dict(r) for r in rows]),
-                        headers={"Cache-Control": "no-store"})
+        "quantity,mill,vendor_name,status,decision,handler,sales_reviewer,defect_description,"
+        "pdf_path,created_by,created_at FROM quality_complaints ORDER BY created_at DESC LIMIT 3000")
+    out = []
+    for r in rows:
+        d = dict(r)
+        d["queue"] = _queue_of(d.get("status"))
+        out.append(d)
+    return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/record")
@@ -262,6 +285,105 @@ async def qc_status(body: StatusIn, emp: dict = Depends(require_employee)):
         "UPDATE quality_complaints SET status=$1, resolution=$2, updated_at=now() WHERE complaint_no=$3",
         body.status, body.resolution or "", body.complaint_no)
     return {"ok": True}
+
+
+class AdvanceIn(BaseModel):
+    complaint_no: str
+    action: str
+    note: Optional[str] = ""
+    vendor_name: Optional[str] = ""
+
+
+# action -> (new_status, requires_note, extra-field setter key)
+def _transition(action: str, source: str):
+    cust = (source or "Customer").lower().startswith("c")
+    table = {
+        # Production / QC
+        "start_review": ("Under Review", False, "handler"),
+        "close_internal": ("Pending Sales Review" if cust else "Resolved", True, "decision_close"),
+        "escalate_vendor": ("Vendor Notified", True, "decision_escalate"),
+        "vendor_resolved": ("Pending Sales Review" if cust else "Resolved", True, "handler_note"),
+        # Sales
+        "send_to_customer": ("Awaiting Customer Response", True, "sales_msg"),
+        "customer_accepted": ("Closed", False, "sales_close"),
+        "customer_escalated": ("Escalated for Re-review", True, "sales_reescalate"),
+        # any
+        "resolve": ("Resolved", True, "resolution"),
+        "close": ("Closed", False, "handler"),
+        "decline": ("Declined", True, "resolution"),
+    }
+    return table.get(action)
+
+
+@router.post("/advance")
+async def qc_advance(body: AdvanceIn, emp: dict = Depends(require_employee)):
+    await ensure_table()
+    row = await db.fetchrow(
+        "SELECT source, status, stage_log FROM quality_complaints WHERE complaint_no=$1",
+        body.complaint_no)
+    if not row:
+        raise HTTPException(404, "not found")
+    d = dict(row)
+    tr = _transition(body.action, d.get("source") or "Customer")
+    if not tr:
+        raise HTTPException(400, "unknown action")
+    new_status, needs_note, kind = tr
+    note = (body.note or "").strip()
+    if needs_note and not note:
+        raise HTTPException(400, "a note is required for this step")
+    by = _emp_name(emp)
+
+    sets = ["status=$1", "updated_at=now()"]
+    args = [new_status]
+
+    def add(expr, val):
+        args.append(val)
+        sets.append(f"{expr}=${len(args)}")
+
+    if kind in ("decision_close",):
+        add("decision", "Close Internally")
+        add("handler", by)
+        add("resolution", note)
+    elif kind == "decision_escalate":
+        add("decision", "Escalate to Vendor")
+        add("handler", by)
+        if body.vendor_name:
+            add("vendor_name", body.vendor_name.strip())
+        add("resolution", note)
+    elif kind == "handler_note":
+        add("handler", by)
+        add("resolution", note)
+    elif kind == "sales_msg":
+        add("sales_reviewer", by)
+        add("customer_message", note)
+    elif kind == "sales_close":
+        add("sales_reviewer", by)
+    elif kind == "sales_reescalate":
+        add("sales_reviewer", by)
+        add("customer_message", note)
+    elif kind in ("resolution",):
+        add("handler", by)
+        add("resolution", note)
+    elif kind == "handler":
+        add("handler", by)
+
+    # append to stage log
+    log = d.get("stage_log")
+    if isinstance(log, str):
+        try:
+            log = json.loads(log)
+        except Exception:
+            log = []
+    log = log or []
+    log.append({"at": datetime.now(IST).strftime("%d-%b-%Y %H:%M"), "by": by,
+                "action": body.action, "from": d.get("status"), "to": new_status,
+                "note": note})
+    add("stage_log", json.dumps(log))
+
+    args.append(body.complaint_no)
+    sql = f"UPDATE quality_complaints SET {', '.join(sets)} WHERE complaint_no=${len(args)}"
+    await db.execute(sql, *args)
+    return {"ok": True, "status": new_status}
 
 
 class DelIn(BaseModel):
