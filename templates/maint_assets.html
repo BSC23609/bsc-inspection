@@ -13,6 +13,14 @@
 @media(max-width:720px){.mf .r4,.mf .r3{grid-template-columns:1fr 1fr}}
 .badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
 .badge.on{background:#e3f6ee;color:#0a7d55}.badge.off{background:#fdecec;color:#c23438}
+.scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
+.imp-modal{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.imp-h{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}.imp-h b{font-size:15px}
+.imp-b{padding:16px 18px}.imp-f{padding:14px 18px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end}
+.imp-tbl{width:100%;border-collapse:collapse;font-size:11.5px;margin-top:10px}
+.imp-tbl th,.imp-tbl td{border:1px solid var(--line-2);padding:4px 6px;text-align:left}
+.imp-tbl th{background:var(--acc-soft);color:var(--acc-ink);font-size:10px}
+.imp-note{background:var(--acc-soft);border:1px solid #bcdcf3;border-radius:9px;padding:9px 12px;font-size:12.5px;color:var(--acc-ink)}
 </style>
 
 <div class="page-head"><h1>Assets</h1><p>Your machine and equipment register. Running hours feed the meter-based maintenance schedules.</p></div>
@@ -41,8 +49,28 @@
 
 <div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('cube',17) }}</span>Assets<span class="sub" id="a_cnt"></span></div>
 <div class="panel-body">
-  <input id="a_search" oninput="aRender()" placeholder="Search code / name / type / location…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
+  <div style="display:flex;gap:10px;margin-bottom:12px;align-items:center">
+    <input id="a_search" oninput="aRender()" placeholder="Search code / name / type / location…" style="flex:1;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px">
+    <button class="btn btn-ghost" onclick="openImport()" style="white-space:nowrap">⤒ Import Excel</button>
+  </div>
   <div class="dgrid-wrap" id="a_rows"><div class="empty">Loading…</div></div>
+</div></div>
+
+<!-- Import modal -->
+<div class="scrim" id="imp_scrim"><div class="imp-modal">
+  <div class="imp-h">{{ icon('cube',18) }}<b>Import assets from Excel</b><span style="flex:1"></span>
+    <a href="#" onclick="closeImport();return false" style="color:var(--muted);font-size:20px">×</a></div>
+  <div class="imp-b">
+    <p class="muted" style="font-size:12.5px;margin:0 0 12px">Pick an .xlsx or .csv equipment list. Columns are matched automatically (machine no → code, description → name, location, make, model, capacity → notes).</p>
+    <input type="file" id="imp_file" accept=".xlsx,.xls,.csv" onchange="parseFile(this)" style="margin-bottom:12px">
+    <div id="imp_prev"></div>
+    <div id="imp_mode" style="display:none;margin-top:10px;font-size:12.5px">
+      <label style="margin-right:14px"><input type="radio" name="impmode" value="skip" checked> Skip assets whose code already exists</label>
+      <label><input type="radio" name="impmode" value="update"> Update existing by code</label>
+    </div>
+  </div>
+  <div class="imp-f"><button class="btn btn-ghost" onclick="closeImport()">Cancel</button>
+    <button class="btn btn-primary" id="imp_go" onclick="doImport()" disabled>Import</button></div>
 </div></div>
 </div>
 {% endblock %}
@@ -97,5 +125,78 @@ async function aHours(id){var x=ASSETS.filter(function(r){return r.id===id;})[0]
 async function aToggle(id,on){try{var r=await fetch('/maint/assets/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,active:on})});
   var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');toast('ok',on?'Activated':'Deactivated');await aLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
 aReset();aLoad();
+
+/* ---------- Excel / CSV import ---------- */
+var IMPORT=[];
+function openImport(){document.getElementById('imp_scrim').style.display='flex';}
+function closeImport(){document.getElementById('imp_scrim').style.display='none';
+  document.getElementById('imp_prev').innerHTML='';document.getElementById('imp_mode').style.display='none';
+  document.getElementById('imp_go').disabled=true;document.getElementById('imp_file').value='';IMPORT=[];}
+function loadXLSX(){return new Promise(function(res,rej){if(window.XLSX)return res();
+  var s=document.createElement('script');s.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  s.onload=function(){res();};s.onerror=function(){rej(new Error('Could not load the Excel reader'));};document.head.appendChild(s);});}
+function normCode(m){m=String(m==null?'':m).replace(/\s+/g,' ').trim();return m.replace(/\s*-\s*/g,'-');}
+function guessType(n){var u=String(n||'').toUpperCase();var map=[['CTL','CTL Line'],['EOT','EOT Crane'],
+  ['GANDRY','Gantry Crane'],['GANTRY','Gantry Crane'],['TROLLEY','Transfer Trolley'],['COMPRESSOR','Compressor'],
+  ['LEVELLER','Leveller'],['LEVELER','Leveller'],['IRON WORKER','Iron Worker'],['SHEAR','Shearing'],
+  ['CRANE','Crane'],['WELD','Welding'],['PUMP','Pump'],['GEN-SET','DG Set'],['GENSET','DG Set']];
+  for(var i=0;i<map.length;i++){if(u.indexOf(map[i][0])>=0)return map[i][1];}return '';}
+var FIELDRX=[['code',/(machine|m\/?c|asset|equip).*\bno\b|^no\.?$|\bcode\b|\btag\b/i],
+  ['name',/desc|name|equipment|particular|\bitem\b/i],['location',/location|shed|area|place|site/i],
+  ['make',/make|manufacturer|brand|supplier/i],['model',/model/i],
+  ['capacity',/capacit|rating|\bsize\b/i],['serial_no',/serial/i],['running_hours',/hour|hrs|meter|\brun\b/i]];
+function mapColumns(aoa){
+  // find header row = row maximising distinct field matches among first 15 rows
+  var best=-1,bestn=0,bestmap=null;
+  for(var r=0;r<Math.min(aoa.length,15);r++){var row=aoa[r]||[],used={},map={},n=0;
+    FIELDRX.forEach(function(f){for(var c=0;c<row.length;c++){if(used[c])continue;
+      var t=String(row[c]==null?'':row[c]);if(!t.trim())continue;if(f[1].test(t)){map[f[0]]=c;used[c]=1;n++;break;}}});
+    if(n>bestn){bestn=n;best=r;bestmap=map;}}
+  return {header:best,map:bestmap||{},n:bestn};
+}
+function parseFile(inp){var f=inp.files&&inp.files[0];if(!f)return;
+  var prev=document.getElementById('imp_prev');prev.innerHTML='<p class="muted" style="font-size:12.5px">Reading…</p>';
+  loadXLSX().then(function(){var rd=new FileReader();
+    rd.onload=function(e){try{
+      var wb=XLSX.read(e.target.result,{type:'array'});var ws=wb.Sheets[wb.SheetNames[0]];
+      var aoa=XLSX.utils.sheet_to_json(ws,{header:1,defval:'',raw:false});
+      var mc=mapColumns(aoa);
+      if(mc.header<0||mc.map.name==null&&mc.map.code==null){prev.innerHTML='<div class="imp-note">Couldn’t detect columns. Make sure the sheet has a header row with Machine No. / Description / Location.</div>';return;}
+      var m=mc.map,seen={},out=[];
+      for(var r=mc.header+1;r<aoa.length;r++){var row=aoa[r]||[];
+        var name=String((m.name!=null?row[m.name]:'')||'').replace(/\s+/g,' ').trim();
+        var rawcode=String((m.code!=null?row[m.code]:'')||'').trim();
+        if(!name&&!rawcode)continue;if(!name)continue;
+        var code=normCode(rawcode)||('ASSET-'+(out.length+1));
+        var base=code,k=seen[code.toLowerCase()]||0;if(k)code=base+'-'+(k+1);seen[base.toLowerCase()]=k+1;
+        var cap=String((m.capacity!=null?row[m.capacity]:'')||'').replace(/\s+/g,' ').trim();
+        out.push({code:code,name:name,atype:guessType(name),
+          location:String((m.location!=null?row[m.location]:'')||'').replace(/\s+/g,' ').trim(),
+          make:String((m.make!=null?row[m.make]:'')||'').replace(/\s+/g,' ').trim(),
+          model:String((m.model!=null?row[m.model]:'')||'').replace(/\s+/g,' ').trim(),
+          serial_no:String((m.serial_no!=null?row[m.serial_no]:'')||'').trim(),
+          running_hours:(m.running_hours!=null?row[m.running_hours]:'')||'',
+          notes:cap?('Capacity: '+cap):''});
+      }
+      IMPORT=out;
+      if(!out.length){prev.innerHTML='<div class="imp-note">No equipment rows found.</div>';return;}
+      var rowsH=out.slice(0,8).map(function(a){return '<tr><td>'+esc(a.code)+'</td><td>'+esc(a.name)+'</td><td>'+esc(a.atype)+'</td><td>'+esc(a.location)+'</td><td>'+esc(a.make)+'</td></tr>';}).join('');
+      prev.innerHTML='<div class="imp-note">Found <b>'+out.length+'</b> asset'+(out.length===1?'':'s')+'. Preview:</div>'
+        +'<table class="imp-tbl"><thead><tr><th>Code</th><th>Name</th><th>Type</th><th>Location</th><th>Make</th></tr></thead><tbody>'+rowsH
+        +(out.length>8?('<tr><td colspan="5" class="muted">…and '+(out.length-8)+' more</td></tr>'):'')+'</tbody></table>';
+      document.getElementById('imp_mode').style.display='';document.getElementById('imp_go').disabled=false;
+      document.getElementById('imp_go').textContent='Import '+out.length+' assets';
+    }catch(err){prev.innerHTML='<div class="imp-note">Couldn’t read the file: '+esc((err&&err.message)||err)+'</div>';}};
+    rd.readAsArrayBuffer(f);
+  }).catch(function(err){prev.innerHTML='<div class="imp-note">'+esc(err.message||'Could not load the reader')+'</div>';});
+}
+async function doImport(){if(!IMPORT.length)return;
+  var mode=(document.querySelector('input[name="impmode"]:checked')||{}).value||'skip';
+  var b=document.getElementById('imp_go');b.disabled=true;var l=b.textContent;b.textContent='Importing…';
+  try{var r=await fetch('/maint/assets/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({assets:IMPORT,mode:mode})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Import failed');
+    toast('ok','Imported: '+d.added+' added, '+d.updated+' updated, '+d.skipped+' skipped');closeImport();await aLoad();
+  }catch(e){toast('err',(e&&e.message)||'Import failed');b.disabled=false;b.textContent=l;}}
+document.getElementById('imp_scrim').addEventListener('click',function(e){if(e.target===this)closeImport();});
 </script>
 {% endblock %}

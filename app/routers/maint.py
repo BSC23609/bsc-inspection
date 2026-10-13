@@ -196,6 +196,40 @@ async def assets_toggle(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True}
 
 
+@router.post("/assets/import")
+async def assets_import(body: dict, emp: dict = Depends(require_employee)):
+    """Bulk upsert assets by code. mode='skip' keeps existing, 'update' overwrites them."""
+    await ensure_tables()
+    items = body.get("assets") or []
+    mode = (body.get("mode") or "skip").strip().lower()
+    added = updated = skipped = 0
+    for a in items[:5000]:
+        code = (a.get("code") or "").strip()
+        name = (a.get("name") or "").strip()
+        if not code or not name:
+            skipped += 1
+            continue
+        vals = (code, name, (a.get("atype") or "").strip(), (a.get("location") or "").strip(),
+                (a.get("make") or "").strip(), (a.get("model") or "").strip(),
+                (a.get("serial_no") or "").strip(), _num(a.get("running_hours"), 0) or 0,
+                (a.get("notes") or "").strip())
+        existing = await db.fetchval("SELECT id FROM maint_assets WHERE lower(code)=lower($1)", code)
+        if existing:
+            if mode == "update":
+                await db.execute(
+                    "UPDATE maint_assets SET code=$1,name=$2,atype=$3,location=$4,make=$5,model=$6,"
+                    "serial_no=$7,running_hours=$8,notes=$9 WHERE id=$10", *vals, existing)
+                updated += 1
+            else:
+                skipped += 1
+        else:
+            await db.execute(
+                "INSERT INTO maint_assets (code,name,atype,location,make,model,serial_no,running_hours,"
+                "notes,hours_updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,now())", *vals)
+            added += 1
+    return {"ok": True, "added": added, "updated": updated, "skipped": skipped}
+
+
 # =======================================================================
 #  CHECKLISTS + CHECKPOINTS
 # =======================================================================
