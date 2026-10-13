@@ -1,29 +1,36 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Schedules · {{ app_name }}{% endblock %}
-{% block tb_title %}Schedules{% endblock %}
+{% block title %}Preventive maintenance · {{ app_name }}{% endblock %}
+{% block tb_title %}Preventive maintenance{% endblock %}
 {% block content %}
 <div class="acc-teal">
 <style>
-.mf label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
+.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.cnt-badge{background:#fff7e0;border:1px solid #f0dcae;color:#9a6508;font-weight:700;font-size:12.5px;border-radius:8px;padding:5px 11px}
+.cnt-badge.zero{background:#eef2f7;border-color:var(--line-2);color:#5d6879}
+.due-only{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-2)}.due-only input{width:auto}
+.scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:flex-start;justify-content:center;z-index:60;padding:28px 16px;overflow:auto}
+.pmodal{background:#fff;border-radius:16px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.pmodal .mh{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.pmodal .mh b{font-size:16px;letter-spacing:.3px}
+.pmodal .mb{padding:18px 20px}.pmodal .mfoot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end}
+.mf label{display:block;font-size:11.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
 .mf input,.mf select{width:100%;padding:10px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none}
 .mf input:focus,.mf select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
 .mf .row{display:grid;gap:14px;margin-bottom:14px}.mf .r2{grid-template-columns:1fr 1fr}
-@media(max-width:620px){.mf .r2{grid-template-columns:1fr}}
-.req{color:#e5484d}
+@media(max-width:560px){.mf .r2{grid-template-columns:1fr}}
+.req{color:#e5484d}.opt{text-transform:none;color:var(--muted);font-weight:400}
 .pills{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .pill{padding:10px;border:1px solid var(--line-2);background:#fff;border-radius:9px;font-weight:600;font-size:13px;color:var(--ink-2);cursor:pointer;text-align:center}
 .pill.on{background:#0f1b2d;color:#fff;border-color:#0f1b2d}
 .note{font-size:11.5px;color:var(--muted);margin-top:5px}
-.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}
-.chk input{width:auto}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}.chk input{width:auto}
 .badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
 .b-ok{background:#e3f6ee;color:#0a7d55}.b-due{background:#fff4e0;color:#9a6508}.b-over{background:#fdecec;color:#c23438}.b-off{background:#eef2f7;color:#5d6879}
-.scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
+/* holidays modal */
 .hmodal{background:#fff;border-radius:14px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
 .hmodal .hh{padding:16px 18px;border-bottom:1px solid var(--line)}
-.hmodal .hh h3{margin:0;font-size:15px;font-weight:700;letter-spacing:.3px}
-.hmodal .hh p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.hmodal .hh h3{margin:0;font-size:15px;font-weight:700;letter-spacing:.3px}.hmodal .hh p{margin:4px 0 0;font-size:12px;color:var(--muted)}
 .hmodal .hb{padding:16px 18px}
 .hrow{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:14px}
 .hrow label{display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase}
@@ -32,60 +39,59 @@
 .hitem .d{font-weight:700;color:var(--acc-ink)}.hitem .sp{flex:1}
 </style>
 
-<div class="page-head" style="display:flex;align-items:flex-start;gap:16px">
-  <div style="flex:1"><h1>Preventive maintenance plans</h1><p>Set when each machine’s maintenance is due — daily, weekly, monthly or quarterly, and optionally by running hours. If a due date lands on a Sunday or holiday, it rolls to the next working day; daily plans skip Sundays.</p></div>
-  <button class="btn btn-ghost" style="white-space:nowrap" onclick="openHol()">📅 Holidays</button>
+<div class="panel">
+  <div class="toolbar">
+    <span class="cnt-badge zero" id="s_cnt">Due / overdue: 0</span>
+    <label class="due-only"><input type="checkbox" id="s_dueonly" onchange="sRender()"> Due only</label>
+    <span style="flex:1"></span>
+    <button class="btn btn-ghost" onclick="openHol()">Holidays</button>
+    <button class="btn btn-primary" onclick="openPlan()">+ Add plan</button>
+  </div>
+  <div class="dgrid-wrap" id="s_rows"><div class="empty">Loading…</div></div>
+</div>
 </div>
 
-<div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="s_title">Add plan</span></div>
-<div class="panel-body"><div class="mf"><input type="hidden" id="s_id"><input type="hidden" id="s_freq" value="daily">
-  <div class="row r2">
-    <div><label>Asset <span class="req">*</span></label><select id="s_asset" onchange="onAsset()"></select></div>
-    <div><label>Task <span class="req">*</span></label><input id="s_name" placeholder="e.g. Oil + filter change"></div>
-  </div>
-  <div class="row"><div><label>Checklist</label><select id="s_checklist"></select></div></div>
-
-  <div style="margin-bottom:14px"><label>Frequency <span class="req">*</span></label>
-    <div class="pills">
-      <div class="pill" data-f="daily" onclick="setFreq('daily')">Daily</div>
-      <div class="pill" data-f="weekly" onclick="setFreq('weekly')">Weekly</div>
-      <div class="pill" data-f="monthly" onclick="setFreq('monthly')">Monthly</div>
-      <div class="pill" data-f="quarterly" onclick="setFreq('quarterly')">Quarterly</div>
+<!-- Add / edit plan modal -->
+<div class="scrim" id="plan_scrim"><div class="pmodal">
+  <div class="mh">{{ icon('calendar',18) }}<b id="s_title">ADD PLAN</b><span style="flex:1"></span>
+    <a href="#" onclick="closePlan();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb"><div class="mf"><input type="hidden" id="s_id"><input type="hidden" id="s_freq" value="daily">
+    <div class="row r2">
+      <div><label>Asset <span class="req">*</span></label><select id="s_asset" onchange="onAsset()"></select></div>
+      <div><label>Task <span class="req">*</span></label><input id="s_name" placeholder="e.g. Oil + filter change"></div>
     </div>
-  </div>
-
-  <div id="dom_wrap" style="margin-bottom:14px;display:none"><label>Day of month <span class="req">*</span></label>
-    <input id="s_dom" type="number" min="1" max="31" placeholder="15">
-    <div class="note">If it lands on a Sunday or holiday, it rolls to the next working day.</div>
-  </div>
-
-  <div class="row r2">
-    <div><label>Start date <span class="req">*</span></label><input id="s_start" type="date"></div>
-    <div><label>End date <span style="text-transform:none;color:var(--muted);font-weight:400">(optional)</span></label><input id="s_end" type="date"></div>
-  </div>
-  <div class="row r2">
-    <div><label>Also due at meter <span style="text-transform:none;color:var(--muted);font-weight:400">+ (optional)</span></label><input id="s_hours" type="number" step="0.1" placeholder="e.g. 500 hrs"></div>
-    <div><label>Assignee <span style="text-transform:none;color:var(--muted);font-weight:400">(WhatsApp)</span></label><select id="s_assignee"></select></div>
-  </div>
-  <div class="chk" style="margin-bottom:14px"><input type="checkbox" id="s_active" checked><label for="s_active" style="margin:0;text-transform:none;letter-spacing:0">Active</label></div>
-
-  <div style="display:flex;gap:10px;align-items:center">
-    <button class="btn btn-ghost" id="s_cancel" style="display:none" onclick="sReset()">Cancel</button>
-    <div style="flex:1"></div>
-    <button class="btn btn-primary" id="s_save" onclick="sSave()">Save plan</button>
-  </div>
-</div></div></div>
-
-<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('calendar',17) }}</span>Plans<span class="sub" id="s_cnt"></span></div>
-<div class="panel-body"><div class="dgrid-wrap" id="s_rows"><div class="empty">Loading…</div></div></div></div>
-</div>
+    <div class="row"><div><label>Checklist</label><select id="s_checklist"></select></div></div>
+    <div style="margin-bottom:14px"><label>Frequency <span class="req">*</span></label>
+      <div class="pills">
+        <div class="pill" data-f="daily" onclick="setFreq('daily')">Daily</div>
+        <div class="pill" data-f="weekly" onclick="setFreq('weekly')">Weekly</div>
+        <div class="pill" data-f="monthly" onclick="setFreq('monthly')">Monthly</div>
+        <div class="pill" data-f="quarterly" onclick="setFreq('quarterly')">Quarterly</div>
+      </div>
+    </div>
+    <div id="dom_wrap" style="margin-bottom:14px;display:none"><label>Day of month <span class="req">*</span></label>
+      <input id="s_dom" type="number" min="1" max="31" placeholder="15">
+      <div class="note">If it lands on a Sunday or holiday, it rolls to the next working day.</div>
+    </div>
+    <div class="row r2">
+      <div><label>Start date <span class="req">*</span></label><input id="s_start" type="date"></div>
+      <div><label>End date <span class="opt">(optional)</span></label><input id="s_end" type="date"></div>
+    </div>
+    <div class="row r2">
+      <div><label>Also due at meter <span class="opt">+ (optional)</span></label><input id="s_hours" type="number" step="0.1" placeholder="e.g. 500 hrs"></div>
+      <div><label>Assignee <span class="opt">(WhatsApp)</span></label><select id="s_assignee"></select></div>
+    </div>
+    <div class="chk"><input type="checkbox" id="s_active" checked><label for="s_active" style="margin:0;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)">Active</label></div>
+  </div></div>
+  <div class="mfoot"><button class="btn btn-ghost" onclick="closePlan()">Cancel</button>
+    <button class="btn btn-primary" id="s_save" onclick="sSave()">Save</button></div>
+</div></div>
 
 <!-- Holidays modal -->
-<div class="scrim" id="hol_scrim"><div class="hmodal">
+<div class="scrim" id="hol_scrim"><div class="hmodal" style="align-self:flex-start">
   <div class="hh" style="display:flex;align-items:flex-start">
     <div style="flex:1"><h3>HOLIDAYS</h3><p>PM dates landing on a Sunday or these dates roll to the next working day.</p></div>
-    <a href="#" onclick="closeHol();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a>
-  </div>
+    <a href="#" onclick="closeHol();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
   <div class="hb">
     <div class="hrow">
       <div><label>Date</label><input id="h_date" type="date"></div>
@@ -104,18 +110,19 @@ function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function opt(val,txt,sel){return '<option value="'+esc(val)+'"'+(String(sel)===String(val)?' selected':'')+'>'+esc(txt)+'</option>';}
 function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function fmtd(s){if(!s)return'—';var p=String(s).slice(0,10).split('-');return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s;}
 
+function openPlan(){sReset();document.getElementById('s_title').textContent='ADD PLAN';document.getElementById('plan_scrim').style.display='flex';}
+function closePlan(){document.getElementById('plan_scrim').style.display='none';}
 function setFreq(f){document.getElementById('s_freq').value=f;
   [].forEach.call(document.querySelectorAll('.pill'),function(p){p.classList.toggle('on',p.getAttribute('data-f')===f);});
-  document.getElementById('dom_wrap').style.display=(f==='monthly'||f==='quarterly')?'':'none';
-  autoChecklist();}
+  document.getElementById('dom_wrap').style.display=(f==='monthly'||f==='quarterly')?'':'none';autoChecklist();}
 function autoChecklist(){var f=v('s_freq'),aid=v('s_asset');if(!aid)return;
-  var want=f==='daily'?'daily checklist':(f==='quarterly'?'quarterly checklist':null);
-  if(!want)return;var sel=document.getElementById('s_checklist');
+  var want=f==='daily'?'daily checklist':(f==='quarterly'?'quarterly checklist':null);if(!want)return;
   var m=ALLCL.filter(function(c){return String(c.asset_id)===String(aid)&&(c.name||'').toLowerCase()===want;})[0];
-  if(m&&!v('s_checklist'))sel.value=m.id;}
+  if(m&&!v('s_checklist'))document.getElementById('s_checklist').value=m.id;}
 function onAsset(){loadChecklists();autoChecklist();}
-function loadChecklists(){var aid=v('s_asset');var cur=v('s_checklist');
+function loadChecklists(){var aid=v('s_asset'),cur=v('s_checklist');
   var list=ALLCL.filter(function(c){return String(c.asset_id)===String(aid);});
   document.getElementById('s_checklist').innerHTML='<option value="">— none —</option>'+list.map(function(c){return opt(c.id,c.name,cur);}).join('');}
 
@@ -125,29 +132,33 @@ async function boot(){
   try{ALLCL=await (await fetch('/maint/checklists/list',{cache:'no-store'})).json();}catch(e){ALLCL=[];}
   document.getElementById('s_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
   document.getElementById('s_assignee').innerHTML='<option value="">— none —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''));}).join('');
-  sReset();loadChecklists();sLoad();
+  sLoad();
 }
 async function sLoad(){var h=document.getElementById('s_rows');h.innerHTML='<div class="empty">Loading…</div>';
   try{SCHED=await (await fetch('/maint/schedules/list',{cache:'no-store'})).json();}catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}sRender();}
 function freqText(x){var f=(x.freq_type||'').toLowerCase();var map={daily:'Daily',weekly:'Weekly',monthly:'Monthly',quarterly:'Quarterly'};
   var base=map[f]||(x.freq_days?('every '+x.freq_days+'d'):'—');
-  if((f==='monthly'||f==='quarterly')&&x.day_of_month)base+=' (day '+x.day_of_month+')';
-  if(x.hours_interval)base+=' · '+x.hours_interval+'h';return base;}
+  if((f==='monthly'||f==='quarterly')&&x.day_of_month)base+=' · day '+x.day_of_month;return base;}
+function meterText(x){if(x.hours_interval){var tgt=Number(x.last_done_hours||0)+Number(x.hours_interval);
+    return esc(x.asset_hours!=null?x.asset_hours:0)+' / '+tgt+' hrs';}
+  return x.asset_hours!=null?esc(x.asset_hours)+' hrs':'—';}
 function dueBadge(x){if(!x.active)return '<span class="badge b-off">Paused</span>';
   if(x.overdue)return '<span class="badge b-over">Overdue</span>';if(x.due)return '<span class="badge b-due">Due</span>';return '<span class="badge b-ok">OK</span>';}
-function sRender(){var host=document.getElementById('s_rows');
-  document.getElementById('s_cnt').textContent=SCHED.length?(SCHED.length+' plan'+(SCHED.length===1?'':'s')):'';
-  if(!SCHED.length){host.innerHTML='<div class="empty">No plans yet.</div>';return;}
-  var cols=[['Machine','18%'],['Task','20%'],['Frequency','18%'],['Next due','11%'],['Assignee','13%'],['State','8%'],['','12%']];
+function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.getElementById('s_dueonly').checked;
+  var dueCnt=SCHED.filter(function(x){return x.active&&(x.due||x.overdue);}).length;
+  var badge=document.getElementById('s_cnt');badge.textContent='Due / overdue: '+dueCnt;badge.classList.toggle('zero',dueCnt===0);
+  var rows=dueOnly?SCHED.filter(function(x){return x.active&&(x.due||x.overdue);}):SCHED;
+  if(!rows.length){host.innerHTML='<div class="empty">'+(SCHED.length?'No plans match the filter.':'No plans yet. Add one to start scheduling preventive maintenance.')+'</div>';return;}
+  var cols=[['Asset','16%'],['Task','17%'],['Schedule','14%'],['Last done','10%'],['Next due','10%'],['Meter now','12%'],['Status','9%'],['','12%']];
   var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
   var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
-  var body=SCHED.map(function(x){
-    var nd=x.next_due?esc(x.next_due):(x.hours_due?'by hours':'—');
-    var who=x.assignee_name?esc(x.assignee_name):'<span class="muted">—</span>';
+  var body=rows.map(function(x){
+    var nd=x.next_due?esc(fmtd(x.next_due)):(x.hours_due?'by hours':'—');
     var tog=x.active?'<a href="#" onclick="sToggle('+x.id+',false);return false" class="ic-del">Pause</a>'
                     :'<a href="#" onclick="sToggle('+x.id+',true);return false" class="ic-edit">Resume</a>';
     return '<tr><td>'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+'</td><td>'+esc(x.title||'')+'</td>'
-      +'<td>'+esc(freqText(x))+'</td><td class="c">'+nd+'</td><td>'+who+'</td><td class="c">'+dueBadge(x)+'</td>'
+      +'<td>'+esc(freqText(x))+'</td><td class="c">'+fmtd(x.last_done)+'</td><td class="c">'+nd+'</td>'
+      +'<td class="c">'+meterText(x)+'</td><td class="c">'+dueBadge(x)+'</td>'
       +'<td class="c"><a href="#" onclick="sEdit('+x.id+');return false" class="ic-edit">Edit</a> · '+tog+' · '
       +'<a href="#" onclick="sDel('+x.id+');return false" class="ic-del">Delete</a></td></tr>';
   }).join('');
@@ -155,13 +166,14 @@ function sRender(){var host=document.getElementById('s_rows');
 }
 function sReset(){sv('s_id','');sv('s_asset','');sv('s_name','');sv('s_checklist','');sv('s_dom','');sv('s_end','');sv('s_hours','');sv('s_assignee','');
   sv('s_start',today());document.getElementById('s_active').checked=true;setFreq('daily');
-  document.getElementById('s_title').textContent='Add plan';document.getElementById('s_save').textContent='Save plan';document.getElementById('s_cancel').style.display='none';}
-function sEdit(id){var x=SCHED.filter(function(r){return r.id===id;})[0];if(!x)return;
+  document.getElementById('s_save').textContent='Save';}
+function sEdit(id){var x=SCHED.filter(function(r){return r.id===id;})[0];if(!x)return;sReset();
   sv('s_id',x.id);sv('s_asset',x.asset_id);loadChecklists();sv('s_checklist',x.checklist_id||'');sv('s_name',x.title);
   setFreq((x.freq_type||'daily').toLowerCase());sv('s_dom',x.day_of_month||'');
   sv('s_start',(x.start_date||'').slice(0,10));sv('s_end',(x.end_date||'').slice(0,10));sv('s_hours',x.hours_interval||'');sv('s_assignee',x.assignee_emp_id||'');
   document.getElementById('s_active').checked=!!x.active;
-  document.getElementById('s_title').textContent='Edit plan';document.getElementById('s_save').textContent='Update plan';document.getElementById('s_cancel').style.display='';window.scrollTo({top:0,behavior:'smooth'});}
+  document.getElementById('s_title').textContent='EDIT PLAN';document.getElementById('s_save').textContent='Update';
+  document.getElementById('plan_scrim').style.display='flex';}
 async function sSave(){var f=v('s_freq');
   var p={id:v('s_id')||null,asset_id:v('s_asset')||null,title:v('s_name').trim(),checklist_id:v('s_checklist')||null,
     freq_type:f,day_of_month:v('s_dom'),hours_interval:v('s_hours'),assignee_emp_id:v('s_assignee')||null,
@@ -171,13 +183,14 @@ async function sSave(){var f=v('s_freq');
   if(!p.start_date){toast('err','Pick a start date');return;}
   var b=document.getElementById('s_save');b.disabled=true;var l=b.textContent;b.textContent='Saving…';
   try{var r=await fetch('/maint/schedule/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
-    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');toast('ok',p.id?'Plan updated':'Plan added');sReset();await sLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');toast('ok',p.id?'Plan updated':'Plan added');closePlan();await sLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
 async function sToggle(id,on){try{var r=await fetch('/maint/schedule/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,active:on})});var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok',on?'Resumed':'Paused');await sLoad();}catch(e){toast('err','Failed');}}
 async function sDel(id){if(!confirm('Delete this plan?'))return;try{var r=await fetch('/maint/schedule/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok','Deleted');await sLoad();}catch(e){toast('err','Failed');}}
+document.getElementById('plan_scrim').addEventListener('click',function(e){if(e.target===this)closePlan();});
+
 /* ---------- holidays ---------- */
 function openHol(){document.getElementById('hol_scrim').style.display='flex';holLoad();}
 function closeHol(){document.getElementById('hol_scrim').style.display='none';}
-function fmtd(s){if(!s)return'';var p=String(s).slice(0,10).split('-');return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s;}
 async function holLoad(){var box=document.getElementById('hol_list');box.innerHTML='<div class="empty">Loading…</div>';
   try{var hs=await (await fetch('/maint/holidays/list',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
   if(!hs.length){box.innerHTML='<div class="empty">No holidays added yet.</div>';return;}
