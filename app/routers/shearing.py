@@ -13,7 +13,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph
+from .. import db, graph, xlsxlog
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_shearing_pdf
@@ -224,15 +224,115 @@ def _summ(data: dict):
     }
 
 
+def _slog_record(row, hmap):
+    def c(*n):
+        return xlsxlog.cell(row, hmap, *n)
+    sheets = 0
+    for i in range(1, 31):
+        if c(f"Sheet {i} No"):
+            sheets += 1
+    return {
+        "id": None, "_legacy": True,
+        "log_date": xlsxlog.date_part(c("Date")),
+        "customer_name": c("Customer", "Customer Name"),
+        "batch_number": c("Batch", "Batch Number"),
+        "grade": c("Grade"), "make": c("Make"), "process": c("Process"),
+        "qc_name": c("QC Name"), "sheets_measured": sheets,
+        "rejection_flag": c("Rejection Flag"), "has_reworks": "",
+    }
+
+
+def _slog_payload(row, hmap):
+    def c(*n):
+        return xlsxlog.cell(row, hmap, *n)
+    meas = []
+    for i in range(1, 31):
+        sn = c(f"Sheet {i} No")
+        if sn or c(f"Sheet {i} Width 1"):
+            meas.append({"sheet_no": sn, "thickness": c(f"Sheet {i} Thickness"),
+                         "width1": c(f"Sheet {i} Width 1"), "width2": c(f"Sheet {i} Width 2"),
+                         "diag1": c(f"Sheet {i} Diag 1"), "diag2": c(f"Sheet {i} Diag 2"),
+                         "remarks": c(f"Sheet {i} Remarks")})
+    output_sizes = [c(f"Output Size {i}") for i in range(1, 21) if c(f"Output Size {i}")]
+    pq = {}
+    for i in range(1, 21):
+        pq[f"size_{i}"] = {"length": c(f"PQ Size {i} Length"), "nos": c(f"PQ Size {i} Sheets"),
+                           "weight_t": c(f"PQ Size {i} Weight")}
+    rejections = []
+    for i in range(1, 11):
+        sz, qt, ty = c(f"Rej {i} Size"), c(f"Rej {i} Qty"), c(f"Rej {i} Types")
+        if sz or qt or ty:
+            rejections.append({"size": sz, "qty": qt, "types": [t.strip() for t in ty.split(",") if t.strip()]})
+    mps = []
+    for key, label in MP_SPEC:
+        prog = c(f"MP: {label}")
+        initial, adjs = "", []
+        if prog:
+            for p in [x.strip() for x in prog.split("|")]:
+                if p.lower().startswith("set:"):
+                    initial = p.split(":", 1)[1].strip()
+                elif p.lower().startswith("adj"):
+                    seg = p.split(":", 1)[1].strip() if ":" in p else p
+                    val, tm = seg, ""
+                    if "@" in seg:
+                        val, tm = [x.strip() for x in seg.split("@", 1)]
+                    adjs.append({"value": val, "time": tm})
+        mps.append({"key": key, "label": label, "initial": initial, "adjustments": adjs})
+    return {
+        "date": xlsxlog.date_part(c("Date")), "customer_name": c("Customer", "Customer Name"),
+        "batch_number": c("Batch", "Batch Number"), "grade": c("Grade"), "make": c("Make"),
+        "type": c("Type"), "process": c("Process"), "operator": c("Operator"),
+        "input_size": c("Input Size"), "qc_name": c("QC Name"), "burr": c("Burr"),
+        "blade_clearance": c("Blade Clearance"), "cutting_finish": c("Cutting Finish"),
+        "surface_condition": c("Surface Condition"), "bow_bend": c("Bow/Bend"),
+        "taper_cutting": c("Taper Cutting"), "coil_thickness": c("Coil Thickness"),
+        "remarks": c("Remarks"), "overall_observation": c("Overall Observation"),
+        "rejection_flag": c("Rejection Flag") or "No", "lot_size": c("Lot Size"),
+        "required_samples": c("Required Samples"), "tolerance_profile": c("Tolerance Profile"),
+        "measurements": meas, "output_sizes": output_sizes, "processed_qty": pq,
+        "rejections": rejections, "machine_params": mps, "has_reworks": "No", "reworks": [],
+    }
+
+
+async def _read_shearing_legacy(full=False):
+    try:
+        token = await graph.get_token()
+        item_id = await graph.get_item_id(token, SHEAR_XLSX)
+        if not item_id:
+            return []
+        cols, rows = await graph.read_table(token, item_id, SHEAR_TABLE)
+        hmap = xlsxlog.header_map(cols)
+        out = []
+        for i, r in enumerate(rows):
+            rec = (_slog_payload(r, hmap) if full else _slog_record(r, hmap))
+            if full or rec["batch_number"] or rec["customer_name"]:
+                rec["_row"] = i
+                out.append(rec)
+        out.reverse()
+        return out
+    except Exception as e:
+        print("[shearing-legacy]", e)
+        return []
+
+
+def _skey(r):
+    return (str(r.get("batch_number") or "").strip().lower(),
+            str(r.get("customer_name") or "").strip().lower(),
+            str(r.get("log_date") or "")[:10])
+
+
 @router.get("/list")
 async def s_list(emp: dict = Depends(require_employee)):
     await ensure_table()
-    rows = await db.fetch(
+    neon = [dict(r) for r in await db.fetch(
         "SELECT id,log_date,customer_name,batch_number,grade,make,process,qc_name,"
         "sheets_measured,rejection_flag,has_reworks,created_at FROM shearing_inspection "
-        "ORDER BY log_date DESC NULLS LAST, id DESC LIMIT 2000")
-    return JSONResponse(jsonable_encoder([dict(r) for r in rows]),
-                        headers={"Cache-Control": "no-store"})
+        "ORDER BY log_date DESC NULLS LAST, id DESC LIMIT 2000")]
+    seen = {_skey(r) for r in neon}
+    legacy = await _read_shearing_legacy()
+    merged = neon + [r for r in legacy if _skey(r) not in seen]
+    merged.sort(key=lambda r: str(r.get("log_date") or ""), reverse=True)
+    return JSONResponse(jsonable_encoder(merged), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/record")
@@ -323,6 +423,19 @@ async def s_pdf(id: int = Query(...), emp: dict = Depends(require_employee)):
             payload = {}
     pdf = build_shearing_pdf(payload or {}, id, MP_SPEC)
     b = _safe((payload or {}).get("batch_number") or str(id))
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="Shearing_{b}.pdf"',
+                             "Cache-Control": "no-store"})
+
+
+@router.get("/pdf-legacy")
+async def s_pdf_legacy(i: int = Query(...), emp: dict = Depends(require_employee)):
+    legacy = await _read_shearing_legacy(full=True)
+    rec = next((r for r in legacy if r.get("_row") == i), None)
+    if rec is None:
+        raise HTTPException(404, "not found")
+    pdf = build_shearing_pdf(rec, rec.get("batch_number") or i, MP_SPEC)
+    b = _safe(rec.get("batch_number") or str(i))
     return Response(pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="Shearing_{b}.pdf"',
                              "Cache-Control": "no-store"})

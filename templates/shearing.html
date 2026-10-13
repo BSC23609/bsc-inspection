@@ -927,11 +927,13 @@ function shRender(){
   var g=function(a){return(a===''||a==null)?'':sesc(a);};
   var body=SH.map(function(x){
     var rb=String(x.rejection_flag).toLowerCase()==='yes'?'<span class="badge bad">Yes</span>':'<span class="badge good">No</span>';
-    var wb=String(x.has_reworks).toLowerCase()==='yes'?'<span class="badge bad">Yes</span>':'<span class="badge good">No</span>';
+    var wb=x._legacy?'<span class="muted">—</span>':(String(x.has_reworks).toLowerCase()==='yes'?'<span class="badge bad">Yes</span>':'<span class="badge good">No</span>');
     return'<tr><td>'+g(String(x.log_date||'').slice(0,10))+'</td><td>'+g(x.customer_name)+'</td><td>'+g(x.batch_number)+'</td>'
       +'<td class="c">'+g(x.grade)+'</td><td class="c">'+g(x.make)+'</td><td class="c">'+g(x.process)+'</td><td class="c">'+g(x.qc_name)+'</td>'
       +'<td class="c">'+g(x.sheets_measured)+'</td><td class="c">'+rb+'</td><td class="c">'+wb+'</td>'
-      +'<td class="c"><a href="/shearing/pdf?id='+x.id+'" target="_blank" class="ic-edit">PDF</a><br><a href="#" onclick="shEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" onclick="shDel('+x.id+');return false" class="ic-del">Del</a></td></tr>';
+      +'<td class="c">'+(x._legacy
+        ? '<a href="/shearing/pdf-legacy?i='+x._row+'" target="_blank" class="ic-edit">PDF</a><br><span class="muted" style="font-size:10px">from log</span>'
+        : '<a href="/shearing/pdf?id='+x.id+'" target="_blank" class="ic-edit">PDF</a><br><a href="#" onclick="shEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" onclick="shDel('+x.id+');return false" class="ic-del">Del</a>')+'</td></tr>';
   }).join('');
   host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
 }

@@ -781,7 +781,9 @@ function qlRender(){
     return'<tr><td>'+g(String(x.log_date||'').slice(0,10))+'</td><td>'+g(x.customer_name)+'</td><td>'+g(x.coil_number)+'</td>'
       +'<td>'+g(x.batch_number)+'</td><td class="c">'+g(x.grade)+'</td><td class="c">'+g(x.machine_name)+'</td>'
       +'<td class="c">'+g(x.sheets_measured)+'</td><td class="c">'+ootb+'</td><td class="c">'+rej+'</td><td class="c">'+g(x.inspector)+'</td>'
-      +'<td class="c"><a href="/quality/pdf?id='+x.id+'" target="_blank" class="ic-edit">PDF</a><br><a href="#" onclick="qlEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" onclick="qlDel('+x.id+');return false" class="ic-del">Del</a></td></tr>';
+      +'<td class="c">'+(x._legacy
+        ? '<a href="/quality/pdf-legacy?i='+x._row+'" target="_blank" class="ic-edit">PDF</a><br><span class="muted" style="font-size:10px">from log</span>'
+        : '<a href="/quality/pdf?id='+x.id+'" target="_blank" class="ic-edit">PDF</a><br><a href="#" onclick="qlEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" onclick="qlDel('+x.id+');return false" class="ic-del">Del</a>')+'</td></tr>';
   }).join('');
   host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
 }

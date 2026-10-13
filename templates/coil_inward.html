@@ -204,7 +204,9 @@ function photoPick(inp,kind){
 }
 function clearPhoto(kind){document.getElementById('c_'+kind+'_photo').value='';var b=document.getElementById('c_'+kind+'_box');b.classList.remove('has');b.style.backgroundImage='';}
 
-function flagged(x){return[x.edge_inner,x.edge_outer,x.scratch,x.rust].some(function(a){return String(a).toLowerCase()==='yes';})||String(x.id_sticker).toLowerCase()==='no'||(x.other_damages&&String(x.other_damages).toLowerCase()!=='nil'&&String(x.other_damages).trim()!=='');}
+function isYes(a){a=String(a).toLowerCase();return a==='yes'||a==='y';}
+function isNo(a){a=String(a).toLowerCase();return a==='no'||a==='n';}
+function flagged(x){return[x.edge_inner,x.edge_outer,x.scratch,x.rust].some(isYes)||isNo(x.id_sticker)||(x.other_damages&&String(x.other_damages).toLowerCase()!=='nil'&&String(x.other_damages).trim()!=='');}
 
 function coilReset(){
   document.getElementById('c_edit_id').value='';
@@ -243,13 +245,16 @@ function coilRender(){
   var body=CI.map(function(x){
     var cond=flagged(x)?'<span class="badge bad">Flagged</span>':'<span class="badge good">OK</span>';
     var wt=(x.width||'')+(x.thickness?(' × '+x.thickness):'');
+    var act=x._legacy
+      ? '<a href="/coil/pdf-legacy?i='+x._row+'" target="_blank" title="PDF" class="ic-edit">PDF</a><br><span class="muted" style="font-size:10px">from log</span>'
+      : '<a href="/coil/pdf?id='+x.id+'" target="_blank" title="PDF" class="ic-edit">PDF</a><br><a href="#" onclick="coilEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" onclick="coilDel('+x.id+');return false" class="ic-del">Del</a>';
     return'<tr>'
       +'<td>'+g(String(x.log_date||'').slice(0,10))+'</td>'
       +'<td>'+g(x.vehicle_number)+'</td><td>'+g(x.batch_number)+'</td>'
       +'<td class="c">'+g(x.make_of_coil)+'</td><td class="c">'+g(x.grade)+'</td>'
       +'<td class="c">'+g(wt)+'</td><td class="c">'+g(x.coil_weight)+'</td>'
       +'<td class="c">'+g(x.inspected_by)+'</td><td class="c">'+cond+'</td>'
-      +'<td class="c"><a href="/coil/pdf?id='+x.id+'" target="_blank" title="PDF" class="ic-edit">PDF</a><br><a href="#" onclick="coilEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" onclick="coilDel('+x.id+');return false" class="ic-del">Del</a></td>'
+      +'<td class="c">'+act+'</td>'
     +'</tr>';}).join('');
   host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
 }

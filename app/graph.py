@@ -112,3 +112,21 @@ async def add_table_row(token: str, item_id: str, table: str, values: list):
     finally:
         if sid:
             await close_session(token, item_id, sid)
+
+
+async def read_table(token: str, item_id: str, table: str):
+    """Return (column_names, rows) for a workbook table; ([],[]) on any failure."""
+    cols = await table_columns(token, item_id, table)
+    if not cols:
+        return [], []
+    url = (f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}"
+           f"/rows?$select=values&$top=5000")
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+    if r.status_code != 200:
+        return cols, []
+    rows = []
+    for item in (r.json().get("value") or []):
+        vals = item.get("values") or [[]]
+        rows.append(vals[0] if vals else [])
+    return cols, rows

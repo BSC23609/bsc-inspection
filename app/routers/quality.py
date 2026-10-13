@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph
+from .. import db, graph, xlsxlog
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_quality_pdf
@@ -236,15 +236,124 @@ def _summ(data: dict):
     }
 
 
+def _qlog_record(row, hmap):
+    def c(*n):
+        return xlsxlog.cell(row, hmap, *n)
+    return {
+        "id": None, "_legacy": True,
+        "log_date": xlsxlog.date_part(c("Date")),
+        "customer_name": c("Customer Name", "Customer"),
+        "coil_number": c("Coil Number"),
+        "batch_number": c("Batch Number", "Batch"),
+        "grade": c("Coil Grade", "Grade"),
+        "make": c("Make"),
+        "machine_name": c("Machine No", "Machine Name"),
+        "inspector": c("Inspector"),
+        "sheets_measured": c("Sheets Measured"),
+        "oot_count": c("Out Of Tolerance Count"),
+        "rejection_flag": c("Rejection Flag"),
+    }
+
+
+def _qlog_payload(row, hmap):
+    """Reconstruct a Quality payload from an Excel row (for the historical PDF)."""
+    import json as _json
+
+    def c(*n):
+        return xlsxlog.cell(row, hmap, *n)
+    pq = {}
+    for i in range(1, 21):
+        pq[f"size_{i}"] = {"length": c(f"Size {i} Length"), "nos": c(f"Size {i} Sheets"),
+                           "weight_t": c(f"Size {i} Weight (T)")}
+    try:
+        cut_groups = _json.loads(c("Cut Groups") or "[]")
+    except Exception:
+        cut_groups = []
+    rejections = []
+    for i in range(1, 11):
+        sz, qt, ty = c(f"Rej {i} Size"), c(f"Rej {i} Qty"), c(f"Rej {i} Types")
+        if sz or qt or ty:
+            rejections.append({"size": sz, "qty": qt, "types": [t.strip() for t in ty.split(",") if t.strip()]})
+    mps = []
+    for key, label in MP_SPEC:
+        prog = c(f"MP: {label}")
+        initial, adjs = "", []
+        if prog:
+            parts = [p.strip() for p in prog.split("|")]
+            for p in parts:
+                if p.lower().startswith("set:"):
+                    initial = p.split(":", 1)[1].strip()
+                elif p.lower().startswith("adj"):
+                    seg = p.split(":", 1)[1].strip() if ":" in p else p
+                    val, tm = seg, ""
+                    if "@" in seg:
+                        val, tm = [x.strip() for x in seg.split("@", 1)]
+                    adjs.append({"value": val, "time": tm})
+        mps.append({"key": key, "label": label, "initial": initial, "adjustments": adjs})
+    return {
+        "date": xlsxlog.date_part(c("Date")), "time": c("Time"),
+        "customer_name": c("Customer Name", "Customer"), "coil_number": c("Coil Number"),
+        "batch_number": c("Batch Number", "Batch"), "make": c("Make"),
+        "coil_thickness": c("Coil Thickness"), "coil_grade": c("Coil Grade", "Grade"),
+        "coil_width": c("Coil Width"), "coil_weight": c("Coil Weight"),
+        "first_bit": c("First Bit"), "last_bit": c("Last Bit"), "defective": c("Defective"),
+        "balance_wt": c("Balance Wt"), "coil_verified": c("Coil Verified"),
+        "blade_clearance": c("Blade Clearance"), "operator": c("Operator"),
+        "machine_name": c("Machine No", "Machine Name"), "inspector": c("Inspector"),
+        "remarks": c("Remarks"), "bur": c("Bur"), "cutting_finish": c("Cutting Finish"),
+        "scalling": c("Scalling"), "pit_marks": c("Pit Marks"), "waviness": c("Waviness"),
+        "center_bow": c("Center Bow"), "cutting_bow": c("Cutting Bow"),
+        "surface_defects": c("Surface Defects"), "processed_qty": pq, "cut_groups": cut_groups,
+        "rejection_flag": c("Rejection Flag") or "No", "rejections": rejections,
+        "lot_size": c("Lot Size"), "required_samples": c("Required Samples"),
+        "tolerance_profile": c("Tolerance Profile"), "cut_lengths": c("Cut Lengths"),
+        "sheets_measured": c("Sheets Measured"), "oot_count": c("Out Of Tolerance Count"),
+        "machine_params": mps,
+    }
+
+
+async def _read_quality_legacy(full=False):
+    try:
+        token = await graph.get_token()
+        item_id = await graph.get_item_id(token, QUALITY_XLSX)
+        if not item_id:
+            return []
+        cols, rows = await graph.read_table(token, item_id, QUALITY_TABLE)
+        hmap = xlsxlog.header_map(cols)
+        out = []
+        for i, r in enumerate(rows):
+            rec = (_qlog_payload(r, hmap) if full else _qlog_record(r, hmap))
+            if full:
+                rec["_row"] = i
+                out.append(rec)
+            elif rec["coil_number"] or rec["batch_number"]:
+                rec["_row"] = i
+                out.append(rec)
+        out.reverse()
+        return out
+    except Exception as e:
+        print("[quality-legacy]", e)
+        return []
+
+
+def _qkey(r):
+    return (str(r.get("coil_number") or "").strip().lower(),
+            str(r.get("batch_number") or "").strip().lower(),
+            str(r.get("log_date") or "")[:10])
+
+
 @router.get("/list")
 async def q_list(emp: dict = Depends(require_employee)):
     await ensure_table()
-    rows = await db.fetch(
+    neon = [dict(r) for r in await db.fetch(
         "SELECT id,log_date,customer_name,coil_number,batch_number,grade,make,machine_name,"
         "inspector,sheets_measured,oot_count,rejection_flag,created_at FROM quality_inspection "
-        "ORDER BY log_date DESC NULLS LAST, id DESC LIMIT 2000")
-    return JSONResponse(jsonable_encoder([dict(r) for r in rows]),
-                        headers={"Cache-Control": "no-store"})
+        "ORDER BY log_date DESC NULLS LAST, id DESC LIMIT 2000")]
+    seen = {_qkey(r) for r in neon}
+    legacy = await _read_quality_legacy()
+    merged = neon + [r for r in legacy if _qkey(r) not in seen]
+    merged.sort(key=lambda r: str(r.get("log_date") or ""), reverse=True)
+    return JSONResponse(jsonable_encoder(merged), headers={"Cache-Control": "no-store"})
 
 
 @router.get("/record")
@@ -338,6 +447,19 @@ async def q_pdf(id: int = Query(...), emp: dict = Depends(require_employee)):
             payload = {}
     pdf = build_quality_pdf(payload or {}, id, MP_SPEC)
     b = _safe((payload or {}).get("batch_number") or str(id))
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="CTL_Quality_{b}.pdf"',
+                             "Cache-Control": "no-store"})
+
+
+@router.get("/pdf-legacy")
+async def q_pdf_legacy(i: int = Query(...), emp: dict = Depends(require_employee)):
+    legacy = await _read_quality_legacy(full=True)
+    rec = next((r for r in legacy if r.get("_row") == i), None)
+    if rec is None:
+        raise HTTPException(404, "not found")
+    pdf = build_quality_pdf(rec, rec.get("coil_number") or rec.get("batch_number") or i, MP_SPEC)
+    b = _safe(rec.get("batch_number") or str(i))
     return Response(pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="CTL_Quality_{b}.pdf"',
                              "Cache-Control": "no-store"})

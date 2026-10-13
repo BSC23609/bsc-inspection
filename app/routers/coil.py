@@ -12,7 +12,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph
+from .. import db, graph, xlsxlog
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_coil_pdf
@@ -20,6 +20,75 @@ from ..pdfgen import build_coil_pdf
 router = APIRouter(prefix="/coil", tags=["coil"])
 IST = ZoneInfo("Asia/Kolkata")
 _ensured = False
+
+INWARD_XLSX = f"{ONEDRIVE_BASE}/Inward/Inward_Log.xlsx"
+INWARD_TABLE = "InwardLog"
+# legacy InwardLog writer column order (used as a positional fallback)
+_INWARD_POS = ["file", "timestamp", "vehicle_number", "batch_number", "make_of_coil", "grade",
+               "width", "thickness", "coil_weight", "coil_id", "actual_thickness", "actual_width",
+               "id_sticker", "edge_inner", "edge_outer", "scratch", "strapping", "rust",
+               "other_damages", "inspected_by", "remarks"]
+
+
+def _inward_record(row, hmap):
+    """Map one InwardLog row to a coil record (prefer header names, else position)."""
+    def by_pos(key):
+        try:
+            return xlsxlog.cell_at(row, _INWARD_POS.index(key))
+        except ValueError:
+            return ""
+
+    def g(key, *names):
+        v = xlsxlog.cell(row, hmap, *names) if names else ""
+        return v or by_pos(key)
+
+    ts = g("timestamp", "Timestamp")
+    d = xlsxlog.cell(row, hmap, "Date") or xlsxlog.date_part(ts)
+    return {
+        "id": None, "_legacy": True,
+        "log_date": xlsxlog.date_part(d),
+        "vehicle_number": g("vehicle_number", "Vehicle Number", "Vehicle No", "Vehicle"),
+        "batch_number": g("batch_number", "Batch Number", "Batch"),
+        "make_of_coil": g("make_of_coil", "Make of Coil", "Make"),
+        "grade": g("grade", "Grade"),
+        "width": g("width", "Width", "Width (mm)"),
+        "thickness": g("thickness", "Thickness", "Thickness (mm)", "Coil Thickness"),
+        "coil_weight": g("coil_weight", "Coil Weight", "Coil Weight (T)", "Weight"),
+        "coil_id": g("coil_id", "Coil ID", "Coil ID (mm)"),
+        "actual_thickness": g("actual_thickness", "Actual Thickness"),
+        "actual_width": g("actual_width", "Actual Width"),
+        "id_sticker": g("id_sticker", "ID Sticker", "Identification Sticker"),
+        "edge_inner": g("edge_inner", "Edge Inner", "Edge Damage Inner"),
+        "edge_outer": g("edge_outer", "Edge Outer", "Edge Damage Outer"),
+        "scratch": g("scratch", "Scratch", "Scratch Mark"),
+        "strapping": g("strapping", "Strapping"),
+        "rust": g("rust", "Rust", "Rust on Surface"),
+        "other_damages": g("other_damages", "Other Damages", "Any Other Damages"),
+        "inspected_by": g("inspected_by", "Inspector", "Inspected By"),
+        "remarks": g("remarks", "Remarks"),
+    }
+
+
+async def _read_inward_legacy():
+    """Read historical rows from the OneDrive InwardLog workbook (best effort)."""
+    try:
+        token = await graph.get_token()
+        item_id = await graph.get_item_id(token, INWARD_XLSX)
+        if not item_id:
+            return []
+        cols, rows = await graph.read_table(token, item_id, INWARD_TABLE)
+        hmap = xlsxlog.header_map(cols)
+        out = []
+        for i, r in enumerate(rows):
+            rec = _inward_record(r, hmap)
+            if rec["batch_number"] or rec["vehicle_number"]:
+                rec["_row"] = i
+                out.append(rec)
+        out.reverse()  # newest last in the sheet -> show newest first
+        return out
+    except Exception as e:
+        print("[coil-legacy]", e)
+        return []
 
 _FIELDS = ("log_date", "vehicle_number", "batch_number", "make_of_coil", "grade",
            "width", "thickness", "coil_weight", "coil_id", "actual_thickness", "actual_width",
@@ -179,14 +248,57 @@ async def _append_csv(row: dict, by: str):
         print("[coil-csv]", e)
 
 
+def _key(rec):
+    return (str(rec.get("batch_number") or "").strip().lower(),
+            str(rec.get("vehicle_number") or "").strip().lower(),
+            str(rec.get("log_date") or "")[:10])
+
+
 @router.get("/list")
 async def coil_list(emp: dict = Depends(require_employee)):
     await ensure_table()
     cols = "id," + ",".join(_FIELDS) + ",created_by,created_at"
-    rows = await db.fetch(
-        f"SELECT {cols} FROM coil_inward ORDER BY log_date DESC NULLS LAST, id DESC LIMIT 2000")
-    return JSONResponse(jsonable_encoder([dict(r) for r in rows]),
-                        headers={"Cache-Control": "no-store"})
+    neon = [dict(r) for r in await db.fetch(
+        f"SELECT {cols} FROM coil_inward ORDER BY log_date DESC NULLS LAST, id DESC LIMIT 2000")]
+    seen = {_key(r) for r in neon}
+    legacy = await _read_inward_legacy()
+    merged = neon + [r for r in legacy if _key(r) not in seen]
+    merged.sort(key=lambda r: str(r.get("log_date") or ""), reverse=True)
+    return JSONResponse(jsonable_encoder(merged), headers={"Cache-Control": "no-store"})
+
+
+async def _append_inward_xlsx(r: dict):
+    """Append a new coil to the existing InwardLog workbook (legacy column order)."""
+    try:
+        token = await graph.get_token()
+        item_id = await graph.get_item_id(token, INWARD_XLSX)
+        if not item_id:
+            return
+        fname = f"Coil_{_safe(r.get('batch_number')) or 'rec'}"
+        ts = datetime.now(IST).isoformat()
+        value = {
+            "file": fname, "timestamp": ts,
+            "vehicle_number": r.get("vehicle_number"), "batch_number": r.get("batch_number"),
+            "make_of_coil": r.get("make_of_coil"), "grade": r.get("grade"),
+            "width": r.get("width"), "thickness": r.get("thickness"),
+            "coil_weight": r.get("coil_weight"), "coil_id": r.get("coil_id"),
+            "actual_thickness": r.get("actual_thickness"), "actual_width": r.get("actual_width"),
+            "id_sticker": r.get("id_sticker"), "edge_inner": r.get("edge_inner"),
+            "edge_outer": r.get("edge_outer"), "scratch": r.get("scratch"),
+            "strapping": r.get("strapping"), "rust": r.get("rust"),
+            "other_damages": r.get("other_damages"), "inspected_by": r.get("inspected_by"),
+            "remarks": r.get("remarks"),
+        }
+        row = ["" if value.get(k) is None else str(value.get(k)) for k in _INWARD_POS]
+        # fit to the table's actual width
+        cols = await graph.table_columns(token, item_id, INWARD_TABLE)
+        if cols:
+            if len(row) < len(cols):
+                row += [""] * (len(cols) - len(row))
+            row = row[:len(cols)]
+        await graph.add_table_row(token, item_id, INWARD_TABLE, row)
+    except Exception as e:
+        print("[coil-inwardlog]", e)
 
 
 @router.post("/submit")
@@ -201,6 +313,7 @@ async def coil_submit(body: CoilIn, emp: dict = Depends(require_employee)):
         f"INSERT INTO coil_inward ({cols},created_by) VALUES ({ph},${len(_FIELDS)+1}) RETURNING id",
         *vals, by)
     asyncio.create_task(_append_csv(r, by))
+    asyncio.create_task(_append_inward_xlsx(r))
     return {"ok": True, "id": new_id}
 
 
@@ -240,4 +353,20 @@ async def coil_pdf(id: int = Query(...), emp: dict = Depends(require_employee)):
     fn = f"Coil_Inward_{b}.pdf"
     return Response(pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="{fn}"',
+                             "Cache-Control": "no-store"})
+
+
+@router.get("/pdf-legacy")
+async def coil_pdf_legacy(i: int = Query(...), emp: dict = Depends(require_employee)):
+    """Build a PDF from a historical InwardLog row (i = the sheet row index)."""
+    legacy = await _read_inward_legacy()
+    rec = next((r for r in legacy if r.get("_row") == i), None)
+    if rec is None:
+        raise HTTPException(404, "not found")
+    rec = dict(rec)
+    rec.setdefault("id", "")
+    pdf = build_coil_pdf(rec)
+    b = (rec.get("batch_number") or str(i)).replace(" ", "_")
+    return Response(pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": f'inline; filename="Coil_Inward_{b}.pdf"',
                              "Cache-Control": "no-store"})
