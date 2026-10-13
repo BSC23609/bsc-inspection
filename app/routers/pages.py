@@ -42,6 +42,7 @@ NAV_GROUPS = [
 
 ADMIN_NAV = [
     {"name": "Users", "icon": "users", "href": "/users", "active_key": "users"},
+    {"name": "Customers", "icon": "store", "href": "/customers", "active_key": "customers"},
     {"name": "Settings", "icon": "gear", "href": "/admin", "active_key": "admin"},
 ]
 
@@ -160,3 +161,11 @@ async def users_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("users.html", _ctx(request, emp, "users", section="Users"))
+
+
+@router.get("/customers", response_class=HTMLResponse)
+async def customers_page(request: Request):
+    emp = await current_employee(request)
+    if not emp:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("customers.html", _ctx(request, emp, "customers", section="Customers"))

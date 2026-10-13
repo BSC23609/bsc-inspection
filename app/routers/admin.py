@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .. import graph, db
+from .. import customer_auth as CA
 from ..auth import require_employee, hash_pw
 from ..config import ONEDRIVE_BASE
 
@@ -165,6 +166,14 @@ async def users_save(body: UserIn, emp: dict = Depends(require_employee)):
         raise
     except Exception as e:
         raise HTTPException(500, f"DB error: {e}")
+
+
+# ============================================================
+#  Customers list (read-only, from the legacy `customers` table)
+# ============================================================
+@router.get("/customers")
+async def customers_list(emp: dict = Depends(require_employee)):
+    return JSONResponse(await CA.list_all(), headers={"Cache-Control": "no-store"})
 
 
 class UserPwIn(BaseModel):
