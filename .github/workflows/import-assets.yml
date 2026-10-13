@@ -1,0 +1,37 @@
+name: Import assets to Neon
+
+# Run manually from the GitHub "Actions" tab.
+on:
+  workflow_dispatch:
+    inputs:
+      file:
+        description: "Path to the equipment .xlsx in the repo"
+        required: true
+        default: "data/MASTER_LIST_OF_EQUIPMENTS.xlsx"
+      mode:
+        description: "skip (keep existing codes) or update (overwrite existing)"
+        required: true
+        default: "skip"
+        type: choice
+        options: [skip, update]
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install openpyxl asyncpg
+
+      - name: Import into Neon
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          IMPORT_MODE: ${{ github.event.inputs.mode }}
+        run: python scripts/import_assets.py "${{ github.event.inputs.file }}" --mode "${{ github.event.inputs.mode }}"
