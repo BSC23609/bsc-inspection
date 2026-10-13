@@ -6,6 +6,9 @@
 <title>Customer Complaint Portal · {{ app_name }}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+{% set pwa_manifest = '/manifest.customer.webmanifest' %}
+{% set pwa_title = 'BSC Complaints' %}
+{% include "_pwa_head.html" %}
 <style>
 :root{--blue:#0069aa;--blue-ink:#00537f;--blue-soft:#e4f1fb;--ink:#0e1524;--ink2:#38445a;--muted:#5d6879;--line:#e2e8f2;--line2:#d2dbe8;--bg:#eef3f9}
 *{box-sizing:border-box}html,body{margin:0}
