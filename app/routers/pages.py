@@ -27,8 +27,8 @@ NAV_GROUPS = [
     {"key": "complaints", "title": "Complaints", "accent": "navy", "icon": "complaints",
      "blurb": "Raise, investigate and close quality issues.",
      "items": [
-         {"name": "8D Problem", "icon": "warn", "desc": "Open a problem, team, containment, root cause."},
-         {"name": "8D Report", "icon": "file", "desc": "Generate the 8D report and track to closure."},
+         {"name": "8D Report", "icon": "warn", "desc": "Problem solving D1–D8, from team to closure, in one report.",
+          "href": "/eightd", "active_key": "eightd"},
          {"name": "Quality Complaint", "icon": "msg", "desc": "Customer and internal complaints."},
      ]},
     {"key": "generator", "title": "Generator", "accent": "sky", "icon": "bolt",
@@ -122,3 +122,11 @@ async def pdi_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("pdi.html", _ctx(request, emp, "pdi", section="Pre-Delivery Inspection"))
+
+
+@router.get("/eightd", response_class=HTMLResponse)
+async def eightd_page(request: Request):
+    emp = await current_employee(request)
+    if not emp:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("eightd.html", _ctx(request, emp, "eightd", section="8D Report"))

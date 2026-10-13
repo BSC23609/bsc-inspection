@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.config import APP_NAME
-from app.routers import pages, dg, coil, quality, shearing, pdi
+from app.routers import pages, dg, coil, quality, shearing, pdi, eightd
 
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -26,6 +26,7 @@ app.include_router(coil.router)
 app.include_router(quality.router)
 app.include_router(shearing.router)
 app.include_router(pdi.router)
+app.include_router(eightd.router)
 
 
 @app.get("/healthz")

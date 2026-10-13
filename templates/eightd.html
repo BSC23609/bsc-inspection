@@ -1,0 +1,227 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}8D Report · {{ app_name }}{% endblock %}
+{% block tb_title %}8D Report{% endblock %}
+{% block content %}
+<div class="acc-navy">
+<style>
+.e8 .field label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.e8 input,.e8 textarea,.e8 select{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+.e8 textarea{min-height:64px;resize:vertical;line-height:1.5}
+.e8 input:focus,.e8 textarea:focus,.e8 select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.e8 input[readonly]{background:var(--surface-2);color:var(--ink-2);border-style:dashed;font-weight:600}
+.e8 .row{display:grid;gap:12px;margin-bottom:12px}
+.e8 .r2{grid-template-columns:1fr 1fr}.e8 .r3{grid-template-columns:1fr 1fr 1fr}.e8 .r4{grid-template-columns:1fr 1fr 1fr 1fr}
+@media(max-width:620px){.e8 .r2,.e8 .r3,.e8 .r4{grid-template-columns:1fr}}
+.e8 .pills{display:flex;flex-wrap:wrap;gap:8px}
+.e8 .pill{border:1px solid var(--line-2);background:#fff;color:var(--ink-2);border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all .12s}
+.e8 .pill:hover{border-color:var(--acc);color:var(--acc-ink)}
+.e8 .pill.on{background:var(--acc);border-color:var(--acc);color:#fff;box-shadow:0 4px 12px -3px var(--acc)}
+.e8-d{border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px;background:var(--surface-2)}
+.e8-d .dh{display:flex;align-items:center;gap:10px;margin:-2px 0 14px;padding-bottom:10px;border-bottom:1px solid var(--line)}
+.e8-d .dn{width:34px;height:34px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;color:#fff;background:linear-gradient(135deg,var(--acc-g1),var(--acc-g2));flex-shrink:0}
+.e8-d .dt{font-weight:600;font-size:13.5px;color:var(--acc-ink)}
+.e8-d .dd{font-size:11.5px;color:var(--muted);margin-top:1px}
+.badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
+.badge.open{background:#fdecec;color:#c23438}.badge.prog{background:#fff3e0;color:#9a6a1a}.badge.closed{background:#e3f6ee;color:#0a7d55}
+</style>
+
+<div class="page-head"><h1>8D Report</h1>
+<p>One report for the full problem-solving flow — the eight disciplines from team formation (D1) through to closure (D8). Each report gets a number, a PDF and a register entry.</p></div>
+
+<div class="kpis">
+  <div class="kpi"><span class="ki">{{ icon('hash',20) }}</span><div><div class="k-lab">Reports this month</div><div class="k-val tnum" id="kpi_n">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('warn',20) }}</span><div><div class="k-lab">Open</div><div class="k-val tnum" id="kpi_open">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('file',20) }}</span><div><div class="k-lab">Closed</div><div class="k-val tnum" id="kpi_closed">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('complaints',20) }}</span><div><div class="k-lab">Total reports</div><div class="k-val tnum" id="kpi_total">0</div></div></div>
+</div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="e8_form_title">New 8D report</span></div>
+<div class="panel-body"><div class="e8"><input type="hidden" id="e8_edit" value="">
+
+  <div class="e8-d">
+    <div class="dh"><span class="dn" style="font-size:11px">8D</span><div><div class="dt">Report Details</div><div class="dd">Identify the report, part and priority.</div></div></div>
+    <div class="row r3">
+      <div class="field"><label>Report No</label><input id="e8_report_no" readonly placeholder="auto"></div>
+      <div class="field"><label>Date</label><input type="date" id="e8_date"></div>
+      <div class="field"><label>Customer</label><input id="e8_customer" placeholder="Customer"></div>
+    </div>
+    <div class="row r3">
+      <div class="field"><label>Part / Material</label><input id="e8_part" placeholder="Part or material"></div>
+      <div class="field"><label>NCR / Complaint Ref</label><input id="e8_ncr" placeholder="e.g. QC-2026-014"></div>
+      <div class="field"><label>Priority</label>
+        <div class="pills" id="e8_priority">
+          <button type="button" class="pill" data-v="Low">Low</button>
+          <button type="button" class="pill" data-v="Medium">Medium</button>
+          <button type="button" class="pill" data-v="High">High</button>
+          <button type="button" class="pill" data-v="Critical">Critical</button>
+        </div><input type="hidden" id="e8_priority_v">
+      </div>
+    </div>
+    <div class="field" style="max-width:360px"><label>Status</label>
+      <div class="pills" id="e8_status">
+        <button type="button" class="pill" data-v="Open">Open</button>
+        <button type="button" class="pill" data-v="In Progress">In Progress</button>
+        <button type="button" class="pill" data-v="Closed">Closed</button>
+      </div><input type="hidden" id="e8_status_v" value="Open">
+    </div>
+  </div>
+
+  <div class="e8-d">
+    <div class="dh"><span class="dn">D1</span><div><div class="dt">Team</div><div class="dd">Form a cross-functional team with a champion and a leader.</div></div></div>
+    <div class="row r2">
+      <div class="field"><label>Champion</label><input id="d1_champion" placeholder="Sponsor / owner"></div>
+      <div class="field"><label>Team Leader</label><input id="d1_leader" placeholder="Leader name"></div>
+    </div>
+    <div class="field"><label>Team Members</label><textarea id="d1_members" placeholder="Names and functions, one per line"></textarea></div>
+  </div>
+
+  <div class="e8-d">
+    <div class="dh"><span class="dn">D2</span><div><div class="dt">Problem Description</div><div class="dd">Describe the problem in measurable terms (what, where, when, how much).</div></div></div>
+    <div class="field"><label>Problem Statement</label><textarea id="d2_problem" placeholder="What is the problem, in specific and measurable terms"></textarea></div>
+    <div class="row r4">
+      <div class="field"><label>Where</label><input id="d2_where" placeholder="Location / process"></div>
+      <div class="field"><label>When</label><input id="d2_when" placeholder="Date / stage"></div>
+      <div class="field"><label>How Detected</label><input id="d2_detected" placeholder="Inspection / customer"></div>
+      <div class="field"><label>Qty Affected</label><input id="d2_qty" placeholder="Nos / T"></div>
+    </div>
+  </div>
+
+  <div class="e8-d">
+    <div class="dh"><span class="dn">D3</span><div><div class="dt">Interim Containment Actions</div><div class="dd">Contain the effect from reaching the customer until a permanent fix is in.</div></div></div>
+    <div class="field"><textarea id="d3_containment" placeholder="Containment actions, responsible person and date"></textarea></div>
+  </div>
+
+  <div class="e8-d">
+    <div class="dh"><span class="dn">D4</span><div><div class="dt">Root Cause Analysis</div><div class="dd">Find and verify the root cause and the escape point.</div></div></div>
+    <div class="field"><label>Root Cause</label><textarea id="d4_root_cause" placeholder="Verified root cause of occurrence"></textarea></div>
+    <div class="field"><label>Why-Why Analysis</label><textarea id="d4_why" placeholder="Why 1 → Why 2 → … to the root cause"></textarea></div>
+    <div class="field"><label>Escape Point</label><input id="d4_escape" placeholder="Why it wasn't detected earlier"></div>
+  </div>
+
+  <div class="e8-d">
+    <div class="dh"><span class="dn">D5</span><div><div class="dt">Permanent Corrective Actions</div><div class="dd">Choose corrective actions that address the root cause.</div></div></div>
+    <div class="field"><textarea id="d5_corrective" placeholder="Permanent corrective actions, responsible person and target date"></textarea></div>
+  </div>
+
+  <div class="e8-d">
+    <div class="dh"><span class="dn">D6</span><div><div class="dt">Implement &amp; Validate</div><div class="dd">Implement the permanent actions and validate effectiveness.</div></div></div>
+    <div class="field"><textarea id="d6_implement" placeholder="Implementation details and evidence of effectiveness"></textarea></div>
+  </div>
+
+  <div class="e8-d">
+    <div class="dh"><span class="dn">D7</span><div><div class="dt">Prevent Recurrence</div><div class="dd">Update systems, standards and documents so it cannot recur.</div></div></div>
+    <div class="field"><textarea id="d7_prevent" placeholder="Updated control plan, FMEA, work instructions, horizontal deployment"></textarea></div>
+  </div>
+
+  <div class="e8-d">
+    <div class="dh"><span class="dn">D8</span><div><div class="dt">Recognize Team &amp; Close</div><div class="dd">Recognize the team's contribution and close the report.</div></div></div>
+    <div class="row r3"><div class="field"><label>Closure Date</label><input type="date" id="d8_close_date"></div></div>
+    <div class="field"><label>Recognition / Closure Notes</label><textarea id="d8_recognition" placeholder="Lessons learned, recognition, sign-off"></textarea></div>
+  </div>
+
+  <div style="position:sticky;bottom:0;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:14px 2px">
+    <button class="btn btn-ghost" id="e8_cancel" style="display:none" onclick="e8Reset(true)">Cancel</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-primary" id="e8_save" onclick="e8Submit()">Save 8D report</button>
+  </div>
+</div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('bars',17) }}</span>8D register<span class="sub" id="e8_cnt"></span></div>
+<div class="panel-body">
+  <input id="e8_search" oninput="e8Render()" placeholder="Search report / customer / part / ref…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
+  <div class="dgrid-wrap" id="e8_rows"><div class="empty">Loading…</div></div>
+</div></div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var E8=[];
+var E8_FIELDS=['d1_champion','d1_leader','d1_members','d2_problem','d2_where','d2_when','d2_detected','d2_qty','d3_containment','d4_root_cause','d4_why','d4_escape','d5_corrective','d6_implement','d7_prevent','d8_recognition','d8_close_date'];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function sv(id,val){var e=document.getElementById(id);if(e)e.value=(val==null?'':val);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function pad(n){return('0'+n).slice(-2);}
+function today(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());}
+function curMon(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1);}
+
+/* pill groups (priority, status) */
+function pillGroup(gid,hid){document.addEventListener('click',function(e){var b=e.target.closest?e.target.closest('#'+gid+' .pill'):null;
+  if(b){document.querySelectorAll('#'+gid+' .pill').forEach(function(p){p.classList.toggle('on',p===b);});document.getElementById(hid).value=b.getAttribute('data-v');}});}
+pillGroup('e8_priority','e8_priority_v');pillGroup('e8_status','e8_status_v');
+function setPill(gid,hid,val){document.getElementById(hid).value=val||'';document.querySelectorAll('#'+gid+' .pill').forEach(function(p){p.classList.toggle('on',p.getAttribute('data-v')===val);});}
+
+async function e8Next(){try{var r=await fetch('/eightd/next-number',{cache:'no-store'});if(r.ok){var d=await r.json();sv('e8_report_no',d.report_no);}}catch(e){}}
+async function e8Reset(scroll){
+  document.getElementById('e8_edit').value='';
+  document.getElementById('e8_form_title').textContent='New 8D report';
+  document.getElementById('e8_save').textContent='Save 8D report';
+  document.getElementById('e8_cancel').style.display='none';
+  ['e8_customer','e8_part','e8_ncr'].forEach(function(i){sv(i,'');});
+  E8_FIELDS.forEach(function(i){sv(i,'');});
+  setPill('e8_priority','e8_priority_v','');setPill('e8_status','e8_status_v','Open');
+  sv('e8_date',today());
+  await e8Next();
+  if(scroll)window.scrollTo({top:0,behavior:'smooth'});
+}
+async function e8Load(){
+  var h=document.getElementById('e8_rows');h.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/eightd/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}E8=await r.json();if(!Array.isArray(E8))E8=[];}
+  catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load the register. Try again.</div>';return;}
+  e8Render();
+}
+function statusBadge(s){s=String(s||'').toLowerCase();if(s.indexOf('close')>=0)return'<span class="badge closed">Closed</span>';if(s.indexOf('progress')>=0)return'<span class="badge prog">In Progress</span>';return'<span class="badge open">Open</span>';}
+function e8Render(){
+  var host=document.getElementById('e8_rows'),q=(v('e8_search')||'').toLowerCase();
+  var mon=curMon(),n=0,op=0,cl=0;
+  E8.forEach(function(x){var dt=String(x.report_date||x.created_at||'').slice(0,7);if(dt===mon)n++;var s=String(x.status||'').toLowerCase();if(s.indexOf('close')>=0)cl++;else op++;});
+  document.getElementById('kpi_n').textContent=n;document.getElementById('kpi_open').textContent=op;
+  document.getElementById('kpi_closed').textContent=cl;document.getElementById('kpi_total').textContent=E8.length;
+  var rows=E8.filter(function(x){if(!q)return true;return [x.report_no,x.customer,x.part,x.ncr_ref,x.created_by].join(' ').toLowerCase().indexOf(q)>=0;});
+  document.getElementById('e8_cnt').textContent=E8.length?(E8.length+' report'+(E8.length===1?'':'s')):'';
+  if(!rows.length){host.innerHTML='<div class="empty">'+(E8.length?'No reports match your search.':'No 8D reports yet. Fill the form above and save.')+'</div>';return;}
+  var cols=[['Report No','16%'],['Date','10%'],['Customer','16%'],['Part','14%'],['NCR Ref','12%'],['Priority','9%'],['Status','10%'],['','9%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var g=function(a){return(a===''||a==null)?'':esc(a);};
+  var body=rows.map(function(x){
+    return'<tr><td>'+g(x.report_no)+'</td><td>'+g(String(x.report_date||'').slice(0,10))+'</td><td>'+g(x.customer)+'</td>'
+      +'<td>'+g(x.part)+'</td><td class="c">'+g(x.ncr_ref)+'</td><td class="c">'+g(x.priority)+'</td><td class="c">'+statusBadge(x.status)+'</td>'
+      +'<td class="c"><a href="/eightd/pdf?report_no='+encodeURIComponent(x.report_no||'')+'" target="_blank" class="ic-edit">PDF</a> <a href="#" onclick="e8Edit(\''+encodeURIComponent(x.report_no||'')+'\');return false" class="ic-edit">Edit</a><br><a href="#" onclick="e8Del(\''+encodeURIComponent(x.report_no||'')+'\');return false" class="ic-del">Del</a></td></tr>';
+  }).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+async function e8Edit(rno){
+  rno=decodeURIComponent(rno);
+  var r;try{r=await fetch('/eightd/record?report_no='+encodeURIComponent(rno),{cache:'no-store'});}catch(e){toast('err','Couldn’t load report');return;}
+  if(!r.ok){toast('err','Couldn’t load report');return;}var d=await r.json();var det=d.details||{};
+  document.getElementById('e8_edit').value=rno;
+  sv('e8_report_no',d.report_no||rno);sv('e8_date',String(d.report_date||'').slice(0,10)||today());
+  sv('e8_customer',d.customer||'');sv('e8_part',d.part||'');sv('e8_ncr',d.ncr_ref||'');
+  setPill('e8_priority','e8_priority_v',d.priority||'');setPill('e8_status','e8_status_v',d.status||'Open');
+  E8_FIELDS.forEach(function(i){sv(i,det[i]||'');});
+  document.getElementById('e8_form_title').textContent='Edit '+rno;
+  document.getElementById('e8_save').textContent='Update 8D report';
+  document.getElementById('e8_cancel').style.display='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+async function e8Submit(){
+  var details={};E8_FIELDS.forEach(function(i){details[i]=v(i);});
+  var payload={report_no:v('e8_report_no'),report_date:v('e8_date'),customer:v('e8_customer'),part:v('e8_part'),ncr_ref:v('e8_ncr'),priority:v('e8_priority_v'),status:v('e8_status_v')||'Open',details:details};
+  if(!payload.report_no){toast('err','No report number — reload the page');return;}
+  if(!payload.customer && !details.d2_problem){toast('err','Enter at least a customer or the problem description');return;}
+  var b=document.getElementById('e8_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch('/eightd/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
+    toast('ok','8D '+(d.report_no||payload.report_no)+' saved · PDF + register updated');
+    await e8Reset(false);await e8Load();window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){toast('err','Couldn’t save: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=lbl;}
+}
+async function e8Del(rno){rno=decodeURIComponent(rno);if(!confirm('Delete 8D report '+rno+'?'))return;
+  try{var r=await fetch('/eightd/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({report_no:rno})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error('failed');toast('ok','Report deleted');await e8Load();
+  }catch(e){toast('err','Couldn’t delete the report');}}
+(function(){e8Reset(false);e8Load();})();
+</script>
+{% endblock %}

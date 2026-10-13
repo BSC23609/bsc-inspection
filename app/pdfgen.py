@@ -744,3 +744,113 @@ def build_pdi_pdf(rep: dict, tol: dict) -> bytes:
                            ParagraphStyle("g", fontName="Helvetica", fontSize=7.5, textColor=MUT, alignment=2)))
     doc.build(story)
     return buf.getvalue()
+
+
+# ============================================================
+#  8D Report — problem solving D1..D8 (portrait A4)
+# ============================================================
+NAVY = colors.HexColor("#1d4e74")
+NAVY_HEAD = colors.HexColor("#e7eef6")
+
+
+def build_8d_pdf(rep: dict) -> bytes:
+    d = rep.get("details") or {}
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=32, rightMargin=32,
+                            topMargin=24, bottomMargin=28)
+    st = {
+        "title": ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=15, textColor=NAVY, alignment=1, leading=18),
+        "sub": ParagraphStyle("s", fontName="Helvetica", fontSize=8.5, textColor=MUT, alignment=1),
+        "meta": ParagraphStyle("m", fontName="Helvetica-Bold", fontSize=9, textColor=NAVY, alignment=2, leading=12),
+        "sec": ParagraphStyle("se", fontName="Helvetica-Bold", fontSize=9.5, textColor=colors.white, leading=12),
+        "lab": ParagraphStyle("l", fontName="Helvetica", fontSize=8, textColor=MUT, leading=10),
+        "val": ParagraphStyle("v", fontName="Helvetica-Bold", fontSize=9, textColor=colors.HexColor("#0e1524"), leading=11),
+        "body": ParagraphStyle("b", fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#1f2937"), leading=13),
+    }
+    story = []
+    logo = ""
+    if os.path.exists(_LOGO):
+        try:
+            logo = Image(_LOGO, width=40 * mm, height=11 * mm, kind="proportional")
+        except Exception:
+            logo = ""
+    title_block = [Paragraph("8D PROBLEM SOLVING REPORT", st["title"]),
+                   Paragraph("Eight Disciplines · D1–D8", st["sub"])]
+    meta = Paragraph(f"{rep.get('report_no') or '-'}<br/>{str(rep.get('report_date') or '')[:10]}", st["meta"])
+    head = Table([[logo, title_block, meta]], colWidths=[125, None, 140])
+    head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                              ("LINEBELOW", (0, 0), (-1, 0), 1.1, NAVY), ("BOTTOMPADDING", (0, 0), (-1, 0), 8)]))
+    story.append(head)
+    story.append(Spacer(1, 10))
+    W = doc.width
+
+    def bar(title):
+        t = Table([[Paragraph(title, st["sec"])]], colWidths=[W])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NAVY), ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                               ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        story.append(t)
+
+    def pairs(items, cols=3):
+        data, row = [], []
+        for lab, val in items:
+            row.append([Paragraph(lab, st["lab"]), Spacer(1, 1), Paragraph(_fmt(val) or "-", st["val"])])
+            if len(row) == cols:
+                data.append(row); row = []
+        if row:
+            while len(row) < cols:
+                row.append("")
+            data.append(row)
+        if data:
+            t = Table(data, colWidths=[W / float(cols)] * cols)
+            t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 5),
+                                   ("BOTTOMPADDING", (0, 0), (-1, -1), 5), ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                                   ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("BOX", (0, 0), (-1, -1), 0.4, GRID),
+                                   ("INNERGRID", (0, 0), (-1, -1), 0.3, GRID)]))
+            story.append(t)
+        story.append(Spacer(1, 10))
+
+    def block(title, text):
+        bar(title)
+        body = _fmt(text) or "—"
+        box = Table([[Paragraph(body.replace("\n", "<br/>"), st["body"])]], colWidths=[W])
+        box.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.4, GRID), ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                                 ("RIGHTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 7),
+                                 ("BOTTOMPADDING", (0, 0), (-1, -1), 7), ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fbfcfe"))]))
+        story.append(box)
+        story.append(Spacer(1, 10))
+
+    bar("REPORT DETAILS")
+    pairs([("Report No", rep.get("report_no")), ("Date", rep.get("report_date")), ("Customer", rep.get("customer")),
+           ("Part", rep.get("part")), ("NCR / Complaint Ref", rep.get("ncr_ref")), ("Priority", rep.get("priority")),
+           ("Status", rep.get("status"))])
+
+    bar("D1 · TEAM")
+    pairs([("Champion", d.get("d1_champion")), ("Team Leader", d.get("d1_leader"))], cols=2)
+    if _fmt(d.get("d1_members")):
+        block("D1 · Team Members", d.get("d1_members"))
+
+    bar("D2 · PROBLEM DESCRIPTION")
+    pairs([("Where", d.get("d2_where")), ("When", d.get("d2_when")), ("How Detected", d.get("d2_detected")),
+           ("Quantity Affected", d.get("d2_qty"))], cols=2)
+    block("D2 · Problem Statement", d.get("d2_problem"))
+
+    block("D3 · Interim Containment Actions", d.get("d3_containment"))
+    block("D4 · Root Cause Analysis", d.get("d4_root_cause"))
+    if _fmt(d.get("d4_why")):
+        block("D4 · Why-Why Analysis", d.get("d4_why"))
+    if _fmt(d.get("d4_escape")):
+        block("D4 · Escape Point", d.get("d4_escape"))
+    block("D5 · Permanent Corrective Actions", d.get("d5_corrective"))
+    block("D6 · Implement &amp; Validate", d.get("d6_implement"))
+    block("D7 · Prevent Recurrence", d.get("d7_prevent"))
+    bar("D8 · RECOGNIZE TEAM &amp; CLOSE")
+    pairs([("Closure Date", d.get("d8_close_date"))], cols=3)
+    if _fmt(d.get("d8_recognition")):
+        block("D8 · Recognition / Closure Notes", d.get("d8_recognition"))
+
+    gen = datetime.now().strftime("%d-%b-%Y %H:%M")
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"Bharat Steel (Chennai) Pvt. Ltd. &nbsp;·&nbsp; Prepared by {_fmt(rep.get('created_by')) or '-'} &nbsp;·&nbsp; Generated {gen}",
+                           ParagraphStyle("g", fontName="Helvetica", fontSize=7.5, textColor=MUT, alignment=2)))
+    doc.build(story)
+    return buf.getvalue()
