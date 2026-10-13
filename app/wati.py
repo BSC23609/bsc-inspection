@@ -38,14 +38,48 @@ def configured() -> bool:
     return bool(WATI_BASE_URL and WATI_TOKEN and WATI_OTP_TEMPLATE)
 
 
+def send_url() -> str:
+    """Build the sendTemplateMessage URL, tolerant of how WATI_API_ENDPOINT is stored
+    (bare host, host+/api/v1, or the full endpoint)."""
+    base = (WATI_BASE_URL or "").rstrip("/")
+    if not base:
+        return ""
+    low = base.lower()
+    if "sendtemplatemessage" in low:
+        return base
+    if low.endswith("/api/v1"):
+        return base + "/sendTemplateMessage"
+    return base + "/api/v1/sendTemplateMessage"
+
+
+def status() -> dict:
+    """Non-secret view of the WATI config, for diagnostics."""
+    host = ""
+    try:
+        from urllib.parse import urlsplit
+        host = urlsplit(WATI_BASE_URL).netloc or WATI_BASE_URL
+    except Exception:
+        host = WATI_BASE_URL
+    return {
+        "configured": configured(),
+        "endpoint_set": bool(WATI_BASE_URL),
+        "endpoint_host": host,
+        "token_set": bool(WATI_TOKEN),
+        "template": WATI_OTP_TEMPLATE,
+        "broadcast": WATI_OTP_BROADCAST,
+        "param": WATI_OTP_PARAM,
+        "send_url": send_url(),
+    }
+
+
 async def send_otp(number: str, code: str):
     """Send the OTP via an approved template. Returns (ok: bool, detail: str)."""
     if not configured():
-        return False, "WATI is not configured (set WATI_BASE_URL / WATI_TOKEN / WATI_OTP_TEMPLATE)."
+        return False, "WATI is not configured (need endpoint, token and a template name)."
     num = normalize_number(number)
     if not num:
         return False, "No valid mobile number."
-    url = f"{WATI_BASE_URL}/api/v1/sendTemplateMessage"
+    url = send_url()
     body = {
         "template_name": WATI_OTP_TEMPLATE,
         "broadcast_name": WATI_OTP_BROADCAST or WATI_OTP_TEMPLATE,

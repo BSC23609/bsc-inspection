@@ -8,12 +8,12 @@ signing the account out everywhere (same as an admin reset)."""
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .. import db, wati
-from ..auth import hash_pw, verify_pw
+from ..auth import hash_pw, verify_pw, require_employee
 
 router = APIRouter(tags=["forgot"])
 
@@ -56,6 +56,17 @@ async def _find_emp(identifier: str):
         "LIMIT 1",
         ident, tail)
     return dict(row) if row else None
+
+
+@router.get("/forgot/_diag")
+async def forgot_diag(to: str = Query(default=""), emp: dict = Depends(require_employee)):
+    """Staff-only: show the detected WATI config and (if ?to=<number>) do a live test send,
+    returning the raw WATI reply so template/number issues are visible."""
+    info = wati.status()
+    if to.strip():
+        ok, detail = await wati.send_otp(to.strip(), "123456")
+        info["test_send"] = {"to": wati.normalize_number(to.strip()), "ok": ok, "detail": detail}
+    return JSONResponse(info, headers={"Cache-Control": "no-store"})
 
 
 class StartIn(BaseModel):
