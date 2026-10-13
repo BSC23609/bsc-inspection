@@ -108,6 +108,41 @@ def profile(u: dict) -> dict:
     }
 
 
+_DATE_COLS = ("created_at", "created", "created_on", "createdon", "inserted_at",
+              "reg_date", "regdate", "date_added", "dateadded")
+
+
+async def list_all() -> list:
+    """All customer accounts, normalized, for the admin Customers list."""
+    cols = await _cols()
+    if not cols:
+        return []
+    try:
+        rows = await db.fetch("SELECT * FROM customers")
+    except Exception as e:
+        print("[cust-auth] list failed:", e)
+        return []
+    active_col = _pick(cols, _ACTIVE_COLS)
+    date_col = _pick(cols, _DATE_COLS)
+    out = []
+    for r in rows:
+        u = dict(r)
+        low = _low(u)
+        p = profile(u)
+        created = low.get(date_col.lower()) if date_col else None
+        out.append({
+            "id": p["id"],
+            "company": p["company"] or "",
+            "contact": p["contact"] or "",
+            "email": p["email"] or "",
+            "phone": str(p["phone"] or ""),
+            "active": _is_active(low.get(active_col.lower())) if active_col else True,
+            "created": (str(created)[:10] if created else ""),
+        })
+    out.sort(key=lambda x: str(x["company"] or x["contact"] or x["email"] or "").lower())
+    return out
+
+
 async def status() -> dict:
     """Diagnostic — what the auth layer detected about the customers table."""
     cols = await _cols()
