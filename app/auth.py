@@ -37,7 +37,11 @@ def make_token(user: dict, kind: str) -> str:
 
 def decode_token(token: str) -> dict | None:
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+        # verify_sub=False keeps numeric `sub` claims valid — the Node app
+        # (jsonwebtoken) signs sub as a number, and PyJWT >= 2.10 would otherwise
+        # reject it. Harmless on the pinned 2.8.0, which ignores the extra option.
+        return jwt.decode(token, JWT_SECRET, algorithms=["HS256"],
+                          options={"verify_sub": False})
     except Exception:
         return None
 
