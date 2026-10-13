@@ -19,6 +19,7 @@
 .acc-steel{ --acc:#0069aa; --acc-ink:#005483; --acc-soft:#e2f0fb; --acc-g1:#0b7cc2; --acc-g2:#005f9e; }
 .acc-navy { --acc:#1d4e74; --acc-ink:#163f60; --acc-soft:#e7eef6; --acc-g1:#2a608c; --acc-g2:#143b5c; }
 .acc-sky  { --acc:#1f8fbf; --acc-ink:#11688f; --acc-soft:#e2f4fc; --acc-g1:#29a3d2; --acc-g2:#0a74aa; }
+.acc-teal { --acc:#127d8e; --acc-ink:#0c5f6c; --acc-soft:#e1f3f5; --acc-g1:#199aad; --acc-g2:#0b6675; }
 
 *{box-sizing:border-box}
 html,body{margin:0}

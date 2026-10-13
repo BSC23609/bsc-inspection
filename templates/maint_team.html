@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Maintenance Team · {{ app_name }}{% endblock %}
+{% block tb_title %}Maintenance Team{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.mf label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.mf input,.mf select{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none}
+.mf input:focus,.mf select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.mf .row{display:grid;grid-template-columns:1fr 1fr 1.4fr auto;gap:12px;align-items:end}
+@media(max-width:720px){.mf .row{grid-template-columns:1fr 1fr}}
+.cat{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px;background:var(--acc-soft);color:var(--acc-ink)}
+</style>
+
+<div class="page-head"><h1>Maintenance Team</h1><p>Assign each maintenance category to a staff member. Electrical (and any category) can vary by location — add a location to override the default for that site. Assignees reuse the existing staff logins.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span>Assign a category</div>
+<div class="panel-body"><div class="mf"><div class="row">
+  <div><label>Category *</label><select id="t_cat"></select></div>
+  <div><label>Location</label><input id="t_loc" placeholder="blank = default"></div>
+  <div><label>Staff member *</label><select id="t_emp"></select></div>
+  <div><button class="btn btn-primary" onclick="tSave()">Assign</button></div>
+</div></div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('users',17) }}</span>Assignments<span class="sub" id="t_cnt"></span></div>
+<div class="panel-body"><div class="dgrid-wrap" id="t_rows"><div class="empty">Loading…</div></div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('users',17) }}</span>Available staff</div>
+<div class="panel-body"><div class="dgrid-wrap" id="t_staff"><div class="empty">Loading…</div></div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var STAFF=[],ASSIGN=[],CATS=['Hydraulic','Mechanical','Electrical'];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function opt(val,txt){return '<option value="'+esc(val)+'">'+esc(txt)+'</option>';}
+async function tLoad(){
+  try{var r=await fetch('/maint/team/data',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();
+    STAFF=d.staff||[];ASSIGN=d.assignments||[];if(d.categories)CATS=d.categories;}catch(e){document.getElementById('t_rows').innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  document.getElementById('t_cat').innerHTML=CATS.map(function(c){return opt(c,c);}).join('');
+  document.getElementById('t_emp').innerHTML='<option value="">— staff —</option>'+STAFF.map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''));}).join('');
+  renderAssign();renderStaff();
+}
+function renderAssign(){var host=document.getElementById('t_rows');
+  document.getElementById('t_cnt').textContent=ASSIGN.length?(ASSIGN.length+' mapping'+(ASSIGN.length===1?'':'s')):'';
+  if(!ASSIGN.length){host.innerHTML='<div class="empty">No assignments yet.</div>';return;}
+  var cols=[['Category','22%'],['Location','26%'],['Assigned to','28%'],['Mobile','14%'],['','10%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var body=ASSIGN.map(function(x){return '<tr><td><span class="cat">'+esc(x.category)+'</span></td>'
+    +'<td>'+(x.location?esc(x.location):'<span class="muted">default</span>')+'</td>'
+    +'<td>'+esc(x.emp_name||('#'+x.emp_id))+'</td><td>'+(x.emp_mobile?esc(x.emp_mobile):'<span class="muted">—</span>')+'</td>'
+    +'<td class="c"><a href="#" onclick="tDel('+x.id+');return false" class="ic-del">Remove</a></td></tr>';}).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+function renderStaff(){var host=document.getElementById('t_staff');
+  if(!STAFF.length){host.innerHTML='<div class="empty">No active staff.</div>';return;}
+  var cols=[['Code','20%'],['Name','45%'],['Mobile','35%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var body=STAFF.map(function(e){return '<tr><td>'+esc(e.emp_no||'')+'</td><td>'+esc(e.name||'')+'</td><td>'+(e.mobile?esc(e.mobile):'<span class="muted">—</span>')+'</td></tr>';}).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+async function tSave(){var p={category:v('t_cat'),location:v('t_loc').trim(),emp_id:v('t_emp')||null};
+  if(!p.category){toast('err','Pick a category');return;}if(!p.emp_id){toast('err','Pick a staff member');return;}
+  try{var r=await fetch('/maint/assignment/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');toast('ok','Assigned');document.getElementById('t_loc').value='';await tLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+async function tDel(id){if(!confirm('Remove this assignment?'))return;try{var r=await fetch('/maint/assignment/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok','Removed');await tLoad();}catch(e){toast('err','Failed');}}
+tLoad();
+</script>
+{% endblock %}

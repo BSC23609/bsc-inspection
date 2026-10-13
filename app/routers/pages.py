@@ -32,6 +32,20 @@ NAV_GROUPS = [
          {"name": "Quality Complaint", "icon": "msg", "desc": "Customer and internal complaints.",
           "href": "/complaint", "active_key": "complaint"},
      ]},
+    {"key": "maintenance", "title": "Maintenance", "accent": "teal", "icon": "wrench",
+     "blurb": "Assets, PM schedules, checklists and machine history.",
+     "items": [
+         {"name": "Maintenance Board", "icon": "gauge", "desc": "Due today, overdue and upcoming PM at a glance.",
+          "href": "/maint", "active_key": "maint"},
+         {"name": "Assets", "icon": "cube", "desc": "Machine / asset register with running hours.",
+          "href": "/maint/assets", "active_key": "maint_assets"},
+         {"name": "Checklists", "icon": "clipboard", "desc": "Per-asset check points, tagged by category.",
+          "href": "/maint/checklists", "active_key": "maint_checklists"},
+         {"name": "Schedules", "icon": "calendar", "desc": "PM cycles by date interval and running hours.",
+          "href": "/maint/schedules", "active_key": "maint_schedules"},
+         {"name": "Team", "icon": "users", "desc": "Assign categories to staff, by location.",
+          "href": "/maint/team", "active_key": "maint_team"},
+     ]},
     {"key": "generator", "title": "Generator", "accent": "sky", "icon": "bolt",
      "blurb": "Daily diesel generator running records.",
      "items": [
@@ -176,3 +190,27 @@ async def customers_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("customers.html", _ctx(request, emp, "customers", section="Customers"))
+
+
+# ---- Maintenance module pages ----
+_MAINT_PAGES = [
+    ("/maint", "maint_board.html", "maint", "Maintenance Board"),
+    ("/maint/assets", "maint_assets.html", "maint_assets", "Assets"),
+    ("/maint/checklists", "maint_checklists.html", "maint_checklists", "Checklists"),
+    ("/maint/schedules", "maint_schedules.html", "maint_schedules", "Schedules"),
+    ("/maint/team", "maint_team.html", "maint_team", "Maintenance Team"),
+]
+
+
+def _mk_maint_route(tmpl, active, section):
+    async def _page(request: Request):
+        emp = await current_employee(request)
+        if not emp:
+            return RedirectResponse("/login", status_code=303)
+        return templates.TemplateResponse(tmpl, _ctx(request, emp, active, section=section))
+    return _page
+
+
+for _path, _tmpl, _active, _section in _MAINT_PAGES:
+    router.add_api_route(_path, _mk_maint_route(_tmpl, _active, _section),
+                         methods=["GET"], response_class=HTMLResponse)

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Maintenance Board · {{ app_name }}{% endblock %}
+{% block tb_title %}Maintenance Board{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.stat{display:flex;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+.stat .s{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px 16px;min-width:120px;flex:1}
+.stat .s .n{font-size:24px;font-weight:800;line-height:1}.stat .s .l{font-size:11.5px;color:var(--ink-2);margin-top:4px}
+.s.over .n{color:#c23438}.s.due .n{color:#9a6508}.s.up .n{color:var(--acc-ink)}
+.mcard{border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:11px;padding:12px 14px;margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.mcard.over{border-left-color:#e5484d}.mcard.due{border-left-color:#e8a317}
+.mcard .ti{font-weight:700;font-size:13.5px}.mcard .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.mcard .sp{flex:1}
+.badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
+.b-over{background:#fdecec;color:#c23438}.b-due{background:#fff4e0;color:#9a6508}.b-up{background:var(--acc-soft);color:var(--acc-ink)}
+.sect-h{font-size:13px;font-weight:700;margin:18px 0 8px;display:flex;align-items:center;gap:8px}
+.scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
+.modal{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.modal .mh{padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px}
+.modal .mh b{font-size:15px}.modal .mb{padding:16px 18px}.modal .mf{padding:14px 18px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end}
+.cpx{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:9px}
+.cpx .q{font-size:13px;font-weight:600}.cpx .c{font-size:10px;font-weight:700;color:var(--acc-ink);background:var(--acc-soft);border-radius:20px;padding:1px 8px;margin-left:6px}
+.cpx .ctl{margin-top:8px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.cpx input,.cpx textarea{padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px;font-family:inherit}
+.okbtn{border:1px solid var(--line-2);background:#fff;border-radius:8px;padding:6px 12px;font-weight:700;font-size:12px;cursor:pointer}
+.okbtn.ok{background:#e3f6ee;border-color:#bfe6d2;color:#0a7d55}.okbtn.bad{background:#fdecec;border-color:#f3c7c7;color:#c23438}
+.lab{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.wf input{width:100%}
+</style>
+
+<div class="page-head"><h1>Maintenance Board</h1><p id="b_sub">Loading…</p></div>
+
+<div class="stat" id="b_stat"></div>
+
+<div id="b_sections"></div>
+
+<div class="panel" style="margin-top:18px"><div class="panel-head"><span class="hi">{{ icon('history',17) }}</span>Recent activity
+  <span class="sub"><a href="#" onclick="previewWA();return false" style="color:var(--acc-ink);font-weight:600">Preview WhatsApp reminders</a></span></div>
+<div class="panel-body"><div class="dgrid-wrap" id="b_recent"><div class="empty">Loading…</div></div></div></div>
+</div>
+
+<!-- complete modal -->
+<div class="scrim" id="scrim"><div class="modal">
+  <div class="mh">{{ icon('clipboard',18) }}<b id="m_title">Complete</b><span class="sp" style="flex:1"></span>
+    <a href="#" onclick="closeM();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb" id="m_body"></div>
+  <div class="mf"><button class="btn btn-ghost" onclick="closeM()">Cancel</button>
+    <button class="btn btn-primary" id="m_save" onclick="saveComplete()">Mark complete</button></div>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+var CUR=null;
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function cad(x){var p=[];if(x.freq_days)p.push('every '+x.freq_days+'d');if(x.hours_interval)p.push('every '+x.hours_interval+'h');return p.join(' · ');}
+async function load(){
+  try{var r=await fetch('/maint/board',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();}
+  catch(e){document.getElementById('b_sub').textContent='Couldn’t load the board.';return;}
+  document.getElementById('b_sub').textContent='Today '+d.today+' — what needs attention, by due date and running hours.';
+  document.getElementById('b_stat').innerHTML=
+    '<div class="s over"><div class="n">'+d.overdue.length+'</div><div class="l">Overdue</div></div>'
+   +'<div class="s due"><div class="n">'+d.due.length+'</div><div class="l">Due today</div></div>'
+   +'<div class="s up"><div class="n">'+d.upcoming.length+'</div><div class="l">Upcoming (7 days)</div></div>';
+  var html='';
+  html+=section('Overdue','over',d.overdue);
+  html+=section('Due now','due',d.due);
+  html+=section('Upcoming','up',d.upcoming);
+  if(!d.overdue.length&&!d.due.length&&!d.upcoming.length)html='<div class="empty">Nothing due. All maintenance is up to date. ✅</div>';
+  document.getElementById('b_sections').innerHTML=html;
+  renderRecent(d.recent||[]);
+}
+function section(label,cls,items){if(!items.length)return '';
+  var badge=cls==='over'?'b-over':(cls==='due'?'b-due':'b-up');
+  var h='<div class="sect-h"><span class="badge '+badge+'">'+label+'</span> '+items.length+'</div>';
+  h+=items.map(function(x){
+    var due=x.next_due?('Next due '+esc(x.next_due)):(x.hours_due?'Hours reached':'');
+    var who=x.assignee_name?('· '+esc(x.assignee_name)):'· unassigned';
+    return '<div class="mcard '+cls+'"><div><div class="ti">'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+' — '+esc(x.title||'')+'</div>'
+      +'<div class="meta">'+esc(cad(x))+' '+(due?('· '+due):'')+' '+who+'</div></div><div class="sp" style="flex:1"></div>'
+      +'<button class="btn btn-primary" onclick="openComplete('+x.id+')">Complete</button></div>';
+  }).join('');
+  return h;
+}
+function renderRecent(rows){var host=document.getElementById('b_recent');
+  if(!rows.length){host.innerHTML='<div class="empty">No maintenance recorded yet.</div>';return;}
+  var cols=[['When','16%'],['Asset','24%'],['Task','22%'],['By','16%'],['Hrs','9%'],['Result','13%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var body=rows.map(function(l){var st=l.status==='issues'?'<span class="badge b-due">Issues</span>':'<span class="badge b-up">Done</span>';
+    return '<tr><td>'+esc(String(l.done_at||'').slice(0,16).replace('T',' '))+'</td><td>'+esc((l.asset_code?l.asset_code+' ':'')+(l.asset_name||''))+'</td>'
+      +'<td>'+esc(l.sched_title||'')+'</td><td>'+esc(l.done_by||'')+'</td><td class="c">'+(l.running_hours!=null?esc(l.running_hours):'—')+'</td><td class="c">'+st+'</td></tr>';}).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+async function openComplete(sid){
+  try{var d=await (await fetch('/maint/do/get?schedule='+sid,{cache:'no-store'})).json();}catch(e){toast('err','Could not open');return;}
+  CUR={schedule:d.schedule,checkpoints:d.checkpoints||[]};
+  document.getElementById('m_title').textContent=(d.schedule.asset_code?d.schedule.asset_code+' ':'')+(d.schedule.asset_name||'')+' — '+(d.schedule.title||'');
+  var html='';
+  html+='<div class="lab">Running hours now</div><div class="wf"><input id="m_hours" type="number" step="0.1" placeholder="'+(d.schedule.asset_hours!=null?esc(d.schedule.asset_hours):'current hours')+'" style="margin-bottom:12px"></div>';
+  if(CUR.checkpoints.length){
+    html+=CUR.checkpoints.map(function(p,i){
+      var ctl='';
+      if(p.input_type==='value')ctl='<input data-i="'+i+'" class="cp-val" type="text" placeholder="reading'+(p.unit?(' ('+esc(p.unit)+')'):'')+'">'+(p.spec?'<span class="muted" style="font-size:11px">spec '+esc(p.spec)+'</span>':'');
+      else if(p.input_type==='text')ctl='<input data-i="'+i+'" class="cp-val" type="text" placeholder="note">';
+      else ctl='<button type="button" class="okbtn ok" data-i="'+i+'" data-ok="1" onclick="tgl(this)">OK</button>';
+      return '<div class="cpx"><div class="q">'+esc(p.text)+'<span class="c">'+esc(p.category||'')+'</span></div>'
+        +'<div class="ctl">'+ctl+' <input data-i="'+i+'" class="cp-rem" type="text" placeholder="remark (optional)" style="flex:1;min-width:120px"></div></div>';
+    }).join('');
+  } else { html+='<div class="muted" style="font-size:12.5px;margin-bottom:10px">No checklist attached — record hours and a remark.</div>'; }
+  html+='<div class="lab" style="margin-top:6px">Overall remarks</div><textarea id="m_rem" rows="2" style="width:100%"></textarea>';
+  document.getElementById('m_body').innerHTML=html;
+  document.getElementById('scrim').style.display='flex';
+}
+function tgl(b){var ok=b.getAttribute('data-ok')==='1';if(ok){b.setAttribute('data-ok','0');b.className='okbtn bad';b.textContent='Not OK';}
+  else{b.setAttribute('data-ok','1');b.className='okbtn ok';b.textContent='OK';}}
+function closeM(){document.getElementById('scrim').style.display='none';CUR=null;}
+async function saveComplete(){
+  if(!CUR)return;var results=[];
+  CUR.checkpoints.forEach(function(p,i){
+    var rem=document.querySelector('.cp-rem[data-i="'+i+'"]');var remv=rem?rem.value.trim():'';
+    if(p.input_type==='value'||p.input_type==='text'){var vi=document.querySelector('.cp-val[data-i="'+i+'"]');
+      results.push({cp_id:p.id,text:p.text,category:p.category,value:vi?vi.value.trim():'',ok:true,remark:remv});}
+    else{var bt=document.querySelector('.okbtn[data-i="'+i+'"]');var ok=bt?bt.getAttribute('data-ok')==='1':true;
+      results.push({cp_id:p.id,text:p.text,category:p.category,ok:ok,remark:remv});}
+  });
+  var hv=document.getElementById('m_hours');var payload={schedule_id:CUR.schedule.id,running_hours:hv?hv.value:'',
+    results:results,remarks:(document.getElementById('m_rem')||{}).value||''};
+  var b=document.getElementById('m_save');b.disabled=true;var l=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch('/maint/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
+    toast('ok','Recorded'+(d.next_due?(' · next due '+d.next_due):''));closeM();await load();}catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}
+}
+async function previewWA(){
+  try{var d=await (await fetch('/maint/reminders/preview',{cache:'no-store'})).json();}catch(e){toast('err','Could not preview');return;}
+  var n=(d.sent||[]).length, items=(d.sent||[]).concat(d.skipped||[]);
+  if(!items.length){toast('ok','Nothing due — no reminders to send');return;}
+  var lines=items.map(function(x){return x.state.toUpperCase()+': '+x.asset+' — '+(x.title||'')+'  →  '+(x.to||'no mobile')+'  ['+x.result+']';});
+  alert('WhatsApp reminder preview ('+d.today+')\n(dry run — nothing sent)\n\n'+lines.join('\n'));
+}
+document.getElementById('scrim').addEventListener('click',function(e){if(e.target===this)closeM();});
+load();
+</script>
+{% endblock %}

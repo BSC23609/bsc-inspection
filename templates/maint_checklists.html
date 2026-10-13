@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Checklists · {{ app_name }}{% endblock %}
+{% block tb_title %}Checklists{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.mf label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.mf input,.mf select{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none}
+.mf input:focus,.mf select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.cl-top{display:grid;grid-template-columns:1.4fr 1fr auto;gap:12px;align-items:end;margin-bottom:14px}
+@media(max-width:720px){.cl-top{grid-template-columns:1fr}}
+.cl-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.cl-chip{border:1px solid var(--line-2);background:#fff;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink-2)}
+.cl-chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.cp{display:grid;grid-template-columns:28px 1fr 130px 110px 90px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
+.cp .n{color:var(--muted);font-size:12px;text-align:center}
+.cp input,.cp select{padding:8px 9px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;background:#fff;width:100%}
+.cp .del{color:#c23438;cursor:pointer;text-align:center;font-weight:700}
+.cp-head{font-size:11px;color:var(--muted);font-weight:600}
+@media(max-width:860px){.cp{grid-template-columns:1fr 1fr;}.cp .n,.cp-head{display:none}}
+</style>
+
+<div class="page-head"><h1>Checklists</h1><p>Define what to check on each asset. Every checkpoint is tagged with a category (Hydraulic / Mechanical / Electrical) used to route the work to the right person.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('clipboard',17) }}</span>Checklist</div>
+<div class="panel-body"><div class="mf">
+  <div class="cl-top">
+    <div><label>Asset</label><select id="c_asset" onchange="loadChecklists()"></select></div>
+    <div><label>Checklist name</label><input id="c_name" placeholder="e.g. Daily line check"></div>
+    <div><button class="btn btn-ghost" onclick="newChecklist()">+ New checklist</button></div>
+  </div>
+  <div class="cl-list" id="c_chips"></div>
+  <input type="hidden" id="c_id">
+
+  <div style="border-top:1px solid var(--line);margin:14px 0 12px"></div>
+  <div class="cp cp-head"><div></div><div>Checkpoint</div><div>Category</div><div>Type</div><div>Unit</div><div>Spec / range</div><div></div></div>
+  <div id="c_points"></div>
+  <button class="btn btn-ghost" style="margin-top:4px" onclick="addRow()">+ Add checkpoint</button>
+
+  <div style="display:flex;gap:10px;align-items:center;margin-top:16px">
+    <button class="btn btn-ghost" id="c_del" style="display:none;color:#c23438" onclick="delChecklist()">Delete</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-primary" onclick="saveChecklist()">Save checklist</button>
+  </div>
+</div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var ASSETS=[],CATS=['Hydraulic','Mechanical','Electrical'],CHECKLISTS=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function opt(val,txt,sel){return '<option value="'+esc(val)+'"'+(sel==val?' selected':'')+'>'+esc(txt)+'</option>';}
+async function boot(){
+  try{var m=await (await fetch('/maint/meta',{cache:'no-store'})).json();if(m&&m.categories)CATS=m.categories;}catch(e){}
+  try{var r=await fetch('/maint/assets/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}ASSETS=await r.json();}catch(e){}
+  document.getElementById('c_asset').innerHTML=ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('')||'<option value="">No assets</option>';
+  addRow();loadChecklists();
+}
+async function loadChecklists(){
+  var aid=v('c_asset');if(!aid){document.getElementById('c_chips').innerHTML='';return;}
+  try{CHECKLISTS=await (await fetch('/maint/checklists/list?asset='+aid,{cache:'no-store'})).json();}catch(e){CHECKLISTS=[];}
+  document.getElementById('c_chips').innerHTML=CHECKLISTS.map(function(c){return '<span class="cl-chip" onclick="openChecklist('+c.id+')">'+esc(c.name)+' · '+(c.points||0)+'</span>';}).join('')||'<span class="muted" style="font-size:12.5px">No checklists yet for this asset.</span>';
+}
+function newChecklist(){document.getElementById('c_id').value='';document.getElementById('c_name').value='';
+  document.getElementById('c_points').innerHTML='';addRow();document.getElementById('c_del').style.display='none';
+  [].forEach.call(document.querySelectorAll('.cl-chip'),function(x){x.classList.remove('on');});}
+async function openChecklist(id){
+  try{var d=await (await fetch('/maint/checklist/get?id='+id,{cache:'no-store'})).json();}catch(e){toast('err','Could not open');return;}
+  document.getElementById('c_id').value=d.checklist.id;document.getElementById('c_name').value=d.checklist.name||'';
+  document.getElementById('c_points').innerHTML='';
+  (d.checkpoints||[]).forEach(function(p){addRow(p);});if(!(d.checkpoints||[]).length)addRow();
+  document.getElementById('c_del').style.display='';
+}
+function addRow(p){p=p||{};var wrap=document.createElement('div');wrap.className='cp';
+  wrap.innerHTML='<div class="n">•</div>'
+   +'<input class="cp-text" placeholder="e.g. Hydraulic oil level" value="'+esc(p.text||'')+'">'
+   +'<select class="cp-cat">'+CATS.map(function(c){return opt(c,c,p.category);}).join('')+'</select>'
+   +'<select class="cp-type">'+['check','value','text'].map(function(t){return opt(t,{check:'OK / Not OK',value:'Reading',text:'Note'}[t],p.input_type||'check');}).join('')+'</select>'
+   +'<input class="cp-unit" placeholder="bar / °C" value="'+esc(p.unit||'')+'">'
+   +'<input class="cp-spec" placeholder="e.g. 120–140" value="'+esc(p.spec||'')+'">'
+   +'<div class="del" title="Remove" onclick="this.parentNode.remove()">×</div>';
+  document.getElementById('c_points').appendChild(wrap);}
+function collect(){return [].map.call(document.querySelectorAll('#c_points .cp'),function(row){
+  return {text:row.querySelector('.cp-text').value.trim(),category:row.querySelector('.cp-cat').value,
+    input_type:row.querySelector('.cp-type').value,unit:row.querySelector('.cp-unit').value.trim(),
+    spec:row.querySelector('.cp-spec').value.trim()};}).filter(function(p){return p.text;});}
+async function saveChecklist(){
+  var p={id:v('c_id')||null,asset_id:v('c_asset')||null,name:v('c_name').trim(),checkpoints:collect()};
+  if(!p.asset_id){toast('err','Choose an asset');return;}if(!p.name){toast('err','Enter a checklist name');return;}
+  if(!p.checkpoints.length){toast('err','Add at least one checkpoint');return;}
+  try{var r=await fetch('/maint/checklist/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
+    toast('ok','Checklist saved');document.getElementById('c_id').value=d.id;document.getElementById('c_del').style.display='';await loadChecklists();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+async function delChecklist(){var id=v('c_id');if(!id)return;if(!confirm('Delete this checklist?'))return;
+  try{var r=await fetch('/maint/checklist/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');toast('ok','Deleted');newChecklist();await loadChecklists();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+boot();
+</script>
+{% endblock %}

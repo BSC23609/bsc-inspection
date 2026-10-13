@@ -35,3 +35,11 @@ WATI_OTP_TEMPLATE  = (os.environ.get("WATI_OTP_TEMPLATE")
                       or os.environ.get("WATI_TEMPLATE_NAME", ""))
 WATI_OTP_BROADCAST = os.environ.get("WATI_OTP_BROADCAST", "") or "bsc_qms_otp"
 WATI_OTP_PARAM     = os.environ.get("WATI_OTP_PARAM", "1")   # template body param name
+
+# Maintenance WhatsApp reminders (approved WATI templates; set when ready)
+WATI_MAINT_DUE_TEMPLATE      = os.environ.get("WATI_MAINT_DUE_TEMPLATE", "")
+WATI_MAINT_OVERDUE_TEMPLATE  = os.environ.get("WATI_MAINT_OVERDUE_TEMPLATE", "")
+MAINT_SUPERVISOR_MOBILE      = os.environ.get("MAINT_SUPERVISOR_MOBILE", "")  # overdue escalation
+
+# Shared agent token for protected cron endpoints (reminders) — matches the Node app
+AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "BSC@123")
