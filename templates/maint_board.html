@@ -102,8 +102,10 @@ async function openComplete(sid){
   if(CUR.checkpoints.length){
     html+=CUR.checkpoints.map(function(p,i){
       var ctl='';
-      if(p.input_type==='value')ctl='<input data-i="'+i+'" class="cp-val" type="text" placeholder="reading'+(p.unit?(' ('+esc(p.unit)+')'):'')+'">'+(p.spec?'<span class="muted" style="font-size:11px">spec '+esc(p.spec)+'</span>':'');
+      if(p.input_type==='value')ctl='<input data-i="'+i+'" class="cp-val" type="text" placeholder="reading'+(p.unit?(' ('+esc(p.unit)+')'):'')+'">'+(p.spec?'<span class="muted" style="font-size:11px">'+esc(p.spec)+'</span>':'');
       else if(p.input_type==='text')ctl='<input data-i="'+i+'" class="cp-val" type="text" placeholder="note">';
+      else if(p.input_type==='radio'){var opts=(p.spec||'OK, Not OK').split(',').map(function(s){return s.trim();}).filter(Boolean);
+        ctl=opts.map(function(o){return '<button type="button" class="okbtn" data-i="'+i+'" data-val="'+esc(o)+'" onclick="pick(this,'+i+')">'+esc(o)+'</button>';}).join(' ');}
       else ctl='<button type="button" class="okbtn ok" data-i="'+i+'" data-ok="1" onclick="tgl(this)">OK</button>';
       return '<div class="cpx"><div class="q">'+esc(p.text)+'<span class="c">'+esc(p.category||'')+'</span></div>'
         +'<div class="ctl">'+ctl+' <input data-i="'+i+'" class="cp-rem" type="text" placeholder="remark (optional)" style="flex:1;min-width:120px"></div></div>';
@@ -115,6 +117,10 @@ async function openComplete(sid){
 }
 function tgl(b){var ok=b.getAttribute('data-ok')==='1';if(ok){b.setAttribute('data-ok','0');b.className='okbtn bad';b.textContent='Not OK';}
   else{b.setAttribute('data-ok','1');b.className='okbtn ok';b.textContent='OK';}}
+function isBad(v){v=(v||'').toLowerCase();if(/no leakage/.test(v))return false;return /not ok|not done|\bnot\b|leakage|\bbad\b|\bfail/.test(v);}
+function pick(b,i){var sib=document.querySelectorAll('.okbtn[data-i="'+i+'"]');
+  for(var k=0;k<sib.length;k++){sib[k].classList.remove('ok','bad');sib[k].removeAttribute('data-sel');}
+  b.classList.add(isBad(b.getAttribute('data-val'))?'bad':'ok');b.setAttribute('data-sel','1');}
 function closeM(){document.getElementById('scrim').style.display='none';CUR=null;}
 async function saveComplete(){
   if(!CUR)return;var results=[];
@@ -122,6 +128,8 @@ async function saveComplete(){
     var rem=document.querySelector('.cp-rem[data-i="'+i+'"]');var remv=rem?rem.value.trim():'';
     if(p.input_type==='value'||p.input_type==='text'){var vi=document.querySelector('.cp-val[data-i="'+i+'"]');
       results.push({cp_id:p.id,text:p.text,category:p.category,value:vi?vi.value.trim():'',ok:true,remark:remv});}
+    else if(p.input_type==='radio'){var sel=document.querySelector('.okbtn[data-i="'+i+'"][data-sel="1"]');var val=sel?sel.getAttribute('data-val'):'';
+      results.push({cp_id:p.id,text:p.text,category:p.category,value:val,ok:!isBad(val),remark:remv});}
     else{var bt=document.querySelector('.okbtn[data-i="'+i+'"]');var ok=bt?bt.getAttribute('data-ok')==='1':true;
       results.push({cp_id:p.id,text:p.text,category:p.category,ok:ok,remark:remv});}
   });

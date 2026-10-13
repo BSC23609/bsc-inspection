@@ -77,7 +77,7 @@ function addRow(p){p=p||{};var wrap=document.createElement('div');wrap.className
   wrap.innerHTML='<div class="n">•</div>'
    +'<input class="cp-text" placeholder="e.g. Hydraulic oil level" value="'+esc(p.text||'')+'">'
    +'<select class="cp-cat">'+CATS.map(function(c){return opt(c,c,p.category);}).join('')+'</select>'
-   +'<select class="cp-type">'+['check','value','text'].map(function(t){return opt(t,{check:'OK / Not OK',value:'Reading',text:'Note'}[t],p.input_type||'check');}).join('')+'</select>'
+   +'<select class="cp-type">'+['check','radio','value','text'].map(function(t){return opt(t,{check:'OK / Not OK',radio:'Options',value:'Reading',text:'Note'}[t],p.input_type||'check');}).join('')+'</select>'
    +'<input class="cp-unit" placeholder="bar / °C" value="'+esc(p.unit||'')+'">'
    +'<input class="cp-spec" placeholder="e.g. 120–140" value="'+esc(p.spec||'')+'">'
    +'<div class="del" title="Remove" onclick="this.parentNode.remove()">×</div>';
