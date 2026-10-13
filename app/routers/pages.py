@@ -29,7 +29,8 @@ NAV_GROUPS = [
      "items": [
          {"name": "8D Report", "icon": "warn", "desc": "Problem solving D1–D8, from team to closure, in one report.",
           "href": "/eightd", "active_key": "eightd"},
-         {"name": "Quality Complaint", "icon": "msg", "desc": "Customer and internal complaints."},
+         {"name": "Quality Complaint", "icon": "msg", "desc": "Customer and internal complaints.",
+          "href": "/complaint", "active_key": "complaint"},
      ]},
     {"key": "generator", "title": "Generator", "accent": "sky", "icon": "bolt",
      "blurb": "Daily diesel generator running records.",
@@ -130,3 +131,11 @@ async def eightd_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("eightd.html", _ctx(request, emp, "eightd", section="8D Report"))
+
+
+@router.get("/complaint", response_class=HTMLResponse)
+async def complaint_page(request: Request):
+    emp = await current_employee(request)
+    if not emp:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("complaint.html", _ctx(request, emp, "complaint", section="Quality Complaint"))

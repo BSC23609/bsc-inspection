@@ -854,3 +854,111 @@ def build_8d_pdf(rep: dict) -> bytes:
                            ParagraphStyle("g", fontName="Helvetica", fontSize=7.5, textColor=MUT, alignment=2)))
     doc.build(story)
     return buf.getvalue()
+
+
+# ============================================================
+#  Quality Complaint — report PDF (portrait A4, navy)
+# ============================================================
+def build_complaint_pdf(rep: dict) -> bytes:
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=32, rightMargin=32,
+                            topMargin=24, bottomMargin=28)
+    st = {
+        "title": ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=15, textColor=NAVY, alignment=1, leading=18),
+        "sub": ParagraphStyle("s", fontName="Helvetica", fontSize=8.5, textColor=MUT, alignment=1),
+        "meta": ParagraphStyle("m", fontName="Helvetica-Bold", fontSize=9, textColor=NAVY, alignment=2, leading=12),
+        "sec": ParagraphStyle("se", fontName="Helvetica-Bold", fontSize=9.5, textColor=colors.white, leading=12),
+        "lab": ParagraphStyle("l", fontName="Helvetica", fontSize=8, textColor=MUT, leading=10),
+        "val": ParagraphStyle("v", fontName="Helvetica-Bold", fontSize=9, textColor=colors.HexColor("#0e1524"), leading=11),
+        "body": ParagraphStyle("b", fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#1f2937"), leading=13),
+    }
+    story = []
+    logo = ""
+    if os.path.exists(_LOGO):
+        try:
+            logo = Image(_LOGO, width=40 * mm, height=11 * mm, kind="proportional")
+        except Exception:
+            logo = ""
+    title_block = [Paragraph("QUALITY COMPLAINT", st["title"]),
+                   Paragraph((rep.get("source") or "Customer") + " complaint", st["sub"])]
+    meta = Paragraph(f"{rep.get('complaint_no') or '-'}<br/>{str(rep.get('qc_date') or '')[:10]}", st["meta"])
+    head = Table([[logo, title_block, meta]], colWidths=[125, None, 140])
+    head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                              ("LINEBELOW", (0, 0), (-1, 0), 1.1, NAVY), ("BOTTOMPADDING", (0, 0), (-1, 0), 8)]))
+    story.append(head)
+    story.append(Spacer(1, 10))
+    W = doc.width
+
+    def bar(title):
+        t = Table([[Paragraph(title, st["sec"])]], colWidths=[W])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), NAVY), ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                               ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        story.append(t)
+
+    def pairs(items, cols=3):
+        data, row = [], []
+        for lab, val in items:
+            row.append([Paragraph(lab, st["lab"]), Spacer(1, 1), Paragraph(_fmt(val) or "-", st["val"])])
+            if len(row) == cols:
+                data.append(row); row = []
+        if row:
+            while len(row) < cols:
+                row.append("")
+            data.append(row)
+        if data:
+            t = Table(data, colWidths=[W / float(cols)] * cols)
+            t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 5),
+                                   ("BOTTOMPADDING", (0, 0), (-1, -1), 5), ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                                   ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("BOX", (0, 0), (-1, -1), 0.4, GRID),
+                                   ("INNERGRID", (0, 0), (-1, -1), 0.3, GRID)]))
+            story.append(t)
+        story.append(Spacer(1, 10))
+
+    def block(title, text):
+        bar(title)
+        body = _fmt(text) or "—"
+        box = Table([[Paragraph(body.replace("\n", "<br/>"), st["body"])]], colWidths=[W])
+        box.setStyle(TableStyle([("BOX", (0, 0), (-1, -1), 0.4, GRID), ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                                 ("RIGHTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 7),
+                                 ("BOTTOMPADDING", (0, 0), (-1, -1), 7), ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fbfcfe"))]))
+        story.append(box)
+        story.append(Spacer(1, 10))
+
+    bar("COMPLAINT DETAILS")
+    pairs([("Complaint No", rep.get("complaint_no")), ("Source", rep.get("source")), ("Status", rep.get("status")),
+           ("Filed By", rep.get("filed_by")), ("QC Date", rep.get("qc_date")),
+           ("Customer", rep.get("customer_name")), ("Customer Email", rep.get("customer_email"))])
+
+    bar("MATERIAL DETAILS")
+    pairs([("Grade", rep.get("grade")), ("Dimensions", rep.get("dimensions")), ("Batch No", rep.get("batch_number")),
+           ("TC No", rep.get("tc_number")), ("Invoice No", rep.get("invoice_no")), ("Invoice Date", rep.get("invoice_date")),
+           ("Quantity (T)", rep.get("quantity")), ("Mill", rep.get("mill"))])
+
+    block("DEFECT DESCRIPTION", rep.get("defect_description"))
+
+    if _fmt(rep.get("vendor_name")) or _fmt(rep.get("vendor_email")):
+        bar("VENDOR ESCALATION")
+        pairs([("Vendor", rep.get("vendor_name")), ("Vendor Email", rep.get("vendor_email"))], cols=2)
+
+    if _fmt(rep.get("resolution")):
+        block("RESOLUTION", rep.get("resolution"))
+
+    assets = rep.get("assets") or {}
+    att = (assets.get("attachments") or {})
+    photos = assets.get("photos") or []
+    if att or photos:
+        lines = []
+        for k in ("po", "so", "tc", "invoice"):
+            a = att.get(k)
+            if a:
+                lines.append(f"{k.upper()}: {a.get('name') or a.get('path')}")
+        if photos:
+            lines.append(f"Defect photos: {len(photos)} attached (in OneDrive)")
+        block("ATTACHMENTS", "\n".join(lines))
+
+    gen = datetime.now().strftime("%d-%b-%Y %H:%M")
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"Bharat Steel (Chennai) Pvt. Ltd. &nbsp;·&nbsp; Filed by {_fmt(rep.get('created_by')) or '-'} &nbsp;·&nbsp; Generated {gen}",
+                           ParagraphStyle("g", fontName="Helvetica", fontSize=7.5, textColor=MUT, alignment=2)))
+    doc.build(story)
+    return buf.getvalue()

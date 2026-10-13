@@ -1,0 +1,252 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Quality Complaint · {{ app_name }}{% endblock %}
+{% block tb_title %}Quality Complaint{% endblock %}
+{% block content %}
+<div class="acc-navy">
+<style>
+.qc .field label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.qc .field .rq{color:#e5484d}
+.qc input,.qc textarea,.qc select{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+.qc textarea{min-height:64px;resize:vertical;line-height:1.5}
+.qc input:focus,.qc textarea:focus,.qc select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.qc input[readonly]{background:var(--surface-2);color:var(--ink-2);border-style:dashed;font-weight:600}
+.qc .row{display:grid;gap:12px;margin-bottom:12px}
+.qc .r2{grid-template-columns:1fr 1fr}.qc .r3{grid-template-columns:1fr 1fr 1fr}.qc .r4{grid-template-columns:1fr 1fr 1fr 1fr}
+@media(max-width:620px){.qc .r2,.qc .r3,.qc .r4{grid-template-columns:1fr}}
+.qc .pills{display:flex;flex-wrap:wrap;gap:8px}
+.qc .pill{border:1px solid var(--line-2);background:#fff;color:var(--ink-2);border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all .12s}
+.qc .pill:hover{border-color:var(--acc);color:var(--acc-ink)}
+.qc .pill.on{background:var(--acc);border-color:var(--acc);color:#fff;box-shadow:0 4px 12px -3px var(--acc)}
+.qc-sec{border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px;background:var(--surface-2)}
+.qc-sec .sh{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--acc-ink);margin:-2px 0 14px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.qc-sec .sh svg{color:var(--acc)}
+.qc .file{display:flex;align-items:center;gap:10px;border:1.5px dashed var(--line-2);border-radius:9px;padding:9px 12px;cursor:pointer;background:#fff;font-size:12.5px;color:var(--muted)}
+.qc .file.has{border-style:solid;border-color:var(--acc);color:var(--acc-ink);font-weight:600}
+.qc .file svg{color:var(--acc)}
+.qc .photo{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;height:92px;border:1.5px dashed var(--line-2);border-radius:9px;background:#fff;cursor:pointer;color:var(--muted);text-align:center;background-size:cover;background-position:center}
+.qc .photo.has{border-style:solid;border-color:var(--acc)}
+.qc .photo.has span{display:none}
+.badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
+.badge.open{background:#fdecec;color:#c23438}.badge.inv{background:#fff3e0;color:#9a6a1a}.badge.res{background:#e7eefb;color:#1d4e74}.badge.closed{background:#e3f6ee;color:#0a7d55}
+</style>
+
+<div class="page-head"><h1>Quality Complaint</h1>
+<p>Log a customer or vendor quality complaint — material details, defect description, documents and photos. Track each one to closure in the register.</p></div>
+
+<div class="kpis">
+  <div class="kpi"><span class="ki">{{ icon('hash',20) }}</span><div><div class="k-lab">Complaints this month</div><div class="k-val tnum" id="kpi_n">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('warn',20) }}</span><div><div class="k-lab">Open</div><div class="k-val tnum" id="kpi_open">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('inspect',20) }}</span><div><div class="k-lab">Under investigation</div><div class="k-val tnum" id="kpi_inv">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('file',20) }}</span><div><div class="k-lab">Closed</div><div class="k-val tnum" id="kpi_closed">0</div></div></div>
+</div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="qc_form_title">New complaint</span></div>
+<div class="panel-body"><div class="qc"><input type="hidden" id="qc_edit" value="">
+
+  <div class="qc-sec">
+    <div class="sh">{{ icon('complaints',15) }} Header Information</div>
+    <div class="field" style="margin-bottom:12px"><label>Source <span class="rq">*</span></label>
+      <div class="pills" id="qc_source"><button type="button" class="pill" data-v="Customer">Customer complaint</button><button type="button" class="pill" data-v="Vendor">Vendor / internal</button></div>
+      <input type="hidden" id="qc_source_v" value="Customer">
+    </div>
+    <div class="row r3">
+      <div class="field"><label>Complaint No</label><input id="qc_no" readonly placeholder="auto"></div>
+      <div class="field"><label>QC Date</label><input type="date" id="qc_date"></div>
+      <div class="field"><label>Filed By <span class="rq">*</span></label><input id="qc_filed_by" placeholder="Your name"></div>
+    </div>
+    <div class="row r2">
+      <div class="field"><label>Customer Name <span class="rq">*</span></label><input id="qc_customer" placeholder="Customer company name"></div>
+      <div class="field"><label>Customer Email</label><input id="qc_customer_email" placeholder="customer@example.com"></div>
+    </div>
+  </div>
+
+  <div class="qc-sec">
+    <div class="sh">{{ icon('coil',15) }} Material Details</div>
+    <div class="row r4">
+      <div class="field"><label>Grade <span class="rq">*</span></label><input id="qc_grade" placeholder="e.g. E250BR"></div>
+      <div class="field"><label>Dimensions <span class="rq">*</span></label><input id="qc_dim" placeholder="e.g. HR 4.8×1250"></div>
+      <div class="field"><label>Batch No <span class="rq">*</span></label><input id="qc_batch" placeholder="e.g. C105940205"></div>
+      <div class="field"><label>TC No</label><input id="qc_tc" placeholder="e.g. 20251239871"></div>
+    </div>
+    <div class="row r4">
+      <div class="field"><label>Invoice No</label><input id="qc_inv" placeholder="e.g. OS0020007759"></div>
+      <div class="field"><label>Invoice Date</label><input type="date" id="qc_inv_date"></div>
+      <div class="field"><label>Quantity (T)</label><input id="qc_qty" placeholder="e.g. 20.94"></div>
+      <div class="field"><label>Mill <span class="rq">*</span></label>
+        <div class="pills" id="qc_mill" style="margin-top:2px">
+          <button type="button" class="pill" data-v="SAIL">SAIL</button><button type="button" class="pill" data-v="NMDC">NMDC</button>
+          <button type="button" class="pill" data-v="RINL">RINL</button><button type="button" class="pill" data-v="JSW">JSW</button>
+          <button type="button" class="pill" data-v="Other">Other</button>
+        </div><input type="hidden" id="qc_mill_v">
+      </div>
+    </div>
+  </div>
+
+  <div class="qc-sec">
+    <div class="sh">{{ icon('warn',15) }} Defect Description</div>
+    <div class="field"><textarea id="qc_remarks" placeholder="e.g. Descales observed on coil surface; rejected at incoming inspection"></textarea></div>
+  </div>
+
+  <div class="qc-sec">
+    <div class="sh">{{ icon('file',15) }} Attachments</div>
+    <div class="row r4">
+      <div class="field"><label>PO</label><label class="file" id="f_po"><input type="file" hidden onchange="qcFile(this,'po')">{{ icon('file',16) }}<span class="t">Upload</span></label></div>
+      <div class="field"><label>SO</label><label class="file" id="f_so"><input type="file" hidden onchange="qcFile(this,'so')">{{ icon('file',16) }}<span class="t">Upload</span></label></div>
+      <div class="field"><label>TC</label><label class="file" id="f_tc"><input type="file" hidden onchange="qcFile(this,'tc')">{{ icon('file',16) }}<span class="t">Upload</span></label></div>
+      <div class="field"><label>Invoice</label><label class="file" id="f_invoice"><input type="file" hidden onchange="qcFile(this,'invoice')">{{ icon('file',16) }}<span class="t">Upload</span></label></div>
+    </div>
+    <div class="field" style="margin-top:4px"><label>Defect Photos</label>
+      <div class="row r4" id="qc_photos"></div>
+      <label class="file" id="qc_addphoto" style="margin-top:8px;width:auto;display:inline-flex"><input type="file" accept="image/*" hidden multiple onchange="qcAddPhotos(this)">{{ icon('coil',16) }}<span class="t">Add photos</span></label>
+    </div>
+  </div>
+
+  <div class="qc-sec">
+    <div class="sh">{{ icon('complaints',15) }} Vendor Escalation</div>
+    <div class="row r2">
+      <div class="field"><label>Vendor</label>
+        <div class="pills" id="qc_vendor">
+          <button type="button" class="pill" data-v="SAIL">SAIL</button><button type="button" class="pill" data-v="NMDC">NMDC</button>
+          <button type="button" class="pill" data-v="RINL">RINL</button><button type="button" class="pill" data-v="JSW">JSW</button>
+          <button type="button" class="pill" data-v="Other">Other</button>
+        </div><input type="hidden" id="qc_vendor_v">
+      </div>
+      <div class="field"><label>Vendor Email</label><input id="qc_vendor_email" placeholder="vendor@example.com"></div>
+    </div>
+  </div>
+
+  <div class="qc-sec">
+    <div class="sh">{{ icon('inspect',15) }} Status &amp; Resolution</div>
+    <div class="field" style="margin-bottom:12px"><label>Status</label>
+      <div class="pills" id="qc_status">
+        <button type="button" class="pill" data-v="Open">Open</button>
+        <button type="button" class="pill" data-v="Under Investigation">Under Investigation</button>
+        <button type="button" class="pill" data-v="Resolved">Resolved</button>
+        <button type="button" class="pill" data-v="Closed">Closed</button>
+      </div><input type="hidden" id="qc_status_v" value="Open">
+    </div>
+    <div class="field"><label>Resolution / Corrective Action</label><textarea id="qc_resolution" placeholder="How the complaint was investigated and resolved"></textarea></div>
+  </div>
+
+  <div style="position:sticky;bottom:0;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:14px 2px">
+    <button class="btn btn-ghost" id="qc_cancel" style="display:none" onclick="qcReset(true)">Cancel</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-primary" id="qc_save" onclick="qcSubmit()">Save complaint</button>
+  </div>
+</div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('bars',17) }}</span>Complaint register<span class="sub" id="qc_cnt"></span></div>
+<div class="panel-body">
+  <input id="qc_search" oninput="qcRender()" placeholder="Search complaint / customer / grade / batch / vendor…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
+  <div class="dgrid-wrap" id="qc_rows"><div class="empty">Loading…</div></div>
+</div></div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var QC=[]; var qcAttach={}, qcPhotos=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function sv(id,val){var e=document.getElementById(id);if(e)e.value=(val==null?'':val);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function pad(n){return('0'+n).slice(-2);}
+function today(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());}
+function curMon(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1);}
+
+function pillGroup(gid,hid){document.addEventListener('click',function(e){var b=e.target.closest?e.target.closest('#'+gid+' .pill'):null;
+  if(b){document.querySelectorAll('#'+gid+' .pill').forEach(function(p){p.classList.toggle('on',p===b);});document.getElementById(hid).value=b.getAttribute('data-v');}});}
+['qc_source:qc_source_v','qc_mill:qc_mill_v','qc_vendor:qc_vendor_v','qc_status:qc_status_v'].forEach(function(m){var p=m.split(':');pillGroup(p[0],p[1]);});
+function setPill(gid,hid,val){sv(hid,val||'');document.querySelectorAll('#'+gid+' .pill').forEach(function(p){p.classList.toggle('on',p.getAttribute('data-v')===val);});}
+
+function qcFile(inp,key){var f=inp.files&&inp.files[0];if(!f)return;
+  var rd=new FileReader();rd.onload=function(){qcAttach[key]={name:f.name,data:rd.result};var box=document.getElementById('f_'+key);box.classList.add('has');box.querySelector('.t').textContent=f.name.slice(0,18);};rd.readAsDataURL(f);}
+function qcAddPhotos(inp){Array.from(inp.files||[]).forEach(function(f){var img=new Image(),rd=new FileReader();
+  rd.onload=function(){img.onload=function(){var max=1600,w=img.width,h=img.height;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;}}
+    var cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);qcPhotos.push(cv.toDataURL('image/jpeg',0.82));qcRenderPhotos();};img.src=rd.result;};rd.readAsDataURL(f);});inp.value='';}
+function qcRenderPhotos(){var h=document.getElementById('qc_photos');h.innerHTML=qcPhotos.map(function(p,i){return '<div class="photo has" style="background-image:url('+p+')" title="Remove" onclick="qcPhotos.splice('+i+',1);qcRenderPhotos()"></div>';}).join('');}
+
+async function qcNext(){try{var r=await fetch('/complaint/next-number',{cache:'no-store'});if(r.ok){var d=await r.json();sv('qc_no',d.complaint_no);}}catch(e){}}
+async function qcReset(scroll){
+  document.getElementById('qc_edit').value='';
+  document.getElementById('qc_form_title').textContent='New complaint';
+  document.getElementById('qc_save').textContent='Save complaint';
+  document.getElementById('qc_cancel').style.display='none';
+  ['qc_filed_by','qc_customer','qc_customer_email','qc_grade','qc_dim','qc_batch','qc_tc','qc_inv','qc_inv_date','qc_qty','qc_remarks','qc_vendor_email','qc_resolution'].forEach(function(i){sv(i,'');});
+  setPill('qc_source','qc_source_v','Customer');setPill('qc_mill','qc_mill_v','');setPill('qc_vendor','qc_vendor_v','');setPill('qc_status','qc_status_v','Open');
+  qcAttach={};qcPhotos=[];qcRenderPhotos();
+  ['po','so','tc','invoice'].forEach(function(k){var b=document.getElementById('f_'+k);if(b){b.classList.remove('has');b.querySelector('.t').textContent='Upload';}});
+  sv('qc_date',today());
+  await qcNext();
+  if(scroll)window.scrollTo({top:0,behavior:'smooth'});
+}
+async function qcLoad(){
+  var h=document.getElementById('qc_rows');h.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/complaint/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}QC=await r.json();if(!Array.isArray(QC))QC=[];}
+  catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load the register. Try again.</div>';return;}
+  qcRender();
+}
+function stBadge(s){s=String(s||'').toLowerCase();if(s.indexOf('close')>=0)return'<span class="badge closed">Closed</span>';if(s.indexOf('resolve')>=0)return'<span class="badge res">Resolved</span>';if(s.indexOf('invest')>=0)return'<span class="badge inv">Investigating</span>';return'<span class="badge open">Open</span>';}
+function qcRender(){
+  var host=document.getElementById('qc_rows'),q=(v('qc_search')||'').toLowerCase();
+  var mon=curMon(),n=0,op=0,iv=0,cl=0;
+  QC.forEach(function(x){var dt=String(x.qc_date||x.created_at||'').slice(0,7);if(dt===mon)n++;var s=String(x.status||'').toLowerCase();if(s.indexOf('close')>=0)cl++;else if(s.indexOf('invest')>=0)iv++;else if(s.indexOf('resolve')<0)op++;});
+  document.getElementById('kpi_n').textContent=n;document.getElementById('kpi_open').textContent=op;
+  document.getElementById('kpi_inv').textContent=iv;document.getElementById('kpi_closed').textContent=cl;
+  var rows=QC.filter(function(x){if(!q)return true;return [x.complaint_no,x.customer_name,x.grade,x.batch_number,x.vendor_name,x.mill].join(' ').toLowerCase().indexOf(q)>=0;});
+  document.getElementById('qc_cnt').textContent=QC.length?(QC.length+' complaint'+(QC.length===1?'':'s')):'';
+  if(!rows.length){host.innerHTML='<div class="empty">'+(QC.length?'No complaints match your search.':'No complaints yet. Fill the form above and save.')+'</div>';return;}
+  var cols=[['Complaint No','15%'],['Date','9%'],['Customer','16%'],['Grade','9%'],['Batch','12%'],['Qty (T)','7%'],['Mill','7%'],['Status','11%'],['','8%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var g=function(a){return(a===''||a==null)?'':esc(a);};
+  var body=rows.map(function(x){
+    return'<tr><td>'+g(x.complaint_no)+'</td><td>'+g(String(x.qc_date||'').slice(0,10))+'</td><td>'+g(x.customer_name)+'</td>'
+      +'<td class="c">'+g(x.grade)+'</td><td>'+g(x.batch_number)+'</td><td class="c">'+g(x.quantity)+'</td><td class="c">'+g(x.mill)+'</td><td class="c">'+stBadge(x.status)+'</td>'
+      +'<td class="c"><a href="/complaint/pdf?complaint_no='+encodeURIComponent(x.complaint_no||'')+'" target="_blank" class="ic-edit">PDF</a> <a href="#" onclick="qcEdit(\''+encodeURIComponent(x.complaint_no||'')+'\');return false" class="ic-edit">Edit</a><br><a href="#" onclick="qcDel(\''+encodeURIComponent(x.complaint_no||'')+'\');return false" class="ic-del">Del</a></td></tr>';
+  }).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+async function qcEdit(cno){
+  cno=decodeURIComponent(cno);
+  var r;try{r=await fetch('/complaint/record?complaint_no='+encodeURIComponent(cno),{cache:'no-store'});}catch(e){toast('err','Couldn’t load complaint');return;}
+  if(!r.ok){toast('err','Couldn’t load complaint');return;}var d=await r.json();
+  await qcReset(false);
+  document.getElementById('qc_edit').value=cno;sv('qc_no',d.complaint_no||cno);
+  sv('qc_date',String(d.qc_date||'').slice(0,10));sv('qc_filed_by',d.filed_by||'');
+  sv('qc_customer',d.customer_name||'');sv('qc_customer_email',d.customer_email||'');
+  sv('qc_grade',d.grade||'');sv('qc_dim',d.dimensions||'');sv('qc_batch',d.batch_number||'');sv('qc_tc',d.tc_number||'');
+  sv('qc_inv',d.invoice_no||'');sv('qc_inv_date',String(d.invoice_date||'').slice(0,10));sv('qc_qty',d.quantity||'');
+  sv('qc_remarks',d.defect_description||'');sv('qc_vendor_email',d.vendor_email||'');sv('qc_resolution',d.resolution||'');
+  setPill('qc_source','qc_source_v',d.source||'Customer');setPill('qc_mill','qc_mill_v',d.mill||'');setPill('qc_vendor','qc_vendor_v',d.vendor_name||'');setPill('qc_status','qc_status_v',d.status||'Open');
+  document.getElementById('qc_form_title').textContent='Edit '+cno;
+  document.getElementById('qc_save').textContent='Update complaint';
+  document.getElementById('qc_cancel').style.display='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+async function qcSubmit(){
+  var p={complaint_no:v('qc_no'),source:v('qc_source_v')||'Customer',filed_by:v('qc_filed_by'),qc_date:v('qc_date'),
+    customer_name:v('qc_customer'),customer_email:v('qc_customer_email'),grade:v('qc_grade'),dimensions:v('qc_dim'),
+    batch_number:v('qc_batch'),tc_number:v('qc_tc'),invoice_no:v('qc_inv'),invoice_date:v('qc_inv_date'),quantity:v('qc_qty'),
+    mill:v('qc_mill_v'),vendor_name:v('qc_vendor_v'),vendor_email:v('qc_vendor_email'),defect_description:v('qc_remarks'),
+    status:v('qc_status_v')||'Open',resolution:v('qc_resolution'),attachments:qcAttach,photos:qcPhotos};
+  if(!p.complaint_no){toast('err','No complaint number — reload the page');return;}
+  if(!p.filed_by){toast('err','Enter who is filing');return;}
+  if(!p.customer_name){toast('err','Enter the customer name');return;}
+  if(!p.grade){toast('err','Enter the grade');return;}
+  if(!p.batch_number){toast('err','Enter the batch number');return;}
+  if(!p.defect_description){toast('err','Enter the defect description');return;}
+  var b=document.getElementById('qc_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch('/complaint/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
+    toast('ok','Complaint '+(d.complaint_no||p.complaint_no)+' saved · PDF + register updated');
+    await qcReset(false);await qcLoad();window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){toast('err','Couldn’t save: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=lbl;}
+}
+async function qcDel(cno){cno=decodeURIComponent(cno);if(!confirm('Delete complaint '+cno+'?'))return;
+  try{var r=await fetch('/complaint/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({complaint_no:cno})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error('failed');toast('ok','Complaint deleted');await qcLoad();
+  }catch(e){toast('err','Couldn’t delete the complaint');}}
+(function(){qcReset(false);qcLoad();})();
+</script>
+{% endblock %}
