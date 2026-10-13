@@ -1,66 +1,244 @@
-{% extends "base.html" %}
-{% from "_icons.html" import icon %}
-{% block title %}Customers · {{ app_name }}{% endblock %}
-{% block tb_title %}Customers{% endblock %}
-{% block content %}
-<div class="acc-steel">
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Customer Complaint Portal · {{ app_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
-.badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
-.badge.on{background:#e3f6ee;color:#0a7d55}.badge.off{background:#fdecec;color:#c23438}
-.cu-stat{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
-.cu-stat .s{background:#fff;border:1px solid var(--line-2);border-radius:11px;padding:10px 14px;min-width:120px}
-.cu-stat .s .n{font-size:20px;font-weight:800;color:var(--blue-ink);line-height:1}
-.cu-stat .s .l{font-size:11px;color:var(--ink-2);margin-top:3px}
-.cu a.mail{color:var(--blue-ink);text-decoration:none}.cu a.mail:hover{text-decoration:underline}
+:root{--blue:#0069aa;--blue-ink:#00537f;--blue-soft:#e4f1fb;--ink:#0e1524;--ink2:#38445a;--muted:#5d6879;--line:#e2e8f2;--line2:#d2dbe8;--bg:#eef3f9}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:"Inter",system-ui,-apple-system,Arial,sans-serif;font-size:14px;line-height:1.5;-webkit-font-smoothing:antialiased}
+.top{background:linear-gradient(160deg,#082438,#0d3a5c);color:#fff;padding:18px 20px}
+.top-in{max-width:720px;margin:0 auto;display:flex;align-items:center;gap:14px}
+.top .mark{background:#fff;border-radius:10px;padding:7px 10px;display:flex}.top .mark img{height:26px;display:block}
+.top h1{font-size:18px;font-weight:700;margin:0;letter-spacing:-.3px}
+.top p{margin:2px 0 0;font-size:12.5px;color:#aecbe3}
+.top .who{margin-left:auto;text-align:right;font-size:12.5px;color:#cfe2f3}
+.top .who b{display:block;color:#fff;font-size:13.5px;font-weight:700}
+.logout{margin-top:4px;background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.25);color:#fff;border-radius:8px;padding:4px 10px;font-size:12px;font-weight:600;cursor:pointer}
+.logout:hover{background:rgba(255,255,255,.24)}
+.wrap{max-width:720px;margin:20px auto;padding:0 16px 48px}
+.card{background:#fff;border:1px solid var(--line);border-radius:16px;box-shadow:0 6px 20px rgba(8,36,56,.06);padding:22px;margin-bottom:16px}
+.card h2{font-size:16px;margin:0 0 4px;font-weight:700}
+.card .lead{color:var(--muted);font-size:13px;margin:0 0 16px}
+.field{margin-bottom:13px}
+.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink2);margin-bottom:5px}
+.field .rq{color:#e5484d}
+input,textarea{width:100%;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;font-family:inherit;font-size:14px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+textarea{min-height:90px;resize:vertical;line-height:1.5}
+input:focus,textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+.row{display:grid;gap:12px}.r2{grid-template-columns:1fr 1fr}
+@media(max-width:560px){.r2{grid-template-columns:1fr}}
+.photos{display:flex;flex-wrap:wrap;gap:10px;margin-top:8px}
+.ph{width:72px;height:72px;border-radius:10px;border:1px solid var(--line2);background-size:cover;background-position:center;cursor:pointer}
+.addph{display:inline-flex;align-items:center;gap:8px;border:1.5px dashed var(--line2);border-radius:10px;padding:10px 14px;cursor:pointer;color:var(--muted);font-size:13px;font-weight:600;background:#fff}
+.btn{border:none;border-radius:11px;padding:13px 20px;font-weight:700;font-size:14.5px;font-family:inherit;cursor:pointer;width:100%;background:var(--blue);color:#fff;box-shadow:0 6px 16px rgba(0,105,170,.28)}
+.btn:hover{background:var(--blue-ink)}.btn:disabled{opacity:.6}
+.btn-sm{width:auto;padding:10px 16px;font-size:13.5px}
+.ok{text-align:center;padding:10px 4px}
+.ok .big{width:64px;height:64px;border-radius:50%;background:#e3f6ee;color:#0a7d55;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:30px}
+.ok .ref{font-size:22px;font-weight:800;color:var(--blue-ink);letter-spacing:.5px;margin:6px 0}
+.muted{color:var(--muted)}.err{background:#fdecec;color:#b4302f;border:1px solid #f3c7c7;border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:12px;display:none}
+.foot{text-align:center;color:var(--muted);font-size:11.5px;margin-top:6px}
+.foot a{color:var(--blue-ink)}
+.login-wrap{max-width:420px;margin:48px auto;padding:0 16px}
+.ro{background:#f3f7fc;border-color:var(--line)}
+.cmp{display:inline-flex;align-items:center;gap:8px;background:var(--blue-soft);color:var(--blue-ink);border-radius:999px;padding:5px 12px;font-weight:700;font-size:12.5px;margin-bottom:14px}
+.mine{display:flex;flex-direction:column;gap:10px}
+.mi{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.mi .h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mi .ref{font-weight:700;color:var(--blue-ink)}
+.mi .dt{color:var(--muted);font-size:12px;margin-left:auto}
+.mi .df{margin:6px 0 0;color:var(--ink2);font-size:13px}
+.mi .msg{margin-top:7px;background:var(--blue-soft);border:1px solid #bcdcf3;border-radius:9px;padding:8px 10px;font-size:12.5px}
+.badge{display:inline-block;padding:3px 10px;border-radius:999px;font-size:11.5px;font-weight:700}
+.b-recv{background:#eef2f7;color:#425066}.b-prog{background:#fff4e0;color:#9a6508}.b-done{background:#e3f6ee;color:#0a7d55}.b-shared{background:#e4f1fb;color:#00537f}
+.tabs{display:flex;gap:6px;margin-bottom:14px}
+.tab{flex:1;text-align:center;padding:9px;border:1px solid var(--line2);background:#fff;border-radius:10px;font-weight:700;font-size:13px;color:var(--ink2);cursor:pointer}
+.tab.on{background:var(--blue);color:#fff;border-color:var(--blue)}
 </style>
+</head>
+<body>
 
-<div class="page-head"><h1>Customers</h1>
-<p>Customer accounts from the existing customer database — the same logins used to raise and track quality complaints on the customer portal. This list is read directly from the live customer records.</p></div>
+{% if customer %}
+<!-- ================= PORTAL (signed in) ================= -->
+<div class="top"><div class="top-in">
+  <span class="mark"><img src="/static/bsc-logo.png" alt="Bharat Steel"></span>
+  <div><h1>Customer Complaint Portal</h1><p>Bharat Steel (Chennai) Pvt. Ltd.</p></div>
+  <div class="who"><span>Signed in</span><b>{{ customer.company or customer.contact or customer.email }}</b>
+    <button class="logout" onclick="logout()">Sign out</button></div>
+</div></div>
 
-<div class="panel"><div class="panel-head"><span class="hi">{{ icon('store',17) }}</span>Customer accounts<span class="sub" id="c_cnt"></span></div>
-<div class="panel-body"><div class="cu">
-  <div class="cu-stat" id="c_stat"></div>
-  <input id="c_search" oninput="cRender()" placeholder="Search company / contact / email / phone…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
-  <div class="dgrid-wrap" id="c_rows"><div class="empty">Loading…</div></div>
-</div></div></div>
+<div class="wrap">
+  <div class="tabs">
+    <div class="tab on" id="tab_raise" onclick="showTab('raise')">Raise a complaint</div>
+    <div class="tab" id="tab_mine" onclick="showTab('mine')">My complaints</div>
+  </div>
 
+  <!-- raise -->
+  <div id="pane_raise">
+    <div class="card" id="form_card">
+      <div class="cmp">🏢 {{ customer.company or customer.contact or customer.email }}</div>
+      <h2>Tell us what went wrong</h2>
+      <p class="lead">Fill in the details below and attach photos if you have them. You’ll get a reference number to track your complaint.</p>
+      <div class="err" id="err"></div>
+      <div class="row r2">
+        <div class="field"><label>Contact person</label><input id="f_contact" placeholder="Your name"></div>
+        <div class="field"><label>Phone</label><input id="f_phone" placeholder="Mobile number"></div>
+      </div>
+      <div class="field"><label>Email</label><input id="f_email" type="email" placeholder="you@company.com"></div>
+      <div class="row r2">
+        <div class="field"><label>Invoice No</label><input id="f_inv" placeholder="e.g. OS0020007759"></div>
+        <div class="field"><label>Batch / Coil No</label><input id="f_batch" placeholder="e.g. C105940205"></div>
+      </div>
+      <div class="row r2">
+        <div class="field"><label>Grade</label><input id="f_grade" placeholder="e.g. E250BR"></div>
+        <div class="field"><label>Dimensions</label><input id="f_dim" placeholder="e.g. HR 4.8×1250"></div>
+      </div>
+      <div class="field"><label>Quantity affected</label><input id="f_qty" placeholder="e.g. 20.9 T / 40 sheets"></div>
+      <div class="field"><label>Describe the issue <span class="rq">*</span></label><textarea id="f_defect" placeholder="What is the problem? When and how did you notice it?"></textarea></div>
+      <div class="field"><label>Photos (optional)</label>
+        <div class="photos" id="ph_prev"></div>
+        <label class="addph" style="margin-top:8px"><input type="file" accept="image/*" multiple hidden onchange="addPhotos(this)">📷 Add photos</label>
+      </div>
+      <button class="btn" id="submit" onclick="submitComplaint()">Submit complaint</button>
+      <div class="foot" style="margin-top:14px">Or reach us on WhatsApp: <a href="https://wa.me/919884384261" target="_blank">+91 98843 84261</a></div>
+    </div>
+
+    <div class="card" id="ok_card" style="display:none">
+      <div class="ok">
+        <div class="big">✓</div>
+        <h2>Complaint received</h2>
+        <p class="muted">Thank you. Our quality team will review it shortly.</p>
+        <div class="ref" id="ok_ref"></div>
+        <p class="muted" style="font-size:12.5px">You can follow its progress under “My complaints”.</p>
+        <button class="btn btn-sm" style="margin-top:8px" onclick="resetForm()">File another</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- mine -->
+  <div id="pane_mine" style="display:none">
+    <div class="card">
+      <h2>My complaints</h2>
+      <p class="lead">All complaints raised from your account, newest first.</p>
+      <div id="mine_list" class="mine"><p class="muted">Loading…</p></div>
+    </div>
+  </div>
 </div>
-{% endblock %}
-{% block scripts %}
+
 <script>
-var CUST=[];
+var ME = {{ customer_json|safe }};
+var PHOTOS=[];
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function showErr(m){var e=document.getElementById('err');e.textContent=m;e.style.display='block';window.scrollTo({top:0,behavior:'smooth'});}
 
-async function cLoad(){
-  var h=document.getElementById('c_rows');h.innerHTML='<div class="empty">Loading…</div>';
-  try{var r=await fetch('/admin/customers',{cache:'no-store'});if(r.status===401){location.href='/login';return;}
-    CUST=await r.json();if(!Array.isArray(CUST))CUST=[];}
-  catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load customers. Try again.</div>';return;}
-  cRender();
+// prefill from account
+(function(){
+  if(ME){ if(ME.contact)document.getElementById('f_contact').value=ME.contact;
+    if(ME.email)document.getElementById('f_email').value=ME.email;
+    if(ME.phone)document.getElementById('f_phone').value=ME.phone; }
+})();
+
+function showTab(t){
+  document.getElementById('tab_raise').classList.toggle('on',t==='raise');
+  document.getElementById('tab_mine').classList.toggle('on',t==='mine');
+  document.getElementById('pane_raise').style.display=t==='raise'?'':'none';
+  document.getElementById('pane_mine').style.display=t==='mine'?'':'none';
+  if(t==='mine')loadMine();
 }
-function cRender(){
-  var host=document.getElementById('c_rows'),q=(v('c_search')||'').toLowerCase();
-  var rows=CUST.filter(function(x){if(!q)return true;return [x.company,x.contact,x.email,x.phone].join(' ').toLowerCase().indexOf(q)>=0;});
-  var active=CUST.filter(function(x){return x.active;}).length;
-  document.getElementById('c_cnt').textContent=CUST.length?(CUST.length+' customer'+(CUST.length===1?'':'s')):'';
-  document.getElementById('c_stat').innerHTML= CUST.length
-    ? '<div class="s"><div class="n">'+CUST.length+'</div><div class="l">Total customers</div></div>'
-      +'<div class="s"><div class="n">'+active+'</div><div class="l">Active</div></div>'
-      +'<div class="s"><div class="n">'+(CUST.length-active)+'</div><div class="l">Inactive</div></div>'
-    : '';
-  if(!rows.length){host.innerHTML='<div class="empty">'+(CUST.length?'No customers match your search.':'No customer accounts found.')+'</div>';return;}
-  var cols=[['Company','26%'],['Contact','20%'],['Email','26%'],['Phone','14%'],['Status','14%']];
-  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
-  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
-  var g=function(a){return(a===''||a==null)?'<span class="muted">—</span>':esc(a);};
-  var body=rows.map(function(x){
-    var st=x.active?'<span class="badge on">Active</span>':'<span class="badge off">Inactive</span>';
-    var mail=x.email?'<a class="mail" href="mailto:'+esc(x.email)+'">'+esc(x.email)+'</a>':'<span class="muted">—</span>';
-    return'<tr><td>'+g(x.company)+'</td><td>'+g(x.contact)+'</td><td>'+mail+'</td><td>'+g(x.phone)+'</td><td class="c">'+st+'</td></tr>';
-  }).join('');
-  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+function resetForm(){
+  PHOTOS=[];renderPhotos();
+  ['f_inv','f_batch','f_grade','f_dim','f_qty','f_defect'].forEach(function(id){document.getElementById(id).value='';});
+  document.getElementById('ok_card').style.display='none';
+  document.getElementById('form_card').style.display='';
 }
-cLoad();
+function addPhotos(inp){Array.from(inp.files||[]).slice(0,6).forEach(function(f){var img=new Image(),rd=new FileReader();
+  rd.onload=function(){img.onload=function(){var max=1400,w=img.width,h=img.height;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;}}
+    var cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+    if(PHOTOS.length<6){PHOTOS.push(cv.toDataURL('image/jpeg',0.8));renderPhotos();}};img.src=rd.result;};rd.readAsDataURL(f);});inp.value='';}
+function renderPhotos(){document.getElementById('ph_prev').innerHTML=PHOTOS.map(function(p,i){return '<div class="ph" style="background-image:url('+p+')" title="Remove" onclick="PHOTOS.splice('+i+',1);renderPhotos()"></div>';}).join('');}
+
+async function submitComplaint(){
+  document.getElementById('err').style.display='none';
+  var p={contact_name:v('f_contact').trim(),email:v('f_email').trim(),phone:v('f_phone').trim(),
+    invoice_no:v('f_inv').trim(),batch_number:v('f_batch').trim(),grade:v('f_grade').trim(),dimensions:v('f_dim').trim(),
+    quantity:v('f_qty').trim(),defect_description:v('f_defect').trim(),photos:PHOTOS};
+  if(!p.defect_description){showErr('Please describe the issue.');return;}
+  var b=document.getElementById('submit');b.disabled=true;var lbl=b.textContent;b.textContent='Submitting…';
+  try{var r=await fetch('/customer/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    if(r.status===401){location.reload();return;}
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Submit failed');
+    document.getElementById('ok_ref').textContent=d.ref;
+    document.getElementById('form_card').style.display='none';
+    document.getElementById('ok_card').style.display='';
+    window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){showErr('Couldn’t submit: '+((e&&e.message)||e));b.disabled=false;b.textContent=lbl;}
+}
+
+function badgeClass(s){s=(s||'').toLowerCase();
+  if(s.indexOf('resolv')>=0||s==='closed')return'b-done';
+  if(s.indexOf('shared')>=0)return'b-shared';
+  if(s==='received')return'b-recv';
+  return'b-prog';}
+async function loadMine(){
+  var box=document.getElementById('mine_list');box.innerHTML='<p class="muted">Loading…</p>';
+  try{var r=await fetch('/customer/mine',{cache:'no-store'});
+    if(r.status===401){location.reload();return;}
+    var d=await r.json();var items=(d&&d.items)||[];
+    if(!items.length){box.innerHTML='<p class="muted">You haven’t raised any complaints yet.</p>';return;}
+    box.innerHTML=items.map(function(c){
+      return '<div class="mi"><div class="h"><span class="ref">'+esc(c.ref)+'</span>'
+        +'<span class="badge '+badgeClass(c.status)+'">'+esc(c.status)+'</span>'
+        +'<span class="dt">'+esc(c.date||'')+'</span></div>'
+        +(c.defect?'<p class="df">'+esc(c.defect)+'</p>':'')
+        +(c.message?'<div class="msg"><b>From our team:</b> '+esc(c.message)+'</div>':'')
+        +'</div>';
+    }).join('');
+  }catch(e){box.innerHTML='<p class="muted">Couldn’t load right now. Please try again.</p>';}
+}
+async function logout(){try{await fetch('/customer/logout',{method:'POST'});}catch(e){}location.href='/customer';}
 </script>
-{% endblock %}
+
+{% else %}
+<!-- ================= LOGIN ================= -->
+<div class="top"><div class="top-in">
+  <span class="mark"><img src="/static/bsc-logo.png" alt="Bharat Steel"></span>
+  <div><h1>Customer Complaint Portal</h1><p>Bharat Steel (Chennai) Pvt. Ltd.</p></div>
+</div></div>
+
+<div class="login-wrap">
+  <div class="card">
+    <h2>Sign in</h2>
+    <p class="lead">Use your Bharat Steel customer account to raise and track quality complaints.</p>
+    <div class="err" id="lerr"></div>
+    <div class="field"><label>Email or Customer ID</label><input id="l_id" placeholder="you@company.com" autocomplete="username"></div>
+    <div class="field"><label>Password</label><input id="l_pw" type="password" placeholder="••••••••" autocomplete="current-password"></div>
+    <button class="btn" id="lbtn" onclick="doLogin()">Sign in</button>
+    <div class="foot" style="margin-top:14px">Trouble signing in? WhatsApp us: <a href="https://wa.me/919884384261" target="_blank">+91 98843 84261</a></div>
+  </div>
+</div>
+
+<script>
+function lv(id){var e=document.getElementById(id);return e?e.value:'';}
+function lerr(m){var e=document.getElementById('lerr');e.textContent=m;e.style.display='block';}
+async function doLogin(){
+  document.getElementById('lerr').style.display='none';
+  var id=lv('l_id').trim(),pw=lv('l_pw');
+  if(!id||!pw){lerr('Enter your login and password.');return;}
+  var b=document.getElementById('lbtn');b.disabled=true;var t=b.textContent;b.textContent='Signing in…';
+  try{var r=await fetch('/customer/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:id,password:pw})});
+    var d=await r.json().catch(function(){return{};});
+    if(!r.ok||!d.ok)throw new Error(d.detail||'Sign-in failed');
+    location.href='/customer';
+  }catch(e){lerr((e&&e.message)||'Sign-in failed');b.disabled=false;b.textContent=t;}
+}
+document.getElementById('l_pw').addEventListener('keydown',function(e){if(e.key==='Enter')doLogin();});
+</script>
+{% endif %}
+
+</body>
+</html>

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Customers · {{ app_name }}{% endblock %}
+{% block tb_title %}Customers{% endblock %}
+{% block content %}
+<div class="acc-steel">
+<style>
+.badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
+.badge.on{background:#e3f6ee;color:#0a7d55}.badge.off{background:#fdecec;color:#c23438}
+.cu-stat{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.cu-stat .s{background:#fff;border:1px solid var(--line-2);border-radius:11px;padding:10px 14px;min-width:120px}
+.cu-stat .s .n{font-size:20px;font-weight:800;color:var(--blue-ink);line-height:1}
+.cu-stat .s .l{font-size:11px;color:var(--ink-2);margin-top:3px}
+.cu a.mail{color:var(--blue-ink);text-decoration:none}.cu a.mail:hover{text-decoration:underline}
+</style>
+
+<div class="page-head"><h1>Customers</h1>
+<p>Customer accounts from the existing customer database — the same logins used to raise and track quality complaints on the customer portal. This list is read directly from the live customer records.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('store',17) }}</span>Customer accounts<span class="sub" id="c_cnt"></span></div>
+<div class="panel-body"><div class="cu">
+  <div class="cu-stat" id="c_stat"></div>
+  <input id="c_search" oninput="cRender()" placeholder="Search company / contact / email / phone…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
+  <div class="dgrid-wrap" id="c_rows"><div class="empty">Loading…</div></div>
+</div></div></div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var CUST=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+async function cLoad(){
+  var h=document.getElementById('c_rows');h.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/admin/customers',{cache:'no-store'});if(r.status===401){location.href='/login';return;}
+    CUST=await r.json();if(!Array.isArray(CUST))CUST=[];}
+  catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load customers. Try again.</div>';return;}
+  cRender();
+}
+function cRender(){
+  var host=document.getElementById('c_rows'),q=(v('c_search')||'').toLowerCase();
+  var rows=CUST.filter(function(x){if(!q)return true;return [x.company,x.contact,x.email,x.phone].join(' ').toLowerCase().indexOf(q)>=0;});
+  var active=CUST.filter(function(x){return x.active;}).length;
+  document.getElementById('c_cnt').textContent=CUST.length?(CUST.length+' customer'+(CUST.length===1?'':'s')):'';
+  document.getElementById('c_stat').innerHTML= CUST.length
+    ? '<div class="s"><div class="n">'+CUST.length+'</div><div class="l">Total customers</div></div>'
+      +'<div class="s"><div class="n">'+active+'</div><div class="l">Active</div></div>'
+      +'<div class="s"><div class="n">'+(CUST.length-active)+'</div><div class="l">Inactive</div></div>'
+    : '';
+  if(!rows.length){host.innerHTML='<div class="empty">'+(CUST.length?'No customers match your search.':'No customer accounts found.')+'</div>';return;}
+  var cols=[['Company','26%'],['Contact','20%'],['Email','26%'],['Phone','14%'],['Status','14%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var g=function(a){return(a===''||a==null)?'<span class="muted">—</span>':esc(a);};
+  var body=rows.map(function(x){
+    var st=x.active?'<span class="badge on">Active</span>':'<span class="badge off">Inactive</span>';
+    var mail=x.email?'<a class="mail" href="mailto:'+esc(x.email)+'">'+esc(x.email)+'</a>':'<span class="muted">—</span>';
+    return'<tr><td>'+g(x.company)+'</td><td>'+g(x.contact)+'</td><td>'+mail+'</td><td>'+g(x.phone)+'</td><td class="c">'+st+'</td></tr>';
+  }).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+cLoad();
+</script>
+{% endblock %}
