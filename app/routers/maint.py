@@ -10,6 +10,7 @@ overdue escalation to a supervisor) via WATI.
 All tables are Neon and self-create on first use.
 """
 import json
+import calendar
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -548,6 +549,9 @@ async def ensure_tables():
         freq_days INT, hours_interval NUMERIC, category TEXT, location TEXT,
         assignee_emp_id INT, start_date DATE, last_done DATE, last_done_hours NUMERIC,
         active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT now())""")
+    # frequency model (Add Plan): freq_type + day_of_month + end_date
+    for col, typ in (("freq_type", "TEXT"), ("day_of_month", "INT"), ("end_date", "DATE")):
+        await db.execute(f"ALTER TABLE maint_schedules ADD COLUMN IF NOT EXISTS {col} {typ}")
     await db.execute("""CREATE TABLE IF NOT EXISTS maint_logs (
         id SERIAL PRIMARY KEY, asset_id INT, schedule_id INT, checklist_id INT,
         done_by TEXT, done_by_emp_id INT, done_at TIMESTAMPTZ DEFAULT now(),
@@ -586,10 +590,14 @@ async def ensure_tables():
                     await db.execute(
                         "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec) "
                         "VALUES ($1,$2,$3,'',$4,'',$5)", cid, i + 1, text, typ, spec)
+                if kind.lower() == "daily":
+                    ft, dom, fdays = "daily", None, 1
+                else:
+                    ft, dom, fdays = "quarterly", today.day, 90
                 await db.execute(
-                    "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_days,category,location,"
-                    "start_date,active) VALUES ($1,$2,$3,$4,'','',$5,true)",
-                    aid, f"{kind} PM", cid, 1 if kind.lower() == "daily" else 90, today)
+                    "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_type,day_of_month,"
+                    "freq_days,start_date,active) VALUES ($1,$2,$3,$4,$5,$6,$7,true)",
+                    aid, f"{kind} PM", cid, ft, dom, fdays, today)
     except Exception as e:
         print("[maint] checklist seed skipped:", e)
     _ensured = True
@@ -621,14 +629,94 @@ def _d(v):
         return None
 
 
-# ---------- due computation ----------
+# ---------- recurrence + due computation ----------
+FREQS = ("daily", "weekly", "monthly", "quarterly")
+# Non-working days other than Sundays (ISO 'YYYY-MM-DD'); add plant holidays here.
+HOLIDAYS = set()
+
+
+def _is_offday(d):
+    return d.weekday() == 6 or d.isoformat() in HOLIDAYS   # Sunday (6) or a holiday
+
+
+def _roll_working(d):
+    """Move a date off Sundays/holidays to the next working day."""
+    if not d:
+        return d
+    for _ in range(31):
+        if _is_offday(d):
+            d = d + timedelta(days=1)
+        else:
+            break
+    return d
+
+
+def _add_months(d, n):
+    m = d.month - 1 + n
+    y = d.year + m // 12
+    m = m % 12 + 1
+    return date(y, m, min(d.day, calendar.monthrange(y, m)[1]))
+
+
+def _on_dom(y, m, dom):
+    return date(y, m, min(int(dom or 1), calendar.monthrange(y, m)[1]))
+
+
+def _raw_next(ft, dom, base):
+    if ft == "daily":
+        return base + timedelta(days=1)
+    if ft == "weekly":
+        return base + timedelta(days=7)
+    if ft == "monthly":
+        nb = _add_months(base, 1)
+        return _on_dom(nb.year, nb.month, dom)
+    if ft == "quarterly":
+        nb = _add_months(base, 3)
+        return _on_dom(nb.year, nb.month, dom)
+    return None
+
+
+def _first_due(ft, dom, start):
+    if ft in ("daily", "weekly"):
+        return start
+    cand = _on_dom(start.year, start.month, dom)
+    if cand < start:
+        cand = _raw_next(ft, dom, cand)
+    return cand
+
+
+def next_due_date(sch, today):
+    """Compute the next due date from the schedule's frequency model (with a
+    legacy freq_days fallback), rolled off Sundays/holidays."""
+    ft = (sch.get("freq_type") or "").lower()
+    start = sch.get("start_date")
+    last = sch.get("last_done")
+    dom = sch.get("day_of_month") or (start.day if start else today.day)
+    if ft in FREQS:
+        nd = _raw_next(ft, dom, last) if last else _first_due(ft, dom, start or today)
+    elif sch.get("freq_days"):
+        base = last or start
+        nd = (base + timedelta(days=int(sch["freq_days"]))) if base else today
+    else:
+        return None
+    return _roll_working(nd)
+
+
 def compute_due(sch: dict, asset_hours, today: date):
-    base = sch.get("last_done") or sch.get("start_date")
-    freq = sch.get("freq_days")
-    next_due = None
-    if freq:
-        next_due = (base + timedelta(days=int(freq))) if base else today
+    ft = (sch.get("freq_type") or "").lower()
+    is_daily = (ft == "daily") or (not ft and sch.get("freq_days") and int(sch["freq_days"]) == 1)
+    end = sch.get("end_date")
+    next_due = next_due_date(sch, today)
     date_due = bool(next_due and next_due <= today)
+    overdue = bool(next_due and next_due < today)
+    # schedule ended
+    if end and next_due and next_due > end:
+        date_due = overdue = False
+    if end and today > end:
+        date_due = overdue = False
+    # daily maintenance never runs on Sundays
+    if is_daily and today.weekday() == 6:
+        date_due = overdue = False
     hours_due = False
     hrs_rem = None
     if sch.get("hours_interval"):
@@ -638,7 +726,6 @@ def compute_due(sch: dict, asset_hours, today: date):
         hours_due = cur >= target
         hrs_rem = round(target - cur, 1)
     due = bool(date_due or hours_due)
-    overdue = bool(next_due and next_due < today)
     return {"next_due": next_due.isoformat() if next_due else None,
             "due": due, "overdue": overdue, "hours_due": hours_due, "hours_remaining": hrs_rem}
 
@@ -810,32 +897,43 @@ async def schedules_list(emp: dict = Depends(require_employee)):
     return _json(out)
 
 
+_FREQ_DAYS = {"daily": 1, "weekly": 7, "monthly": 30, "quarterly": 90}
+
+
 @router.post("/schedule/save")
 async def schedule_save(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
     asset_id = body.get("asset_id")
     title = (body.get("title") or "").strip()
     if not asset_id:
-        raise HTTPException(400, "Choose an asset")
+        raise HTTPException(400, "Choose a machine")
     if not title:
-        raise HTTPException(400, "Schedule title is required")
-    category = (body.get("category") or "").strip()
-    location = (body.get("location") or "").strip()
+        raise HTTPException(400, "Enter a task")
+    ft = (body.get("freq_type") or "").strip().lower()
+    if ft not in FREQS:
+        raise HTTPException(400, "Choose a frequency")
+    dom = _num(body.get("day_of_month"))
+    if ft in ("monthly", "quarterly"):
+        if not dom or not (1 <= int(dom) <= 31):
+            raise HTTPException(400, "Enter a day of month (1–31)")
+        dom = int(dom)
+    else:
+        dom = None
     assignee = body.get("assignee_emp_id") or None
-    vals = (asset_id, title, body.get("checklist_id") or None,
-            _num(body.get("freq_days")), _num(body.get("hours_interval")),
-            category, location, assignee, _d(body.get("start_date")),
-            _d(body.get("last_done")), _num(body.get("last_done_hours")))
+    vals = (asset_id, title, body.get("checklist_id") or None, ft, dom,
+            _FREQ_DAYS.get(ft), _num(body.get("hours_interval")), assignee,
+            _d(body.get("start_date")) or _today(), _d(body.get("end_date")),
+            bool(body.get("active", True)))
     sid = body.get("id")
     if sid:
         await db.execute(
-            "UPDATE maint_schedules SET asset_id=$1,title=$2,checklist_id=$3,freq_days=$4,"
-            "hours_interval=$5,category=$6,location=$7,assignee_emp_id=$8,start_date=$9,"
-            "last_done=$10,last_done_hours=$11 WHERE id=$12", *vals, sid)
+            "UPDATE maint_schedules SET asset_id=$1,title=$2,checklist_id=$3,freq_type=$4,"
+            "day_of_month=$5,freq_days=$6,hours_interval=$7,assignee_emp_id=$8,start_date=$9,"
+            "end_date=$10,active=$11 WHERE id=$12", *vals, sid)
         return {"ok": True, "id": sid}
     sid = await db.fetchval(
-        "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_days,hours_interval,"
-        "category,location,assignee_emp_id,start_date,last_done,last_done_hours) "
+        "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_type,day_of_month,"
+        "freq_days,hours_interval,assignee_emp_id,start_date,end_date,active) "
         "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id", *vals)
     return {"ok": True, "id": sid}
 
@@ -887,9 +985,7 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
     status = "issues" if any((not r.get("ok", True)) for r in results) else "done"
     hrs = _num(body.get("running_hours"))
     today = _today()
-    next_due = None
-    if s.get("freq_days"):
-        next_due = today + timedelta(days=int(s["freq_days"]))
+    next_due = next_due_date({**s, "last_done": today}, today)
     await db.execute(
         "INSERT INTO maint_logs (asset_id,schedule_id,checklist_id,done_by,done_by_emp_id,"
         "running_hours,status,results,remarks,next_due) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
