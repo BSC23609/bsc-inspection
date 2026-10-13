@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+{% from "_icons.html" import icon %}
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ app_name }}{% endblock %}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+
+<aside class="rail">
+  <div class="rail-brand">
+    <span class="mark"><img src="/static/bsc-logo.png" alt="BSC"></span>
+    <span class="bn">Bharat Steel<small>Quality Portal</small></span>
+  </div>
+  <div class="rail-scroll">
+    <a class="nav-item {{ 'active' if active=='dashboard' else '' }}" href="/">{{ icon('dashboard') }}<span>Dashboard</span></a>
+
+    {% for g in groups %}
+    {% set is_open = g['items']|selectattr('active_key','defined')|selectattr('active_key','equalto',active)|list|length > 0 %}
+    <div class="nav-group {{ 'open' if is_open else '' }} acc-{{ g.accent }}">
+      <div class="ng-head" onclick="toggleGroup(this)">
+        <span class="g-ic">{{ icon(g.icon) }}</span><span>{{ g.title }}</span>
+        <span class="chev">{{ icon('chevron',14) }}</span>
+      </div>
+      <div class="ng-body">
+        {% for it in g['items'] %}
+          {% if it.href %}
+          <a class="nav-sub {{ 'active' if it.active_key==active else '' }}" href="{{ it.href }}">{{ icon(it.icon,15) }}<span>{{ it.name }}</span></a>
+          {% else %}
+          <div class="nav-sub">{{ icon(it.icon,15) }}<span>{{ it.name }}</span><span class="sdot">soon</span></div>
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% if emp %}
+  <div class="rail-user">
+    <span class="ava">{{ (emp.name or '?')[0]|upper }}</span>
+    <span class="who"><b>{{ emp.name }}</b><span>{{ emp.emp_no }}</span></span>
+    <a class="out" href="/logout" title="Sign out">{{ icon('logout') }}</a>
+  </div>
+  {% endif %}
+</aside>
+<div class="railscrim" onclick="navClose()"></div>
+
+<div class="main">
+  <header class="topbar">
+    <button class="hamb" onclick="navToggle()" aria-label="Menu">{{ icon('menu',22) }}</button>
+    <div class="tb-title">{% block tb_title %}{{ section or 'Dashboard' }}{% endblock %}</div>
+    <div class="tb-spacer"></div>
+    {% if emp %}<div class="tb-chip"><span class="ava">{{ (emp.name or '?')[0]|upper }}</span>{{ emp.name }}</div>{% endif %}
+  </header>
+  <main class="page">{% block content %}{% endblock %}</main>
+</div>
+
+<!-- module popups -->
+<div class="scrim" id="scrim" onclick="if(event.target===this)closeModal()">
+  {% for g in groups %}
+  <div class="modal acc-{{ g.accent }}" id="modal-{{ g.key }}" style="display:none">
+    <div class="modal-head">
+      <span class="mh-ic">{{ icon(g.icon,20) }}</span>
+      <div><h3>{{ g.title }}</h3><p>{{ g.blurb }}</p></div>
+      <span class="x" onclick="closeModal()">{{ icon('x',18) }}</span>
+    </div>
+    <div class="modal-list">
+      {% for it in g['items'] %}
+        {% if it.href %}
+        <a class="mrow live" href="{{ it.href }}">
+          <span class="mr-ic">{{ icon(it.icon,19) }}</span>
+          <span class="mr-b"><div class="mr-t">{{ it.name }}</div><div class="mr-d">{{ it.desc }}</div></span>
+          <span class="mr-go">{{ icon('chevron',18) }}</span>
+        </a>
+        {% else %}
+        <div class="mrow soon">
+          <span class="mr-ic">{{ icon(it.icon,19) }}</span>
+          <span class="mr-b"><div class="mr-t">{{ it.name }}</div><div class="mr-d">{{ it.desc }}</div></span>
+          <span class="tag">soon</span>
+        </div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div id="toast" class="toast"></div>
+<script>
+function navToggle(){document.body.classList.toggle('nav-open');}
+function navClose(){document.body.classList.remove('nav-open');}
+function toggleGroup(h){h.parentElement.classList.toggle('open');}
+function openModal(key){var s=document.getElementById('scrim');[].forEach.call(s.querySelectorAll('.modal'),function(m){m.style.display='none';});var m=document.getElementById('modal-'+key);if(m)m.style.display='';s.classList.add('show');}
+function closeModal(){document.getElementById('scrim').classList.remove('show');}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
+function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.className='toast '+(kind||'');t.textContent=msg;t.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(function(){t.classList.remove('show');},2600);}
+</script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Diesel Generator Log · {{ app_name }}{% endblock %}
+{% block tb_title %}Diesel Generator Log{% endblock %}
+{% block content %}
+<div class="acc-sky">
+
+<div class="page-head">
+  <h1>Diesel Generator Log</h1>
+  <p>Record each run. Enter the times, diesel and meter readings — running hours and units fill in automatically.</p>
+</div>
+
+<div class="toolbar">
+  <div class="field"><label>DG Set</label>
+    <select id="dg_set" onchange="dgFilter()"><option value="DG-320 kVA">DG-320 kVA</option></select></div>
+  <div class="field"><label>Month</label><input type="month" id="dg_month" onchange="dgFilter()"></div>
+  <div class="grow"></div>
+  <a id="dg_pdf" class="btn btn-ghost" target="_blank" href="#">Download month PDF</a>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><span class="ki">{{ icon('hash',20) }}</span><div><div class="k-lab">Entries this month</div><div class="k-val tnum" id="kpi_n">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('clock',20) }}</span><div><div class="k-lab">Run time</div><div class="k-val tnum" id="kpi_run">0m</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('fuel',20) }}</span><div><div class="k-lab">Diesel added</div><div class="k-val tnum" id="kpi_fuel">0 <small>L</small></div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('gauge',20) }}</span><div><div class="k-lab">Units generated</div><div class="k-val tnum" id="kpi_units">0 <small>kWh</small></div></div></div>
+</div>
+
+<div class="cols">
+  <div class="panel">
+    <div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="dg_form_title">New entry</span></div>
+    <div class="panel-body">
+      <input type="hidden" id="dg_edit_id" value="">
+      <div class="row row-2">
+        <div class="field"><label>Date <span class="rq">*</span></label><input type="date" id="dg_date"></div>
+        <div class="field"><label>Operated by</label><input type="text" id="dg_sign" placeholder="Name"></div>
+      </div>
+      <div class="row row-3">
+        <div class="field"><label>Start time <span class="rq">*</span></label><input type="time" id="dg_start" oninput="dgCalc()"></div>
+        <div class="field"><label>End time</label><input type="time" id="dg_stop" oninput="dgCalc()"></div>
+        <div class="field"><label>Running hours</label><input type="text" id="dg_run" readonly placeholder="auto"></div>
+      </div>
+      <div class="row row-2">
+        <div class="field"><label>Fuel added (L)</label><input type="number" step="0.1" id="dg_fuel" placeholder="e.g. 60"></div>
+        <div class="field"><label>Diesel level (L)</label><input type="number" step="1" id="dg_level" placeholder="tank level"></div>
+      </div>
+      <div class="row row-3">
+        <div class="field"><label>Start load (kWh)</label><input type="number" step="0.1" id="dg_ks" oninput="dgCalc()" placeholder="meter start"></div>
+        <div class="field"><label>End load (kWh)</label><input type="number" step="0.1" id="dg_ke" oninput="dgCalc()" placeholder="meter end"></div>
+        <div class="field"><label>Units (kWh)</label><input type="text" id="dg_units" readonly placeholder="auto"></div>
+      </div>
+      <div class="row"><div class="field"><label>Remarks</label><input type="text" id="dg_remarks" placeholder="Any note"></div></div>
+      <div class="form-actions">
+        <button class="btn btn-ghost" id="dg_cancel" style="display:none" onclick="dgCancel()">Cancel</button>
+        <div class="grow"></div>
+        <button class="btn btn-primary" id="dg_save" onclick="dgSubmit()">Save entry</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><span class="hi">{{ icon('chart',17) }}</span>Monthly totals</div>
+    <div class="panel-body flush" style="overflow-x:auto">
+      <table class="stable">
+        <thead><tr><th>Month</th><th style="text-align:right">Days</th><th style="text-align:right">Run time</th><th style="text-align:right">Fuel (L)</th><th style="text-align:right">Units (kWh)</th></tr></thead>
+        <tbody id="dg_totals"><tr><td colspan="5" class="empty">No data yet</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:16px">
+  <div class="panel-head"><span class="hi">{{ icon('bars',17) }}</span>Log<span class="sub" id="dg_mlbl">this month</span></div>
+  <div class="panel-body flush"><div class="dgrid-wrap" id="dg_rows"><div class="empty">Loading…</div></div></div>
+</div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var DG=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function num(x){x=parseFloat(x);return isFinite(x)?x:null;}
+function pad(n){return('0'+n).slice(-2);}
+function mins(a,b){if(!a||!b)return null;var p=a.split(':'),q=b.split(':');if(p.length<2||q.length<2)return null;var m1=+p[0]*60+ +p[1],m2=+q[0]*60+ +q[1];if(!isFinite(m1)||!isFinite(m2))return null;var d=m2-m1;if(d<0)d+=1440;return d;}
+function fmt(m){if(m==null||!isFinite(m))return'';m=Math.round(m);var h=Math.floor(m/60),x=m%60;if(h&&x)return h+'h '+x+'m';if(h)return h+'h';return x+'m';}
+function dgCalc(){var m=mins(v('dg_start'),v('dg_stop'));var r=document.getElementById('dg_run');if(r)r.value=fmt(m);var ks=num(v('dg_ks')),ke=num(v('dg_ke')),u=document.getElementById('dg_units');if(u)u.value=(ks!=null&&ke!=null)?String(Math.round((ke-ks)*100)/100):'';}
+function dgReset(){document.getElementById('dg_edit_id').value='';['dg_sign','dg_start','dg_stop','dg_run','dg_fuel','dg_level','dg_ks','dg_ke','dg_units','dg_remarks'].forEach(function(i){var e=document.getElementById(i);if(e)e.value='';});var n=new Date();document.getElementById('dg_date').value=n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());document.getElementById('dg_form_title').textContent='New entry';document.getElementById('dg_save').textContent='Save entry';document.getElementById('dg_cancel').style.display='none';}
+function dgCancel(){dgReset();}
+function dgFilter(){dgPdf();dgRender();}
+function dgPdf(){document.getElementById('dg_pdf').href='/dg/pdf?month='+encodeURIComponent(v('dg_month'))+'&dg='+encodeURIComponent(v('dg_set'));}
+async function dgLoad(){
+  var h=document.getElementById('dg_rows');h.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/dg/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}DG=await r.json();if(!Array.isArray(DG))DG=[];}
+  catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load the log. Check your connection and try again.</div>';return;}
+  try{var sel=document.getElementById('dg_set'),have={};[].forEach.call(sel.options,function(o){have[o.value]=1;});DG.forEach(function(x){if(x.dg_set&&!have[x.dg_set]){var o=document.createElement('option');o.value=x.dg_set;o.textContent=x.dg_set;sel.appendChild(o);have[x.dg_set]=1;}});}catch(e){}
+  dgPdf();dgRender();
+}
+function rmins(x){return(x.running_minutes!=null&&isFinite(x.running_minutes))?Number(x.running_minutes):mins(x.start_at,x.stop_at);}
+function runits(x){return(x.units!=null&&x.units!=='')?Number(x.units):((num(x.kwh_start)!=null&&num(x.kwh_end)!=null)?(x.kwh_end-x.kwh_start):null);}
+function dgRender(){
+  var dg=v('dg_set'),mo=v('dg_month');
+  document.getElementById('dg_mlbl').textContent=mo||'this month';
+  var rows=DG.filter(function(x){if(dg&&x.dg_set!==dg)return false;if(mo&&String(x.log_date||'').slice(0,7)!==mo)return false;return true;});
+  rows.sort(function(a,b){var k1=String(a.log_date||'')+(a.start_at||''),k2=String(b.log_date||'')+(b.start_at||'');return k1<k2?-1:(k1>k2?1:0);});
+  var tf=0,tu=0,tm=0;
+  var host=document.getElementById('dg_rows');
+  if(!rows.length){host.innerHTML='<div class="empty">No runs logged for this month yet. Add the first entry on the left.</div>';dgKpis(0,0,0,0);dgTotals();return;}
+  var cols=[['Date','9%'],['Start','7%'],['End','7%'],['Run Hrs','7%'],['Fuel (L)','6%'],['Diesel (L)','7%'],['Start Load (kWh)','9%'],['End Load (kWh)','9%'],['Units (kWh)','8%'],['Remarks','15%'],['Sign','9%'],['','7%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var body=rows.map(function(x){
+    var m=rmins(x);if(m!=null)tm+=m;var u=runits(x);if(u!=null&&isFinite(u))tu+=u;if(num(x.fuel_added)!=null)tf+=Number(x.fuel_added);
+    var g=function(a){return(a===''||a==null)?'':esc(a);};
+    return'<tr>'
+      +'<td>'+g(String(x.log_date||'').slice(0,10))+'</td>'
+      +'<td class="c">'+g(x.start_at)+'</td><td class="c">'+g(x.stop_at)+'</td><td class="c">'+g(fmt(m))+'</td>'
+      +'<td class="c">'+g(x.fuel_added)+'</td><td class="c">'+g(x.diesel_level)+'</td>'
+      +'<td class="c">'+g(x.kwh_start)+'</td><td class="c">'+g(x.kwh_end)+'</td>'
+      +'<td class="c">'+g(u!=null&&isFinite(u)?Math.round(u*100)/100:'')+'</td>'
+      +'<td>'+g(x.remarks)+'</td><td>'+g(x.sign)+'</td>'
+      +'<td class="c"><a href="#" title="Edit" onclick="dgEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" title="Delete" onclick="dgDel('+x.id+');return false" class="ic-del">Del</a></td>'
+    +'</tr>';}).join('');
+  var foot='<tr><td colspan="3" style="text-align:left">Total for '+rows.length+' entr'+(rows.length===1?'y':'ies')+'</td><td>'+(fmt(tm)||'')+'</td><td>'+(Math.round(tf*100)/100)+'</td><td></td><td></td><td></td><td>'+(Math.round(tu*100)/100)+'</td><td></td><td></td><td></td></tr>';
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody><tfoot>'+foot+'</tfoot></table>';
+  dgKpis(rows.length,tm,tf,tu);dgTotals();
+}
+function dgKpis(n,tm,tf,tu){
+  document.getElementById('kpi_n').textContent=n;
+  document.getElementById('kpi_run').textContent=fmt(tm)||'0m';
+  document.getElementById('kpi_fuel').innerHTML=(Math.round(tf*100)/100)+' <small>L</small>';
+  document.getElementById('kpi_units').innerHTML=(Math.round(tu*100)/100)+' <small>kWh</small>';
+}
+function dgTotals(){
+  var dg=v('dg_set'),map={};
+  DG.forEach(function(x){if(dg&&x.dg_set!==dg)return;var mo=String(x.log_date||'').slice(0,7);if(!mo)return;if(!map[mo])map[mo]={d:{},m:0,f:0,u:0};map[mo].d[String(x.log_date||'').slice(0,10)]=1;var m=rmins(x);if(m!=null)map[mo].m+=m;if(num(x.fuel_added)!=null)map[mo].f+=Number(x.fuel_added);var u=runits(x);if(u!=null&&isFinite(u))map[mo].u+=u;});
+  var months=Object.keys(map).sort().reverse().slice(0,12),tb=document.getElementById('dg_totals');
+  if(!months.length){tb.innerHTML='<tr><td colspan="5" class="empty">No data yet</td></tr>';return;}
+  tb.innerHTML=months.map(function(mo){var t=map[mo];return'<tr><td>'+esc(mo)+'</td><td style="text-align:right">'+Object.keys(t.d).length+'</td><td style="text-align:right">'+(fmt(t.m)||'—')+'</td><td style="text-align:right">'+(Math.round(t.f*100)/100)+'</td><td style="text-align:right">'+(Math.round(t.u*100)/100)+'</td></tr>';}).join('');
+}
+function dgEdit(id){var x=DG.filter(function(r){return r.id===id;})[0];if(!x)return;
+  document.getElementById('dg_edit_id').value=x.id;document.getElementById('dg_set').value=x.dg_set||v('dg_set');
+  document.getElementById('dg_date').value=String(x.log_date||'').slice(0,10);document.getElementById('dg_sign').value=x.sign||'';
+  document.getElementById('dg_start').value=x.start_at||'';document.getElementById('dg_stop').value=x.stop_at||'';
+  document.getElementById('dg_fuel').value=(x.fuel_added!=null?x.fuel_added:'');document.getElementById('dg_level').value=(x.diesel_level!=null?x.diesel_level:'');
+  document.getElementById('dg_ks').value=(x.kwh_start!=null?x.kwh_start:'');document.getElementById('dg_ke').value=(x.kwh_end!=null?x.kwh_end:'');
+  document.getElementById('dg_remarks').value=x.remarks||'';dgCalc();
+  document.getElementById('dg_form_title').textContent='Edit entry #'+x.id;document.getElementById('dg_save').textContent='Update entry';document.getElementById('dg_cancel').style.display='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+async function dgSubmit(){
+  var date=v('dg_date'),start=v('dg_start');
+  if(!date){toast('err','Enter the date');return;}if(!start){toast('err','Enter the start time');return;}
+  var ks=num(v('dg_ks')),ke=num(v('dg_ke')),m=mins(start,v('dg_stop'));
+  var p={id:v('dg_edit_id')||null,dg_set:v('dg_set')||'DG-320 kVA',log_date:date,start_at:start,stop_at:v('dg_stop')||'',running_minutes:(m!=null?m:null),fuel_added:num(v('dg_fuel')),diesel_level:num(v('dg_level')),kwh_start:ks,kwh_end:ke,units:(ks!=null&&ke!=null)?Math.round((ke-ks)*100)/100:null,remarks:v('dg_remarks'),sign:v('dg_sign')};
+  var b=document.getElementById('dg_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch(p.id?'/dg/update':'/dg/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
+    toast('ok',p.id?'Entry updated':'Entry saved');document.getElementById('dg_month').value=date.slice(0,7);dgReset();await dgLoad();
+  }catch(e){toast('err','Couldn’t save: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=lbl;}
+}
+async function dgDel(id){if(!confirm('Delete this log entry?'))return;try{var r=await fetch('/dg/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error('failed');toast('ok','Entry deleted');await dgLoad();}catch(e){toast('err','Couldn’t delete the entry');}}
+(function(){var n=new Date();document.getElementById('dg_month').value=n.getFullYear()+'-'+pad(n.getMonth()+1);dgReset();dgLoad();})();
+</script>
+{% endblock %}

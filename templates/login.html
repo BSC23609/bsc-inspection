@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · {{ app_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<style>
+  body{min-height:100vh;display:grid;grid-template-columns:1.05fr .95fr}
+  .brandside{background:
+      radial-gradient(120% 90% at 85% 10%,rgba(11,124,194,.30),transparent 55%),
+      linear-gradient(160deg,#082438,#0d3a5c);
+    color:#fff;padding:46px 48px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+  .brandside::after{content:"";position:absolute;inset:auto -60px -80px auto;width:320px;height:320px;
+    border-radius:50%;background:radial-gradient(circle,rgba(31,143,191,.30),transparent 60%)}
+  .bs-logo{background:#fff;border-radius:11px;padding:8px 12px;display:inline-flex;align-self:flex-start}
+  .bs-logo img{height:30px;display:block}
+  .bs-copy h2{font-size:30px;font-weight:600;line-height:1.18;letter-spacing:-.6px;margin:0 0 12px;max-width:16ch}
+  .bs-copy p{color:#aeb9cc;font-size:14.5px;line-height:1.6;max-width:40ch;margin:0}
+  .bs-foot{color:#6b7788;font-size:12px}
+  .formside{display:flex;align-items:center;justify-content:center;padding:40px 28px;background:var(--surface)}
+  .signin{width:340px;max-width:100%}
+  .signin h1{font-size:21px;font-weight:600;margin:0 0 4px}
+  .signin .lead{color:var(--muted);font-size:13.5px;margin:0 0 22px}
+  .signin .field{margin-bottom:14px}
+  .signin .field label{display:block;font-size:12.5px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+  .signin .btn{width:100%;margin-top:8px;padding:11px}
+  .err{background:#fdecec;border:1px solid #f6c9c9;color:#b4302f;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:14px}
+  @media(max-width:860px){body{grid-template-columns:1fr}.brandside{display:none}.formside{min-height:100vh}}
+</style>
+</head>
+<body>
+<section class="brandside">
+  <span class="bs-logo"><img src="/static/bsc-logo.png" alt="Bharat Steel"></span>
+  <div class="bs-copy">
+    <h2>Quality, recorded at the line.</h2>
+    <p>Inspections, generator logs and plant checks for Bharat Steel (Chennai) — one portal, built for the shop floor.</p>
+  </div>
+  <div class="bs-foot">Bharat Steel (Chennai) Pvt. Ltd.</div>
+</section>
+<section class="formside">
+  <form class="signin" method="post" action="/login">
+    <h1>Sign in</h1>
+    <p class="lead">Use your employee code and password.</p>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+    <div class="field"><label>Employee code</label>
+      <input name="identifier" placeholder="e.g. BSC/098" autocomplete="username" autofocus required></div>
+    <div class="field"><label>Password</label>
+      <input name="password" type="password" autocomplete="current-password" required></div>
+    <button class="btn btn-primary" type="submit">Sign in</button>
+  </form>
+</section>
+</body>
+</html>

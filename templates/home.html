@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Dashboard · {{ app_name }}{% endblock %}
+{% block tb_title %}Dashboard{% endblock %}
+{% block content %}
+<div class="hello">
+  <h1>Welcome, {{ emp.name.split(' ')[0] if emp.name else 'there' }}</h1>
+  <p>Choose a section to see what's inside. We're moving the quality portal to a faster platform, one module at a time.</p>
+</div>
+
+<div class="dash">
+  {% for g in groups %}
+  {% set live = g['items']|selectattr('href','defined')|list|length %}
+  <button type="button" class="dcard acc-{{ g.accent }}" onclick="openModal('{{ g.key }}')">
+    <span class="dc-ic">{{ icon(g.icon,24) }}</span>
+    <h3>{{ g.title }}</h3>
+    <p>{{ g.blurb }}</p>
+    <span class="dc-foot">
+      <span class="cnt">{{ g['items']|length }} module{{ '' if g['items']|length==1 else 's' }}</span>
+      {% if live %}<span>{{ live }} ready</span>{% else %}<span>Opening soon</span>{% endif %}
+      {{ icon('chevron',15) }}
+    </span>
+  </button>
+  {% endfor %}
+</div>
+{% endblock %}
