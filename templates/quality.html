@@ -1,0 +1,856 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}CTL Quality Inspection · {{ app_name }}{% endblock %}
+{% block tb_title %}CTL Quality Inspection{% endblock %}
+{% block content %}
+<div class="acc-steel">
+
+<style>
+.ctl-form{--brand:#0069aa;--brand-dark:#005483;--brand-soft:#e2f0fb;
+  --gray-50:#f6f8fd;--gray-100:#eef2f8;--gray-200:#d9e0ec;--gray-300:#c5cfdd;
+  --gray-500:#5d6879;--gray-800:#1f2937;--r:11px}
+.ctl-form .sec-card{background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-1);margin-bottom:16px;overflow:hidden}
+.ctl-form .sec-head{display:flex;align-items:center;gap:9px;padding:14px 18px;border-bottom:1px solid var(--line);
+  font-weight:600;font-size:14px;color:var(--brand-dark);background:var(--brand-soft)}
+.ctl-form .sec-head-icon{font-size:15px;filter:grayscale(.1)}
+.ctl-form .sec-body{padding:18px}
+.ctl-form .fg{display:grid;gap:14px;margin-bottom:12px}
+.ctl-form .fg:last-child{margin-bottom:0}
+.ctl-form .fg-1{grid-template-columns:1fr}.ctl-form .fg-2{grid-template-columns:1fr 1fr}.ctl-form .fg-3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:620px){.ctl-form .fg-2,.ctl-form .fg-3{grid-template-columns:1fr}}
+.ctl-form .field label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.ctl-form .req{color:#e5484d}
+.ctl-form input,.ctl-form select,.ctl-form textarea{width:100%;padding:10px 12px;border:1px solid var(--gray-200);
+  border-radius:9px;font-family:inherit;font-size:13.5px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+.ctl-form textarea{min-height:60px;resize:vertical}
+.ctl-form input:focus,.ctl-form select:focus,.ctl-form textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.ctl-form .pills{display:flex;flex-wrap:wrap;gap:8px}
+.ctl-form .pill{border:1px solid var(--gray-200);background:#fff;color:var(--ink-2);border-radius:20px;
+  padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all .12s;user-select:none}
+.ctl-form .pill:hover{border-color:var(--brand);color:var(--brand-dark)}
+.ctl-form .pill.sel{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 4px 12px -3px var(--brand)}
+.ctl-form .yn{display:inline-flex;border:1px solid var(--gray-200);border-radius:9px;overflow:hidden;background:#fff}
+.ctl-form .yn-btn{border:none;background:none;padding:7px 15px;font-size:12.5px;font-weight:600;font-family:inherit;color:var(--gray-500);cursor:pointer;border-right:1px solid var(--gray-200)}
+.ctl-form .yn-btn:last-child{border-right:none}
+.ctl-form .yn-btn.a.y{background:#0a7d55;color:#fff}.ctl-form .yn-btn.a.n{background:#c23438;color:#fff}
+.ctl-form .cond-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 18px}
+@media(max-width:620px){.ctl-form .cond-grid{grid-template-columns:1fr}}
+.ctl-form .cond-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--gray-50);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.ctl-form .cond-lbl{font-size:12.5px;font-weight:500;color:var(--ink-2)}
+.ctl-form .btn-sec,.ctl-form .add-row-btn{border:1px solid var(--gray-200);background:#fff;color:var(--brand-dark);border-radius:9px;
+  padding:9px 14px;font-weight:600;font-size:12.5px;font-family:inherit;cursor:pointer;transition:all .12s}
+.ctl-form .btn-sec:hover,.ctl-form .add-row-btn:hover{background:var(--brand-soft);border-color:var(--brand)}
+.ctl-form .tbl-wrap{overflow-x:auto;border:1px solid var(--gray-200);border-radius:8px}
+.ctl-form .meas-tbl,.ctl-form .pq-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.ctl-form .meas-tbl th,.ctl-form .pq-table th{background:var(--gray-50);border:1px solid var(--gray-200);padding:7px 6px;font-size:10.5px;font-weight:600;color:var(--gray-500);text-align:left;white-space:nowrap}
+.ctl-form .meas-tbl td,.ctl-form .pq-table td{border:1px solid var(--gray-200);padding:3px}
+.ctl-form .meas-tbl input,.ctl-form .pq-inp{border:1px solid transparent;border-radius:5px;padding:6px 7px;font-size:12px}
+.ctl-form .meas-tbl input:focus,.ctl-form .pq-inp:focus{border-color:var(--brand)}
+.ctl-form .pq-size-lbl{font-weight:600;color:var(--brand-dark);font-size:12px;padding-left:10px;white-space:nowrap}
+.ctl-form .row-del{background:#fdecec;border:none;border-radius:5px;padding:5px 8px;cursor:pointer;color:#c23438;font-weight:700}
+.ctl-form .rejtype-btn{border:1px solid var(--gray-200);border-radius:6px;padding:7px 9px;font-size:12px;cursor:pointer;color:var(--gray-500);background:#fff}
+.ctl-form .rejtype-btn.has{border-color:var(--brand);color:var(--brand-dark);font-weight:600}
+.ctl-form .photo-previews{display:flex;flex-wrap:wrap;gap:8px}
+.ctl-form .photo-thumb{width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200)}
+/* machine setting parameters v2 */
+.ctl-form .mp-param{border:1px solid var(--gray-200);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--gray-50)}
+.ctl-form .mp-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ctl-form .mp-name{font-weight:600;font-size:13px;color:var(--ink);min-width:170px;flex:1}
+.ctl-form .mp-init{max-width:200px}
+.ctl-form .mp-adjs{margin-top:9px;display:flex;flex-direction:column;gap:7px}
+.ctl-form .mp-adj{display:flex;align-items:center;gap:8px}
+.ctl-form .mp-adj-n{font-size:11px;font-weight:700;color:var(--brand-dark);background:var(--brand-soft);border-radius:6px;padding:4px 8px;white-space:nowrap}
+.ctl-form .mp-adj-val{flex:1}.ctl-form .mp-adj-time{max-width:140px}
+.ctl-form .mp-adj-x{background:#fdecec;border:none;border-radius:6px;width:30px;height:30px;cursor:pointer;color:#c23438;font-size:16px;flex-shrink:0}
+.ctl-form .mp-add{margin-top:9px;border:1px dashed var(--brand);background:var(--brand-soft);color:var(--brand-dark);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer}
+/* rejection type popup (appended to body — global) */
+#rejtype_pop{position:fixed;z-index:120;background:#fff;border:1px solid var(--line-2);border-radius:10px;
+  box-shadow:0 18px 44px rgba(6,24,40,.26);padding:8px;min-width:210px;max-height:280px;overflow:auto}
+#rejtype_pop label{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;font-size:12.5px;cursor:pointer}
+#rejtype_pop label:hover{background:#f1f5fb}
+#rejtype_pop input{width:auto;margin:0}
+.ctl-save-bar{position:sticky;bottom:0;z-index:20;display:flex;align-items:center;gap:12px;margin-top:4px;
+  background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:14px 2px}
+</style>
+
+<div class="page-head"><h1>CTL Quality Inspection</h1><p>Cut-to-length quality — header, machine settings, sheet measurements with tolerance flags, processed quantity and sign-off. Saved records write to the OneDrive Quality Log and get a PDF report.</p></div>
+<div class="kpis">
+  <div class="kpi"><span class="ki">{{ icon('hash',20) }}</span><div><div class="k-lab">Inspections this month</div><div class="k-val tnum" id="kpi_n">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('ruler',20) }}</span><div><div class="k-lab">Sheets measured</div><div class="k-val tnum" id="kpi_sh">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('warn',20) }}</span><div><div class="k-lab">Out of tolerance</div><div class="k-val tnum" id="kpi_oot">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('file',20) }}</span><div><div class="k-lab">With rejections</div><div class="k-val tnum" id="kpi_rej">0</div></div></div>
+</div>
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="q_form_title">New CTL inspection</span></div>
+<div class="panel-body"><div class="ctl-form"><input type="hidden" id="q_edit_id" value="">
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📋</span> Header Information</div>
+      <div class="sec-body">
+        <div class="fg fg-1">
+          <div class="field"><label>Customer Name <span class="req">*</span></label><input type="text" id="q_customer" placeholder="Enter customer name" autocomplete="off"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Date of Inspection <span class="req">*</span></label><input type="date" id="q_date"></div>
+          <div class="field"><label>Time of Inspection <span class="req">*</span></label><input type="time" id="q_time"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Coil Number <span class="req">*</span></label><input type="text" id="q_coil_no" placeholder="Enter coil number" autocomplete="off"></div>
+          <div class="field"><label>Batch Number</label><input type="text" id="q_batch" placeholder="Batch / heat number" autocomplete="off"></div>
+        </div>
+        <div class="fg fg-1">
+          <div class="field">
+            <label>Make of Coil</label>
+            <div class="pills" id="qg_make">
+              <div class="pill" onclick="rp('qg_make',this,'SAIL')">SAIL</div>
+              <div class="pill" onclick="rp('qg_make',this,'SAIL RSP')">SAIL RSP</div>
+              <div class="pill" onclick="rp('qg_make',this,'SAIL BSP')">SAIL BSP</div>
+              <div class="pill" onclick="rp('qg_make',this,'JSW')">JSW</div>
+              <div class="pill" onclick="rp('qg_make',this,'TATA')">TATA</div>
+              <div class="pill" onclick="rp('qg_make',this,'AMNS')">AMNS</div>
+              <div class="pill" onclick="rp('qg_make',this,'NMDC')">NMDC</div>
+              <div class="pill" onclick="rp('qg_make',this,'JSPL')">JSPL</div>
+              <div class="pill" onclick="rpOther('qg_make',this,'q_make_other_wrap')">Other</div>
+            </div>
+            <div id="q_make_other_wrap" style="display:none;margin-top:8px">
+              <input type="text" id="q_make_other" placeholder="Type make name..." oninput="rs['qg_make']=this.value" style="width:100%;padding:8px 11px;border-radius:8px;border:1px solid #1A6DAF;background:#fff;color:#1F2937;font-family:inherit;font-size:13px;outline:none">
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-3">
+          <div class="field"><label>Coil Thickness (mm)</label><input type="number" id="q_thick" placeholder="e.g. 3.15" step="0.01"></div>
+          <div class="field"><label>Coil Grade</label><input type="text" id="q_grade" placeholder="e.g. E250"></div>
+          <div class="field"><label>Coil Width (mm)</label><input type="number" id="q_width" placeholder="e.g. 1250"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Coil Weight (T)</label><input type="number" id="q_weight" placeholder="e.g. 12.5" step="0.001"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">⚙️</span> Machine Setting Parameters <span style="font-size:10px;font-weight:700;color:#1A6DAF;background:#E8F2FB;padding:1px 7px;border-radius:6px;margin-left:6px;vertical-align:middle">v2</span></div>
+      <div class="sec-body">
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px">Record the initial setting for each parameter. Use &ldquo;+ Add adjustment&rdquo; to log any change made after the initial setting (up to 10 per parameter).</div>
+        <div id="q_mp_body"></div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📐</span> Sheet Measurements</div>
+      <div class="sec-body">
+        <div id="q_toltoggle" style="padding:12px 14px;background:#e2f0fb;border:1px solid #bcdcf3;border-radius:10px;margin-bottom:14px"></div>
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:8px">Enter a cut length, add its sheets, then &ldquo;Add cut length&rdquo; for each different length in the batch. Each sheet&rsquo;s Length flags against its cut length.</div>
+        <div id="q_groups"></div>
+        <button class="add-row-btn" type="button" onclick="addCutGroup()">+ Add cut length</button>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📦</span> Processed Quantity</div>
+      <div class="sec-body" style="padding:0">
+        <div style="overflow-x:auto">
+          <table class="pq-table" id="pq_grid"></table>
+        </div>
+        <div style="padding:12px 14px;border-top:1px solid var(--gray-100)">
+          <button type="button" id="pq_add_btn" class="btn-sec" onclick="addPQRow()" style="width:100%">+ Add Row</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🔢</span> Final Measurements</div>
+      <div class="sec-body">
+        <div class="fg fg-3">
+          <div class="field"><label>First Bit Length</label><input type="text" id="q_first_bit" placeholder="mm or m"></div>
+          <div class="field"><label>Last Bit Length</label><input type="text" id="q_last_bit" placeholder="mm or m"></div>
+          <div class="field"><label>Defective Length</label><input type="text" id="q_defective" placeholder="mm or m"></div>
+        </div>
+        <div class="fg fg-3">
+          <div class="field"><label>Balance Coil Weight (T)</label><input type="text" id="q_bal_wt" placeholder="e.g. 0.45"></div>
+          <div class="field">
+            <label>Coil No. Verified</label>
+            <div class="yn" id="yn_verified">
+              <button class="yn-btn y" onclick="yn('yn_verified','Y',this)">Yes</button>
+              <button class="yn-btn n" onclick="yn('yn_verified','N',this)">No</button>
+            </div>
+          </div>
+          <div class="field"><label>Blade Clearance</label><input type="text" id="q_blade" placeholder="e.g. 0.05 mm"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🔍</span> Quality Checklist</div>
+      <div class="sec-body">
+        <div class="cond-grid">
+          <div class="cond-row"><span class="cond-lbl">Bur</span><input type="text" id="q_bur" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
+          <div class="cond-row"><span class="cond-lbl">Cutting Finish</span><div class="yn" id="yn_cut_finish"><button class="yn-btn y" onclick="yn('yn_cut_finish','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_cut_finish','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Scalling</span><div class="yn" id="yn_scalling"><button class="yn-btn y" onclick="yn('yn_scalling','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_scalling','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Pit Marks</span><div class="yn" id="yn_pit_marks"><button class="yn-btn y" onclick="yn('yn_pit_marks','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_pit_marks','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Waviness</span><div class="yn" id="yn_waviness"><button class="yn-btn y" onclick="yn('yn_waviness','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_waviness','N',this)">No</button></div></div>
+          <div class="cond-row"><span class="cond-lbl">Center Bow</span><input type="text" id="q_center_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
+          <div class="cond-row"><span class="cond-lbl">Cutting Bow</span><input type="text" id="q_cutting_bow" placeholder="Enter value" style="flex:1;padding:6px 9px;border-radius:6px;border:1px solid var(--gray-200);background:#fff;color:var(--gray-800);font-family:inherit;font-size:12px;outline:none;max-width:140px"></div>
+          <div class="cond-row"><span class="cond-lbl">Surface Defects</span><div class="yn" id="yn_surface_def"><button class="yn-btn y" onclick="yn('yn_surface_def','Y',this)">Yes</button><button class="yn-btn n" onclick="yn('yn_surface_def','N',this)">No</button></div></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">✍️</span> Sign-off</div>
+      <div class="sec-body">
+        <div class="fg fg-1">
+          <div class="field"><label>Machine Operated By</label><input type="text" id="q_operator" placeholder="Operator name"></div>
+        </div>
+        <div class="fg fg-1">
+          <div class="field">
+            <label>Machine Name</label>
+            <div class="pills" id="qg_machine_name">
+              <div class="pill" onclick="rp('qg_machine_name',this,'CTL - 1')">CTL - 1</div>
+              <div class="pill" onclick="rp('qg_machine_name',this,'CTL - 2')">CTL - 2</div>
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Inspected By <span class="req">*</span></label><input type="text" id="q_inspector" placeholder="Inspector name"></div>
+        </div>
+        <div class="fg fg-1">
+          <div class="field"><label>Overall Remarks</label><textarea id="q_remarks" placeholder="Any observations, issues or notes..."></textarea></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">&#9888;&#65039;</span> Rejection Quantity (if any)</div>
+      <div class="sec-body">
+        <div class="field"><label>Any Rejections?</label>
+          <div class="pills" id="qg_rejection">
+            <div class="pill" onclick="rp('qg_rejection',this,'No'); toggleQRejection(false)">No</div>
+            <div class="pill" onclick="rp('qg_rejection',this,'Yes'); toggleQRejection(true)">Yes</div>
+          </div>
+        </div>
+        <div id="q_rejection_wrap" style="display:none;margin-top:14px">
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr style="background:var(--gray-50)">
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Size</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">No. of Pieces</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Rejection Type(s) <span class="req">*</span></th>
+                <th style="padding:10px;border:1px solid var(--gray-200);width:40px"></th>
+              </tr></thead>
+              <tbody id="q_rej_rows"></tbody>
+            </table>
+          </div>
+          <button type="button" id="q_rej_add_btn" class="btn-sec" style="margin-top:10px;width:100%" onclick="addQRejRow()">+ Add Row</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📷</span> Pictures (if any)</div>
+      <div class="sec-body">
+        <div style="display:flex;gap:8px">
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            📸 Take Photos
+            <input type="file" id="q_photos" accept="image/*" multiple capture="environment" hidden onchange="prevMulti(this,'q_photo_prev')">
+          </label>
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            🖼️ Upload
+            <input type="file" id="q_photos_lib" accept="image/*" multiple hidden onchange="document.getElementById('q_photos').files = this.files; prevMulti(document.getElementById('q_photos'),'q_photo_prev')">
+          </label>
+        </div>
+        <div class="photo-previews" id="q_photo_prev" style="margin-top:10px"></div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📐</span> Sampling &amp; Number Calculation Reference</div>
+      <div class="sec-body" id="q_refblocks"></div>
+    </div>
+
+<div class="ctl-save-bar"><button class="btn btn-ghost" id="q_cancel" style="display:none" onclick="qlCancel()">Cancel</button><div class="grow" style="flex:1"></div><button class="btn btn-primary" id="q_save" onclick="qlSubmit()">Save inspection</button></div>
+</div></div></div>
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('bars',17) }}</span>Recent CTL inspections<span class="sub" id="q_cnt"></span></div>
+<div class="panel-body flush"><div class="dgrid-wrap" id="q_rows"><div class="empty">Loading…</div></div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function gv(id){ return (document.getElementById(id)||{}).value||''; }
+async function collectPhotosBase64(inputIds) {
+  var photos = [];
+  for (var id of inputIds) {
+    var inp = document.getElementById(id);
+    if (inp && inp.files && inp.files.length > 0) {
+      for (var file of inp.files) {
+        var b64 = await fileToBase64(file);
+        photos.push({ name: file.name || id + '.jpg', data: b64, type: file.type || 'image/jpeg' });
+      }
+    }
+  }
+  return photos;
+}
+
+function fileToBase64(file) {
+  return new Promise(function(resolve) {
+    var reader = new FileReader();
+    // PDFs: read as-is (don't compress)
+    if (file.type === 'application/pdf' || (file.name || '').toLowerCase().endsWith('.pdf')) {
+      reader.onload = function(e) { resolve(e.target.result); };
+      reader.readAsDataURL(file);
+      return;
+    }
+    // Images: compress to max 900px, JPEG 60%
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        var MAX = 900;
+        var w = img.width, h = img.height;
+        if (w > h && w > MAX) { h = h * (MAX/w); w = MAX; }
+        else if (h > MAX) { w = w * (MAX/h); h = MAX; }
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+      img.onerror = function() { resolve(e.target.result); };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+var MP_MAX_ADJ = 10;
+var MP_SPEC = {
+  q: [
+    ['coil_car_pressure','Coil Car Monitor Pressure'],
+    ['coil_center_align','Coil Center Alignment'],
+    ['bound_spreader_roller','Bound Spreader Roller'],
+    ['rack_angle','Rack Angle'],
+    ['leveller_entry_gap','Leveller Entry Gap'],
+    ['leveller_exit_gap','Leveller Exit Gap'],
+    ['blade_gap_clearance','Blade Gap Clearance']
+  ],
+  sh: [
+    ['blade_clearance','Blade Clearance'],
+    ['blade_condition','Blade Condition'],
+    ['backgage_reading','Backgage Reading'],
+    ['main_pressure','Main Pressure'],
+    ['hold_down_pressure','Hold Down Pressure'],
+    ['rack_angle','Rack Angle']
+  ]
+};
+function mpEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function mpRender(prefix){
+  var spec = MP_SPEC[prefix]; if(!spec) return;
+  var host = document.getElementById(prefix+'_mp_body'); if(!host) return;
+  host.innerHTML = spec.map(function(p){
+    var base = prefix+'_mp_'+p[0];
+    return '<div class="mp-param" data-key="'+p[0]+'">'
+      + '<div class="mp-top"><div class="mp-name">'+mpEsc(p[1])+'</div>'
+      +   '<input class="mp-init" id="'+base+'_init" type="text" placeholder="Initial setting" autocomplete="off"></div>'
+      + '<div class="mp-adjs" id="'+base+'_adjs"></div>'
+      + '<button type="button" class="mp-add" id="'+base+'_addbtn" onclick="mpAddAdj(\''+prefix+'\',\''+p[0]+'\')">+ Add adjustment</button>'
+      + '</div>';
+  }).join('');
+}
+function mpAddAdj(prefix,key,val,tm){
+  var wrap = document.getElementById(prefix+'_mp_'+key+'_adjs'); if(!wrap) return;
+  if(wrap.children.length >= MP_MAX_ADJ){ if(typeof toast==='function') toast('err','Up to '+MP_MAX_ADJ+' adjustments per parameter'); return; }
+  var idx = wrap.children.length + 1;
+  var t = tm;
+  if(t===undefined || t===null || t===''){ var now=new Date(), p=function(n){return ('0'+n).slice(-2);}; t = p(now.getHours())+':'+p(now.getMinutes()); }
+  var div = document.createElement('div');
+  div.className = 'mp-adj';
+  div.innerHTML = '<span class="mp-adj-n">#'+idx+'</span>'
+    + '<input class="mp-adj-val" type="text" placeholder="Adjusted to" autocomplete="off">'
+    + '<input class="mp-adj-time" type="time">'
+    + '<button type="button" class="mp-adj-x" title="Remove" onclick="mpDelAdj(this,\''+prefix+'\',\''+key+'\')">&times;</button>';
+  wrap.appendChild(div);
+  div.querySelector('.mp-adj-val').value = (val==null?'':val);
+  div.querySelector('.mp-adj-time').value = t;
+  mpSync(prefix,key);
+}
+function mpDelAdj(btn,prefix,key){ var r=btn.closest('.mp-adj'); if(r) r.remove(); mpRenumber(prefix,key); mpSync(prefix,key); }
+function mpRenumber(prefix,key){ var wrap=document.getElementById(prefix+'_mp_'+key+'_adjs'); if(!wrap) return; Array.prototype.forEach.call(wrap.children,function(r,i){ var s=r.querySelector('.mp-adj-n'); if(s) s.textContent='#'+(i+1); }); }
+function mpSync(prefix,key){ var wrap=document.getElementById(prefix+'_mp_'+key+'_adjs'); var btn=document.getElementById(prefix+'_mp_'+key+'_addbtn'); if(btn&&wrap) btn.style.display = (wrap.children.length>=MP_MAX_ADJ)?'none':''; }
+function mpCollect(prefix){
+  var spec = MP_SPEC[prefix]; var out=[]; if(!spec) return out;
+  spec.forEach(function(p){
+    var base=prefix+'_mp_'+p[0];
+    var initEl=document.getElementById(base+'_init');
+    var init = initEl? initEl.value : '';
+    var adjs=[]; var wrap=document.getElementById(base+'_adjs');
+    if(wrap) Array.prototype.forEach.call(wrap.querySelectorAll('.mp-adj'),function(r){
+      var v=(r.querySelector('.mp-adj-val')||{}).value||'';
+      var t=(r.querySelector('.mp-adj-time')||{}).value||'';
+      if(v!==''||t!=='') adjs.push({value:v,time:t});
+    });
+    out.push({ key:p[0], label:p[1], initial:init, adjustments:adjs });
+  });
+  return out;
+}
+function mpRestore(prefix, params){
+  mpRender(prefix);
+  if(!Array.isArray(params)) return;
+  params.forEach(function(p){
+    var base=prefix+'_mp_'+p.key;
+    var initEl=document.getElementById(base+'_init'); if(initEl) initEl.value = p.initial||'';
+    (p.adjustments||[]).forEach(function(a){ mpAddAdj(prefix, p.key, a.value||'', a.time||''); });
+  });
+}
+
+function collectQuality() {
+  var rows = [];
+  var cut_groups = [];
+  document.querySelectorAll('#q_groups > div').forEach(function(gdiv) {
+    var gid = gdiv.id.replace('cg_','');
+    var cl = gv('cg'+gid+'_len');
+    var sheets = [];
+    gdiv.querySelectorAll('tbody tr').forEach(function(tr) {
+      var rid = tr.id.replace('cgrow_','');
+      var row = { sheet_no: gv('cr'+rid+'_sno'), thickness: gv('cr'+rid+'_th'), width: gv('cr'+rid+'_w'), length: gv('cr'+rid+'_l'), d1: gv('cr'+rid+'_d1'), d2: gv('cr'+rid+'_d2'), line_speed: gv('cr'+rid+'_sp'), remarks: gv('cr'+rid+'_rm'), cut_length: cl };
+      sheets.push(row); rows.push(row);
+    });
+    cut_groups.push({ cut_length: cl, sheets: sheets });
+  });
+  (function(){ var pf=activeProfile('q'), ct=parseFloat(gv('q_thick')), cw=parseFloat(gv('q_width')); var oot=0, sc=0, cll=[];
+    cut_groups.forEach(function(g){ if(g.cut_length!=='') cll.push(g.cut_length); g.sheets.forEach(function(s){ sc++; s.out_of_tol=qSheetOOT(s, parseFloat(g.cut_length), pf, ct, cw); if(s.out_of_tol) oot++; }); });
+    window._q_cut_groups=cut_groups; window._q_summary={ cut_lengths: cll.join(', '), sheets_measured: sc, oot_count: oot };
+  })();
+  var pq = {};
+  for(var i=1;i<=20;i++) {
+    pq['size_'+i] = {
+      length: gv('pq_s'+i+'_len'),
+      nos: gv('pq_s'+i+'_nos'),
+      weight_t: gv('pq_s'+i+'_wt')
+    };
+  }
+  return {
+    date: gv('q_date'), time: gv('q_time'), coil_number: gv('q_coil_no'),
+    customer_name: gv('q_customer'),
+    batch_number: gv('q_batch'), make: rs['qg_make']||'',
+    coil_thickness: gv('q_thick'), coil_grade: gv('q_grade'),
+    coil_width: gv('q_width'), coil_weight: gv('q_weight'),
+    sheet_measurements: rows, processed_qty: pq,
+    first_bit: gv('q_first_bit'), last_bit: gv('q_last_bit'),
+    defective: gv('q_defective'), balance_wt: gv('q_bal_wt'),
+    coil_verified: ys['yn_verified']||'', blade_clearance: gv('q_blade'),
+    machine_params: mpCollect('q'),
+    operator: gv('q_operator'),
+    machine_name: rs['qg_machine_name']||'',
+    inspector: gv('q_inspector'),
+    remarks: gv('q_remarks'), timestamp: new Date().toISOString(),
+    bur: gv('q_bur'), cutting_finish: ys['yn_cut_finish']||'',
+    scalling: ys['yn_scalling']||'', pit_marks: ys['yn_pit_marks']||'',
+    waviness: ys['yn_waviness']||'', center_bow: gv('q_center_bow'),
+    cutting_bow: gv('q_cutting_bow'), surface_defects: ys['yn_surface_def']||'',
+    rejection_flag: rs['qg_rejection']||'No',
+    rejections: (function(){ var a=[]; document.querySelectorAll('#q_rej_rows tr').forEach(function(tr){ var id=tr.id.replace('q_rej_row_',''); a.push({ size: gv('qrej'+id+'_size'), qty: gv('qrej'+id+'_qty'), types: (REJ_TYPE_SEL['q_'+id]||[]) }); }); return a; })(),
+    lot_size: gv('q_lot_size'), required_samples: reqSamples(gv('q_lot_size')), cut_groups: (window._q_cut_groups||[]), cut_lengths: (window._q_summary||{}).cut_lengths||'', sheets_measured: (window._q_summary||{}).sheets_measured||0, oot_count: (window._q_summary||{}).oot_count||0,
+    sample_frequency: refFreq(), calc_constants: refCalc(), tolerances: activeProfile('q'), tolerance_profile: profileName('q')
+  };
+}
+function rp(g, el, v) {
+  document.querySelectorAll('#'+g+' .pill').forEach(p=>p.classList.remove('sel'));
+  el.classList.add('sel'); rs[g] = v;
+  // Hide any other-input for this group
+  var wrapMap = {
+    'ig_grade': 'i_grade_other_wrap',
+    'ig_make':  'i_make_other_wrap',
+    'qg_make':  'q_make_other_wrap'
+  };
+  var wrap = document.getElementById(wrapMap[g]);
+  if(wrap) wrap.style.display = 'none';
+}
+function rpOther(g, el, wrapId) {
+  document.querySelectorAll('#'+g+' .pill').forEach(p=>p.classList.remove('sel'));
+  el.classList.add('sel');
+  var wrap = document.getElementById(wrapId);
+  if(wrap) { wrap.style.display='block'; var inp=wrap.querySelector('input'); if(inp){inp.focus(); rs[g]=inp.value;} }
+}
+function yn(g, v, el) {
+  document.getElementById(g).querySelectorAll('.yn-btn').forEach(b=>b.classList.remove('a'));
+  el.classList.add('a'); ys[g] = v;
+}
+
+var cgCount = 0, cgRowCount = {};
+function addCutGroup() {
+  if (cgCount >= 12) { toast('err','Max 12 cut lengths'); return; }
+  cgCount++; var gid = cgCount; cgRowCount[gid] = 0;
+  var div = document.createElement('div'); div.id = 'cg_'+gid;
+  div.style.cssText = 'margin:10px 0;padding:12px;border:1px solid var(--gray-200);border-radius:8px;background:var(--gray-50)';
+  div.innerHTML = '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap">'
+    + '<label style="font-weight:600">Cut Length (mm)</label>'
+    + '<input type="number" step="0.01" id="cg'+gid+'_len" placeholder="Target length" style="width:150px;padding:6px;border:1px solid var(--gray-200);border-radius:4px" oninput="flagQuality()">'
+    + '<button type="button" onclick="removeCutGroup('+gid+')" style="margin-left:auto;background:#fee;border:none;border-radius:4px;padding:5px 12px;cursor:pointer;color:#c00">Remove length</button></div>'
+    + '<div class="tbl-wrap"><table class="meas-tbl"><thead><tr><th>Sheet No.</th><th>Thickness</th><th>Width</th><th>Length</th><th>Diagonal 1</th><th>Diagonal 2</th><th>Line Speed</th><th>Remarks</th><th></th></tr></thead><tbody id="cg'+gid+'_rows"></tbody></table></div>'
+    + '<button class="add-row-btn" type="button" style="margin-top:6px" onclick="addSheetRow('+gid+')">+ Add sheet</button>';
+  document.getElementById('q_groups').appendChild(div);
+  addSheetRow(gid);
+}
+function removeCutGroup(gid) { var e=document.getElementById('cg_'+gid); if(e) e.remove(); }
+function addSheetRow(gid) {
+  cgRowCount[gid] = (cgRowCount[gid]||0) + 1; var rid = gid+'_'+cgRowCount[gid];
+  var tb = document.getElementById('cg'+gid+'_rows'); if(!tb) return;
+  var tr = document.createElement('tr'); tr.id = 'cgrow_'+rid;
+  var cols = ['sno','th','w','l','d1','d2','sp','rm'];
+  tr.innerHTML = cols.map(function(c,i){ return '<td><input type="text" id="cr'+rid+'_'+c+'" placeholder="'+(i===0?cgRowCount[gid]:'')+'"></td>'; }).join('') + '<td><button class="row-del" type="button" onclick="delSheetRow(&#39;'+rid+'&#39;)">✕</button></td>';
+  tb.appendChild(tr);
+}
+function delSheetRow(rid) { var e=document.getElementById('cgrow_'+rid); if(e) e.remove(); }
+
+var pqVisibleRows = 0;
+var PQ_MAX_ROWS = 20;
+
+function pqRowHtml(i) {
+  return '<tr id="pq_row_'+i+'">'
+    + '<td class="pq-size-lbl">Size '+i+'</td>'
+    + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_len" placeholder="0" step="0.01"></td>'
+    + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_nos" placeholder="0" step="1"></td>'
+    + '<td><input class="pq-inp" type="number" id="pq_s'+i+'_wt" placeholder="0.000" step="0.001"></td>'
+    + '</tr>';
+}
+
+function buildPQ() {
+  var g = document.getElementById('pq_grid');
+  g.innerHTML = '<thead><tr><th style="min-width:64px">Size</th><th>Length (mm)</th><th>No. of Sheets</th><th>Weight (T)</th></tr></thead><tbody id="pq_tbody"></tbody>';
+  pqVisibleRows = 0;
+  for(var i=1;i<=3;i++) addPQRow();
+}
+
+function addPQRow() {
+  if (pqVisibleRows >= PQ_MAX_ROWS) return;
+  pqVisibleRows++;
+  var tbody = document.getElementById('pq_tbody');
+  if (!tbody) return;
+  tbody.insertAdjacentHTML('beforeend', pqRowHtml(pqVisibleRows));
+  updatePQAddBtn();
+}
+
+function updatePQAddBtn() {
+  var btn = document.getElementById('pq_add_btn');
+  if (!btn) return;
+  if (pqVisibleRows >= PQ_MAX_ROWS) {
+    btn.style.display = 'none';
+  } else {
+    btn.style.display = '';
+    btn.textContent = '+ Add Row (' + pqVisibleRows + '/' + PQ_MAX_ROWS + ')';
+  }
+}
+
+function prevSingle(inp, pid) {
+  var p = document.getElementById(pid); p.innerHTML = '';
+  if(inp.files&&inp.files[0]) { var img=document.createElement('img'); img.className='photo-thumb'; img.src=URL.createObjectURL(inp.files[0]); p.appendChild(img); }
+}
+function prevMulti(inp, pid) {
+  var p = document.getElementById(pid); p.innerHTML = '';
+  Array.from(inp.files).forEach(function(f){ var img=document.createElement('img'); img.className='photo-thumb'; img.src=URL.createObjectURL(f); p.appendChild(img); });
+}
+var qRejCount = 0;
+function mpTog(el){ el.classList.toggle('sel'); }
+// ----- Per-row rejection type multi-select popover -----
+var REJ_TYPE_SEL = {};
+var _rejPopKey = null;
+function rejTypeOptions(){
+  return (window.APP_SETTINGS && APP_SETTINGS.rejection_types && APP_SETTINGS.rejection_types.length)
+    ? APP_SETTINGS.rejection_types
+    : ['WIDTH VARIATION','LENGTH VARIATION','DIAGONAL VARIATION','LINE MARK','DENT MARK','CORE LAMINATION','D SCALE','RUST','PITTED','BURR','BREAKAWAY'];
+}
+function rejTypeBtnUpdate(key){
+  var btn=document.getElementById(key+'_tbtn'); if(!btn) return;
+  var arr=REJ_TYPE_SEL[key]||[];
+  btn.textContent = arr.length ? (arr.length<=2 ? arr.join(', ') : (arr.length+' selected')) : 'Select type(s)';
+  btn.classList.toggle('has', arr.length>0);
+}
+function openRejTypes(ev, key){
+  ev.stopPropagation();
+  _rejPopKey=key;
+  var pop=document.getElementById('rejtype_pop');
+  if(!pop){ pop=document.createElement('div'); pop.id='rejtype_pop'; pop.style.display='none'; document.body.appendChild(pop); }
+  var sel=REJ_TYPE_SEL[key]||[];
+  pop.innerHTML=rejTypeOptions().map(function(t){
+    var safe=String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\"/g,'&quot;');
+    var checked=sel.indexOf(t)>=0?'checked':'';
+    return '<label><input type="checkbox" value="'+safe+'" '+checked+' onchange="rejTypeChange(this)"> '+safe+'</label>';
+  }).join('');
+  var r=document.getElementById(key+'_tbtn').getBoundingClientRect();
+  pop.style.display='block';
+  var top=r.bottom+4, left=r.left;
+  if(top+pop.offsetHeight > window.innerHeight-8) top=Math.max(8, r.top-pop.offsetHeight-4);
+  if(left+pop.offsetWidth > window.innerWidth-8) left=Math.max(8, window.innerWidth-pop.offsetWidth-8);
+  pop.style.top=top+'px'; pop.style.left=left+'px';
+}
+function rejTypeChange(cb){
+  if(!_rejPopKey) return;
+  var arr=REJ_TYPE_SEL[_rejPopKey]||[];
+  if(cb.checked){ if(arr.indexOf(cb.value)<0) arr.push(cb.value); }
+  else { arr=arr.filter(function(x){return x!==cb.value;}); }
+  REJ_TYPE_SEL[_rejPopKey]=arr;
+  rejTypeBtnUpdate(_rejPopKey);
+}
+function closeRejPop(){ var p=document.getElementById('rejtype_pop'); if(p) p.style.display='none'; _rejPopKey=null; }
+document.addEventListener('click', function(e){
+  var p=document.getElementById('rejtype_pop');
+  if(!p || p.style.display==='none') return;
+  if(p.contains(e.target)) return;
+  if(e.target.classList && e.target.classList.contains('rejtype-btn')) return;
+  closeRejPop();
+});
+function toggleQRejection(show) {
+  var w = document.getElementById('q_rejection_wrap');
+  if (w) w.style.display = show ? '' : 'none';
+  if (show && qRejCount === 0) addQRejRow();
+}
+function addQRejRow() {
+  if (qRejCount >= 10) return;
+  qRejCount++;
+  var id = qRejCount;
+  var tr = document.createElement('tr');
+  tr.id = 'q_rej_row_' + id;
+  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="qrej'+id+'_size" placeholder="Size" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="1" id="qrej'+id+'_qty" placeholder="No. of pieces" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><div class="rejtype-btn" id="q_'+id+'_tbtn" onclick="openRejTypes(event,&#39;q_'+id+'&#39;)">Select type(s)</div></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeQRejRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">\u00d7</button></td>';
+  document.getElementById('q_rej_rows').appendChild(tr);
+  updateQRejAddBtn();
+}
+function removeQRejRow(id) { var el = document.getElementById('q_rej_row_' + id); if (el) el.remove(); updateQRejAddBtn(); }
+function updateQRejAddBtn() {
+  var visible = document.querySelectorAll('#q_rej_rows tr').length;
+  var btn = document.getElementById('q_rej_add_btn');
+  if (!btn) return;
+  if (visible >= 10) { btn.style.display = 'none'; }
+  else { btn.style.display = ''; btn.textContent = '+ Add Row (' + visible + '/10)'; }
+}
+function refFreq(){ return (window.APP_SETTINGS && APP_SETTINGS.sample_frequency && APP_SETTINGS.sample_frequency.length) ? APP_SETTINGS.sample_frequency : [{min:1,max:2,samples:'1-2'},{min:3,max:20,samples:3},{min:21,max:50,samples:5},{min:51,max:150,samples:8},{min:151,max:300,samples:11},{min:301,max:450,samples:15}]; }
+function refCalc(){ return (window.APP_SETTINGS && APP_SETTINGS.calc_constants && Object.keys(APP_SETTINGS.calc_constants).length) ? APP_SETTINGS.calc_constants : {HR:7.89, CHEQUERED:8.1}; }
+var TOL_SET = { q:'other', sh:'other' };
+function refProfiles(){ return (window.APP_SETTINGS && APP_SETTINGS.tolerance_profiles) ? APP_SETTINGS.tolerance_profiles : {wheels_india:{width_under:15,width_over:15,width_threshold:1500,thickness:0.2,length:3,diagonal:3},other:{width_under:20,width_over:25,width_threshold:1500,thickness:0.5,length:10,diagonal:5}}; }
+function activeProfile(p){ var pr=refProfiles(); return (TOL_SET[p]==='wheels_india' ? pr.wheels_india : pr.other) || pr.other; }
+function profileName(p){ return TOL_SET[p]==='wheels_india' ? 'Wheels India' : 'Other'; }
+function tolLines(pf){ var wu=pf.width_under, wo=(pf.width_over!=null?pf.width_over:wu), th=pf.width_threshold||1500; var ws=(wu===wo)?('Width \u22120/+'+wu+'mm'):('Width \u22120/+'+wu+'mm (<'+th+'), \u22120/+'+wo+'mm (\u2265'+th+')'); return [ws,'Thickness \u00b1'+pf.thickness+'mm','Length \u22120/+'+pf.length+'mm','Diagonal \u2264'+pf.diagonal+'mm']; }
+function renderTolToggle(p){
+  var host=document.getElementById(p+'_toltoggle'); if(!host) return;
+  host.innerHTML='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-weight:700;font-size:13px">Tolerance set:</span>'
+    +'<span class="pill'+(TOL_SET[p]==='wheels_india'?' sel':'')+'" onclick="setTolSet(&#39;'+p+'&#39;,&#39;wheels_india&#39;)">Wheels India</span> '
+    +'<span class="pill'+(TOL_SET[p]==='other'?' sel':'')+'" onclick="setTolSet(&#39;'+p+'&#39;,&#39;other&#39;)">Other coils</span></div>';
+}
+function setTolSet(p, which){ TOL_SET[p]=which; renderTolToggle(p); renderRefBlocks(p); if(p==='q') flagQuality(); else flagShearing(); }
+function flagInput(el, bad){ if(!el) return; el.style.borderColor = bad ? '#dc2626' : 'var(--gray-200)'; el.style.background = bad ? '#fef2f2' : ''; }
+function widthTolAt(pf, nominal){ var th=pf.width_threshold||1500; return (Number(nominal) >= th) ? pf.width_over : pf.width_under; }
+function flagQuality(){
+  var pf=activeProfile('q'); var ct=parseFloat((document.getElementById('q_thick')||{}).value); var cw=parseFloat((document.getElementById('q_width')||{}).value);
+  document.querySelectorAll('#q_groups > div').forEach(function(gdiv){
+    var gid=gdiv.id.replace('cg_',''); var cl=parseFloat((document.getElementById('cg'+gid+'_len')||{}).value);
+    gdiv.querySelectorAll('tbody tr').forEach(function(tr){
+      var rid=tr.id.replace('cgrow_','');
+      var th=document.getElementById('cr'+rid+'_th'); if(th){ var tv=parseFloat(th.value); flagInput(th, isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness); }
+      var w=document.getElementById('cr'+rid+'_w'); if(w){ var wv=parseFloat(w.value); var tol=widthTolAt(pf,cw); flagInput(w, isFinite(wv)&&isFinite(cw)&&tol!=null&&(wv<cw||wv>cw+tol)); }
+      var l=document.getElementById('cr'+rid+'_l'); if(l){ var lv=parseFloat(l.value); flagInput(l, isFinite(lv)&&isFinite(cl)&&pf.length!=null&&(lv<cl||lv>cl+pf.length)); }
+      var d1=document.getElementById('cr'+rid+'_d1'), d2=document.getElementById('cr'+rid+'_d2');
+      var a=parseFloat((d1||{}).value), b=parseFloat((d2||{}).value); var bad=isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal; flagInput(d1,bad); flagInput(d2,bad);
+    });
+  });
+}
+function qSheetOOT(s, cl, pf, ct, cw){
+  var bad=false;
+  var tv=parseFloat(s.thickness); if(isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness) bad=true;
+  var wv=parseFloat(s.width), wtol=widthTolAt(pf,cw); if(isFinite(wv)&&isFinite(cw)&&wtol!=null&&(wv<cw||wv>cw+wtol)) bad=true;
+  var lv=parseFloat(s.length); if(isFinite(lv)&&isFinite(cl)&&pf.length!=null&&(lv<cl||lv>cl+pf.length)) bad=true;
+  var a=parseFloat(s.d1), b=parseFloat(s.d2); if(isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal) bad=true;
+  return bad;
+}
+function flagShearing(){
+  var pf=activeProfile('sh');
+  var ct=parseFloat((document.getElementById('sh_thickness')||{}).value);
+  // Nominal widths come from the OUTPUT SIZES (width-plausible numbers 40..1000; excludes thickness & length)
+  var ow=[];
+  document.querySelectorAll('#sh_osz_rows tr').forEach(function(tr){
+    var oid=tr.id.replace('sh_osz_row_','');
+    var s=(((document.getElementById('osz'+oid+'_size')||{}).value)||'');
+    s.split(/[x\u00d7X*,\s]+/).forEach(function(t){ var n=parseFloat(t); if(isFinite(n)&&n>=40&&n<=1000) ow.push(n); });
+  });
+  document.querySelectorAll('#sh_rows tr').forEach(function(tr){
+    var id=tr.id.replace('sh_row_','');
+    var th=document.getElementById('sr'+id+'_th'); if(th){ var tv=parseFloat(th.value); flagInput(th, isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness); }
+    ['w1','w2'].forEach(function(k){ var el=document.getElementById('sr'+id+'_'+k); if(el){ var v=parseFloat(el.value);
+      var okW = (!isFinite(v) || ow.length===0) ? true : ow.some(function(n){ var tol=widthTolAt(pf,n); return tol!=null && v>=n && v<=n+tol; });
+      flagInput(el, isFinite(v) && ow.length>0 && !okW);
+    } });
+    var d1=document.getElementById('sr'+id+'_d1'), d2=document.getElementById('sr'+id+'_d2');
+    var a=parseFloat((d1||{}).value), b=parseFloat((d2||{}).value); var bad=isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal; flagInput(d1,bad); flagInput(d2,bad);
+  });
+}
+function reqSamples(lot){ var v=Number(lot); if(!isFinite(v)||v<=0) return ''; var r=''; refFreq().forEach(function(x){ if(v>=x.min&&v<=x.max) r=x.samples; }); return r; }
+function renderRefBlocks(p){
+  var host=document.getElementById(p+'_refblocks'); if(!host) return;
+  var freq=refFreq(), cc=refCalc(), pf=activeProfile(p);
+  var freqRows=freq.map(function(r,i){ return '<tr id="'+p+'_fr'+i+'"><td style="padding:8px;border:1px solid var(--gray-200)">'+r.min+' - '+r.max+'</td><td style="padding:8px;border:1px solid var(--gray-200)">'+r.samples+' sheets</td></tr>'; }).join('');
+  var matOpts=Object.keys(cc).map(function(k){ return '<option value="'+k+'">'+k+'</option>'; }).join('');
+  var tolStr=tolLines(pf);
+  host.innerHTML =
+    '<div class="field"><label>Lot size (No. of sheets)</label><input type="number" id="'+p+'_lot_size" placeholder="Enter total sheets in lot" oninput="lotSizeCalc(&#39;'+p+'&#39;)"></div>'
+    + '<div id="'+p+'_lot_result" style="margin:6px 0 12px;font-weight:600;color:var(--brand)"></div>'
+    + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:var(--gray-50)"><th style="padding:8px;border:1px solid var(--gray-200);text-align:left">Lot size (No. of sheets)</th><th style="padding:8px;border:1px solid var(--gray-200);text-align:left">Sample frequency to check</th></tr></thead><tbody>'+freqRows+'</tbody></table></div>'
+    + '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--gray-200)"><label style="font-weight:600;display:block;margin-bottom:8px">Number Calculation</label>'
+    + '<div class="fg fg-2" style="gap:8px"><div class="field"><label>Length (mm)</label><input type="number" id="'+p+'_calc_l" oninput="numCalc(&#39;'+p+'&#39;)"></div><div class="field"><label>Width (mm)</label><input type="number" id="'+p+'_calc_w" oninput="numCalc(&#39;'+p+'&#39;)"></div></div>'
+    + '<div class="fg fg-2" style="gap:8px"><div class="field"><label>Thickness (mm)</label><input type="number" id="'+p+'_calc_t" oninput="numCalc(&#39;'+p+'&#39;)"></div><div class="field"><label>Pieces (optional)</label><input type="number" id="'+p+'_calc_pcs" oninput="numCalc(&#39;'+p+'&#39;)"></div></div>'
+    + '<div class="field"><label>Material</label><select id="'+p+'_calc_mat" onchange="numCalc(&#39;'+p+'&#39;)">'+matOpts+'</select></div>'
+    + '<div id="'+p+'_calc_result" style="margin-top:8px;font-weight:600;color:var(--brand)"></div>'
+    + '<div style="margin-top:8px;font-size:12px;color:var(--gray-500)">Formula: L \u00d7 W \u00d7 T \u00d7 constant.<br>Tolerances ('+profileName(p)+'): '+tolStr.join(';  ')+'</div></div>';
+}
+function lotSizeCalc(p){
+  var el=document.getElementById(p+'_lot_size'); var v=Number(el?el.value:'');
+  var freq=refFreq(); var out=document.getElementById(p+'_lot_result');
+  freq.forEach(function(r,i){ var tr=document.getElementById(p+'_fr'+i); if(tr) tr.style.background=''; });
+  if(!isFinite(v)||v<=0){ if(out) out.textContent=''; return; }
+  var hit=null, idx=-1; freq.forEach(function(r,i){ if(v>=r.min&&v<=r.max){ hit=r; idx=i; } });
+  if(hit){ if(out) out.textContent='\u2192 Check '+hit.samples+' sheets'; var tr=document.getElementById(p+'_fr'+idx); if(tr) tr.style.background='#FEF3C7'; }
+  else { if(out) out.textContent='\u2192 Lot size is outside the table ranges'; }
+}
+function numCalc(p){
+  function nv(id){ var e=document.getElementById(id); return Number(e?e.value:''); }
+  var l=nv(p+'_calc_l'), w=nv(p+'_calc_w'), t=nv(p+'_calc_t'), pcs=nv(p+'_calc_pcs');
+  var matEl=document.getElementById(p+'_calc_mat'); var mat=matEl?matEl.value:''; var cc=refCalc(); var k=cc[mat]||0;
+  var out=document.getElementById(p+'_calc_result'); if(!out) return;
+  if(!(l>0&&w>0&&t>0&&k>0)){ out.textContent=''; return; }
+  var perKg=(l*w*t*k)/1e6;
+  var msg='Per piece: '+perKg.toFixed(3)+' kg';
+  if(pcs>0){ msg+='  \u00b7  Total ('+pcs+' pcs): '+((perKg*pcs)/1000).toFixed(4)+' t'; }
+  out.textContent=msg;
+}
+
+</script>
+
+<script>
+/* ---- globals the legacy helpers expect ---- */
+var rs={}, ys={}; window.APP_SETTINGS={};
+var QL=[];
+function _pad(n){return ('0'+n).slice(-2);}
+function qesc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+/* ---- restore helpers (edit) ---- */
+function selPill(groupId,val){
+  var g=document.getElementById(groupId); if(!g)return; var hit=null;
+  g.querySelectorAll('.pill').forEach(function(p){ if(p.textContent.trim()===String(val).trim())hit=p; });
+  if(hit){ hit.click(); }
+  else if(val){ // "Other" value
+    var o=g.querySelector('.pill[onclick*="rpOther"]'); if(o){o.click(); var wrapId=(o.getAttribute('onclick').match(/'([^']+)'\)\s*$/)||[])[1];
+      var wrap=wrapId?document.getElementById(wrapId):null; var inp=wrap?wrap.querySelector('input'):null; if(inp){inp.value=val; rs[groupId]=val;} }
+    else { rs[groupId]=val; }
+  }
+}
+function selYN(groupId,val){ var g=document.getElementById(groupId); if(!g||!val)return;
+  var want=(String(val).toUpperCase().charAt(0)==='Y')?'Y':'N';
+  g.querySelectorAll('.yn-btn').forEach(function(b){ var oc=b.getAttribute('onclick')||''; if(oc.indexOf("'"+want+"'")>-1)b.click(); }); }
+
+/* ---- init ---- */
+function qlInit(){
+  mpRender('q'); buildPQ(); renderTolToggle('q'); renderRefBlocks('q');
+  if(!document.querySelector('#q_groups > div')) addCutGroup();
+  var n=new Date();
+  var d=document.getElementById('q_date'); if(d&&!d.value)d.value=n.getFullYear()+'-'+_pad(n.getMonth()+1)+'-'+_pad(n.getDate());
+  var t=document.getElementById('q_time'); if(t&&!t.value)t.value=_pad(n.getHours())+':'+_pad(n.getMinutes());
+  qlLoad();
+}
+async function qlLoad(){
+  var host=document.getElementById('q_rows'); host.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/quality/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}QL=await r.json();if(!Array.isArray(QL))QL=[];}
+  catch(e){host.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load CTL records. Try again.</div>';return;}
+  qlRender();
+}
+function curMon(){var n=new Date();return n.getFullYear()+'-'+_pad(n.getMonth()+1);}
+function qlRender(){
+  var host=document.getElementById('q_rows'),mon=curMon(),n=0,sh=0,oot=0,flag=0;
+  QL.forEach(function(x){ if(String(x.log_date||'').slice(0,7)===mon){ n++; sh+=Number(x.sheets_measured||0); oot+=Number(x.oot_count||0); if(String(x.rejection_flag).toLowerCase()==='yes')flag++; } });
+  document.getElementById('kpi_n').textContent=n;
+  document.getElementById('kpi_sh').textContent=sh;
+  document.getElementById('kpi_oot').textContent=oot;
+  document.getElementById('kpi_rej').textContent=flag;
+  document.getElementById('q_cnt').textContent=QL.length?(QL.length+' total'):'';
+  if(!QL.length){host.innerHTML='<div class="empty">No CTL inspections logged yet. Fill the form above and save.</div>';return;}
+  var cols=[['Date','9%'],['Customer','14%'],['Coil No','11%'],['Batch','10%'],['Grade','8%'],['Machine','8%'],['Sheets','7%'],['OOT','6%'],['Rej','6%'],['Inspector','10%'],['','6%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var g=function(a){return(a===''||a==null)?'':qesc(a);};
+  var body=QL.map(function(x){
+    var rej=String(x.rejection_flag).toLowerCase()==='yes'?'<span class="badge bad">Yes</span>':'<span class="badge good">No</span>';
+    var ootb=Number(x.oot_count||0)>0?('<span class="badge bad">'+x.oot_count+'</span>'):'0';
+    return'<tr><td>'+g(String(x.log_date||'').slice(0,10))+'</td><td>'+g(x.customer_name)+'</td><td>'+g(x.coil_number)+'</td>'
+      +'<td>'+g(x.batch_number)+'</td><td class="c">'+g(x.grade)+'</td><td class="c">'+g(x.machine_name)+'</td>'
+      +'<td class="c">'+g(x.sheets_measured)+'</td><td class="c">'+ootb+'</td><td class="c">'+rej+'</td><td class="c">'+g(x.inspector)+'</td>'
+      +'<td class="c"><a href="/quality/pdf?id='+x.id+'" target="_blank" class="ic-edit">PDF</a><br><a href="#" onclick="qlEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" onclick="qlDel('+x.id+');return false" class="ic-del">Del</a></td></tr>';
+  }).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+function qlSetVal(id,v){var e=document.getElementById(id);if(e)e.value=(v==null?'':v);}
+async function qlEdit(id){
+  var r;try{r=await fetch('/quality/record?id='+id,{cache:'no-store'});}catch(e){toast('err','Couldn’t load record');return;}
+  if(!r.ok){toast('err','Couldn’t load record');return;} var rec=await r.json(); var d=rec.payload||{};
+  document.getElementById('q_edit_id').value=id;
+  ['q_customer:customer_name','q_date:date','q_time:time','q_coil_no:coil_number','q_batch:batch_number','q_thick:coil_thickness','q_grade:coil_grade','q_width:coil_width','q_weight:coil_weight','q_first_bit:first_bit','q_last_bit:last_bit','q_defective:defective','q_bal_wt:balance_wt','q_blade:blade_clearance','q_operator:operator','q_inspector:inspector','q_remarks:remarks','q_bur:bur','q_center_bow:center_bow','q_cutting_bow:cutting_bow'].forEach(function(m){var p=m.split(':');qlSetVal(p[0],d[p[1]]);});
+  selPill('qg_make',d.make); selPill('qg_machine_name',d.machine_name);
+  selYN('yn_verified',d.coil_verified); selYN('yn_cut_finish',d.cutting_finish); selYN('yn_scalling',d.scalling);
+  selYN('yn_pit_marks',d.pit_marks); selYN('yn_waviness',d.waviness); selYN('yn_surface_def',d.surface_defects);
+  mpRestore('q', d.machine_params||[]);
+  // sheet groups
+  document.getElementById('q_groups').innerHTML=''; cgCount=0; cgRowCount={};
+  (d.cut_groups||[]).forEach(function(grp){ addCutGroup(); var gid=cgCount; qlSetVal('cg'+gid+'_len',grp.cut_length);
+    var tb=document.getElementById('cg'+gid+'_rows'); if(tb)tb.innerHTML=''; cgRowCount[gid]=0;
+    (grp.sheets||[]).forEach(function(s){ addSheetRow(gid); var rid=gid+'_'+cgRowCount[gid];
+      qlSetVal('cr'+rid+'_sno',s.sheet_no);qlSetVal('cr'+rid+'_th',s.thickness);qlSetVal('cr'+rid+'_w',s.width);qlSetVal('cr'+rid+'_l',s.length);qlSetVal('cr'+rid+'_d1',s.d1);qlSetVal('cr'+rid+'_d2',s.d2);qlSetVal('cr'+rid+'_sp',s.line_speed);qlSetVal('cr'+rid+'_rm',s.remarks); }); });
+  if(!document.querySelector('#q_groups > div')) addCutGroup();
+  // processed qty
+  buildPQ(); var pq=d.processed_qty||{}; var maxn=0; for(var k in pq){var m=k.match(/size_(\d+)/);if(m)maxn=Math.max(maxn,+m[1]);}
+  while(pqVisibleRows<maxn) addPQRow();
+  for(var i=1;i<=pqVisibleRows;i++){var s=pq['size_'+i]||{};qlSetVal('pq_s'+i+'_len',s.length);qlSetVal('pq_s'+i+'_nos',s.nos);qlSetVal('pq_s'+i+'_wt',s.weight_t);}
+  // rejections
+  qRejCount=0; document.getElementById('q_rej_rows').innerHTML=''; REJ_TYPE_SEL={};
+  if(String(d.rejection_flag).toLowerCase()==='yes'){ selPill('qg_rejection','Yes'); toggleQRejection(true);
+    document.getElementById('q_rej_rows').innerHTML=''; qRejCount=0;
+    (d.rejections||[]).forEach(function(rj){ addQRejRow(); var rid=qRejCount; qlSetVal('qrej'+rid+'_size',rj.size);qlSetVal('qrej'+rid+'_qty',rj.qty);
+      REJ_TYPE_SEL['q_'+rid]=(rj.types||[]); rejTypeBtnUpdate('q_'+rid); });
+  } else { selPill('qg_rejection','No'); }
+  renderTolToggle('q'); renderRefBlocks('q'); if(typeof flagQuality==='function')flagQuality();
+  document.getElementById('q_form_title').textContent='Edit CTL inspection #'+id;
+  document.getElementById('q_save').textContent='Update inspection';
+  document.getElementById('q_cancel').style.display='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function qlReset(){ document.getElementById('q_edit_id').value=''; document.getElementById('q_form_title').textContent='New CTL inspection';
+  document.getElementById('q_save').textContent='Save inspection'; document.getElementById('q_cancel').style.display='none';
+  // clear scalar fields
+  ['q_customer','q_coil_no','q_batch','q_thick','q_grade','q_width','q_weight','q_first_bit','q_last_bit','q_defective','q_bal_wt','q_blade','q_operator','q_inspector','q_remarks','q_bur','q_center_bow','q_cutting_bow'].forEach(function(i){qlSetVal(i,'');});
+  rs={}; ys={}; REJ_TYPE_SEL={}; qRejCount=0; cgCount=0; cgRowCount={};
+  document.querySelectorAll('.ctl-form .pill.sel').forEach(function(p){p.classList.remove('sel');});
+  document.querySelectorAll('.ctl-form .yn-btn.a').forEach(function(b){b.classList.remove('a');});
+  document.getElementById('q_groups').innerHTML=''; document.getElementById('q_rej_rows').innerHTML='';
+  var w=document.getElementById('q_rejection_wrap'); if(w)w.style.display='none';
+  var pv=document.getElementById('q_photo_prev'); if(pv)pv.innerHTML='';
+  mpRender('q'); buildPQ(); addCutGroup(); renderTolToggle('q'); renderRefBlocks('q');
+  var n=new Date(); qlSetVal('q_date',n.getFullYear()+'-'+_pad(n.getMonth()+1)+'-'+_pad(n.getDate())); qlSetVal('q_time',_pad(n.getHours())+':'+_pad(n.getMinutes()));
+}
+function qlCancel(){qlReset();window.scrollTo({top:0,behavior:'smooth'});}
+async function qlSubmit(){
+  var d=collectQuality();
+  if(!d.coil_number){toast('err','Enter the coil number');return;}
+  if(!d.batch_number){toast('err','Enter the batch number');return;}
+  if(!d.inspector){toast('err','Enter who inspected');return;}
+  try{ d.photos = await collectPhotosBase64(['q_photos']); }catch(e){ d.photos=[]; }
+  var editId=document.getElementById('q_edit_id').value;
+  var payload={id:editId||null, data:d};
+  var b=document.getElementById('q_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch(editId?'/quality/update':'/quality/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    var j=await r.json().catch(function(){return{};});if(!r.ok||!j.ok)throw new Error(j.detail||'Save failed');
+    toast('ok',editId?'Inspection updated':'Inspection saved · writing to Excel log');qlReset();await qlLoad();window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){toast('err','Couldn’t save: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=lbl;}
+}
+async function qlDel(id){if(!confirm('Delete this CTL inspection record?'))return;
+  try{var r=await fetch('/quality/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    var j=await r.json().catch(function(){return{};});if(!r.ok||!j.ok)throw new Error('failed');toast('ok','Record deleted');await qlLoad();
+  }catch(e){toast('err','Couldn’t delete the record');}}
+document.addEventListener('DOMContentLoaded', qlInit);
+</script>
+{% endblock %}

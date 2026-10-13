@@ -44,3 +44,71 @@ async def read_text(token: str, path: str) -> str | None:
     if r.status_code == 200:
         return r.text
     return None
+
+
+# ---- Workbook table helpers (append rows to an existing OneDrive .xlsx) ----
+async def get_item_id(token: str, path: str) -> str | None:
+    url = f"{_GRAPH}/users/{USER_ID}/drive/root:/{quote(path)}"
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+    return r.json().get("id") if r.status_code == 200 else None
+
+
+async def table_columns(token: str, item_id: str, table: str) -> list[str]:
+    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}/columns?$select=name"
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+    if r.status_code != 200:
+        return []
+    return [col.get("name", "") for col in (r.json().get("value") or [])]
+
+
+async def ensure_table_columns(token: str, item_id: str, table: str, expected: list[str]):
+    """Add any missing trailing columns so the table holds at least `expected`."""
+    cur = await table_columns(token, item_id, table)
+    added = 0
+    async with httpx.AsyncClient(timeout=30) as c:
+        for i in range(len(cur), len(expected)):
+            r = await c.post(
+                f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}/columns",
+                headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                json={"name": expected[i]})
+            if r.status_code < 300:
+                added += 1
+            else:
+                break
+    return {"before": len(cur), "expected": len(expected), "added": added}
+
+
+async def create_session(token: str, item_id: str) -> str | None:
+    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/createSession"
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.post(url, headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+                         json={"persistChanges": True})
+    return r.json().get("id") if r.status_code < 300 else None
+
+
+async def close_session(token: str, item_id: str, session_id: str):
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            await c.post(f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/closeSession",
+                         headers={"Authorization": f"Bearer {token}", "workbook-session-id": session_id})
+    except Exception:
+        pass
+
+
+async def add_table_row(token: str, item_id: str, table: str, values: list):
+    """Append one row ([[...]]) to a workbook table, using a short-lived session."""
+    sid = await create_session(token, item_id)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    if sid:
+        headers["workbook-session-id"] = sid
+    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}/rows/add"
+    try:
+        async with httpx.AsyncClient(timeout=90) as c:
+            r = await c.post(url, headers=headers, json={"values": [values]})
+        if r.status_code >= 300:
+            raise RuntimeError(f"rows/add failed ({r.status_code}): {r.text[:300]}")
+    finally:
+        if sid:
+            await close_session(token, item_id, sid)
