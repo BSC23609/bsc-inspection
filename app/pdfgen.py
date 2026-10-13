@@ -626,3 +626,121 @@ def build_shearing_pdf(d: dict, rec_id, mp_spec) -> bytes:
                            ParagraphStyle("g", fontName="Helvetica", fontSize=7.5, textColor=MUT, alignment=2)))
     doc.build(story)
     return buf.getvalue()
+
+
+# ============================================================
+#  Pre-Delivery Inspection (PDI) — report PDF (portrait A4)
+# ============================================================
+def _f(v):
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_pdi_pdf(rep: dict, tol: dict) -> bytes:
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=30, rightMargin=30,
+                            topMargin=24, bottomMargin=28)
+    st = {
+        "title": ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=14.5, textColor=BRAND, alignment=1, leading=17),
+        "sub": ParagraphStyle("s", fontName="Helvetica", fontSize=8.5, textColor=MUT, alignment=1),
+        "meta": ParagraphStyle("m", fontName="Helvetica-Bold", fontSize=9, textColor=DARK, alignment=2, leading=12),
+        "sec": ParagraphStyle("se", fontName="Helvetica-Bold", fontSize=9.5, textColor=colors.white, leading=12),
+        "lab": ParagraphStyle("l", fontName="Helvetica", fontSize=8, textColor=MUT, leading=10),
+        "val": ParagraphStyle("v", fontName="Helvetica-Bold", fontSize=9, textColor=colors.HexColor("#0e1524"), leading=11),
+        "flag": ParagraphStyle("fl", fontName="Helvetica-Bold", fontSize=8.5, textColor=colors.HexColor("#c23438"), leading=11),
+    }
+    tTh = _f((tol or {}).get("thickness")) or 0.5
+    tW = _f((tol or {}).get("width")) or 5
+    tL = _f((tol or {}).get("length")) or 10
+    story = []
+    logo = ""
+    if os.path.exists(_LOGO):
+        try:
+            logo = Image(_LOGO, width=40 * mm, height=11 * mm, kind="proportional")
+        except Exception:
+            logo = ""
+    title_block = [Paragraph("PRE-DELIVERY INSPECTION", st["title"]),
+                   Paragraph("BSCQMS-PRD-009 · REV 01", st["sub"])]
+    meta = Paragraph(f"{rep.get('report_no') or '-'}<br/>{str(rep.get('report_date') or '')[:10]}", st["meta"])
+    head = Table([[logo, title_block, meta]], colWidths=[125, None, 140])
+    head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                              ("LINEBELOW", (0, 0), (-1, 0), 1.1, BRAND), ("BOTTOMPADDING", (0, 0), (-1, 0), 8)]))
+    story.append(head)
+    story.append(Spacer(1, 10))
+    W = doc.width
+
+    def bar(title):
+        t = Table([[Paragraph(title, st["sec"])]], colWidths=[W])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), BRAND), ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                               ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        story.append(t)
+
+    def pairs(items, cols=3):
+        data, row = [], []
+        for lab, val in items:
+            row.append([Paragraph(lab, st["lab"]), Spacer(1, 1), Paragraph(_fmt(val) or "-", st["val"])])
+            if len(row) == cols:
+                data.append(row); row = []
+        if row:
+            while len(row) < cols:
+                row.append("")
+            data.append(row)
+        if data:
+            t = Table(data, colWidths=[W / float(cols)] * cols)
+            t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 5),
+                                   ("BOTTOMPADDING", (0, 0), (-1, -1), 5), ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                                   ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("BOX", (0, 0), (-1, -1), 0.4, GRID),
+                                   ("INNERGRID", (0, 0), (-1, -1), 0.3, GRID)]))
+            story.append(t)
+        story.append(Spacer(1, 10))
+
+    bar("REPORT DETAILS")
+    pairs([("Report No", rep.get("report_no")), ("Date", rep.get("report_date")),
+           ("Customer", rep.get("customer"))])
+
+    for idx, it in enumerate(rep.get("items") or []):
+        sp = it.get("spec") or {}
+        ob = it.get("obs") or {}
+        ch = it.get("checks") or {}
+        bar(f"ITEM {idx + 1}" + (f"  —  SO {it.get('so')}" if it.get("so") else ""))
+        pairs([("Date", it.get("date")), ("SO No", it.get("so")), ("Slip No", it.get("slip")),
+               ("Make", it.get("make")), ("Qty (Nos)", it.get("qty")), ("Weight (T)", it.get("wt"))])
+        pairs([("Spec Thickness", sp.get("th")), ("Spec Width", sp.get("wd")), ("Spec Length", sp.get("len")),
+               ("Obs Thickness", ob.get("th")), ("Obs Width", ob.get("wd")), ("Obs Length", ob.get("len"))])
+        pairs([("Waviness", ch.get("waviness")), ("Line / Scratch", ch.get("line")),
+               ("Water / Oil", ch.get("water")), ("Colour", ch.get("colour")), ("Sticker", ch.get("sticker"))])
+        oot = []
+        a, b = _f(sp.get("th")), _f(ob.get("th"))
+        if a is not None and b is not None and abs(b - a) > tTh:
+            oot.append("Thickness")
+        a, b = _f(sp.get("wd")), _f(ob.get("wd"))
+        if a is not None and b is not None and abs(b - a) > tW:
+            oot.append("Width")
+        a, b = _f(sp.get("len")), _f(ob.get("len"))
+        if a is not None and b is not None and abs(b - a) > tL:
+            oot.append("Length")
+        notok = [k for k in ("waviness", "line", "water", "colour", "sticker")
+                 if str(ch.get(k) or "").upper() == "NOT OK"]
+        if oot or notok:
+            msg = "⚠  Out of tolerance: " + (", ".join(oot) or "none")
+            if notok:
+                msg += "   |   NOT OK: " + ", ".join(notok)
+            t = Table([[Paragraph(msg, st["flag"])]], colWidths=[W])
+            t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#fdecec")),
+                                   ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#f0c0c0")),
+                                   ("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 5),
+                                   ("BOTTOMPADDING", (0, 0), (-1, -1), 5)]))
+            story.append(t)
+            story.append(Spacer(1, 10))
+
+    bar("SIGN-OFF")
+    pairs([("Inspected By", rep.get("inspected_by"))], cols=3)
+
+    gen = datetime.now().strftime("%d-%b-%Y %H:%M")
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"Bharat Steel (Chennai) Pvt. Ltd. &nbsp;·&nbsp; Generated {gen}",
+                           ParagraphStyle("g", fontName="Helvetica", fontSize=7.5, textColor=MUT, alignment=2)))
+    doc.build(story)
+    return buf.getvalue()

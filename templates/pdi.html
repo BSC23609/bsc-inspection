@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Pre-Delivery Inspection · {{ app_name }}{% endblock %}
+{% block tb_title %}Pre-Delivery Inspection{% endblock %}
+{% block content %}
+<div class="acc-steel">
+<style>
+.pdi .field label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.pdi input,.pdi select{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+.pdi input:focus,.pdi select:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+.pdi input[readonly]{background:var(--surface-2);color:var(--ink-2);border-style:dashed;font-weight:600}
+.pdi .row{display:grid;gap:12px;margin-bottom:12px}
+.pdi .r2{grid-template-columns:1fr 1fr}.pdi .r3{grid-template-columns:1fr 1fr 1fr}.pdi .r4{grid-template-columns:1fr 1fr 1fr 1fr}
+@media(max-width:620px){.pdi .r2,.pdi .r3,.pdi .r4{grid-template-columns:1fr 1fr}}
+.pdi .pills{display:flex;flex-wrap:wrap;gap:8px}
+.pdi .pill{border:1px solid var(--line-2);background:#fff;color:var(--ink-2);border-radius:20px;padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all .12s}
+.pdi .pill:hover{border-color:var(--blue);color:var(--blue-ink)}
+.pdi .pill.on{background:var(--blue);border-color:var(--blue);color:#fff;box-shadow:0 4px 12px -3px var(--blue)}
+.pdi-item{border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px;background:var(--surface-2)}
+.pdi-item .ih{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.pdi-item .ih b{color:var(--blue-ink);font-size:13.5px}
+.pdi-item .x{background:#fdecec;border:none;border-radius:8px;width:30px;height:30px;cursor:pointer;color:#c23438;font-size:16px}
+.pdi-sub{font-size:11px;font-weight:700;color:var(--blue-ink);letter-spacing:.3px;margin:4px 0 8px}
+.pdi input.bad{background:#fdecec;border-color:#c23438}
+.pdi select.notok{background:#fdecec;border-color:#c23438;color:#c23438;font-weight:700}
+.pdi-rohdr{font-size:11px;font-weight:500;color:var(--muted);margin-bottom:5px}
+</style>
+
+<div class="page-head"><h1>Pre-Delivery Inspection</h1>
+<p>PDI per sales order — spec vs observed dimensions and the five surface checks. Out-of-spec values flag automatically. Each report gets a number, a PDF and a register entry.</p></div>
+
+<div class="kpis">
+  <div class="kpi"><span class="ki">{{ icon('hash',20) }}</span><div><div class="k-lab">Reports this month</div><div class="k-val tnum" id="kpi_n">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('truck',20) }}</span><div><div class="k-lab">Items inspected</div><div class="k-val tnum" id="kpi_items">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('file',20) }}</span><div><div class="k-lab">Total reports</div><div class="k-val tnum" id="kpi_total">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('inspect',20) }}</span><div><div class="k-lab">Today</div><div class="k-val tnum" id="kpi_today">0</div></div></div>
+</div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="pdi_form_title">New PDI report</span></div>
+<div class="panel-body"><div class="pdi"><input type="hidden" id="pdi_edit" value="">
+  <div class="row r3">
+    <div class="field"><label>Report No</label><input id="pdi_report_no" readonly placeholder="auto"></div>
+    <div class="field"><label>Overall Date</label><input type="date" id="pdi_date"></div>
+    <div class="field"><label>Customer (optional)</label><input id="pdi_customer" placeholder="Customer"></div>
+  </div>
+  <div id="pdi_items"></div>
+  <button class="btn btn-ghost" type="button" onclick="pdiAddItem()" style="margin-bottom:14px">+ Add item row</button>
+  <div class="field" style="max-width:360px"><label>Inspected By</label>
+    <div class="pills" id="pdi_insp">
+      <button type="button" class="pill" data-v="Sathya">Sathya</button>
+      <button type="button" class="pill" data-v="Sam">Sam</button>
+      <button type="button" class="pill" data-v="Kumar">Kumar</button>
+      <button type="button" class="pill" data-v="Mahendran">Mahendran</button>
+      <button type="button" class="pill" data-v="Dhanush">Dhanush</button>
+    </div>
+    <input type="hidden" id="pdi_inspected">
+  </div>
+  <div class="ctl-save-bar" style="position:sticky;bottom:0;display:flex;align-items:center;gap:12px;margin-top:8px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:14px 2px">
+    <button class="btn btn-ghost" id="pdi_cancel" style="display:none" onclick="pdiReset(true)">Cancel</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-primary" id="pdi_save" onclick="pdiSubmit()">Submit PDI report</button>
+  </div>
+</div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('bars',17) }}</span>PDI register<span class="sub" id="pdi_cnt"></span></div>
+<div class="panel-body">
+  <input id="pdi_search" oninput="pdiRender()" placeholder="Search report no / customer / inspector…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
+  <div class="dgrid-wrap" id="pdi_rows"><div class="empty">Loading…</div></div>
+</div></div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var PDI=[], pdiCount=0;
+var PDI_TOL={th:0.5,wd:5,len:10};
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function num(x){x=parseFloat(x);return isFinite(x)?x:null;}
+function pad(n){return('0'+n).slice(-2);}
+function curMon(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1);}
+function today(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());}
+
+/* inspector pills */
+document.addEventListener('click',function(e){var b=e.target.closest?e.target.closest('#pdi_insp .pill'):null;
+  if(b){document.querySelectorAll('#pdi_insp .pill').forEach(function(p){p.classList.toggle('on',p===b);});document.getElementById('pdi_inspected').value=b.getAttribute('data-v');}});
+
+function pdiAddItem(data){
+  pdiCount++;var id=pdiCount;data=data||{};
+  var sp=data.spec||{},ob=data.obs||{},ch=data.checks||{};
+  function inp(sfx,val,type){return '<input id="pi'+id+'_'+sfx+'"'+(type?(' type="'+type+'"'):'')+' value="'+esc(val||'')+'" oninput="pdiFlag('+id+')">';}
+  function chk(sfx,val){var o=['','OK','NOT OK'];return '<select id="pi'+id+'_'+sfx+'" onchange="pdiFlag('+id+')">'+o.map(function(x){return '<option'+(val===x?' selected':'')+'>'+(x||'—')+'</option>';}).join('')+'</select>';}
+  function fld(lab,inner){return '<div class="field"><label>'+lab+'</label>'+inner+'</div>';}
+  var card=document.createElement('div');card.className='pdi-item';card.id='pi_'+id;
+  card.innerHTML='<div class="ih"><b>Item '+id+'</b><button type="button" class="x" onclick="document.getElementById(\'pi_'+id+'\').remove();pdiRenumber()">×</button></div>'
+    +'<div class="row r4">'+fld('Date',inp('date',data.date,'date'))+fld('SO No',inp('so',data.so))+fld('Slip No',inp('slip',data.slip))+fld('Make',inp('make',data.make))+'</div>'
+    +'<div class="pdi-sub">SPECIFICATIONS (mm)</div><div class="row r3">'+fld('Thickness',inp('sth',sp.th))+fld('Width',inp('swd',sp.wd))+fld('Length',inp('slen',sp.len))+'</div>'
+    +'<div class="pdi-sub">OBSERVED DIMENSIONS (mm)</div><div class="row r3">'+fld('Thickness',inp('oth',ob.th))+fld('Width',inp('owd',ob.wd))+fld('Length',inp('olen',ob.len))+'</div>'
+    +'<div class="row r2">'+fld('Qty (Nos)',inp('qty',data.qty))+fld('Weight (T)',inp('wt',data.wt))+'</div>'
+    +'<div class="pdi-sub">SURFACE CHECKS</div><div class="row r3">'+fld('Waviness',chk('waviness',ch.waviness))+fld('Line/Scratch',chk('line',ch.line))+fld('Water/Oil',chk('water',ch.water))+fld('Colour',chk('colour',ch.colour))+fld('Sticker',chk('sticker',ch.sticker))+'</div>';
+  document.getElementById('pdi_items').appendChild(card);
+  pdiFlag(id);
+}
+function pdiRenumber(){var i=0;document.querySelectorAll('#pdi_items > div').forEach(function(c){i++;var b=c.querySelector('.ih b');if(b)b.textContent='Item '+i;});}
+function pdiFlag(id){
+  [['sth','oth','th'],['swd','owd','wd'],['slen','olen','len']].forEach(function(p){
+    var ob=document.getElementById('pi'+id+'_'+p[1]);if(!ob)return;var sp=num(v('pi'+id+'_'+p[0])),ov=num(v('pi'+id+'_'+p[1]));
+    ob.classList.toggle('bad', sp!=null&&ov!=null&&Math.abs(ov-sp)>PDI_TOL[p[2]]);});
+  ['waviness','line','water','colour','sticker'].forEach(function(c){var el=document.getElementById('pi'+id+'_'+c);if(el)el.classList.toggle('notok', el.value==='NOT OK');});
+}
+function collectItems(){var out=[];document.querySelectorAll('#pdi_items > div').forEach(function(c){var id=c.id.replace('pi_','');
+  function g(s){return v('pi'+id+'_'+s);}
+  out.push({date:g('date'),so:g('so'),slip:g('slip'),make:g('make'),spec:{th:g('sth'),wd:g('swd'),len:g('slen')},obs:{th:g('oth'),wd:g('owd'),len:g('olen')},qty:g('qty'),wt:g('wt'),checks:{waviness:g('waviness'),line:g('line'),water:g('water'),colour:g('colour'),sticker:g('sticker')}});});
+  return out;}
+
+async function pdiNextNumber(){try{var r=await fetch('/pdi/next-number',{cache:'no-store'});if(r.ok){var d=await r.json();document.getElementById('pdi_report_no').value=d.report_no;}}catch(e){}}
+async function pdiReset(scroll){
+  document.getElementById('pdi_edit').value='';
+  document.getElementById('pdi_form_title').textContent='New PDI report';
+  document.getElementById('pdi_save').textContent='Submit PDI report';
+  document.getElementById('pdi_cancel').style.display='none';
+  document.getElementById('pdi_customer').value='';document.getElementById('pdi_inspected').value='';
+  document.querySelectorAll('#pdi_insp .pill.on').forEach(function(p){p.classList.remove('on');});
+  document.getElementById('pdi_items').innerHTML='';pdiCount=0;pdiAddItem();
+  document.getElementById('pdi_date').value=today();
+  await pdiNextNumber();
+  if(scroll)window.scrollTo({top:0,behavior:'smooth'});
+}
+async function pdiLoad(){
+  var h=document.getElementById('pdi_rows');h.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/pdi/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}PDI=await r.json();if(!Array.isArray(PDI))PDI=[];}
+  catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load the register. Try again.</div>';return;}
+  pdiRender();
+}
+function pdiRender(){
+  var host=document.getElementById('pdi_rows'),q=(v('pdi_search')||'').toLowerCase();
+  var mon=curMon(),td=today(),n=0,items=0,tdy=0;
+  PDI.forEach(function(x){var dt=String(x.created_at||x.report_date||'').slice(0,10);if(String(x.report_date||'').slice(0,7)===mon||dt.slice(0,7)===mon){n++;items+=Number(x.item_count||0);}if(dt===td)tdy++;});
+  document.getElementById('kpi_n').textContent=n;document.getElementById('kpi_items').textContent=items;
+  document.getElementById('kpi_total').textContent=PDI.length;document.getElementById('kpi_today').textContent=tdy;
+  var rows=PDI.filter(function(x){if(!q)return true;return [x.report_no,x.customer,x.inspected_by,x.created_by].join(' ').toLowerCase().indexOf(q)>=0;});
+  document.getElementById('pdi_cnt').textContent=PDI.length?(PDI.length+' report'+(PDI.length===1?'':'s')):'';
+  if(!rows.length){host.innerHTML='<div class="empty">'+(PDI.length?'No reports match your search.':'No PDI reports yet. Fill the form above and submit.')+'</div>';return;}
+  var cols=[['Report No','20%'],['Date','11%'],['Customer','20%'],['Items','8%'],['Inspector','14%'],['By','12%'],['','9%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var g=function(a){return(a===''||a==null)?'':esc(a);};
+  var body=rows.map(function(x){
+    return'<tr><td>'+g(x.report_no)+'</td><td>'+g(String(x.report_date||'').slice(0,10))+'</td><td>'+g(x.customer)+'</td>'
+      +'<td class="c">'+g(x.item_count)+'</td><td class="c">'+g(x.inspected_by)+'</td><td class="c">'+g(x.created_by)+'</td>'
+      +'<td class="c"><a href="/pdi/pdf?report_no='+encodeURIComponent(x.report_no||'')+'" target="_blank" class="ic-edit">PDF</a> <a href="#" onclick="pdiEdit(\''+encodeURIComponent(x.report_no||'')+'\');return false" class="ic-edit">Edit</a><br><a href="#" onclick="pdiDel(\''+encodeURIComponent(x.report_no||'')+'\');return false" class="ic-del">Del</a></td></tr>';
+  }).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+async function pdiEdit(rno){
+  rno=decodeURIComponent(rno);
+  var r;try{r=await fetch('/pdi/record?report_no='+encodeURIComponent(rno),{cache:'no-store'});}catch(e){toast('err','Couldn’t load report');return;}
+  if(!r.ok){toast('err','Couldn’t load report');return;}var d=await r.json();
+  document.getElementById('pdi_edit').value=rno;
+  document.getElementById('pdi_report_no').value=d.report_no||rno;
+  document.getElementById('pdi_date').value=String(d.report_date||'').slice(0,10)||today();
+  document.getElementById('pdi_customer').value=d.customer||'';
+  document.getElementById('pdi_inspected').value=d.inspected_by||'';
+  document.querySelectorAll('#pdi_insp .pill').forEach(function(p){p.classList.toggle('on',p.getAttribute('data-v')===d.inspected_by);});
+  document.getElementById('pdi_items').innerHTML='';pdiCount=0;
+  (d.items||[]).forEach(function(it){pdiAddItem(it);});
+  if(!document.querySelector('#pdi_items > div'))pdiAddItem();
+  document.getElementById('pdi_form_title').textContent='Edit PDI '+rno;
+  document.getElementById('pdi_save').textContent='Update PDI report';
+  document.getElementById('pdi_cancel').style.display='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+async function pdiSubmit(){
+  var items=collectItems();
+  if(!items.length){toast('err','Add at least one item row');return;}
+  var payload={report_no:v('pdi_report_no'),report_date:v('pdi_date'),customer:v('pdi_customer'),items:items,inspected_by:v('pdi_inspected')};
+  if(!payload.report_no){toast('err','No report number — reload the page');return;}
+  var b=document.getElementById('pdi_save');b.disabled=true;var lbl=b.textContent;b.textContent='Submitting…';
+  try{var r=await fetch('/pdi/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Submit failed');
+    toast('ok','PDI '+(d.report_no||payload.report_no)+' submitted · PDF + register updated');
+    await pdiReset(false);await pdiLoad();window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){toast('err','Couldn’t submit: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=lbl;}
+}
+async function pdiDel(rno){rno=decodeURIComponent(rno);if(!confirm('Delete PDI '+rno+'?'))return;
+  try{var r=await fetch('/pdi/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({report_no:rno})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error('failed');toast('ok','Report deleted');await pdiLoad();
+  }catch(e){toast('err','Couldn’t delete the report');}}
+(function(){pdiReset(false);pdiLoad();})();
+</script>
+{% endblock %}

@@ -21,7 +21,8 @@ NAV_GROUPS = [
           "href": "/quality", "active_key": "quality"},
          {"name": "Shearing Quality Inspection", "icon": "scissors", "desc": "Shearing quality, output sizes, reworks.",
           "href": "/shearing", "active_key": "shearing"},
-         {"name": "Pre-Delivery Inspection", "icon": "truck", "desc": "PDI against each sales order."},
+         {"name": "Pre-Delivery Inspection", "icon": "truck", "desc": "PDI against each sales order.",
+          "href": "/pdi", "active_key": "pdi"},
      ]},
     {"key": "complaints", "title": "Complaints", "accent": "navy", "icon": "complaints",
      "blurb": "Raise, investigate and close quality issues.",
@@ -113,3 +114,11 @@ async def shearing_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("shearing.html", _ctx(request, emp, "shearing", section="Shearing Quality Inspection"))
+
+
+@router.get("/pdi", response_class=HTMLResponse)
+async def pdi_page(request: Request):
+    emp = await current_employee(request)
+    if not emp:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("pdi.html", _ctx(request, emp, "pdi", section="Pre-Delivery Inspection"))
