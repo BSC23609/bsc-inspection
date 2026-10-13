@@ -747,7 +747,9 @@ function selYN(groupId,val){ var g=document.getElementById(groupId); if(!g||!val
   g.querySelectorAll('.yn-btn').forEach(function(b){ var oc=b.getAttribute('onclick')||''; if(oc.indexOf("'"+want+"'")>-1)b.click(); }); }
 
 /* ---- init ---- */
-function qlInit(){
+async function qlSettings(){ try{var r=await fetch('/settings',{cache:'no-store'});if(r.ok)window.APP_SETTINGS=await r.json();}catch(e){} }
+async function qlInit(){
+  await qlSettings();
   mpRender('q'); buildPQ(); renderTolToggle('q'); renderRefBlocks('q');
   if(!document.querySelector('#q_groups > div')) addCutGroup();
   var n=new Date();

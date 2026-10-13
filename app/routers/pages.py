@@ -40,12 +40,16 @@ NAV_GROUPS = [
      ]},
 ]
 
+ADMIN_NAV = [
+    {"name": "Settings", "icon": "gear", "href": "/admin", "active_key": "admin"},
+]
+
 router = APIRouter()
 
 
 def _ctx(request, emp, active, **extra):
     base = {"request": request, "emp": emp, "app_name": APP_NAME,
-            "active": active, "groups": NAV_GROUPS}
+            "active": active, "groups": NAV_GROUPS, "admin_nav": ADMIN_NAV}
     base.update(extra)
     return base
 
@@ -139,3 +143,11 @@ async def complaint_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("complaint.html", _ctx(request, emp, "complaint", section="Quality Complaint"))
+
+
+@router.get("/admin", response_class=HTMLResponse)
+async def admin_page(request: Request):
+    emp = await current_employee(request)
+    if not emp:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("admin.html", _ctx(request, emp, "admin", section="Settings"))

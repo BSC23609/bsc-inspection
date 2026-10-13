@@ -297,6 +297,17 @@ async function coilDel(id){if(!confirm('Delete this coil inward record?'))return
   try{var r=await fetch('/coil/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error('failed');toast('ok','Record deleted');await coilLoad();
   }catch(e){toast('err','Couldn’t delete the record');}}
-(function(){coilReset();coilLoad();})();
+function rebuildPills(target,values,withOther){
+  var g=document.querySelector('.pills[data-target="'+target+'"]');if(!g||!values||!values.length)return;
+  var html=values.map(function(v){return '<button type="button" class="pill" data-v="'+esc(v)+'">'+esc(v)+'</button>';}).join('');
+  if(withOther)html+='<button type="button" class="pill pill-other" data-v="__other">Other</button>';
+  g.innerHTML=html;
+}
+async function coilSettings(){
+  try{var r=await fetch('/settings',{cache:'no-store'});if(!r.ok)return;var s=await r.json();
+    rebuildPills('c_make',s.mills,true);rebuildPills('c_grade',s.grades,true);rebuildPills('c_insp',s.inspectors_inward,true);
+  }catch(e){}
+}
+(function(){coilSettings().then(function(){coilReset();coilLoad();});})();
 </script>
 {% endblock %}

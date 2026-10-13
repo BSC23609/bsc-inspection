@@ -252,3 +252,6 @@ table.dgrid tfoot td{background:var(--acc-soft,#f6f8fd);font-weight:700;color:va
 .badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px;letter-spacing:.2px}
 .badge.good{background:#e3f6ee;color:#0a7d55}
 .badge.bad{background:#fdecec;color:#c23438}
+
+/* ---------------- admin nav separator ---------------- */
+.nav-sep{height:1px;background:rgba(255,255,255,.1);margin:10px 8px}

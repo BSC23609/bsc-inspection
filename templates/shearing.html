@@ -898,7 +898,9 @@ function selPill(groupId,val){var g=document.getElementById(groupId);if(!g)retur
   g.querySelectorAll('.pill').forEach(function(p){if(p.textContent.trim()===String(val).trim())hit=p;});
   if(hit)hit.click(); else if(val){var o=g.querySelector('.pill[onclick*="rpOther"]');if(o){o.click();var wid=(o.getAttribute('onclick').match(/'([^']+)'\)\s*$/)||[])[1];var w=wid?document.getElementById(wid):null;var inp=w?w.querySelector('input'):null;if(inp){inp.value=val;rs[groupId]=val;}}else rs[groupId]=val;}}
 
-function shInit(){
+async function shSettings(){ try{var r=await fetch('/settings',{cache:'no-store'});if(r.ok)window.APP_SETTINGS=await r.json();}catch(e){} }
+async function shInit(){
+  await shSettings();
   mpRender('sh'); buildShPQ(); renderTolToggle('sh'); renderRefBlocks('sh');
   if(!document.querySelector('#sh_rows tr')) addShRow();
   if(!document.querySelector('#sh_osz_rows tr')) addShOszRow();

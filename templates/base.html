@@ -38,6 +38,13 @@
       </div>
     </div>
     {% endfor %}
+
+    {% if admin_nav %}
+    <div class="nav-sep"></div>
+    {% for a in admin_nav %}
+    <a class="nav-item {{ 'active' if active==a.active_key else '' }}" href="{{ a.href }}">{{ icon(a.icon) }}<span>{{ a.name }}</span></a>
+    {% endfor %}
+    {% endif %}
   </div>
   {% if emp %}
   <div class="rail-user">

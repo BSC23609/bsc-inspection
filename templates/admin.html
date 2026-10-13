@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Settings · {{ app_name }}{% endblock %}
+{% block tb_title %}Settings{% endblock %}
+{% block content %}
+<div class="acc-steel">
+<style>
+.adm .field label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px}
+.adm .field .hint{font-weight:400;color:var(--muted);font-size:11px}
+.adm input,.adm textarea{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;color:var(--ink);background:#fff;outline:none}
+.adm textarea{min-height:54px;resize:vertical;line-height:1.5}
+.adm input:focus,.adm textarea:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+.adm .row{display:grid;gap:12px;margin-bottom:12px}
+.adm .r2{grid-template-columns:1fr 1fr}.adm .r3{grid-template-columns:1fr 1fr 1fr}.adm .r4{grid-template-columns:1fr 1fr 1fr 1fr}
+@media(max-width:620px){.adm .r2,.adm .r3,.adm .r4{grid-template-columns:1fr}}
+.adm-sec{border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px;background:var(--surface-2)}
+.adm-sec .sh{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--blue-ink);margin:-2px 0 14px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.adm-sec .sh svg{color:var(--blue)}
+.gate{max-width:420px;margin:30px auto;text-align:center}
+.gate .lock{width:56px;height:56px;border-radius:16px;display:flex;align-items:center;justify-content:center;color:#fff;margin:0 auto 14px;background:linear-gradient(135deg,var(--blue),#0b84cf)}
+</style>
+
+<div id="adm_gate" class="panel"><div class="panel-body">
+  <div class="gate">
+    <span class="lock">{{ icon('gear',26) }}</span>
+    <h2 style="margin:0 0 4px;font-size:18px">Admin settings</h2>
+    <p class="muted" style="margin:0 0 18px;font-size:13px">Enter the admin password to view and edit settings.</p>
+    <input id="adm_pw" type="password" placeholder="Admin password" style="width:100%;padding:11px 12px;border:1px solid var(--line-2);border-radius:10px;font-size:14px" onkeydown="if(event.key==='Enter')admUnlock()">
+    <button class="btn btn-primary" style="width:100%;margin-top:12px" onclick="admUnlock()">Unlock</button>
+  </div>
+</div></div>
+
+<div id="adm_body" style="display:none">
+<div class="page-head"><h1>Settings</h1>
+<p>These options feed the inspection and complaint forms — change them here and every form picks them up. Lists are comma-separated.</p></div>
+
+<div class="adm">
+  <div class="adm-sec">
+    <div class="sh">{{ icon('users',15) }} Inspectors &amp; QC</div>
+    <div class="field" style="margin-bottom:12px"><label>Inspector names — Inward <span class="hint">(comma separated)</span></label><textarea id="adm_insp_inward"></textarea></div>
+    <div class="field" style="margin-bottom:12px"><label>Inspector names — CTL Quality <span class="hint">(comma separated)</span></label><textarea id="adm_insp_quality"></textarea></div>
+    <div class="field"><label>Default QC name — Shearing</label><input id="adm_qc_default"></div>
+  </div>
+
+  <div class="adm-sec">
+    <div class="sh">{{ icon('coil',15) }} Mills &amp; Grades</div>
+    <div class="field" style="margin-bottom:12px"><label>Mill / Make options <span class="hint">(comma separated)</span></label><textarea id="adm_mills"></textarea></div>
+    <div class="field" style="margin-bottom:12px"><label>Grade options <span class="hint">(comma separated)</span></label><textarea id="adm_grades"></textarea></div>
+    <div class="field"><label>Rejection type options <span class="hint">(comma separated — used in CTL &amp; Shearing)</span></label><textarea id="adm_rejection_types"></textarea></div>
+  </div>
+
+  <div class="adm-sec">
+    <div class="sh">{{ icon('ruler',15) }} Sampling &amp; Tolerances</div>
+    <div class="field" style="margin-bottom:12px"><label>Sampling frequency <span class="hint">(format: min-max:samples, e.g. 1-2:1-2, 3-20:3)</span></label><textarea id="adm_sample_freq"></textarea></div>
+    <div class="field" style="margin-bottom:12px"><label>Number-calc constants <span class="hint">(format: name:value, e.g. HR:7.89, CHEQUERED:8.1)</span></label><input id="adm_calc_constants"></div>
+    <div class="field" style="margin-bottom:12px"><label>Tolerance — Wheels India (mm) <span class="hint">(width_under, width_over, threshold, thickness, length, diagonal)</span></label><input id="adm_tol_wheels"></div>
+    <div class="field" style="margin-bottom:12px"><label>Tolerance — Other coils (mm)</label><input id="adm_tol_other"></div>
+    <div class="field"><label>Tolerance — Pre-Delivery (mm) <span class="hint">(thickness, width, length)</span></label><input id="adm_tol_pdi"></div>
+  </div>
+
+  <div class="adm-sec">
+    <div class="sh">{{ icon('file',15) }} Vendor Emails</div>
+    <div class="row r4">
+      <div class="field"><label>SAIL</label><input id="adm_vendor_sail" placeholder="email"></div>
+      <div class="field"><label>NMDC</label><input id="adm_vendor_nmdc" placeholder="email"></div>
+      <div class="field"><label>RINL</label><input id="adm_vendor_rinl" placeholder="email"></div>
+      <div class="field"><label>JSW</label><input id="adm_vendor_jsw" placeholder="email"></div>
+    </div>
+  </div>
+
+  <div class="adm-sec">
+    <div class="sh">{{ icon('complaints',15) }} Complaint Email Routing <span class="hint" style="font-weight:400;color:var(--muted)">(comma separated)</span></div>
+    <div class="field" style="margin-bottom:12px"><label>Stage 1 — Sales raises complaint TO</label><textarea id="adm_em_sales_raise"></textarea></div>
+    <div class="field" style="margin-bottom:12px"><label>Stage 2A — Close internally TO</label><textarea id="adm_em_internal_close"></textarea></div>
+    <div class="field" style="margin-bottom:12px"><label>Stage 2B — Vendor escalation CC</label><textarea id="adm_em_vendor_cc"></textarea></div>
+    <div class="field"><label>Stage 3 — Resolved TO</label><textarea id="adm_em_resolved"></textarea></div>
+  </div>
+
+  <div class="adm-sec">
+    <div class="sh">{{ icon('truck',15) }} Inward Email Routing <span class="hint" style="font-weight:400;color:var(--muted)">(comma separated)</span></div>
+    <div class="row r2">
+      <div class="field"><label>Default inward recipients</label><textarea id="adm_em_inward_default"></textarea></div>
+      <div class="field"><label>Wheels India inward recipients</label><textarea id="adm_em_inward_wi"></textarea></div>
+    </div>
+  </div>
+
+  <div style="position:sticky;bottom:0;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:14px 2px">
+    <div style="flex:1"></div>
+    <button class="btn btn-primary" id="adm_save" onclick="admSave()">Save settings</button>
+  </div>
+</div>
+</div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var _admPwd="", _settings={};
+function gid(id){return document.getElementById(id);}
+function parseCsv(s){return (s||'').split(',').map(function(x){return x.trim();}).filter(Boolean);}
+function parseFreq(s){return (s||'').split(',').map(function(x){return x.trim();}).filter(Boolean).map(function(x){var m=x.split(':');var r=(m[0]||'').split('-');return {min:Number((r[0]||'').trim()),max:Number((r[1]||'').trim()),samples:(m[1]||'').trim()};}).filter(function(r){return isFinite(r.min)&&isFinite(r.max)&&r.samples!=='';});}
+function parsePairs(s){var o={};(s||'').split(',').map(function(x){return x.trim();}).filter(Boolean).forEach(function(x){var m=x.split(':');var k=(m[0]||'').trim();var v=Number((m[1]||'').trim());if(k&&isFinite(v))o[k]=v;});return o;}
+function tolStr(p){p=p||{};return ['width_under:'+(p.width_under!=null?p.width_under:''),'width_over:'+(p.width_over!=null?p.width_over:''),'threshold:'+(p.width_threshold!=null?p.width_threshold:1500),'thickness:'+(p.thickness!=null?p.thickness:''),'length:'+(p.length!=null?p.length:''),'diagonal:'+(p.diagonal!=null?p.diagonal:'')].join(', ');}
+
+async function admUnlock(){
+  var pw=gid('adm_pw').value;if(!pw){toast('err','Enter the password');return;}
+  try{var r=await fetch('/admin/verify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:pw})});
+    if(!r.ok)throw new Error('Invalid password');
+    _admPwd=pw;gid('adm_gate').style.display='none';gid('adm_body').style.display='';await admLoad();
+  }catch(e){toast('err','Invalid password');}
+}
+async function admLoad(){
+  try{var r=await fetch('/settings',{cache:'no-store'});_settings=await r.json();}catch(e){_settings={};}
+  var s=_settings;
+  gid('adm_insp_inward').value=(s.inspectors_inward||[]).join(', ');
+  gid('adm_insp_quality').value=(s.inspectors_quality||[]).join(', ');
+  gid('adm_qc_default').value=s.qc_shearing_default||'';
+  gid('adm_mills').value=(s.mills||[]).join(', ');
+  gid('adm_grades').value=(s.grades||[]).join(', ');
+  gid('adm_rejection_types').value=(s.rejection_types||[]).join(', ');
+  gid('adm_sample_freq').value=(s.sample_frequency||[]).map(function(r){return r.min+'-'+r.max+':'+r.samples;}).join(', ');
+  gid('adm_calc_constants').value=Object.keys(s.calc_constants||{}).map(function(k){return k+':'+s.calc_constants[k];}).join(', ');
+  var tp=s.tolerance_profiles||{};gid('adm_tol_wheels').value=tolStr(tp.wheels_india);gid('adm_tol_other').value=tolStr(tp.other);
+  var pdi=s.pdi_tolerance||{};gid('adm_tol_pdi').value='thickness:'+(pdi.thickness!=null?pdi.thickness:0.5)+', width:'+(pdi.width!=null?pdi.width:5)+', length:'+(pdi.length!=null?pdi.length:10);
+  var v=s.vendors||{};gid('adm_vendor_sail').value=v.SAIL||'';gid('adm_vendor_nmdc').value=v.NMDC||'';gid('adm_vendor_rinl').value=v.RINL||'';gid('adm_vendor_jsw').value=v.JSW||'';
+  var ce=s.complaint_emails||{};gid('adm_em_sales_raise').value=(ce.sales_raise_to||[]).join(', ');gid('adm_em_internal_close').value=(ce.internal_close_to||[]).join(', ');gid('adm_em_vendor_cc').value=(ce.vendor_escalation_cc||[]).join(', ');gid('adm_em_resolved').value=(ce.resolved_to||[]).join(', ');
+  var ie=s.inward_emails||{};gid('adm_em_inward_default').value=(ie.default_to||[]).join(', ');gid('adm_em_inward_wi').value=(ie.wheels_india_to||[]).join(', ');
+}
+function collect(){
+  function pp(id){var p=parsePairs(gid(id).value);return {width_under:p.width_under,width_over:p.width_over,width_threshold:(p.threshold!=null?p.threshold:1500),thickness:p.thickness,length:p.length,diagonal:p.diagonal};}
+  var pdi=parsePairs(gid('adm_tol_pdi').value);
+  return {
+    inspectors_inward:parseCsv(gid('adm_insp_inward').value),
+    inspectors_quality:parseCsv(gid('adm_insp_quality').value),
+    qc_shearing_default:gid('adm_qc_default').value.trim()||'Vignesh',
+    mills:parseCsv(gid('adm_mills').value),
+    grades:parseCsv(gid('adm_grades').value),
+    rejection_types:parseCsv(gid('adm_rejection_types').value),
+    sample_frequency:parseFreq(gid('adm_sample_freq').value),
+    calc_constants:parsePairs(gid('adm_calc_constants').value),
+    tolerance_profiles:{wheels_india:pp('adm_tol_wheels'),other:pp('adm_tol_other')},
+    pdi_tolerance:{thickness:pdi.thickness,width:pdi.width,length:pdi.length},
+    vendors:{SAIL:gid('adm_vendor_sail').value.trim(),NMDC:gid('adm_vendor_nmdc').value.trim(),RINL:gid('adm_vendor_rinl').value.trim(),JSW:gid('adm_vendor_jsw').value.trim()},
+    complaint_emails:{sales_raise_to:parseCsv(gid('adm_em_sales_raise').value),internal_close_to:parseCsv(gid('adm_em_internal_close').value),vendor_escalation_cc:parseCsv(gid('adm_em_vendor_cc').value),resolved_to:parseCsv(gid('adm_em_resolved').value)},
+    inward_emails:{default_to:parseCsv(gid('adm_em_inward_default').value),wheels_india_to:parseCsv(gid('adm_em_inward_wi').value)}
+  };
+}
+async function admSave(){
+  var b=gid('adm_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch('/admin/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({password:_admPwd,settings:collect()})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
+    toast('ok','Settings saved — forms will use them');
+  }catch(e){toast('err','Couldn’t save: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=lbl;}
+}
+</script>
+{% endblock %}

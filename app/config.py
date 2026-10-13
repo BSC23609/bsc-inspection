@@ -17,3 +17,7 @@ USER_ID       = os.environ.get("USER_ID", "")   # OneDrive owner (UPN or object 
 ONEDRIVE_BASE = "BSC Inspections"
 
 APP_NAME      = "Bharat Steel QMS"
+
+# Admin panel password — same default as the Node app; override with env in prod
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Bsc@123")
+SETTINGS_PATH  = f"{ONEDRIVE_BASE}/Config/settings.json"
