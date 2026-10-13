@@ -1,0 +1,1014 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Shearing Quality Inspection · {{ app_name }}{% endblock %}
+{% block tb_title %}Shearing Quality Inspection{% endblock %}
+{% block content %}
+<div class="acc-steel">
+<style>
+.ctl-form{--brand:#0069aa;--brand-dark:#005483;--brand-soft:#e2f0fb;
+  --gray-50:#f6f8fd;--gray-100:#eef2f8;--gray-200:#d9e0ec;--gray-300:#c5cfdd;
+  --gray-500:#5d6879;--gray-800:#1f2937;--r:11px}
+.ctl-form .sec-card{background:#fff;border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--sh-1);margin-bottom:16px;overflow:hidden}
+.ctl-form .sec-head{display:flex;align-items:center;gap:9px;padding:14px 18px;border-bottom:1px solid var(--line);
+  font-weight:600;font-size:14px;color:var(--brand-dark);background:var(--brand-soft)}
+.ctl-form .sec-head-icon{font-size:15px;filter:grayscale(.1)}
+.ctl-form .sec-body{padding:18px}
+.ctl-form .fg{display:grid;gap:14px;margin-bottom:12px}
+.ctl-form .fg:last-child{margin-bottom:0}
+.ctl-form .fg-1{grid-template-columns:1fr}.ctl-form .fg-2{grid-template-columns:1fr 1fr}.ctl-form .fg-3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:620px){.ctl-form .fg-2,.ctl-form .fg-3{grid-template-columns:1fr}}
+.ctl-form .field label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.ctl-form .req{color:#e5484d}
+.ctl-form input,.ctl-form select,.ctl-form textarea{width:100%;padding:10px 12px;border:1px solid var(--gray-200);
+  border-radius:9px;font-family:inherit;font-size:13.5px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+.ctl-form textarea{min-height:60px;resize:vertical}
+.ctl-form input:focus,.ctl-form select:focus,.ctl-form textarea:focus{border-color:var(--brand);box-shadow:0 0 0 3px var(--brand-soft)}
+.ctl-form .pills{display:flex;flex-wrap:wrap;gap:8px}
+.ctl-form .pill{border:1px solid var(--gray-200);background:#fff;color:var(--ink-2);border-radius:20px;
+  padding:7px 14px;font-size:12.5px;font-weight:500;cursor:pointer;transition:all .12s;user-select:none}
+.ctl-form .pill:hover{border-color:var(--brand);color:var(--brand-dark)}
+.ctl-form .pill.sel{background:var(--brand);border-color:var(--brand);color:#fff;box-shadow:0 4px 12px -3px var(--brand)}
+.ctl-form .yn{display:inline-flex;border:1px solid var(--gray-200);border-radius:9px;overflow:hidden;background:#fff}
+.ctl-form .yn-btn{border:none;background:none;padding:7px 15px;font-size:12.5px;font-weight:600;font-family:inherit;color:var(--gray-500);cursor:pointer;border-right:1px solid var(--gray-200)}
+.ctl-form .yn-btn:last-child{border-right:none}
+.ctl-form .yn-btn.a.y{background:#0a7d55;color:#fff}.ctl-form .yn-btn.a.n{background:#c23438;color:#fff}
+.ctl-form .cond-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px 18px}
+@media(max-width:620px){.ctl-form .cond-grid{grid-template-columns:1fr}}
+.ctl-form .cond-row{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--gray-50);border:1px solid var(--line);border-radius:10px;padding:8px 12px}
+.ctl-form .cond-lbl{font-size:12.5px;font-weight:500;color:var(--ink-2)}
+.ctl-form .btn-sec,.ctl-form .add-row-btn{border:1px solid var(--gray-200);background:#fff;color:var(--brand-dark);border-radius:9px;
+  padding:9px 14px;font-weight:600;font-size:12.5px;font-family:inherit;cursor:pointer;transition:all .12s}
+.ctl-form .btn-sec:hover,.ctl-form .add-row-btn:hover{background:var(--brand-soft);border-color:var(--brand)}
+.ctl-form .tbl-wrap{overflow-x:auto;border:1px solid var(--gray-200);border-radius:8px}
+.ctl-form .meas-tbl,.ctl-form .pq-table{width:100%;border-collapse:collapse;font-size:12px;font-variant-numeric:tabular-nums}
+.ctl-form .meas-tbl th,.ctl-form .pq-table th{background:var(--gray-50);border:1px solid var(--gray-200);padding:7px 6px;font-size:10.5px;font-weight:600;color:var(--gray-500);text-align:left;white-space:nowrap}
+.ctl-form .meas-tbl td,.ctl-form .pq-table td{border:1px solid var(--gray-200);padding:3px}
+.ctl-form .meas-tbl input,.ctl-form .pq-inp{border:1px solid transparent;border-radius:5px;padding:6px 7px;font-size:12px}
+.ctl-form .meas-tbl input:focus,.ctl-form .pq-inp:focus{border-color:var(--brand)}
+.ctl-form .pq-size-lbl{font-weight:600;color:var(--brand-dark);font-size:12px;padding-left:10px;white-space:nowrap}
+.ctl-form .row-del{background:#fdecec;border:none;border-radius:5px;padding:5px 8px;cursor:pointer;color:#c23438;font-weight:700}
+.ctl-form .rejtype-btn{border:1px solid var(--gray-200);border-radius:6px;padding:7px 9px;font-size:12px;cursor:pointer;color:var(--gray-500);background:#fff}
+.ctl-form .rejtype-btn.has{border-color:var(--brand);color:var(--brand-dark);font-weight:600}
+.ctl-form .photo-previews{display:flex;flex-wrap:wrap;gap:8px}
+.ctl-form .photo-thumb{width:74px;height:74px;object-fit:cover;border-radius:8px;border:1px solid var(--gray-200)}
+/* machine setting parameters v2 */
+.ctl-form .mp-param{border:1px solid var(--gray-200);border-radius:10px;padding:12px;margin-bottom:10px;background:var(--gray-50)}
+.ctl-form .mp-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.ctl-form .mp-name{font-weight:600;font-size:13px;color:var(--ink);min-width:170px;flex:1}
+.ctl-form .mp-init{max-width:200px}
+.ctl-form .mp-adjs{margin-top:9px;display:flex;flex-direction:column;gap:7px}
+.ctl-form .mp-adj{display:flex;align-items:center;gap:8px}
+.ctl-form .mp-adj-n{font-size:11px;font-weight:700;color:var(--brand-dark);background:var(--brand-soft);border-radius:6px;padding:4px 8px;white-space:nowrap}
+.ctl-form .mp-adj-val{flex:1}.ctl-form .mp-adj-time{max-width:140px}
+.ctl-form .mp-adj-x{background:#fdecec;border:none;border-radius:6px;width:30px;height:30px;cursor:pointer;color:#c23438;font-size:16px;flex-shrink:0}
+.ctl-form .mp-add{margin-top:9px;border:1px dashed var(--brand);background:var(--brand-soft);color:var(--brand-dark);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:600;cursor:pointer}
+/* rejection type popup (appended to body — global) */
+#rejtype_pop{position:fixed;z-index:120;background:#fff;border:1px solid var(--line-2);border-radius:10px;
+  box-shadow:0 18px 44px rgba(6,24,40,.26);padding:8px;min-width:210px;max-height:280px;overflow:auto}
+#rejtype_pop label{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;font-size:12.5px;cursor:pointer}
+#rejtype_pop label:hover{background:#f1f5fb}
+#rejtype_pop input{width:auto;margin:0}
+.ctl-save-bar{position:sticky;bottom:0;z-index:20;display:flex;align-items:center;gap:12px;margin-top:4px;
+  background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:14px 2px}
+</style>
+<div class="page-head"><h1>Shearing Quality Inspection</h1><p>Shearing line quality — header, machine settings, output sizes, sheet measurements, processed quantity, rejections and reworks. Saved records write to the OneDrive Shearing Log and get a PDF report.</p></div>
+<div class="kpis">
+  <div class="kpi"><span class="ki">{{ icon('hash',20) }}</span><div><div class="k-lab">Inspections this month</div><div class="k-val tnum" id="kpi_n">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('ruler',20) }}</span><div><div class="k-lab">Sheets measured</div><div class="k-val tnum" id="kpi_sh">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('warn',20) }}</span><div><div class="k-lab">With rejections</div><div class="k-val tnum" id="kpi_rej">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('file',20) }}</span><div><div class="k-lab">With reworks</div><div class="k-val tnum" id="kpi_rw">0</div></div></div>
+</div>
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="sh_form_title">New shearing inspection</span></div>
+<div class="panel-body"><div class="ctl-form"><input type="hidden" id="sh_edit_id" value="">
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📋</span> Header Information</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>Customer Name *</label><input type="text" id="sh_customer" placeholder="Customer name"></div>
+          <div class="field"><label>Date *</label><input type="date" id="sh_date"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Batch Number *</label><input type="text" id="sh_batch" placeholder="Batch number"></div>
+          <div class="field"><label>Grade *</label>
+            <div class="pills" id="sg_grade">
+              <div class="pill" onclick="rp('sg_grade',this,'E250')">E250</div>
+              <div class="pill" onclick="rp('sg_grade',this,'E350')">E350</div>
+              <div class="pill" onclick="rp('sg_grade',this,'HSFQ450')">HSFQ450</div>
+              <div class="pill" onclick="rp('sg_grade',this,'HSFQ550')">HSFQ550</div>
+              <div class="pill" onclick="rpOther('sg_grade',this,'sh_grade_other_wrap')">Other</div>
+            </div>
+            <div id="sh_grade_other_wrap" style="display:none;margin-top:8px">
+              <input type="text" id="sg_grade_other" placeholder="Specify other" onchange="rs['sg_grade']=this.value">
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Make *</label>
+            <div class="pills" id="sg_make">
+              <div class="pill" onclick="rp('sg_make',this,'SAIL')">SAIL</div>
+              <div class="pill" onclick="rp('sg_make',this,'SAIL RSP')">SAIL RSP</div>
+              <div class="pill" onclick="rp('sg_make',this,'SAIL BSP')">SAIL BSP</div>
+              <div class="pill" onclick="rp('sg_make',this,'JSW')">JSW</div>
+              <div class="pill" onclick="rp('sg_make',this,'TATA')">TATA</div>
+              <div class="pill" onclick="rp('sg_make',this,'AMNS')">AMNS</div>
+              <div class="pill" onclick="rp('sg_make',this,'NMDC')">NMDC</div>
+              <div class="pill" onclick="rp('sg_make',this,'JSPL')">JSPL</div>
+              <div class="pill" onclick="rpOther('sg_make',this,'sh_make_other_wrap')">Other</div>
+            </div>
+            <div id="sh_make_other_wrap" style="display:none;margin-top:8px">
+              <input type="text" id="sg_make_other" placeholder="Specify other" onchange="rs['sg_make']=this.value">
+            </div>
+          </div>
+          <div class="field"><label>Type</label>
+            <div class="pills" id="sg_type">
+              <div class="pill" onclick="rp('sg_type',this,'HR')">HR</div>
+              <div class="pill" onclick="rp('sg_type',this,'CR')">CR</div>
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Process</label><input type="text" id="sh_process" value="Shearing" readonly></div>
+          <div class="field"><label>Input Size</label><input type="text" id="sh_input_size" placeholder="e.g. 1500x555"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Thickness (mm)</label><input type="number" step="0.01" id="sh_thickness" placeholder="Nominal thickness"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Operator Name</label><input type="text" id="sh_operator" placeholder="Operator"></div>
+          <div class="field"><label>QC Name *</label><input type="text" id="sh_qc_name" value="Vignesh" placeholder="QC name"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">⚙️</span> Machine Setting Parameters <span style="font-size:10px;font-weight:700;color:#1A6DAF;background:#E8F2FB;padding:1px 7px;border-radius:6px;margin-left:6px;vertical-align:middle">v2</span></div>
+      <div class="sec-body">
+        <div style="font-size:12px;color:var(--gray-500);margin-bottom:10px">Record the initial setting for each parameter. Use &ldquo;+ Add adjustment&rdquo; to log any change made after the initial setting (up to 10 per parameter).</div>
+        <div id="sh_mp_body"></div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div id="sh_toltoggle" style="padding:12px 14px;background:#e2f0fb;border:1px solid #bcdcf3;border-radius:10px;margin-bottom:14px"></div>
+      <div class="sec-head"><span class="sec-head-icon">📐</span> Output Sizes</div>
+      <div class="sec-body">
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px" id="sh_osz_table">
+            <thead><tr style="background:var(--gray-50)">
+              <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Output Size</th>
+              <th style="padding:10px;border:1px solid var(--gray-200);width:40px"></th>
+            </tr></thead>
+            <tbody id="sh_osz_rows"></tbody>
+          </table>
+        </div>
+        <button type="button" id="sh_osz_add_btn" class="btn-sec" style="margin-top:10px;width:100%" onclick="addShOszRow()">+ Add Row</button>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📏</span> Sheet Measurements</div>
+      <div class="sec-body">
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:12px">
+            <thead><tr style="background:var(--gray-50)">
+              <th style="padding:8px;border:1px solid var(--gray-200)">Sheet No.</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Thickness</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Width 1</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Width 2</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Diag 1</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Diag 2</th>
+              <th style="padding:8px;border:1px solid var(--gray-200)">Remarks</th>
+              <th style="padding:8px;border:1px solid var(--gray-200);width:30px"></th>
+            </tr></thead>
+            <tbody id="sh_rows"></tbody>
+          </table>
+        </div>
+        <button type="button" class="btn-sec" style="margin-top:10px" onclick="addShRow()">+ Add Row</button>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">✅</span> Quality Checklist</div>
+      <div class="sec-body">
+        <div class="fg fg-2">
+          <div class="field"><label>Burr -/&lt; 10% *</label><input type="number" id="sh_burr" step="0.01" placeholder="e.g. 12"></div>
+          <div class="field"><label>Blade Clearance *</label><input type="number" id="sh_blade_clearance" step="0.01" placeholder="e.g. 12"></div>
+        </div>
+        <div class="fg fg-2">
+          <div class="field"><label>Cutting Finish *</label>
+            <div class="pills" id="sg_cut_finish">
+              <div class="pill" onclick="rp('sg_cut_finish',this,'Ok')">Ok</div>
+              <div class="pill" onclick="rp('sg_cut_finish',this,'Not Ok')">Not Ok</div>
+            </div>
+          </div>
+          <div class="field"><label>Surface Condition *</label>
+            <div class="pills" id="sg_surface">
+              <div class="pill" onclick="rp('sg_surface',this,'Ok')">Ok</div>
+              <div class="pill" onclick="rp('sg_surface',this,'Not Ok')">Not Ok</div>
+            </div>
+          </div>
+        </div>
+        <div class="fg fg-2" style="margin-top:10px">
+          <div class="field"><label>Bow / Bend</label><input type="text" id="sh_bow" placeholder="e.g. 2mm / Ok"></div>
+          <div class="field"><label>Taper Cutting</label><input type="text" id="sh_taper" placeholder="e.g. 1mm / Ok / Nil"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📦</span> Processed Quantity</div>
+      <div class="sec-body" style="padding:0">
+        <div style="overflow-x:auto">
+          <table class="pq-table" id="sh_pq_grid"></table>
+        </div>
+        <div style="padding:12px 14px;border-top:1px solid var(--gray-100)">
+          <button type="button" id="sh_pq_add_btn" class="btn-sec" onclick="addShPqRow()" style="width:100%">+ Add Row</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">⚠️</span> Rejection Quantity (if any)</div>
+      <div class="sec-body">
+        <div class="field"><label>Any Rejections?</label>
+          <div class="pills" id="sg_rejection">
+            <div class="pill" onclick="rp('sg_rejection',this,'No'); toggleShRejection(false)">No</div>
+            <div class="pill" onclick="rp('sg_rejection',this,'Yes'); toggleShRejection(true)">Yes</div>
+          </div>
+        </div>
+        <div id="sh_rejection_wrap" style="display:none;margin-top:14px">
+          <div style="overflow-x:auto">
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr style="background:var(--gray-50)">
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Size</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Quantity</th>
+                <th style="padding:10px;border:1px solid var(--gray-200);text-align:left">Rejection Type(s) <span class="req">*</span></th>
+                <th style="padding:10px;border:1px solid var(--gray-200);width:40px"></th>
+              </tr></thead>
+              <tbody id="sh_rej_rows"></tbody>
+            </table>
+          </div>
+          <button type="button" id="sh_rej_add_btn" class="btn-sec" style="margin-top:10px;width:100%" onclick="addShRejRow()">+ Add Row</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📝</span> Remarks</div>
+      <div class="sec-body">
+        <div class="field"><textarea id="sh_remarks" rows="4" placeholder="Additional remarks..."></textarea></div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📝</span> Overall Observation</div>
+      <div class="sec-body">
+        <div class="field"><textarea id="sh_observation" rows="4" placeholder="Overall observation..."></textarea></div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">🔧</span> Reworks</div>
+      <div class="sec-body">
+        <div class="field"><label>Any Reworks?</label>
+          <div class="pills" id="sg_rework">
+            <div class="pill" onclick="rp('sg_rework',this,'No'); setReworkFlag('No')">No</div>
+            <div class="pill" onclick="rp('sg_rework',this,'Yes'); setReworkFlag('Yes')">Yes</div>
+          </div>
+        </div>
+        <div id="sh_rework_wrap" style="display:none;margin-top:12px">
+          <div id="sh_rework_cards"></div>
+          <button type="button" class="btn-sec" style="margin-top:6px" onclick="addReworkCard()">+ Add Rework</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📷</span> Photos</div>
+      <div class="sec-body">
+        <div style="display:flex;gap:8px">
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            📸 Take Photos
+            <input type="file" id="sh_photos" accept="image/*" multiple capture="environment" hidden>
+          </label>
+          <label style="flex:1;padding:14px;border:1.5px dashed var(--gray-300);background:var(--gray-50);border-radius:var(--r);cursor:pointer;font-size:13px;font-weight:600;color:var(--brand);text-align:center">
+            🖼️ Upload
+            <input type="file" id="sh_photos_lib" accept="image/*" multiple hidden onchange="document.getElementById('sh_photos').files = this.files">
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="sec-card">
+      <div class="sec-head"><span class="sec-head-icon">📐</span> Sampling &amp; Number Calculation Reference</div>
+      <div class="sec-body" id="sh_refblocks"></div>
+    </div>
+  </div>
+<div class="ctl-save-bar"><button class="btn btn-ghost" id="sh_cancel" style="display:none" onclick="shCancel()">Cancel</button><div class="grow" style="flex:1"></div><button class="btn btn-primary" id="sh_save" onclick="shSubmit()">Save inspection</button></div>
+</div></div></div>
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('bars',17) }}</span>Recent shearing inspections<span class="sub" id="sh_cnt"></span></div>
+<div class="panel-body flush"><div class="dgrid-wrap" id="sh_list"><div class="empty">Loading…</div></div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function gv(id){ return (document.getElementById(id)||{}).value||''; }
+async function collectPhotosBase64(inputIds) {
+  var photos = [];
+  for (var id of inputIds) {
+    var inp = document.getElementById(id);
+    if (inp && inp.files && inp.files.length > 0) {
+      for (var file of inp.files) {
+        var b64 = await fileToBase64(file);
+        photos.push({ name: file.name || id + '.jpg', data: b64, type: file.type || 'image/jpeg' });
+      }
+    }
+  }
+  return photos;
+}
+
+function fileToBase64(file) {
+  return new Promise(function(resolve) {
+    var reader = new FileReader();
+    // PDFs: read as-is (don't compress)
+    if (file.type === 'application/pdf' || (file.name || '').toLowerCase().endsWith('.pdf')) {
+      reader.onload = function(e) { resolve(e.target.result); };
+      reader.readAsDataURL(file);
+      return;
+    }
+    // Images: compress to max 900px, JPEG 60%
+    reader.onload = function(e) {
+      var img = new Image();
+      img.onload = function() {
+        var canvas = document.createElement('canvas');
+        var MAX = 900;
+        var w = img.width, h = img.height;
+        if (w > h && w > MAX) { h = h * (MAX/w); w = MAX; }
+        else if (h > MAX) { w = w * (MAX/h); h = MAX; }
+        canvas.width = w; canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.6));
+      };
+      img.onerror = function() { resolve(e.target.result); };
+      img.src = e.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+var MP_MAX_ADJ = 10;
+var MP_SPEC = {
+  q: [
+    ['coil_car_pressure','Coil Car Monitor Pressure'],
+    ['coil_center_align','Coil Center Alignment'],
+    ['bound_spreader_roller','Bound Spreader Roller'],
+    ['rack_angle','Rack Angle'],
+    ['leveller_entry_gap','Leveller Entry Gap'],
+    ['leveller_exit_gap','Leveller Exit Gap'],
+    ['blade_gap_clearance','Blade Gap Clearance']
+  ],
+  sh: [
+    ['blade_clearance','Blade Clearance'],
+    ['blade_condition','Blade Condition'],
+    ['backgage_reading','Backgage Reading'],
+    ['main_pressure','Main Pressure'],
+    ['hold_down_pressure','Hold Down Pressure'],
+    ['rack_angle','Rack Angle']
+  ]
+};
+function mpEsc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+function mpRender(prefix){
+  var spec = MP_SPEC[prefix]; if(!spec) return;
+  var host = document.getElementById(prefix+'_mp_body'); if(!host) return;
+  host.innerHTML = spec.map(function(p){
+    var base = prefix+'_mp_'+p[0];
+    return '<div class="mp-param" data-key="'+p[0]+'">'
+      + '<div class="mp-top"><div class="mp-name">'+mpEsc(p[1])+'</div>'
+      +   '<input class="mp-init" id="'+base+'_init" type="text" placeholder="Initial setting" autocomplete="off"></div>'
+      + '<div class="mp-adjs" id="'+base+'_adjs"></div>'
+      + '<button type="button" class="mp-add" id="'+base+'_addbtn" onclick="mpAddAdj(\''+prefix+'\',\''+p[0]+'\')">+ Add adjustment</button>'
+      + '</div>';
+  }).join('');
+}
+function mpAddAdj(prefix,key,val,tm){
+  var wrap = document.getElementById(prefix+'_mp_'+key+'_adjs'); if(!wrap) return;
+  if(wrap.children.length >= MP_MAX_ADJ){ if(typeof toast==='function') toast('err','Up to '+MP_MAX_ADJ+' adjustments per parameter'); return; }
+  var idx = wrap.children.length + 1;
+  var t = tm;
+  if(t===undefined || t===null || t===''){ var now=new Date(), p=function(n){return ('0'+n).slice(-2);}; t = p(now.getHours())+':'+p(now.getMinutes()); }
+  var div = document.createElement('div');
+  div.className = 'mp-adj';
+  div.innerHTML = '<span class="mp-adj-n">#'+idx+'</span>'
+    + '<input class="mp-adj-val" type="text" placeholder="Adjusted to" autocomplete="off">'
+    + '<input class="mp-adj-time" type="time">'
+    + '<button type="button" class="mp-adj-x" title="Remove" onclick="mpDelAdj(this,\''+prefix+'\',\''+key+'\')">&times;</button>';
+  wrap.appendChild(div);
+  div.querySelector('.mp-adj-val').value = (val==null?'':val);
+  div.querySelector('.mp-adj-time').value = t;
+  mpSync(prefix,key);
+}
+function mpDelAdj(btn,prefix,key){ var r=btn.closest('.mp-adj'); if(r) r.remove(); mpRenumber(prefix,key); mpSync(prefix,key); }
+function mpRenumber(prefix,key){ var wrap=document.getElementById(prefix+'_mp_'+key+'_adjs'); if(!wrap) return; Array.prototype.forEach.call(wrap.children,function(r,i){ var s=r.querySelector('.mp-adj-n'); if(s) s.textContent='#'+(i+1); }); }
+function mpSync(prefix,key){ var wrap=document.getElementById(prefix+'_mp_'+key+'_adjs'); var btn=document.getElementById(prefix+'_mp_'+key+'_addbtn'); if(btn&&wrap) btn.style.display = (wrap.children.length>=MP_MAX_ADJ)?'none':''; }
+function mpCollect(prefix){
+  var spec = MP_SPEC[prefix]; var out=[]; if(!spec) return out;
+  spec.forEach(function(p){
+    var base=prefix+'_mp_'+p[0];
+    var initEl=document.getElementById(base+'_init');
+    var init = initEl? initEl.value : '';
+    var adjs=[]; var wrap=document.getElementById(base+'_adjs');
+    if(wrap) Array.prototype.forEach.call(wrap.querySelectorAll('.mp-adj'),function(r){
+      var v=(r.querySelector('.mp-adj-val')||{}).value||'';
+      var t=(r.querySelector('.mp-adj-time')||{}).value||'';
+      if(v!==''||t!=='') adjs.push({value:v,time:t});
+    });
+    out.push({ key:p[0], label:p[1], initial:init, adjustments:adjs });
+  });
+  return out;
+}
+function mpRestore(prefix, params){
+  mpRender(prefix);
+  if(!Array.isArray(params)) return;
+  params.forEach(function(p){
+    var base=prefix+'_mp_'+p.key;
+    var initEl=document.getElementById(base+'_init'); if(initEl) initEl.value = p.initial||'';
+    (p.adjustments||[]).forEach(function(a){ mpAddAdj(prefix, p.key, a.value||'', a.time||''); });
+  });
+}
+function rp(g, el, v) {
+  document.querySelectorAll('#'+g+' .pill').forEach(p=>p.classList.remove('sel'));
+  el.classList.add('sel'); rs[g] = v;
+  // Hide any other-input for this group
+  var wrapMap = {
+    'ig_grade': 'i_grade_other_wrap',
+    'ig_make':  'i_make_other_wrap',
+    'qg_make':  'q_make_other_wrap'
+  };
+  var wrap = document.getElementById(wrapMap[g]);
+  if(wrap) wrap.style.display = 'none';
+}
+function rpOther(g, el, wrapId) {
+  document.querySelectorAll('#'+g+' .pill').forEach(p=>p.classList.remove('sel'));
+  el.classList.add('sel');
+  var wrap = document.getElementById(wrapId);
+  if(wrap) { wrap.style.display='block'; var inp=wrap.querySelector('input'); if(inp){inp.focus(); rs[g]=inp.value;} }
+}
+function yn(g, v, el) {
+  document.getElementById(g).querySelectorAll('.yn-btn').forEach(b=>b.classList.remove('a'));
+  el.classList.add('a'); ys[g] = v;
+}
+
+var cgCount = 0, cgRowCount = {};
+function prevSingle(inp, pid) {
+  var p = document.getElementById(pid); p.innerHTML = '';
+  if(inp.files&&inp.files[0]) { var img=document.createElement('img'); img.className='photo-thumb'; img.src=URL.createObjectURL(inp.files[0]); p.appendChild(img); }
+}
+function prevMulti(inp, pid) {
+  var p = document.getElementById(pid); p.innerHTML = '';
+  Array.from(inp.files).forEach(function(f){ var img=document.createElement('img'); img.className='photo-thumb'; img.src=URL.createObjectURL(f); p.appendChild(img); });
+}
+var shRowCount = 0;
+function addShRow() {
+  shRowCount++;
+  var tr = document.createElement('tr');
+  tr.id = 'sh_row_' + shRowCount;
+  var id = shRowCount;
+  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="sr'+id+'_sno" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_th" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_w1" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_w2" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_d1" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="sr'+id+'_d2" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="sr'+id+'_rm" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeShRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">×</button></td>';
+  document.getElementById('sh_rows').appendChild(tr);
+}
+function removeShRow(id) {
+  var el = document.getElementById('sh_row_' + id);
+  if (el) el.remove();
+}
+
+// ----- Output Size table (max 20) -----
+var shOszCount = 0;
+function addShOszRow() {
+  if (shOszCount >= 20) return;
+  shOszCount++;
+  var id = shOszCount;
+  var tr = document.createElement('tr');
+  tr.id = 'sh_osz_row_' + id;
+  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="osz'+id+'_size" placeholder="e.g. 1500x500" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeShOszRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">×</button></td>';
+  document.getElementById('sh_osz_rows').appendChild(tr);
+  updateShOszAddBtn();
+}
+function removeShOszRow(id) {
+  var el = document.getElementById('sh_osz_row_' + id);
+  if (el) el.remove();
+  updateShOszAddBtn();
+}
+function updateShOszAddBtn() {
+  var visible = document.querySelectorAll('#sh_osz_rows tr').length;
+  var btn = document.getElementById('sh_osz_add_btn');
+  if (!btn) return;
+  if (visible >= 20) { btn.style.display = 'none'; }
+  else { btn.style.display = ''; btn.textContent = '+ Add Row (' + visible + '/20)'; }
+}
+
+// ----- Processed Quantity table (max 20, starts with 3) -----
+var shPqVisibleRows = 0;
+function shPqRowHtml(i) {
+  return '<tr id="sh_pq_row_'+i+'">'
+    + '<td class="pq-size-lbl">Size '+i+'</td>'
+    + '<td><input class="pq-inp" type="number" id="sh_pq_s'+i+'_len" placeholder="0" step="0.01"></td>'
+    + '<td><input class="pq-inp" type="number" id="sh_pq_s'+i+'_nos" placeholder="0" step="1"></td>'
+    + '<td><input class="pq-inp" type="number" id="sh_pq_s'+i+'_wt" placeholder="0.000" step="0.001"></td>'
+    + '</tr>';
+}
+function buildShPQ() {
+  var g = document.getElementById('sh_pq_grid');
+  if (!g) return;
+  g.innerHTML = '<thead><tr><th style="min-width:64px">Size</th><th>Dimension (mm)</th><th>No. of Sheets</th><th>Weight (T)</th></tr></thead><tbody id="sh_pq_tbody"></tbody>';
+  shPqVisibleRows = 0;
+  for(var i=1;i<=3;i++) addShPqRow();
+}
+function addShPqRow() {
+  if (shPqVisibleRows >= 20) return;
+  shPqVisibleRows++;
+  var tbody = document.getElementById('sh_pq_tbody');
+  if (!tbody) return;
+  tbody.insertAdjacentHTML('beforeend', shPqRowHtml(shPqVisibleRows));
+  updateShPqAddBtn();
+}
+function updateShPqAddBtn() {
+  var btn = document.getElementById('sh_pq_add_btn');
+  if (!btn) return;
+  if (shPqVisibleRows >= 20) { btn.style.display = 'none'; }
+  else { btn.style.display = ''; btn.textContent = '+ Add Row (' + shPqVisibleRows + '/20)'; }
+}
+
+// ----- Rejection table (max 10) -----
+var shRejCount = 0;
+function toggleShRejection(show) {
+  var w = document.getElementById('sh_rejection_wrap');
+  if (w) w.style.display = show ? '' : 'none';
+  if (show && shRejCount === 0) addShRejRow();
+}
+function addShRejRow() {
+  if (shRejCount >= 10) return;
+  shRejCount++;
+  var id = shRejCount;
+  var tr = document.createElement('tr');
+  tr.id = 'sh_rej_row_' + id;
+  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="rej'+id+'_size" placeholder="Size" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="0.01" id="rej'+id+'_qty" placeholder="Quantity" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><div class="rejtype-btn" id="s_'+id+'_tbtn" onclick="openRejTypes(event,&#39;s_'+id+'&#39;)">Select type(s)</div></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeShRejRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">×</button></td>';
+  document.getElementById('sh_rej_rows').appendChild(tr);
+  updateShRejAddBtn();
+}
+function removeShRejRow(id) {
+  var el = document.getElementById('sh_rej_row_' + id);
+  if (el) el.remove();
+  updateShRejAddBtn();
+}
+function updateShRejAddBtn() {
+  var visible = document.querySelectorAll('#sh_rej_rows tr').length;
+  var btn = document.getElementById('sh_rej_add_btn');
+  if (!btn) return;
+  if (visible >= 10) { btn.style.display = 'none'; }
+  else { btn.style.display = ''; btn.textContent = '+ Add Row (' + visible + '/10)'; }
+}
+
+// ----- CTL Rejection table (max 10) + multi-select types -----
+var qRejCount = 0;
+function mpTog(el){ el.classList.toggle('sel'); }
+// ----- Per-row rejection type multi-select popover -----
+var REJ_TYPE_SEL = {};
+var _rejPopKey = null;
+function rejTypeOptions(){
+  return (window.APP_SETTINGS && APP_SETTINGS.rejection_types && APP_SETTINGS.rejection_types.length)
+    ? APP_SETTINGS.rejection_types
+    : ['WIDTH VARIATION','LENGTH VARIATION','DIAGONAL VARIATION','LINE MARK','DENT MARK','CORE LAMINATION','D SCALE','RUST','PITTED','BURR','BREAKAWAY'];
+}
+function rejTypeBtnUpdate(key){
+  var btn=document.getElementById(key+'_tbtn'); if(!btn) return;
+  var arr=REJ_TYPE_SEL[key]||[];
+  btn.textContent = arr.length ? (arr.length<=2 ? arr.join(', ') : (arr.length+' selected')) : 'Select type(s)';
+  btn.classList.toggle('has', arr.length>0);
+}
+function openRejTypes(ev, key){
+  ev.stopPropagation();
+  _rejPopKey=key;
+  var pop=document.getElementById('rejtype_pop');
+  if(!pop){ pop=document.createElement('div'); pop.id='rejtype_pop'; pop.style.display='none'; document.body.appendChild(pop); }
+  var sel=REJ_TYPE_SEL[key]||[];
+  pop.innerHTML=rejTypeOptions().map(function(t){
+    var safe=String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/\"/g,'&quot;');
+    var checked=sel.indexOf(t)>=0?'checked':'';
+    return '<label><input type="checkbox" value="'+safe+'" '+checked+' onchange="rejTypeChange(this)"> '+safe+'</label>';
+  }).join('');
+  var r=document.getElementById(key+'_tbtn').getBoundingClientRect();
+  pop.style.display='block';
+  var top=r.bottom+4, left=r.left;
+  if(top+pop.offsetHeight > window.innerHeight-8) top=Math.max(8, r.top-pop.offsetHeight-4);
+  if(left+pop.offsetWidth > window.innerWidth-8) left=Math.max(8, window.innerWidth-pop.offsetWidth-8);
+  pop.style.top=top+'px'; pop.style.left=left+'px';
+}
+function rejTypeChange(cb){
+  if(!_rejPopKey) return;
+  var arr=REJ_TYPE_SEL[_rejPopKey]||[];
+  if(cb.checked){ if(arr.indexOf(cb.value)<0) arr.push(cb.value); }
+  else { arr=arr.filter(function(x){return x!==cb.value;}); }
+  REJ_TYPE_SEL[_rejPopKey]=arr;
+  rejTypeBtnUpdate(_rejPopKey);
+}
+function closeRejPop(){ var p=document.getElementById('rejtype_pop'); if(p) p.style.display='none'; _rejPopKey=null; }
+document.addEventListener('click', function(e){
+  var p=document.getElementById('rejtype_pop');
+  if(!p || p.style.display==='none') return;
+  if(p.contains(e.target)) return;
+  if(e.target.classList && e.target.classList.contains('rejtype-btn')) return;
+  closeRejPop();
+});
+function toggleQRejection(show) {
+  var w = document.getElementById('q_rejection_wrap');
+  if (w) w.style.display = show ? '' : 'none';
+  if (show && qRejCount === 0) addQRejRow();
+}
+function addQRejRow() {
+  if (qRejCount >= 10) return;
+  qRejCount++;
+  var id = qRejCount;
+  var tr = document.createElement('tr');
+  tr.id = 'q_rej_row_' + id;
+  tr.innerHTML = '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="text" id="qrej'+id+'_size" placeholder="Size" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><input type="number" step="1" id="qrej'+id+'_qty" placeholder="No. of pieces" style="width:100%;padding:6px;border:1px solid var(--gray-200);border-radius:4px"></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200)"><div class="rejtype-btn" id="q_'+id+'_tbtn" onclick="openRejTypes(event,&#39;q_'+id+'&#39;)">Select type(s)</div></td>'
+    + '<td style="padding:4px;border:1px solid var(--gray-200);text-align:center"><button type="button" onclick="removeQRejRow('+id+')" style="background:#fee;border:none;border-radius:4px;padding:4px 8px;cursor:pointer;color:#c00">\u00d7</button></td>';
+  document.getElementById('q_rej_rows').appendChild(tr);
+  updateQRejAddBtn();
+}
+function removeQRejRow(id) { var el = document.getElementById('q_rej_row_' + id); if (el) el.remove(); updateQRejAddBtn(); }
+function updateQRejAddBtn() {
+  var visible = document.querySelectorAll('#q_rej_rows tr').length;
+  var btn = document.getElementById('q_rej_add_btn');
+  if (!btn) return;
+  if (visible >= 10) { btn.style.display = 'none'; }
+  else { btn.style.display = ''; btn.textContent = '+ Add Row (' + visible + '/10)'; }
+}
+
+var shReworkFlag='No', shReworkCount=0;
+var DEFECT_SPEC={
+ 'RW-01':{l:'Length variation',t:'0 to 3 mm',k:'meas',m:'Length'},
+ 'RW-02':{l:'Width variation',t:'0 to 3 mm',k:'meas',m:'Width'},
+ 'RW-03':{l:'Diagonal variation / squareness',t:'0 to 3 mm',k:'meas',m:'Diagonal'},
+ 'RW-04':{l:'Burr',t:'< 10% of thickness',k:'meas',m:'Burr Height'},
+ 'RW-05':{l:'Blade impression',t:'< 7% of thickness',k:'meas',m:'Blade Impression Height'},
+ 'RW-06':{l:'Edge crack / damaged edge',t:'Zero tolerance',k:'reject'},
+ 'RW-07':{l:'Camber',t:'3 to 6 mm per 1.5 mtr of length',k:'meas',m:'Camber'},
+ 'RW-08':{l:'Bow / flatness issue',t:'< thickness (visual inspection)',k:'reason'},
+ 'RW-09':{l:'Surface damage',t:'0.3 to 0.4',k:'reason'},
+ 'RW-10':{l:'Other',t:'-',k:'other'}
+};
+function setReworkFlag(v){ shReworkFlag=v; var w=document.getElementById('sh_rework_wrap'); if(w)w.style.display=(v==='Yes')?'':'none'; if(v==='Yes' && !document.querySelector('#sh_rework_cards > div')) addReworkCard(); }
+function _rwIn(id,sfx,ph,ro){ return '<input id="rw'+id+'_'+sfx+'" '+(ro?'readonly ':'')+'placeholder="'+(ph||'')+'" oninput="reworkCalc('+id+')" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px'+(ro?';background:#f3f4f6;font-weight:600':'')+'">'; }
+function _rwSel(id,sfx,opts){ return '<select id="rw'+id+'_'+sfx+'" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px">'+opts+'</select>'; }
+function _rwFld(label,inner){ return '<div><label style="font-size:11px;font-weight:600;color:#6b7280;display:block;margin-bottom:3px">'+label+'</label>'+inner+'</div>'; }
+function addReworkCard(){ shReworkCount++; var id=shReworkCount;
+  var codeOpts='<option value="">-- Select defect --</option>'+Object.keys(DEFECT_SPEC).map(function(c){return '<option value="'+c+'">'+c+' \u00b7 '+DEFECT_SPEC[c].l+'</option>';}).join('');
+  var card=document.createElement('div'); card.id='rwc_'+id;
+  card.style.cssText='border:1px solid #e5e7eb;border-radius:10px;padding:14px;margin-bottom:12px;background:#fafbfc';
+  card.innerHTML='<div style="display:flex;align-items:flex-end;gap:10px;margin-bottom:10px">'
+    +'<div style="flex:1"><label style="font-size:11px;font-weight:700;color:#0B5793;display:block;margin-bottom:3px">DEFECT</label>'
+    +'<select id="rw'+id+'_defect_code" onchange="renderReworkFields('+id+')" style="width:100%;box-sizing:border-box;border:1px solid #c5d8ec;border-radius:6px;padding:8px;font-size:13px;font-weight:600">'+codeOpts+'</select></div>'
+    +'<button type="button" onclick="var c=document.getElementById(\'rwc_'+id+'\');c&&c.remove();" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;width:34px;height:36px;cursor:pointer;font-size:16px">\u00d7</button>'
+    +'</div>'
+    +'<div id="rw'+id+'_tol" style="display:none;font-size:11px;color:#005483;background:#e2f0fb;border:1px solid #bcdcf3;border-radius:6px;padding:6px 10px;margin-bottom:10px"></div>'
+    +'<div id="rw'+id+'_fields"></div>';
+  document.getElementById('sh_rework_cards').appendChild(card);
+}
+function renderReworkFields(id){
+  var code=document.getElementById('rw'+id+'_defect_code').value; var spec=DEFECT_SPEC[code];
+  var host=document.getElementById('rw'+id+'_fields'), tol=document.getElementById('rw'+id+'_tol');
+  if(!spec){ host.innerHTML=''; tol.style.display='none'; return; }
+  tol.style.display=''; tol.textContent='Permitted tolerance: '+spec.t;
+  var qc='<option value="">--</option><option>OK</option><option>NOT OK</option>';
+  var disp='<option value="">--</option><option>Accepted</option><option>Rejected</option><option>Rework again</option>';
+  function grid(inner){ return '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+inner+'</div>'; }
+  var g='';
+  if(spec.k==='reject'){
+    g='<div style="font-weight:700;color:#dc2626;background:#fee2e2;border-radius:6px;padding:8px 10px;margin-bottom:10px">Direct rejection \u2014 this defect is not reworkable.</div>'
+      +grid(_rwFld('Rework Qty',_rwIn(id,'rework_qty'))+_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition','<select id="rw'+id+'_disposition" style="width:100%;box-sizing:border-box;border:1px solid #d1d5db;border-radius:6px;padding:7px;font-size:12px"><option>Rejected</option></select>'));
+  } else if(spec.k==='meas'){
+    g=grid(_rwFld('Rework Qty',_rwIn(id,'rework_qty'))+_rwFld('Required '+spec.m,_rwIn(id,'required','required'))+_rwFld('Actual '+spec.m,_rwIn(id,'actual','measured'))
+      +_rwFld('Variation (auto)',_rwIn(id,'variation','',true))+_rwFld('Blade Gap',_rwIn(id,'blade_gap'))
+      +_rwFld('Action Taken',_rwIn(id,'action_taken'))+_rwFld('QC Verify',_rwSel(id,'qc_verification',qc))
+      +_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition',_rwSel(id,'disposition',disp)));
+  } else if(spec.k==='reason'){
+    g=grid(_rwFld('Rework Qty',_rwIn(id,'rework_qty'))+_rwFld('Reason',_rwIn(id,'reason'))+_rwFld('Action Taken',_rwIn(id,'action_taken'))
+      +_rwFld('QC Verify',_rwSel(id,'qc_verification',qc))+_rwFld('Remarks',_rwIn(id,'remarks'))
+      +_rwFld('Disposition',_rwSel(id,'disposition',disp)));
+  } else {
+    g=grid(_rwFld('Rework Qty',_rwIn(id,'rework_qty'))+_rwFld('Details',_rwIn(id,'details'))+_rwFld('Reason',_rwIn(id,'reason'))
+      +_rwFld('Action Taken',_rwIn(id,'action_taken'))+_rwFld('QC Verify',_rwSel(id,'qc_verification',qc))
+      +_rwFld('Remarks',_rwIn(id,'remarks'))+_rwFld('Disposition',_rwSel(id,'disposition',disp)));
+  }
+  host.innerHTML=g;
+}
+function reworkCalc(id){ var r=parseFloat((document.getElementById('rw'+id+'_required')||{}).value), a=parseFloat((document.getElementById('rw'+id+'_actual')||{}).value); var v=document.getElementById('rw'+id+'_variation'); if(v){ v.value=(isFinite(r)&&isFinite(a))?(a-r).toFixed(2):''; } }
+function collectShearing() {
+  var rows = [];
+  document.querySelectorAll('#sh_rows tr').forEach(function(tr) {
+    var id = tr.id.replace('sh_row_','');
+    rows.push({
+      sheet_no: gv('sr'+id+'_sno'),
+      thickness: gv('sr'+id+'_th'),
+      width1: gv('sr'+id+'_w1'),
+      width2: gv('sr'+id+'_w2'),
+      diag1: gv('sr'+id+'_d1'),
+      diag2: gv('sr'+id+'_d2'),
+      remarks: gv('sr'+id+'_rm')
+    });
+  });
+  var outputSizes = [];
+  document.querySelectorAll('#sh_osz_rows tr').forEach(function(tr) {
+    var id = tr.id.replace('sh_osz_row_','');
+    outputSizes.push(gv('osz'+id+'_size'));
+  });
+  var pq = {};
+  for(var i=1;i<=20;i++) {
+    pq['size_'+i] = {
+      length: gv('sh_pq_s'+i+'_len'),
+      nos: gv('sh_pq_s'+i+'_nos'),
+      weight_t: gv('sh_pq_s'+i+'_wt')
+    };
+  }
+  var rejections = [];
+  document.querySelectorAll('#sh_rej_rows tr').forEach(function(tr) {
+    var id = tr.id.replace('sh_rej_row_','');
+    rejections.push({
+      size: gv('rej'+id+'_size'),
+      qty: gv('rej'+id+'_qty'),
+      types: (REJ_TYPE_SEL['s_'+id]||[])
+    });
+  });
+  return {
+    customer_name: gv('sh_customer'),
+    date: gv('sh_date'),
+    batch_number: gv('sh_batch'),
+    grade: rs['sg_grade']||'',
+    make: rs['sg_make']||'',
+    type: rs['sg_type']||'',
+    process: gv('sh_process'),
+    input_size: gv('sh_input_size'),
+    output_sizes: outputSizes,
+    processed_qty: pq,
+    operator: gv('sh_operator'),
+    qc_name: gv('sh_qc_name'),
+    measurements: rows,
+    burr: gv('sh_burr'),
+    blade_clearance: gv('sh_blade_clearance'),
+    machine_params: mpCollect('sh'),
+    cutting_finish: rs['sg_cut_finish']||'',
+    surface_condition: rs['sg_surface']||'',
+    bow_bend: gv('sh_bow'),
+    taper_cutting: gv('sh_taper'),
+    coil_thickness: gv('sh_thickness'),
+    rejection_flag: rs['sg_rejection']||'No',
+    rejections: rejections,
+    lot_size: gv('sh_lot_size'), required_samples: reqSamples(gv('sh_lot_size')),
+    sample_frequency: refFreq(), calc_constants: refCalc(), tolerances: activeProfile('sh'), tolerance_profile: profileName('sh'),
+    remarks: gv('sh_remarks'),
+    overall_observation: gv('sh_observation'),
+    has_reworks: (typeof shReworkFlag!=='undefined'?shReworkFlag:'No'),
+    reworks: ((typeof shReworkFlag!=='undefined' && shReworkFlag==='Yes' && typeof collectReworks==='function')?collectReworks():[]),
+    timestamp: new Date().toISOString()
+  };
+}
+function refFreq(){ return (window.APP_SETTINGS && APP_SETTINGS.sample_frequency && APP_SETTINGS.sample_frequency.length) ? APP_SETTINGS.sample_frequency : [{min:1,max:2,samples:'1-2'},{min:3,max:20,samples:3},{min:21,max:50,samples:5},{min:51,max:150,samples:8},{min:151,max:300,samples:11},{min:301,max:450,samples:15}]; }
+function refCalc(){ return (window.APP_SETTINGS && APP_SETTINGS.calc_constants && Object.keys(APP_SETTINGS.calc_constants).length) ? APP_SETTINGS.calc_constants : {HR:7.89, CHEQUERED:8.1}; }
+var TOL_SET = { q:'other', sh:'other' };
+function refProfiles(){ return (window.APP_SETTINGS && APP_SETTINGS.tolerance_profiles) ? APP_SETTINGS.tolerance_profiles : {wheels_india:{width_under:15,width_over:15,width_threshold:1500,thickness:0.2,length:3,diagonal:3},other:{width_under:20,width_over:25,width_threshold:1500,thickness:0.5,length:10,diagonal:5}}; }
+function activeProfile(p){ var pr=refProfiles(); return (TOL_SET[p]==='wheels_india' ? pr.wheels_india : pr.other) || pr.other; }
+function profileName(p){ return TOL_SET[p]==='wheels_india' ? 'Wheels India' : 'Other'; }
+function tolLines(pf){ var wu=pf.width_under, wo=(pf.width_over!=null?pf.width_over:wu), th=pf.width_threshold||1500; var ws=(wu===wo)?('Width \u22120/+'+wu+'mm'):('Width \u22120/+'+wu+'mm (<'+th+'), \u22120/+'+wo+'mm (\u2265'+th+')'); return [ws,'Thickness \u00b1'+pf.thickness+'mm','Length \u22120/+'+pf.length+'mm','Diagonal \u2264'+pf.diagonal+'mm']; }
+function renderTolToggle(p){
+  var host=document.getElementById(p+'_toltoggle'); if(!host) return;
+  host.innerHTML='<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="font-weight:700;font-size:13px">Tolerance set:</span>'
+    +'<span class="pill'+(TOL_SET[p]==='wheels_india'?' sel':'')+'" onclick="setTolSet(&#39;'+p+'&#39;,&#39;wheels_india&#39;)">Wheels India</span> '
+    +'<span class="pill'+(TOL_SET[p]==='other'?' sel':'')+'" onclick="setTolSet(&#39;'+p+'&#39;,&#39;other&#39;)">Other coils</span></div>';
+}
+function setTolSet(p, which){ TOL_SET[p]=which; renderTolToggle(p); renderRefBlocks(p); if(p==='q') flagQuality(); else flagShearing(); }
+function flagInput(el, bad){ if(!el) return; el.style.borderColor = bad ? '#dc2626' : 'var(--gray-200)'; el.style.background = bad ? '#fef2f2' : ''; }
+function widthTolAt(pf, nominal){ var th=pf.width_threshold||1500; return (Number(nominal) >= th) ? pf.width_over : pf.width_under; }
+function flagQuality(){
+  var pf=activeProfile('q'); var ct=parseFloat((document.getElementById('q_thick')||{}).value); var cw=parseFloat((document.getElementById('q_width')||{}).value);
+  document.querySelectorAll('#q_groups > div').forEach(function(gdiv){
+    var gid=gdiv.id.replace('cg_',''); var cl=parseFloat((document.getElementById('cg'+gid+'_len')||{}).value);
+    gdiv.querySelectorAll('tbody tr').forEach(function(tr){
+      var rid=tr.id.replace('cgrow_','');
+      var th=document.getElementById('cr'+rid+'_th'); if(th){ var tv=parseFloat(th.value); flagInput(th, isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness); }
+      var w=document.getElementById('cr'+rid+'_w'); if(w){ var wv=parseFloat(w.value); var tol=widthTolAt(pf,cw); flagInput(w, isFinite(wv)&&isFinite(cw)&&tol!=null&&(wv<cw||wv>cw+tol)); }
+      var l=document.getElementById('cr'+rid+'_l'); if(l){ var lv=parseFloat(l.value); flagInput(l, isFinite(lv)&&isFinite(cl)&&pf.length!=null&&(lv<cl||lv>cl+pf.length)); }
+      var d1=document.getElementById('cr'+rid+'_d1'), d2=document.getElementById('cr'+rid+'_d2');
+      var a=parseFloat((d1||{}).value), b=parseFloat((d2||{}).value); var bad=isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal; flagInput(d1,bad); flagInput(d2,bad);
+    });
+  });
+}
+function qSheetOOT(s, cl, pf, ct, cw){
+  var bad=false;
+  var tv=parseFloat(s.thickness); if(isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness) bad=true;
+  var wv=parseFloat(s.width), wtol=widthTolAt(pf,cw); if(isFinite(wv)&&isFinite(cw)&&wtol!=null&&(wv<cw||wv>cw+wtol)) bad=true;
+  var lv=parseFloat(s.length); if(isFinite(lv)&&isFinite(cl)&&pf.length!=null&&(lv<cl||lv>cl+pf.length)) bad=true;
+  var a=parseFloat(s.d1), b=parseFloat(s.d2); if(isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal) bad=true;
+  return bad;
+}
+function flagShearing(){
+  var pf=activeProfile('sh');
+  var ct=parseFloat((document.getElementById('sh_thickness')||{}).value);
+  // Nominal widths come from the OUTPUT SIZES (width-plausible numbers 40..1000; excludes thickness & length)
+  var ow=[];
+  document.querySelectorAll('#sh_osz_rows tr').forEach(function(tr){
+    var oid=tr.id.replace('sh_osz_row_','');
+    var s=(((document.getElementById('osz'+oid+'_size')||{}).value)||'');
+    s.split(/[x\u00d7X*,\s]+/).forEach(function(t){ var n=parseFloat(t); if(isFinite(n)&&n>=40&&n<=1000) ow.push(n); });
+  });
+  document.querySelectorAll('#sh_rows tr').forEach(function(tr){
+    var id=tr.id.replace('sh_row_','');
+    var th=document.getElementById('sr'+id+'_th'); if(th){ var tv=parseFloat(th.value); flagInput(th, isFinite(tv)&&isFinite(ct)&&pf.thickness!=null&&Math.abs(tv-ct)>pf.thickness); }
+    ['w1','w2'].forEach(function(k){ var el=document.getElementById('sr'+id+'_'+k); if(el){ var v=parseFloat(el.value);
+      var okW = (!isFinite(v) || ow.length===0) ? true : ow.some(function(n){ var tol=widthTolAt(pf,n); return tol!=null && v>=n && v<=n+tol; });
+      flagInput(el, isFinite(v) && ow.length>0 && !okW);
+    } });
+    var d1=document.getElementById('sr'+id+'_d1'), d2=document.getElementById('sr'+id+'_d2');
+    var a=parseFloat((d1||{}).value), b=parseFloat((d2||{}).value); var bad=isFinite(a)&&isFinite(b)&&pf.diagonal!=null&&Math.abs(a-b)>pf.diagonal; flagInput(d1,bad); flagInput(d2,bad);
+  });
+}
+function reqSamples(lot){ var v=Number(lot); if(!isFinite(v)||v<=0) return ''; var r=''; refFreq().forEach(function(x){ if(v>=x.min&&v<=x.max) r=x.samples; }); return r; }
+function renderRefBlocks(p){
+  var host=document.getElementById(p+'_refblocks'); if(!host) return;
+  var freq=refFreq(), cc=refCalc(), pf=activeProfile(p);
+  var freqRows=freq.map(function(r,i){ return '<tr id="'+p+'_fr'+i+'"><td style="padding:8px;border:1px solid var(--gray-200)">'+r.min+' - '+r.max+'</td><td style="padding:8px;border:1px solid var(--gray-200)">'+r.samples+' sheets</td></tr>'; }).join('');
+  var matOpts=Object.keys(cc).map(function(k){ return '<option value="'+k+'">'+k+'</option>'; }).join('');
+  var tolStr=tolLines(pf);
+  host.innerHTML =
+    '<div class="field"><label>Lot size (No. of sheets)</label><input type="number" id="'+p+'_lot_size" placeholder="Enter total sheets in lot" oninput="lotSizeCalc(&#39;'+p+'&#39;)"></div>'
+    + '<div id="'+p+'_lot_result" style="margin:6px 0 12px;font-weight:600;color:var(--brand)"></div>'
+    + '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px"><thead><tr style="background:var(--gray-50)"><th style="padding:8px;border:1px solid var(--gray-200);text-align:left">Lot size (No. of sheets)</th><th style="padding:8px;border:1px solid var(--gray-200);text-align:left">Sample frequency to check</th></tr></thead><tbody>'+freqRows+'</tbody></table></div>'
+    + '<div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--gray-200)"><label style="font-weight:600;display:block;margin-bottom:8px">Number Calculation</label>'
+    + '<div class="fg fg-2" style="gap:8px"><div class="field"><label>Length (mm)</label><input type="number" id="'+p+'_calc_l" oninput="numCalc(&#39;'+p+'&#39;)"></div><div class="field"><label>Width (mm)</label><input type="number" id="'+p+'_calc_w" oninput="numCalc(&#39;'+p+'&#39;)"></div></div>'
+    + '<div class="fg fg-2" style="gap:8px"><div class="field"><label>Thickness (mm)</label><input type="number" id="'+p+'_calc_t" oninput="numCalc(&#39;'+p+'&#39;)"></div><div class="field"><label>Pieces (optional)</label><input type="number" id="'+p+'_calc_pcs" oninput="numCalc(&#39;'+p+'&#39;)"></div></div>'
+    + '<div class="field"><label>Material</label><select id="'+p+'_calc_mat" onchange="numCalc(&#39;'+p+'&#39;)">'+matOpts+'</select></div>'
+    + '<div id="'+p+'_calc_result" style="margin-top:8px;font-weight:600;color:var(--brand)"></div>'
+    + '<div style="margin-top:8px;font-size:12px;color:var(--gray-500)">Formula: L \u00d7 W \u00d7 T \u00d7 constant.<br>Tolerances ('+profileName(p)+'): '+tolStr.join(';  ')+'</div></div>';
+}
+function lotSizeCalc(p){
+  var el=document.getElementById(p+'_lot_size'); var v=Number(el?el.value:'');
+  var freq=refFreq(); var out=document.getElementById(p+'_lot_result');
+  freq.forEach(function(r,i){ var tr=document.getElementById(p+'_fr'+i); if(tr) tr.style.background=''; });
+  if(!isFinite(v)||v<=0){ if(out) out.textContent=''; return; }
+  var hit=null, idx=-1; freq.forEach(function(r,i){ if(v>=r.min&&v<=r.max){ hit=r; idx=i; } });
+  if(hit){ if(out) out.textContent='\u2192 Check '+hit.samples+' sheets'; var tr=document.getElementById(p+'_fr'+idx); if(tr) tr.style.background='#FEF3C7'; }
+  else { if(out) out.textContent='\u2192 Lot size is outside the table ranges'; }
+}
+function numCalc(p){
+  function nv(id){ var e=document.getElementById(id); return Number(e?e.value:''); }
+  var l=nv(p+'_calc_l'), w=nv(p+'_calc_w'), t=nv(p+'_calc_t'), pcs=nv(p+'_calc_pcs');
+  var matEl=document.getElementById(p+'_calc_mat'); var mat=matEl?matEl.value:''; var cc=refCalc(); var k=cc[mat]||0;
+  var out=document.getElementById(p+'_calc_result'); if(!out) return;
+  if(!(l>0&&w>0&&t>0&&k>0)){ out.textContent=''; return; }
+  var perKg=(l*w*t*k)/1e6;
+  var msg='Per piece: '+perKg.toFixed(3)+' kg';
+  if(pcs>0){ msg+='  \u00b7  Total ('+pcs+' pcs): '+((perKg*pcs)/1000).toFixed(4)+' t'; }
+  out.textContent=msg;
+}
+
+</script>
+
+<script>
+var rs={}, ys={}; window.APP_SETTINGS={};
+var SH=[];
+function _pad(n){return ('0'+n).slice(-2);}
+function sesc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function shSetVal(id,v){var e=document.getElementById(id);if(e)e.value=(v==null?'':v);}
+function selPill(groupId,val){var g=document.getElementById(groupId);if(!g)return;var hit=null;
+  g.querySelectorAll('.pill').forEach(function(p){if(p.textContent.trim()===String(val).trim())hit=p;});
+  if(hit)hit.click(); else if(val){var o=g.querySelector('.pill[onclick*="rpOther"]');if(o){o.click();var wid=(o.getAttribute('onclick').match(/'([^']+)'\)\s*$/)||[])[1];var w=wid?document.getElementById(wid):null;var inp=w?w.querySelector('input'):null;if(inp){inp.value=val;rs[groupId]=val;}}else rs[groupId]=val;}}
+
+function shInit(){
+  mpRender('sh'); buildShPQ(); renderTolToggle('sh'); renderRefBlocks('sh');
+  if(!document.querySelector('#sh_rows tr')) addShRow();
+  if(!document.querySelector('#sh_osz_rows tr')) addShOszRow();
+  var n=new Date(); var d=document.getElementById('sh_date'); if(d&&!d.value)d.value=n.getFullYear()+'-'+_pad(n.getMonth()+1)+'-'+_pad(n.getDate());
+  shLoad();
+}
+async function shLoad(){
+  var host=document.getElementById('sh_list'); host.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/shearing/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}SH=await r.json();if(!Array.isArray(SH))SH=[];}
+  catch(e){host.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load records. Try again.</div>';return;}
+  shRender();
+}
+function curMon(){var n=new Date();return n.getFullYear()+'-'+_pad(n.getMonth()+1);}
+function shRender(){
+  var host=document.getElementById('sh_list'),mon=curMon(),n=0,sheets=0,rej=0,rw=0;
+  SH.forEach(function(x){if(String(x.log_date||'').slice(0,7)===mon){n++;sheets+=Number(x.sheets_measured||0);if(String(x.rejection_flag).toLowerCase()==='yes')rej++;if(String(x.has_reworks).toLowerCase()==='yes')rw++;}});
+  document.getElementById('kpi_n').textContent=n;
+  document.getElementById('kpi_sh').textContent=sheets;
+  document.getElementById('kpi_rej').textContent=rej;
+  document.getElementById('kpi_rw').textContent=rw;
+  document.getElementById('sh_cnt').textContent=SH.length?(SH.length+' total'):'';
+  if(!SH.length){host.innerHTML='<div class="empty">No shearing inspections logged yet. Fill the form above and save.</div>';return;}
+  var cols=[['Date','9%'],['Customer','15%'],['Batch','11%'],['Grade','8%'],['Make','8%'],['Process','9%'],['QC','9%'],['Sheets','7%'],['Rej','6%'],['Rework','7%'],['','6%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var g=function(a){return(a===''||a==null)?'':sesc(a);};
+  var body=SH.map(function(x){
+    var rb=String(x.rejection_flag).toLowerCase()==='yes'?'<span class="badge bad">Yes</span>':'<span class="badge good">No</span>';
+    var wb=String(x.has_reworks).toLowerCase()==='yes'?'<span class="badge bad">Yes</span>':'<span class="badge good">No</span>';
+    return'<tr><td>'+g(String(x.log_date||'').slice(0,10))+'</td><td>'+g(x.customer_name)+'</td><td>'+g(x.batch_number)+'</td>'
+      +'<td class="c">'+g(x.grade)+'</td><td class="c">'+g(x.make)+'</td><td class="c">'+g(x.process)+'</td><td class="c">'+g(x.qc_name)+'</td>'
+      +'<td class="c">'+g(x.sheets_measured)+'</td><td class="c">'+rb+'</td><td class="c">'+wb+'</td>'
+      +'<td class="c"><a href="/shearing/pdf?id='+x.id+'" target="_blank" class="ic-edit">PDF</a><br><a href="#" onclick="shEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" onclick="shDel('+x.id+');return false" class="ic-del">Del</a></td></tr>';
+  }).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+async function shEdit(id){
+  var r;try{r=await fetch('/shearing/record?id='+id,{cache:'no-store'});}catch(e){toast('err','Couldn’t load record');return;}
+  if(!r.ok){toast('err','Couldn’t load record');return;} var rec=await r.json(); var d=rec.payload||{};
+  shReset();
+  document.getElementById('sh_edit_id').value=id;
+  ['sh_customer:customer_name','sh_date:date','sh_batch:batch_number','sh_process:process','sh_input_size:input_size','sh_thickness:coil_thickness','sh_operator:operator','sh_qc_name:qc_name','sh_burr:burr','sh_blade_clearance:blade_clearance','sh_bow:bow_bend','sh_taper:taper_cutting','sh_remarks:remarks','sh_observation:overall_observation','sh_lot_size:lot_size'].forEach(function(m){var p=m.split(':');shSetVal(p[0],d[p[1]]);});
+  selPill('sg_grade',d.grade);selPill('sg_make',d.make);selPill('sg_type',d.type);selPill('sg_cut_finish',d.cutting_finish);selPill('sg_surface',d.surface_condition);
+  mpRestore('sh', d.machine_params||[]);
+  // output sizes
+  document.getElementById('sh_osz_rows').innerHTML=''; shOszCount=0;
+  (d.output_sizes||[]).forEach(function(v){ addShOszRow(); shSetVal('osz'+shOszCount+'_size',v); });
+  if(!document.querySelector('#sh_osz_rows tr')) addShOszRow();
+  // sheet measurements
+  document.getElementById('sh_rows').innerHTML=''; shRowCount=0;
+  (d.measurements||[]).forEach(function(s){ addShRow(); var id=shRowCount;
+    shSetVal('sr'+id+'_sno',s.sheet_no);shSetVal('sr'+id+'_th',s.thickness);shSetVal('sr'+id+'_w1',s.width1);shSetVal('sr'+id+'_w2',s.width2);shSetVal('sr'+id+'_d1',s.diag1);shSetVal('sr'+id+'_d2',s.diag2);shSetVal('sr'+id+'_rm',s.remarks); });
+  if(!document.querySelector('#sh_rows tr')) addShRow();
+  // processed qty
+  buildShPQ(); var pq=d.processed_qty||{}; var maxn=0; for(var k in pq){var m=k.match(/size_(\d+)/);if(m)maxn=Math.max(maxn,+m[1]);}
+  while(document.querySelectorAll('#sh_pq_grid tbody tr').length<maxn) addShPqRow();
+  for(var i=1;i<=maxn;i++){var s=pq['size_'+i]||{};shSetVal('sh_pq_s'+i+'_len',s.length);shSetVal('sh_pq_s'+i+'_nos',s.nos);shSetVal('sh_pq_s'+i+'_wt',s.weight_t);}
+  // rejections
+  shRejCount=0; document.getElementById('sh_rej_rows').innerHTML=''; REJ_TYPE_SEL={};
+  if(String(d.rejection_flag).toLowerCase()==='yes'){ selPill('sg_rejection','Yes');
+    (d.rejections||[]).forEach(function(rj){ addShRejRow(); var rid=shRejCount; shSetVal('rej'+rid+'_size',rj.size);shSetVal('rej'+rid+'_qty',rj.qty); REJ_TYPE_SEL['s_'+rid]=(rj.types||[]); rejTypeBtnUpdate('s_'+rid); });
+  } else { selPill('sg_rejection','No'); }
+  // reworks
+  if(String(d.has_reworks).toLowerCase()==='yes'){ selPill('sg_rework','Yes'); if(typeof setReworkFlag==='function')setReworkFlag('Yes');
+    var host=document.getElementById('sh_rework_cards'); if(host)host.innerHTML=''; shReworkCount=0;
+    (d.reworks||[]).forEach(function(rw){ addReworkCard(); var id=shReworkCount;
+      shSetVal('rw'+id+'_defect_code',rw.defect_code); if(typeof renderReworkFields==='function')renderReworkFields(id);
+      ['rework_qty','required','actual','variation','blade_gap','reason','details','action_taken','qc_verification','disposition','remarks'].forEach(function(f){shSetVal('rw'+id+'_'+f,rw[f]);}); });
+  } else { selPill('sg_rework','No'); }
+  renderTolToggle('sh'); renderRefBlocks('sh');
+  document.getElementById('sh_form_title').textContent='Edit shearing inspection #'+id;
+  document.getElementById('sh_save').textContent='Update inspection';
+  document.getElementById('sh_cancel').style.display='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function shReset(){
+  document.getElementById('sh_edit_id').value='';
+  document.getElementById('sh_form_title').textContent='New shearing inspection';
+  document.getElementById('sh_save').textContent='Save inspection';
+  document.getElementById('sh_cancel').style.display='none';
+  ['sh_customer','sh_batch','sh_process','sh_input_size','sh_thickness','sh_operator','sh_qc_name','sh_burr','sh_blade_clearance','sh_bow','sh_taper','sh_remarks','sh_observation','sh_lot_size'].forEach(function(i){shSetVal(i,'');});
+  rs={}; ys={}; REJ_TYPE_SEL={}; shRejCount=0; shRowCount=0; shOszCount=0; if(typeof shReworkCount!=='undefined')shReworkCount=0; if(typeof shReworkFlag!=='undefined')shReworkFlag='No';
+  document.querySelectorAll('.ctl-form .pill.sel').forEach(function(p){p.classList.remove('sel');});
+  var rw=document.getElementById('sh_rework_wrap'); if(rw)rw.style.display='none';
+  var rc=document.getElementById('sh_rework_cards'); if(rc)rc.innerHTML='';
+  document.getElementById('sh_rows').innerHTML=''; document.getElementById('sh_osz_rows').innerHTML=''; document.getElementById('sh_rej_rows').innerHTML='';
+  var w=document.getElementById('sh_rejection_wrap'); if(w)w.style.display='none';
+  mpRender('sh'); buildShPQ(); addShRow(); addShOszRow(); renderTolToggle('sh'); renderRefBlocks('sh');
+  var n=new Date(); shSetVal('sh_date',n.getFullYear()+'-'+_pad(n.getMonth()+1)+'-'+_pad(n.getDate()));
+}
+function shCancel(){shReset();window.scrollTo({top:0,behavior:'smooth'});}
+async function shSubmit(){
+  var d=collectShearing();
+  if(!d.customer_name){toast('err','Enter the customer name');return;}
+  if(!d.batch_number){toast('err','Enter the batch number');return;}
+  if(!d.grade){toast('err','Select the grade');return;}
+  if(!d.make){toast('err','Select the make');return;}
+  if(!d.qc_name){toast('err','Enter the QC name');return;}
+  try{ d.photos=await collectPhotosBase64(['sh_photos']); }catch(e){ d.photos=[]; }
+  var editId=document.getElementById('sh_edit_id').value;
+  var b=document.getElementById('sh_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch(editId?'/shearing/update':'/shearing/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:editId||null,data:d})});
+    var j=await r.json().catch(function(){return{};});if(!r.ok||!j.ok)throw new Error(j.detail||'Save failed');
+    toast('ok',editId?'Inspection updated':'Inspection saved · writing to Excel log');shReset();await shLoad();window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){toast('err','Couldn’t save: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=lbl;}
+}
+async function shDel(id){if(!confirm('Delete this shearing inspection record?'))return;
+  try{var r=await fetch('/shearing/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    var j=await r.json().catch(function(){return{};});if(!r.ok||!j.ok)throw new Error('failed');toast('ok','Record deleted');await shLoad();
+  }catch(e){toast('err','Couldn’t delete the record');}}
+document.addEventListener('DOMContentLoaded', shInit);
+</script>
+{% endblock %}

@@ -454,3 +454,175 @@ def build_quality_pdf(d: dict, rec_id, mp_spec) -> bytes:
                            ParagraphStyle("g", fontName="Helvetica", fontSize=7.5, textColor=MUT, alignment=2)))
     doc.build(story)
     return buf.getvalue()
+
+
+# ============================================================
+#  Shearing Quality Inspection — single-record report (portrait A4)
+# ============================================================
+def build_shearing_pdf(d: dict, rec_id, mp_spec) -> bytes:
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, leftMargin=30, rightMargin=30,
+                            topMargin=24, bottomMargin=28)
+    st = {
+        "title": ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=14.5, textColor=BRAND, alignment=1, leading=17),
+        "sub": ParagraphStyle("s", fontName="Helvetica", fontSize=8.5, textColor=MUT, alignment=1),
+        "meta": ParagraphStyle("m", fontName="Helvetica-Bold", fontSize=9, textColor=DARK, alignment=2, leading=12),
+        "sec": ParagraphStyle("se", fontName="Helvetica-Bold", fontSize=9.5, textColor=colors.white, leading=12),
+        "lab": ParagraphStyle("l", fontName="Helvetica", fontSize=8, textColor=MUT, leading=10),
+        "val": ParagraphStyle("v", fontName="Helvetica-Bold", fontSize=9, textColor=colors.HexColor("#0e1524"), leading=11),
+        "hd": ParagraphStyle("h", fontName="Helvetica-Bold", fontSize=7.6, textColor=DARK, alignment=1, leading=9),
+        "cell": ParagraphStyle("c", fontName="Helvetica", fontSize=7.6, leading=9),
+    }
+    story = []
+    logo = ""
+    if os.path.exists(_LOGO):
+        try:
+            logo = Image(_LOGO, width=40 * mm, height=11 * mm, kind="proportional")
+        except Exception:
+            logo = ""
+    title_block = [Paragraph("SHEARING QUALITY INSPECTION", st["title"]),
+                   Paragraph("Shearing Line Quality Report", st["sub"])]
+    meta = Paragraph(f"Report #{rec_id}<br/>{str(d.get('date') or '')[:10]}", st["meta"])
+    head = Table([[logo, title_block, meta]], colWidths=[125, None, 125])
+    head.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("ALIGN", (0, 0), (0, 0), "LEFT"),
+                              ("LINEBELOW", (0, 0), (-1, 0), 1.1, BRAND), ("BOTTOMPADDING", (0, 0), (-1, 0), 8)]))
+    story.append(head)
+    story.append(Spacer(1, 10))
+    W = doc.width
+
+    def bar(title):
+        t = Table([[Paragraph(title, st["sec"])]], colWidths=[W])
+        t.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), BRAND), ("LEFTPADDING", (0, 0), (-1, -1), 8),
+                               ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+        story.append(t)
+
+    def pairs(items):
+        data, row = [], []
+        for lab, val in items:
+            row.append([Paragraph(lab, st["lab"]), Spacer(1, 1), Paragraph(_fmt(val) or "-", st["val"])])
+            if len(row) == 3:
+                data.append(row); row = []
+        if row:
+            while len(row) < 3:
+                row.append("")
+            data.append(row)
+        if data:
+            t = Table(data, colWidths=[W / 3.0] * 3)
+            t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 5),
+                                   ("BOTTOMPADDING", (0, 0), (-1, -1), 5), ("LEFTPADDING", (0, 0), (-1, -1), 7),
+                                   ("RIGHTPADDING", (0, 0), (-1, -1), 7), ("BOX", (0, 0), (-1, -1), 0.4, GRID),
+                                   ("INNERGRID", (0, 0), (-1, -1), 0.3, GRID)]))
+            story.append(t)
+        story.append(Spacer(1, 10))
+
+    bar("HEADER &amp; IDENTITY")
+    pairs([("Customer", d.get("customer_name")), ("Batch Number", d.get("batch_number")),
+           ("Grade", d.get("grade")), ("Make", d.get("make")), ("Type", d.get("type")),
+           ("Process", d.get("process")), ("Input Size", d.get("input_size")),
+           ("Coil Thickness (mm)", d.get("coil_thickness")), ("Operator", d.get("operator"))])
+
+    # Machine params
+    mp_by = {p.get("key"): p for p in (d.get("machine_params") or []) if p and p.get("key")}
+    mp_rows = [[Paragraph("Parameter", st["hd"]), Paragraph("Initial / Adjustments", st["hd"])]]
+    any_mp = False
+    for key, label in mp_spec:
+        cell = _mp_cell(mp_by.get(key))
+        if cell:
+            any_mp = True
+        mp_rows.append([Paragraph(label, st["cell"]),
+                        Paragraph((cell or "-").replace("\n", "<br/>"), st["cell"])])
+    if any_mp:
+        bar("MACHINE SETTING PARAMETERS")
+        t = Table(mp_rows, colWidths=[W * 0.32, W * 0.68], repeatRows=1)
+        t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, GRID), ("BACKGROUND", (0, 0), (-1, 0), HEAD),
+                               ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 4),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 4), ("LEFTPADDING", (0, 0), (-1, -1), 6)]))
+        story.append(t)
+        story.append(Spacer(1, 10))
+
+    # Output sizes
+    osz = [x for x in (d.get("output_sizes") or []) if _fmt(x)]
+    if osz:
+        bar("OUTPUT SIZES")
+        story.append(Paragraph(", ".join(str(x) for x in osz), st["val"]))
+        story.append(Spacer(1, 10))
+
+    # Sheet measurements
+    sm = d.get("measurements") or []
+    if sm:
+        bar("SHEET MEASUREMENTS")
+        cols = ["Sheet", "Thk", "Width 1", "Width 2", "Diag 1", "Diag 2", "Remarks"]
+        data = [[Paragraph(c, st["hd"]) for c in cols]]
+        for s in sm:
+            data.append([Paragraph(_fmt(s.get(k)), st["cell"]) for k in
+                         ("sheet_no", "thickness", "width1", "width2", "diag1", "diag2", "remarks")])
+        t = Table(data, colWidths=[W*0.1, W*0.11, W*0.14, W*0.14, W*0.14, W*0.14, W*0.23], repeatRows=1)
+        t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, GRID), ("BACKGROUND", (0, 0), (-1, 0), HEAD),
+                               ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("TOPPADDING", (0, 0), (-1, -1), 3),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        story.append(t)
+        story.append(Spacer(1, 10))
+
+    # Processed quantity
+    pq = d.get("processed_qty") or {}
+    pq_rows = [[Paragraph(h, st["hd"]) for h in ("Size", "Length (mm)", "No. Sheets", "Weight (T)")]]
+    for i in range(1, 21):
+        s = pq.get(f"size_{i}") or {}
+        if any(_fmt(s.get(k)) for k in ("length", "nos", "weight_t")):
+            pq_rows.append([Paragraph(f"Size {i}", st["cell"]), Paragraph(_fmt(s.get("length")), st["cell"]),
+                            Paragraph(_fmt(s.get("nos")), st["cell"]), Paragraph(_fmt(s.get("weight_t")), st["cell"])])
+    if len(pq_rows) > 1:
+        bar("PROCESSED QUANTITY")
+        t = Table(pq_rows, colWidths=[W*0.22, W*0.26, W*0.26, W*0.26], repeatRows=1)
+        t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, GRID), ("BACKGROUND", (0, 0), (-1, 0), HEAD),
+                               ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("TOPPADDING", (0, 0), (-1, -1), 3),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        story.append(t)
+        story.append(Spacer(1, 10))
+
+    bar("QUALITY CHECKS")
+    pairs([("Burr", d.get("burr")), ("Blade Clearance", d.get("blade_clearance")),
+           ("Cutting Finish", d.get("cutting_finish")), ("Surface Condition", d.get("surface_condition")),
+           ("Bow / Bend", d.get("bow_bend")), ("Taper Cutting", d.get("taper_cutting")),
+           ("QC Name", d.get("qc_name")), ("Tolerance Profile", d.get("tolerance_profile")),
+           ("Rejections?", d.get("rejection_flag"))])
+
+    # Rejections
+    if str(d.get("rejection_flag") or "").lower() == "yes" and (d.get("rejections") or []):
+        bar("REJECTIONS")
+        rr = [[Paragraph(h, st["hd"]) for h in ("Size", "Qty", "Type(s)")]]
+        for r in d.get("rejections"):
+            rr.append([Paragraph(_fmt(r.get("size")), st["cell"]), Paragraph(_fmt(r.get("qty")), st["cell"]),
+                       Paragraph(", ".join(str(t) for t in (r.get("types") or [])), st["cell"])])
+        t = Table(rr, colWidths=[W*0.25, W*0.2, W*0.55], repeatRows=1)
+        t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, GRID), ("BACKGROUND", (0, 0), (-1, 0), HEAD),
+                               ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        story.append(t)
+        story.append(Spacer(1, 10))
+
+    # Reworks
+    if str(d.get("has_reworks") or "").lower() == "yes" and (d.get("reworks") or []):
+        bar("REWORKS")
+        rw = [[Paragraph(h, st["hd"]) for h in ("Defect", "Qty", "Required", "Actual", "Var", "Action", "Disposition")]]
+        for r in d.get("reworks"):
+            rw.append([Paragraph(_fmt(r.get("defect_code")), st["cell"]), Paragraph(_fmt(r.get("rework_qty")), st["cell"]),
+                       Paragraph(_fmt(r.get("required")), st["cell"]), Paragraph(_fmt(r.get("actual")), st["cell"]),
+                       Paragraph(_fmt(r.get("variation")), st["cell"]), Paragraph(_fmt(r.get("action_taken")), st["cell"]),
+                       Paragraph(_fmt(r.get("disposition")), st["cell"])])
+        t = Table(rw, colWidths=[W*0.14, W*0.08, W*0.12, W*0.12, W*0.09, W*0.25, W*0.2], repeatRows=1)
+        t.setStyle(TableStyle([("GRID", (0, 0), (-1, -1), 0.4, GRID), ("BACKGROUND", (0, 0), (-1, 0), HEAD),
+                               ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("TOPPADDING", (0, 0), (-1, -1), 3),
+                               ("BOTTOMPADDING", (0, 0), (-1, -1), 3)]))
+        story.append(t)
+        story.append(Spacer(1, 10))
+
+    bar("SIGN-OFF")
+    pairs([("QC Name", d.get("qc_name")), ("Remarks", d.get("remarks")),
+           ("Overall Observation", d.get("overall_observation"))])
+
+    gen = datetime.now().strftime("%d-%b-%Y %H:%M")
+    story.append(Spacer(1, 4))
+    story.append(Paragraph(f"Bharat Steel (Chennai) Pvt. Ltd. &nbsp;·&nbsp; Generated {gen}",
+                           ParagraphStyle("g", fontName="Helvetica", fontSize=7.5, textColor=MUT, alignment=2)))
+    doc.build(story)
+    return buf.getvalue()
