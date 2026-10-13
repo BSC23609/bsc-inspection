@@ -43,8 +43,6 @@ NAV_GROUPS = [
           "href": "/maint/checklists", "active_key": "maint_checklists"},
          {"name": "Schedules", "icon": "calendar", "desc": "PM cycles by date interval and running hours.",
           "href": "/maint/schedules", "active_key": "maint_schedules"},
-         {"name": "Team", "icon": "users", "desc": "Assign categories to staff, by location.",
-          "href": "/maint/team", "active_key": "maint_team"},
      ]},
     {"key": "generator", "title": "Generator", "accent": "sky", "icon": "bolt",
      "blurb": "Daily diesel generator running records.",
@@ -198,7 +196,6 @@ _MAINT_PAGES = [
     ("/maint/assets", "maint_assets.html", "maint_assets", "Assets"),
     ("/maint/checklists", "maint_checklists.html", "maint_checklists", "Checklists"),
     ("/maint/schedules", "maint_schedules.html", "maint_schedules", "Schedules"),
-    ("/maint/team", "maint_team.html", "maint_team", "Maintenance Team"),
 ]
 
 

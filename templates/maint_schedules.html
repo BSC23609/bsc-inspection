@@ -31,7 +31,7 @@
     <div class="field"><label>Location</label><input id="s_loc" placeholder="for Electrical etc."></div>
   </div>
   <div class="row r4">
-    <div class="field"><label>Assignee (override)</label><select id="s_assignee"></select><div class="hint">Blank = auto from Team</div></div>
+    <div class="field"><label>Assignee</label><select id="s_assignee"></select><div class="hint">Staff member to notify on WhatsApp</div></div>
     <div class="field"><label>Start date</label><input id="s_start" type="date"></div>
     <div class="field"><label>Last done</label><input id="s_last" type="date"></div>
     <div class="field"><label>Last-done hours</label><input id="s_lasth" type="number" step="0.1"></div>
@@ -61,7 +61,7 @@ async function boot(){
   try{ALLCL=await (await fetch('/maint/checklists/list',{cache:'no-store'})).json();}catch(e){ALLCL=[];}
   document.getElementById('s_asset').innerHTML='<option value="">— asset —</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
   document.getElementById('s_cat').innerHTML='<option value="">—</option>'+CATS.map(function(c){return opt(c,c);}).join('');
-  document.getElementById('s_assignee').innerHTML='<option value="">— auto —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''));}).join('');
+  document.getElementById('s_assignee').innerHTML='<option value="">— none —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''));}).join('');
   loadChecklists();sLoad();
 }
 function loadChecklists(){var aid=v('s_asset');var list=ALLCL.filter(function(c){return String(c.asset_id)===String(aid);});

@@ -84,9 +84,6 @@ async def ensure_tables():
         freq_days INT, hours_interval NUMERIC, category TEXT, location TEXT,
         assignee_emp_id INT, start_date DATE, last_done DATE, last_done_hours NUMERIC,
         active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT now())""")
-    await db.execute("""CREATE TABLE IF NOT EXISTS maint_assignments (
-        id SERIAL PRIMARY KEY, category TEXT, location TEXT DEFAULT '', emp_id INT,
-        created_at TIMESTAMPTZ DEFAULT now())""")
     await db.execute("""CREATE TABLE IF NOT EXISTS maint_logs (
         id SERIAL PRIMARY KEY, asset_id INT, schedule_id INT, checklist_id INT,
         done_by TEXT, done_by_emp_id INT, done_at TIMESTAMPTZ DEFAULT now(),
@@ -131,24 +128,6 @@ def _d(v):
         return datetime.strptime(str(v)[:10], "%Y-%m-%d").date()
     except Exception:
         return None
-
-
-# ---------- assignee resolution ----------
-async def resolve_assignee(category: str, location: str) -> Optional[int]:
-    cat = (category or "").strip()
-    loc = (location or "").strip()
-    if not cat:
-        return None
-    if loc:
-        row = await db.fetchrow(
-            "SELECT emp_id FROM maint_assignments WHERE lower(category)=lower($1) "
-            "AND lower(COALESCE(location,''))=lower($2) LIMIT 1", cat, loc)
-        if row:
-            return row["emp_id"]
-    row = await db.fetchrow(
-        "SELECT emp_id FROM maint_assignments WHERE lower(category)=lower($1) "
-        "AND COALESCE(location,'')='' LIMIT 1", cat)
-    return row["emp_id"] if row else None
 
 
 # ---------- due computation ----------
@@ -352,8 +331,6 @@ async def schedule_save(body: dict, emp: dict = Depends(require_employee)):
     category = (body.get("category") or "").strip()
     location = (body.get("location") or "").strip()
     assignee = body.get("assignee_emp_id") or None
-    if not assignee and category:
-        assignee = await resolve_assignee(category, location)
     vals = (asset_id, title, body.get("checklist_id") or None,
             _num(body.get("freq_days")), _num(body.get("hours_interval")),
             category, location, assignee, _d(body.get("start_date")),
@@ -383,49 +360,6 @@ async def schedule_toggle(body: dict, emp: dict = Depends(require_employee)):
 async def schedule_delete(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
     await db.execute("DELETE FROM maint_schedules WHERE id=$1", body.get("id"))
-    return {"ok": True}
-
-
-# =======================================================================
-#  TEAM / ASSIGNMENTS (reuse employees as technicians)
-# =======================================================================
-@router.get("/team/data")
-async def team(emp: dict = Depends(require_employee)):
-    await ensure_tables()
-    staff = await db.fetch(
-        "SELECT id, emp_no, name, COALESCE(mobile,'') AS mobile, COALESCE(active,true) AS active "
-        "FROM employees WHERE COALESCE(active,true)=true ORDER BY lower(name) NULLS LAST, emp_no")
-    rows = await db.fetch(
-        "SELECT m.*, e.name AS emp_name, e.emp_no AS emp_code, COALESCE(e.mobile,'') AS emp_mobile "
-        "FROM maint_assignments m LEFT JOIN employees e ON e.id=m.emp_id "
-        "ORDER BY m.category, m.location")
-    return _json({"staff": [dict(r) for r in staff], "assignments": [dict(r) for r in rows],
-                  "categories": CATEGORIES})
-
-
-@router.post("/assignment/save")
-async def assignment_save(body: dict, emp: dict = Depends(require_employee)):
-    await ensure_tables()
-    cat = (body.get("category") or "").strip()
-    loc = (body.get("location") or "").strip()
-    eid = body.get("emp_id")
-    if not cat or not eid:
-        raise HTTPException(400, "Category and staff member are required")
-    existing = await db.fetchval(
-        "SELECT id FROM maint_assignments WHERE lower(category)=lower($1) AND lower(COALESCE(location,''))=lower($2)",
-        cat, loc)
-    if existing:
-        await db.execute("UPDATE maint_assignments SET emp_id=$1 WHERE id=$2", eid, existing)
-        return {"ok": True, "id": existing}
-    nid = await db.fetchval(
-        "INSERT INTO maint_assignments (category,location,emp_id) VALUES ($1,$2,$3) RETURNING id", cat, loc, eid)
-    return {"ok": True, "id": nid}
-
-
-@router.post("/assignment/delete")
-async def assignment_delete(body: dict, emp: dict = Depends(require_employee)):
-    await ensure_tables()
-    await db.execute("DELETE FROM maint_assignments WHERE id=$1", body.get("id"))
     return {"ok": True}
 
 
