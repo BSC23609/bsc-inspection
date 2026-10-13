@@ -15,7 +15,8 @@ NAV_GROUPS = [
     {"key": "inspection", "title": "Inspection", "accent": "steel", "icon": "inspect",
      "blurb": "Record line inspections from coil to delivery.",
      "items": [
-         {"name": "Coil Inward", "icon": "coil", "desc": "Inspect mother coils on arrival."},
+         {"name": "Coil Inward", "icon": "coil", "desc": "Inspect mother coils on arrival.",
+          "href": "/coil", "active_key": "coil"},
          {"name": "Quality Inspection", "icon": "ruler", "desc": "Cut-to-length quality and sheet measurements."},
          {"name": "Shearing Quality Inspection", "icon": "scissors", "desc": "Shearing quality, output sizes, reworks."},
          {"name": "Pre-Delivery Inspection", "icon": "truck", "desc": "PDI against each sales order."},
@@ -86,3 +87,11 @@ async def dglog_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("dg_log.html", _ctx(request, emp, "dglog", section="Diesel Generator Log"))
+
+
+@router.get("/coil", response_class=HTMLResponse)
+async def coil_page(request: Request):
+    emp = await current_employee(request)
+    if not emp:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("coil_inward.html", _ctx(request, emp, "coil", section="Coil Inward Inspection"))

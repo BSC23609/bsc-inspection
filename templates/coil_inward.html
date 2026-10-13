@@ -1,0 +1,297 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Coil Inward Inspection · {{ app_name }}{% endblock %}
+{% block tb_title %}Coil Inward Inspection{% endblock %}
+{% block content %}
+<div class="acc-steel">
+
+<div class="page-head">
+  <h1>Coil Inward Inspection</h1>
+  <p>Record each mother coil on arrival — vehicle, identity, dimensions and physical condition. Each saved coil gets its own inspection report.</p>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><span class="ki">{{ icon('hash',20) }}</span><div><div class="k-lab">Coils this month</div><div class="k-val tnum" id="kpi_n">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('inspect',20) }}</span><div><div class="k-lab">Condition OK</div><div class="k-val tnum" id="kpi_ok">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('warn',20) }}</span><div><div class="k-lab">Flagged</div><div class="k-val tnum" id="kpi_flag">0</div></div></div>
+  <div class="kpi"><span class="ki">{{ icon('gauge',20) }}</span><div><div class="k-lab">Total weight</div><div class="k-val tnum" id="kpi_wt">0 <small>T</small></div></div></div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="c_form_title">New coil entry</span></div>
+  <div class="panel-body">
+    <input type="hidden" id="c_edit_id" value="">
+
+    <div class="sec">
+      <div class="sec-h">{{ icon('truck',15) }} Vehicle &amp; Coil Identity</div>
+      <div class="row row-2">
+        <div class="field"><label>Vehicle Number <span class="rq">*</span></label><input type="text" id="c_vehicle" placeholder="e.g. TN09AB1234"></div>
+        <div class="field"><label>Batch Number <span class="rq">*</span></label><input type="text" id="c_batch" placeholder="Enter batch number"></div>
+      </div>
+      <div class="field"><label>Make of Coil <span class="rq">*</span></label>
+        <div class="pills" data-target="c_make" data-other="c_make_oth">
+          <button type="button" class="pill" data-v="SAIL">SAIL</button>
+          <button type="button" class="pill" data-v="SAIL RSP">SAIL RSP</button>
+          <button type="button" class="pill" data-v="SAIL BSP">SAIL BSP</button>
+          <button type="button" class="pill" data-v="JSW">JSW</button>
+          <button type="button" class="pill" data-v="TATA">TATA</button>
+          <button type="button" class="pill" data-v="AMNS">AMNS</button>
+          <button type="button" class="pill" data-v="NMDC">NMDC</button>
+          <button type="button" class="pill" data-v="JSPL">JSPL</button>
+          <button type="button" class="pill pill-other" data-v="__other">Other</button>
+        </div>
+        <input type="hidden" id="c_make"><input type="text" id="c_make_oth" class="pill-input" style="display:none" placeholder="Type make name…">
+      </div>
+      <div class="field" style="margin-top:12px"><label>Grade <span class="rq">*</span></label>
+        <div class="pills" data-target="c_grade" data-other="c_grade_oth">
+          <button type="button" class="pill" data-v="E250">E250</button>
+          <button type="button" class="pill" data-v="E350/ST52">E350 / ST52</button>
+          <button type="button" class="pill" data-v="HSFQ450/450/EQV">HSFQ450 / 450 / EQV</button>
+          <button type="button" class="pill" data-v="HSFQ550/550/EQV">HSFQ550 / 550 / EQV</button>
+          <button type="button" class="pill pill-other" data-v="__other">Other</button>
+        </div>
+        <input type="hidden" id="c_grade"><input type="text" id="c_grade_oth" class="pill-input" style="display:none" placeholder="Type grade name…">
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h">{{ icon('ruler',15) }} Dimensions</div>
+      <div class="field"><label>Width (mm) <span class="rq">*</span></label>
+        <div class="pills" data-target="c_width" data-other="c_width_oth">
+          <button type="button" class="pill" data-v="1250">1250</button>
+          <button type="button" class="pill" data-v="1500">1500</button>
+          <button type="button" class="pill" data-v="2000">2000</button>
+          <button type="button" class="pill pill-other" data-v="__other">Other</button>
+        </div>
+        <input type="hidden" id="c_width"><input type="text" id="c_width_oth" class="pill-input" style="display:none" placeholder="Type width…">
+      </div>
+      <div class="row row-3" style="margin-top:12px">
+        <div class="field"><label>Thickness (mm) <span class="rq">*</span></label><input type="number" step="0.01" id="c_thick" placeholder="e.g. 3.15"></div>
+        <div class="field"><label>Coil Weight (T)</label><input type="number" step="0.001" id="c_weight" placeholder="e.g. 12.5"></div>
+        <div class="field"><label>Coil ID (mm)</label><input type="number" id="c_coilid" placeholder="e.g. 610"></div>
+      </div>
+      <div class="row row-2">
+        <div class="field"><label>Actual Thickness (mm)</label><input type="number" step="0.01" id="c_actthick" placeholder="Measured value"></div>
+        <div class="field"><label>Actual Width (mm)</label><input type="number" id="c_actwidth" placeholder="Measured value"></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h">{{ icon('inspect',15) }} Physical Condition</div>
+      <div class="cond-grid">
+        <div class="cond-row"><span>Identification Sticker</span><div class="yn" data-target="c_sticker"><button type="button" data-v="Yes">Yes</button><button type="button" data-v="No">No</button></div></div>
+        <div class="cond-row"><span>Edge Damage – Inner</span><div class="yn" data-target="c_ei"><button type="button" data-v="Yes">Yes</button><button type="button" data-v="No">No</button></div></div>
+        <div class="cond-row"><span>Edge Damage – Outer</span><div class="yn" data-target="c_eo"><button type="button" data-v="Yes">Yes</button><button type="button" data-v="No">No</button></div></div>
+        <div class="cond-row"><span>Scratch Mark</span><div class="yn" data-target="c_scr"><button type="button" data-v="Yes">Yes</button><button type="button" data-v="No">No</button></div></div>
+        <div class="cond-row"><span>Strapping</span><div class="yn" data-target="c_strap"><button type="button" data-v="Yes">Yes</button><button type="button" data-v="No">No</button></div></div>
+        <div class="cond-row"><span>Rust on Surface</span><div class="yn" data-target="c_rust"><button type="button" data-v="Yes">Yes</button><button type="button" data-v="No">No</button></div></div>
+      </div>
+      <input type="hidden" id="c_sticker"><input type="hidden" id="c_ei"><input type="hidden" id="c_eo">
+      <input type="hidden" id="c_scr"><input type="hidden" id="c_strap"><input type="hidden" id="c_rust">
+      <div class="field" style="margin-top:14px"><label>Any Other Damages</label>
+        <div class="pills" data-target="c_dmg" data-other="c_dmg_oth">
+          <button type="button" class="pill" data-v="Nil">Nil</button>
+          <button type="button" class="pill" data-v="Oil Marks">Oil Marks</button>
+          <button type="button" class="pill" data-v="Liner Marks">Liner Marks</button>
+          <button type="button" class="pill" data-v="Rope Damage">Rope Damage</button>
+          <button type="button" class="pill pill-other" data-v="__other">Other</button>
+        </div>
+        <input type="hidden" id="c_dmg"><input type="text" id="c_dmg_oth" class="pill-input" style="display:none" placeholder="Describe damage…">
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h">{{ icon('msg',15) }} Inspector &amp; Remarks</div>
+      <div class="field"><label>Inspected By <span class="rq">*</span></label>
+        <div class="pills" data-target="c_insp" data-other="c_insp_oth">
+          <button type="button" class="pill" data-v="Sathya">Sathya</button>
+          <button type="button" class="pill" data-v="Kumar">Kumar</button>
+          <button type="button" class="pill" data-v="Mahendran">Mahendran</button>
+          <button type="button" class="pill" data-v="Dhanush">Dhanush</button>
+          <button type="button" class="pill pill-other" data-v="__other">Other</button>
+        </div>
+        <input type="hidden" id="c_insp"><input type="text" id="c_insp_oth" class="pill-input" style="display:none" placeholder="Inspector name…">
+      </div>
+      <div class="row row-2" style="margin-top:12px">
+        <div class="field"><label>Wheels India Coil?</label>
+          <div class="yn" data-target="c_wheels"><button type="button" data-v="No">No</button><button type="button" data-v="Yes">Yes</button></div>
+          <input type="hidden" id="c_wheels" value="No">
+        </div>
+      </div>
+      <div class="field"><label>Remarks</label><textarea id="c_remarks" rows="2" placeholder="Any additional notes or observations…"></textarea></div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h">{{ icon('file',15) }} Photos</div>
+      <div class="row row-2">
+        <div class="field"><label>Coil Photo</label>
+          <label class="photo" id="c_coil_box"><input type="file" accept="image/*" hidden onchange="photoPick(this,'coil')"><span class="ph-ic">{{ icon('coil',22) }}</span><span class="ph-t">Tap to upload</span><span class="ph-s">JPG / PNG</span></label>
+          <input type="hidden" id="c_coil_photo"></div>
+        <div class="field"><label>Sticker Photo</label>
+          <label class="photo" id="c_sticker_box"><input type="file" accept="image/*" hidden onchange="photoPick(this,'sticker')"><span class="ph-ic">{{ icon('file',22) }}</span><span class="ph-t">Tap to upload</span><span class="ph-s">JPG / PNG</span></label>
+          <input type="hidden" id="c_sticker_photo"></div>
+      </div>
+    </div>
+
+    <div class="form-actions">
+      <button class="btn btn-ghost" id="c_cancel" style="display:none" onclick="coilCancel()">Cancel</button>
+      <div class="grow"></div>
+      <button class="btn btn-primary" id="c_save" onclick="coilSubmit()">Save coil</button>
+    </div>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:16px">
+  <div class="panel-head"><span class="hi">{{ icon('bars',17) }}</span>Recent inward<span class="sub" id="c_cnt"></span></div>
+  <div class="panel-body flush"><div class="dgrid-wrap" id="c_rows"><div class="empty">Loading…</div></div></div>
+</div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var CI=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function num(x){x=parseFloat(x);return isFinite(x)?x:null;}
+function pad(n){return('0'+n).slice(-2);}
+function monKey(d){return String(d||'').slice(0,7);}
+function curMon(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1);}
+
+/* ---- pill groups ---- */
+function pillVal(target){return v(target);}
+function setPill(groupEl,val){
+  var tgt=groupEl.getAttribute('data-target'),oth=groupEl.getAttribute('data-other');
+  var known=[].map.call(groupEl.querySelectorAll('.pill'),function(b){return b.getAttribute('data-v');});
+  var isKnown=known.indexOf(val)>-1 && val!=='__other';
+  var useOther=(!isKnown && val)|| val==='__other';
+  [].forEach.call(groupEl.querySelectorAll('.pill'),function(b){
+    var bv=b.getAttribute('data-v');
+    b.classList.toggle('on', useOther? bv==='__other' : bv===val);
+  });
+  var othEl=oth?document.getElementById(oth):null;
+  if(othEl){othEl.style.display=useOther?'block':'none'; if(useOther&&val!=='__other')othEl.value=val; if(!useOther)othEl.value='';}
+  document.getElementById(tgt).value=(val==='__other')?(othEl?othEl.value:''):val;
+}
+document.addEventListener('click',function(e){
+  var b=e.target.closest?e.target.closest('.pill'):null;
+  if(b&&b.parentElement.classList.contains('pills')){setPill(b.parentElement,b.getAttribute('data-v'));}
+  var y=e.target.closest?e.target.closest('.yn button'):null;
+  if(y){var g=y.parentElement;var t=g.getAttribute('data-target');document.getElementById(t).value=y.getAttribute('data-v');
+    [].forEach.call(g.children,function(c){c.classList.toggle('on',c===y);});}
+});
+document.addEventListener('input',function(e){
+  if(e.target.classList&&e.target.classList.contains('pill-input')){
+    var grp=e.target.previousElementSibling; // hidden input sits before? no—find group
+    var sec=e.target.closest('.field');var g=sec?sec.querySelector('.pills'):null;
+    if(g){document.getElementById(g.getAttribute('data-target')).value=e.target.value;}
+  }
+});
+function setYN(target,val){var h=document.getElementById(target);if(h)h.value=val||'';
+  var g=document.querySelector('.yn[data-target="'+target+'"]');if(g)[].forEach.call(g.children,function(c){c.classList.toggle('on',c.getAttribute('data-v')===val);});}
+
+/* ---- photos: downscale to max 1600px JPEG before storing as data URL ---- */
+function photoPick(inp,kind){
+  var f=inp.files&&inp.files[0];if(!f)return;
+  var img=new Image(),rd=new FileReader();
+  rd.onload=function(){img.onload=function(){
+    var max=1600,w=img.width,h=img.height;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;}}
+    var cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+    var url=cv.toDataURL('image/jpeg',0.82);
+    document.getElementById('c_'+kind+'_photo').value=url;
+    var box=document.getElementById('c_'+kind+'_box');box.classList.add('has');box.style.backgroundImage='url('+url+')';
+  };img.src=rd.result;};rd.readAsDataURL(f);
+}
+function clearPhoto(kind){document.getElementById('c_'+kind+'_photo').value='';var b=document.getElementById('c_'+kind+'_box');b.classList.remove('has');b.style.backgroundImage='';}
+
+function flagged(x){return[x.edge_inner,x.edge_outer,x.scratch,x.rust].some(function(a){return String(a).toLowerCase()==='yes';})||String(x.id_sticker).toLowerCase()==='no'||(x.other_damages&&String(x.other_damages).toLowerCase()!=='nil'&&String(x.other_damages).trim()!=='');}
+
+function coilReset(){
+  document.getElementById('c_edit_id').value='';
+  ['c_vehicle','c_batch','c_thick','c_weight','c_coilid','c_actthick','c_actwidth','c_remarks','c_make','c_grade','c_width','c_dmg','c_insp'].forEach(function(i){var e=document.getElementById(i);if(e)e.value='';});
+  ['c_make_oth','c_grade_oth','c_width_oth','c_dmg_oth','c_insp_oth'].forEach(function(i){var e=document.getElementById(i);if(e){e.value='';e.style.display='none';}});
+  document.querySelectorAll('.pill.on').forEach(function(p){p.classList.remove('on');});
+  document.querySelectorAll('.yn button.on').forEach(function(b){b.classList.remove('on');});
+  setYN('c_wheels','No');
+  clearPhoto('coil');clearPhoto('sticker');
+  document.getElementById('c_form_title').textContent='New coil entry';
+  document.getElementById('c_save').textContent='Save coil';
+  document.getElementById('c_cancel').style.display='none';
+}
+function coilCancel(){coilReset();window.scrollTo({top:0,behavior:'smooth'});}
+
+async function coilLoad(){
+  var h=document.getElementById('c_rows');h.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/coil/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}CI=await r.json();if(!Array.isArray(CI))CI=[];}
+  catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load inward records. Check your connection and try again.</div>';return;}
+  coilRender();
+}
+function coilRender(){
+  var host=document.getElementById('c_rows');
+  var mon=curMon(),n=0,ok=0,flag=0,wt=0;
+  CI.forEach(function(x){if(monKey(x.log_date)===mon){n++;if(flagged(x))flag++;else ok++;if(num(x.coil_weight)!=null)wt+=Number(x.coil_weight);}});
+  document.getElementById('kpi_n').textContent=n;
+  document.getElementById('kpi_ok').textContent=ok;
+  document.getElementById('kpi_flag').textContent=flag;
+  document.getElementById('kpi_wt').innerHTML=(Math.round(wt*1000)/1000)+' <small>T</small>';
+  document.getElementById('c_cnt').textContent=CI.length?(CI.length+' total'):'';
+  if(!CI.length){host.innerHTML='<div class="empty">No coils logged yet. Add the first one above.</div>';return;}
+  var cols=[['Date','9%'],['Vehicle','11%'],['Batch','11%'],['Make','9%'],['Grade','10%'],['W×T (mm)','9%'],['Wt (T)','7%'],['Inspector','10%'],['Condition','9%'],['','5%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var g=function(a){return(a===''||a==null)?'':esc(a);};
+  var body=CI.map(function(x){
+    var cond=flagged(x)?'<span class="badge bad">Flagged</span>':'<span class="badge good">OK</span>';
+    var wt=(x.width||'')+(x.thickness?(' × '+x.thickness):'');
+    return'<tr>'
+      +'<td>'+g(String(x.log_date||'').slice(0,10))+'</td>'
+      +'<td>'+g(x.vehicle_number)+'</td><td>'+g(x.batch_number)+'</td>'
+      +'<td class="c">'+g(x.make_of_coil)+'</td><td class="c">'+g(x.grade)+'</td>'
+      +'<td class="c">'+g(wt)+'</td><td class="c">'+g(x.coil_weight)+'</td>'
+      +'<td class="c">'+g(x.inspected_by)+'</td><td class="c">'+cond+'</td>'
+      +'<td class="c"><a href="/coil/pdf?id='+x.id+'" target="_blank" title="PDF" class="ic-edit">PDF</a><br><a href="#" onclick="coilEdit('+x.id+');return false" class="ic-edit">Edit</a> <a href="#" onclick="coilDel('+x.id+');return false" class="ic-del">Del</a></td>'
+    +'</tr>';}).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+function coilEdit(id){var x=CI.filter(function(r){return r.id===id;})[0];if(!x)return;coilReset();
+  document.getElementById('c_edit_id').value=x.id;
+  document.getElementById('c_vehicle').value=x.vehicle_number||'';document.getElementById('c_batch').value=x.batch_number||'';
+  var pg=function(sel,val){var g=document.querySelector('.pills[data-target="'+sel+'"]');if(g)setPill(g,val||'');};
+  pg('c_make',x.make_of_coil);pg('c_grade',x.grade);pg('c_width',x.width);pg('c_dmg',x.other_damages);pg('c_insp',x.inspected_by);
+  document.getElementById('c_thick').value=(x.thickness!=null?x.thickness:'');document.getElementById('c_weight').value=(x.coil_weight!=null?x.coil_weight:'');
+  document.getElementById('c_coilid').value=x.coil_id||'';document.getElementById('c_actthick').value=(x.actual_thickness!=null?x.actual_thickness:'');document.getElementById('c_actwidth').value=(x.actual_width!=null?x.actual_width:'');
+  setYN('c_sticker',x.id_sticker);setYN('c_ei',x.edge_inner);setYN('c_eo',x.edge_outer);setYN('c_scr',x.scratch);setYN('c_strap',x.strapping);setYN('c_rust',x.rust);
+  setYN('c_wheels',(String(x.wheels_india).toLowerCase()==='yes')?'Yes':'No');
+  document.getElementById('c_remarks').value=x.remarks||'';
+  document.getElementById('c_coil_photo').value=x.coil_photo||'';document.getElementById('c_sticker_photo').value=x.sticker_photo||'';
+  document.getElementById('c_form_title').textContent='Edit coil #'+x.id;document.getElementById('c_save').textContent='Update coil';document.getElementById('c_cancel').style.display='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+async function coilSubmit(){
+  var p={id:v('c_edit_id')||null,log_date:(function(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());})(),
+    vehicle_number:v('c_vehicle').trim(),batch_number:v('c_batch').trim(),make_of_coil:pillVal('c_make'),grade:pillVal('c_grade'),
+    width:pillVal('c_width'),thickness:num(v('c_thick')),coil_weight:num(v('c_weight')),coil_id:v('c_coilid'),
+    actual_thickness:num(v('c_actthick')),actual_width:num(v('c_actwidth')),
+    id_sticker:v('c_sticker'),edge_inner:v('c_ei'),edge_outer:v('c_eo'),scratch:v('c_scr'),strapping:v('c_strap'),rust:v('c_rust'),
+    other_damages:pillVal('c_dmg'),wheels_india:v('c_wheels')||'No',inspected_by:pillVal('c_insp'),remarks:v('c_remarks'),
+    coil_photo:v('c_coil_photo'),sticker_photo:v('c_sticker_photo')};
+  if(!p.vehicle_number){toast('err','Enter the vehicle number');return;}
+  if(!p.batch_number){toast('err','Enter the batch number');return;}
+  if(!p.make_of_coil){toast('err','Select the make of coil');return;}
+  if(!p.grade){toast('err','Select the grade');return;}
+  if(!p.width){toast('err','Select the width');return;}
+  if(p.thickness==null){toast('err','Enter the thickness');return;}
+  if(!p.inspected_by){toast('err','Select who inspected the coil');return;}
+  var b=document.getElementById('c_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch(p.id?'/coil/update':'/coil/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
+    toast('ok',p.id?'Coil updated':'Coil saved');coilReset();await coilLoad();window.scrollTo({top:0,behavior:'smooth'});
+  }catch(e){toast('err','Couldn’t save: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=lbl;}
+}
+async function coilDel(id){if(!confirm('Delete this coil inward record?'))return;
+  try{var r=await fetch('/coil/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error('failed');toast('ok','Record deleted');await coilLoad();
+  }catch(e){toast('err','Couldn’t delete the record');}}
+(function(){coilReset();coilLoad();})();
+</script>
+{% endblock %}

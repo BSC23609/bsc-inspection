@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.config import APP_NAME
-from app.routers import pages, dg
+from app.routers import pages, dg, coil
 
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -22,6 +22,7 @@ if os.path.isdir(_static_dir):
 
 app.include_router(pages.router)
 app.include_router(dg.router)
+app.include_router(coil.router)
 
 
 @app.get("/healthz")
