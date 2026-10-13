@@ -21,3 +21,13 @@ APP_NAME      = "Bharat Steel QMS"
 # Admin panel password — same default as the Node app; override with env in prod
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Bsc@123")
 SETTINGS_PATH  = f"{ONEDRIVE_BASE}/Config/settings.json"
+
+# WATI (WhatsApp) — used to send password-reset OTPs to staff mobiles.
+# WATI_BASE_URL e.g. https://live-mt-server.wati.io/<tenantId>  (no trailing slash)
+# WATI_TOKEN    the API access token (with or without a leading "Bearer ")
+# WATI_OTP_TEMPLATE  an approved template whose body has one parameter for the code
+WATI_BASE_URL      = os.environ.get("WATI_BASE_URL", "").rstrip("/")
+WATI_TOKEN         = os.environ.get("WATI_TOKEN", "")
+WATI_OTP_TEMPLATE  = os.environ.get("WATI_OTP_TEMPLATE", "")
+WATI_OTP_BROADCAST = os.environ.get("WATI_OTP_BROADCAST", "") or "bsc_qms_otp"
+WATI_OTP_PARAM     = os.environ.get("WATI_OTP_PARAM", "1")   # template body param name

@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reset password · {{ app_name }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+{% include "_pwa_head.html" %}
+<style>
+:root{--blue:#0069aa;--blue-ink:#00537f;--blue-soft:#e4f1fb;--navy:#0d3a5c;--ink:#0e1524;--ink2:#38445a;--muted:#5d6879;--line:#e2e8f2;--line2:#d2dbe8;--bg:#eef3f9}
+*{box-sizing:border-box}html,body{margin:0}
+body{min-height:100vh;background:var(--bg);color:var(--ink);font-family:"IBM Plex Sans",system-ui,-apple-system,Arial,sans-serif;
+  display:flex;align-items:center;justify-content:center;padding:24px}
+.card{width:380px;max-width:100%;background:#fff;border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 10px 30px rgba(8,36,56,.08);padding:26px}
+.brand{display:flex;align-items:center;gap:11px;margin-bottom:18px}
+.brand .mark{background:#fff;border:1px solid var(--line);border-radius:10px;padding:6px 9px;display:flex}
+.brand .mark img{height:24px;display:block}
+.brand b{font-size:14px;font-weight:700;line-height:1.1}.brand small{display:block;color:var(--muted);font-size:11.5px;font-weight:500}
+h1{font-size:19px;margin:0 0 4px}.lead{color:var(--muted);font-size:13px;margin:0 0 18px}
+.field{margin-bottom:13px}.field label{display:block;font-size:12.5px;font-weight:600;color:var(--ink2);margin-bottom:6px}
+input{width:100%;padding:10px 12px;border:1px solid var(--line2);border-radius:10px;font-family:inherit;font-size:14px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+input:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+.otp{letter-spacing:6px;text-align:center;font-size:19px;font-weight:700}
+.btn{width:100%;border:none;border-radius:11px;padding:12px;font-weight:700;font-size:14px;font-family:inherit;cursor:pointer;background:var(--blue);color:#fff;margin-top:4px}
+.btn:hover{background:var(--blue-ink)}.btn:disabled{opacity:.6}
+.msg{border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:13px;display:none}
+.msg.err{background:#fdecec;border:1px solid #f3c7c7;color:#b4302f}
+.msg.ok{background:#e3f6ee;border:1px solid #bfe6d2;color:#0a7d55}
+.row-foot{display:flex;justify-content:space-between;align-items:center;margin-top:16px;font-size:12.5px}
+.row-foot a{color:var(--blue-ink);text-decoration:none;font-weight:600}.row-foot a:hover{text-decoration:underline}
+.sent{background:var(--blue-soft);border:1px solid #bcdcf3;color:var(--blue-ink);border-radius:10px;padding:9px 12px;font-size:12.5px;margin-bottom:13px}
+.resend{background:none;border:none;color:var(--blue-ink);font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;padding:0}
+.resend:disabled{color:var(--muted);cursor:default}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="brand"><span class="mark"><img src="/static/bsc-logo.png" alt="Bharat Steel"></span>
+    <span><b>Bharat Steel QMS</b><small>Password reset</small></span></div>
+
+  <div class="msg err" id="err"></div>
+  <div class="msg ok" id="ok"></div>
+
+  <!-- step 1 -->
+  <div id="step1">
+    <h1>Reset your password</h1>
+    <p class="lead">Enter your employee code or registered mobile. We’ll send a one-time code to your WhatsApp.</p>
+    <div class="field"><label>Employee code or mobile</label>
+      <input id="f_id" placeholder="e.g. BSC/098 or 98843 84261" autocomplete="username" autofocus></div>
+    <button class="btn" id="b_send" onclick="sendCode()">Send code on WhatsApp</button>
+    <div class="row-foot"><a href="/login">← Back to sign in</a></div>
+  </div>
+
+  <!-- step 2 -->
+  <div id="step2" style="display:none">
+    <h1>Enter the code</h1>
+    <div class="sent" id="sent"></div>
+    <div class="field"><label>6-digit code</label>
+      <input id="f_code" class="otp" inputmode="numeric" maxlength="6" placeholder="••••••"></div>
+    <div class="field"><label>New password</label>
+      <input id="f_pw" type="password" placeholder="Choose a new password" autocomplete="new-password"></div>
+    <div class="field"><label>Confirm new password</label>
+      <input id="f_pw2" type="password" placeholder="Re-enter new password" autocomplete="new-password"></div>
+    <button class="btn" id="b_reset" onclick="doReset()">Set new password</button>
+    <div class="row-foot"><a href="#" onclick="backStep1();return false">← Change number</a>
+      <button class="resend" id="b_resend" onclick="sendCode(true)">Resend code</button></div>
+  </div>
+
+  <!-- done -->
+  <div id="done" style="display:none;text-align:center">
+    <div style="width:58px;height:58px;border-radius:50%;background:#e3f6ee;color:#0a7d55;display:flex;align-items:center;justify-content:center;margin:6px auto 14px;font-size:28px">✓</div>
+    <h1>Password updated</h1>
+    <p class="lead">You can now sign in with your new password.</p>
+    <a class="btn" href="/login" style="display:block;text-decoration:none;text-align:center">Go to sign in</a>
+  </div>
+</div>
+
+<script>
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function show(id,m){var e=document.getElementById(id);e.textContent=m;e.style.display='block';}
+function hide(id){document.getElementById(id).style.display='none';}
+function clearMsg(){hide('err');hide('ok');}
+var RESEND=45, timer=null;
+function startResendTimer(){
+  var b=document.getElementById('b_resend');var left=RESEND;
+  b.disabled=true;b.textContent='Resend code ('+left+'s)';
+  clearInterval(timer);
+  timer=setInterval(function(){left--;if(left<=0){clearInterval(timer);b.disabled=false;b.textContent='Resend code';}
+    else b.textContent='Resend code ('+left+'s)';},1000);
+}
+function backStep1(){clearMsg();document.getElementById('step2').style.display='none';document.getElementById('step1').style.display='';}
+async function sendCode(isResend){
+  clearMsg();
+  var id=v('f_id').trim();
+  if(!id){show('err','Enter your employee code or mobile number.');return;}
+  var b=document.getElementById(isResend?'b_resend':'b_send');var lbl=b.textContent;b.disabled=true;if(!isResend)b.textContent='Sending…';
+  try{var r=await fetch('/forgot/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identifier:id})});
+    var d=await r.json().catch(function(){return{};});
+    if(!r.ok||!d.ok)throw new Error(d.detail||'Could not send code');
+    document.getElementById('step1').style.display='none';
+    document.getElementById('step2').style.display='';
+    show('sent','Code sent to WhatsApp '+ (d.masked||'') +'. It expires in '+Math.round((d.ttl||600)/60)+' minutes.');
+    document.getElementById('sent').style.display='block';
+    document.getElementById('f_code').focus();
+    startResendTimer();
+  }catch(e){show('err',(e&&e.message)||'Could not send code');if(!isResend){b.disabled=false;b.textContent=lbl;}}
+}
+async function doReset(){
+  clearMsg();
+  var code=v('f_code').trim(),pw=v('f_pw'),pw2=v('f_pw2');
+  if(code.length<4){show('err','Enter the code from WhatsApp.');return;}
+  if(pw.length<4){show('err','Choose a password of at least 4 characters.');return;}
+  if(pw!==pw2){show('err','The two passwords don’t match.');return;}
+  var b=document.getElementById('b_reset');var lbl=b.textContent;b.disabled=true;b.textContent='Updating…';
+  try{var r=await fetch('/forgot/verify',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({identifier:v('f_id').trim(),code:code,new_password:pw})});
+    var d=await r.json().catch(function(){return{};});
+    if(!r.ok||!d.ok)throw new Error(d.detail||'Could not reset');
+    document.getElementById('step2').style.display='none';
+    document.getElementById('done').style.display='';
+  }catch(e){show('err',(e&&e.message)||'Could not reset');b.disabled=false;b.textContent=lbl;}
+}
+document.getElementById('f_pw2').addEventListener('keydown',function(e){if(e.key==='Enter')doReset();});
+document.getElementById('f_id').addEventListener('keydown',function(e){if(e.key==='Enter')sendCode();});
+</script>
+</body>
+</html>

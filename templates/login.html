@@ -30,7 +30,19 @@
   .signin .field label{display:block;font-size:12.5px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
   .signin .btn{width:100%;margin-top:8px;padding:11px}
   .err{background:#fdecec;border:1px solid #f6c9c9;color:#b4302f;border-radius:10px;padding:10px 12px;font-size:12.5px;margin-bottom:14px}
-  @media(max-width:860px){body{grid-template-columns:1fr}.brandside{display:none}.formside{min-height:100vh}}
+  .m-brand{display:none}
+  .forgot-row{margin-top:14px;text-align:center}
+  .forgot-row a{color:var(--blue-ink,#00537f);font-size:13px;font-weight:600;text-decoration:none}
+  .forgot-row a:hover{text-decoration:underline}
+  @media(max-width:860px){
+    body{grid-template-columns:1fr}.brandside{display:none}
+    .formside{min-height:100vh;align-items:flex-start;padding-top:0}
+    .m-brand{display:flex;align-items:center;gap:11px;justify-content:center;
+      background:linear-gradient(160deg,#082438,#0d3a5c);color:#fff;margin:-40px -28px 30px;padding:26px 20px}
+    .m-brand .mk{background:#fff;border-radius:10px;padding:6px 10px;display:flex}.m-brand .mk img{height:26px;display:block}
+    .m-brand b{font-size:15px;font-weight:700;line-height:1.15}.m-brand small{display:block;color:#aecbe3;font-size:11.5px}
+    .signin{padding-top:6px}
+  }
 </style>
 </head>
 <body>
@@ -44,6 +56,8 @@
 </section>
 <section class="formside">
   <form class="signin" method="post" action="/login">
+    <div class="m-brand"><span class="mk"><img src="/static/bsc-logo.png" alt="Bharat Steel"></span>
+      <span><b>Bharat Steel QMS</b><small>Quality Portal</small></span></div>
     <h1>Sign in</h1>
     <p class="lead">Use your employee code and password.</p>
     {% if error %}<div class="err">{{ error }}</div>{% endif %}
@@ -52,6 +66,7 @@
     <div class="field"><label>Password</label>
       <input name="password" type="password" autocomplete="current-password" required></div>
     <button class="btn btn-primary" type="submit">Sign in</button>
+    <div class="forgot-row"><a href="/forgot">Forgot password?</a></div>
   </form>
 </section>
 </body>

@@ -76,6 +76,13 @@ async def login_submit(request: Request, identifier: str = Form(...), password: 
     return resp
 
 
+@router.get("/forgot", response_class=HTMLResponse)
+async def forgot_page(request: Request):
+    if await current_employee(request):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("forgot.html", {"request": request, "app_name": APP_NAME})
+
+
 @router.get("/logout")
 async def logout():
     resp = RedirectResponse("/login", status_code=303)

@@ -9,7 +9,7 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
 from app.config import APP_NAME
-from app.routers import pages, dg, coil, quality, shearing, pdi, eightd, complaint, admin, customer, pwa
+from app.routers import pages, dg, coil, quality, shearing, pdi, eightd, complaint, admin, customer, pwa, forgot
 
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -31,6 +31,7 @@ app.include_router(complaint.router)
 app.include_router(customer.router)
 app.include_router(admin.router)
 app.include_router(pwa.router)
+app.include_router(forgot.router)
 
 
 @app.get("/healthz")
