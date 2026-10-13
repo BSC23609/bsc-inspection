@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Users · {{ app_name }}{% endblock %}
+{% block tb_title %}Users{% endblock %}
+{% block content %}
+<div class="acc-steel">
+<style>
+.usr .field label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.usr input{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s}
+.usr input:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-soft)}
+.usr .row{display:grid;gap:12px;margin-bottom:12px}
+.usr .r4{grid-template-columns:1.1fr 1.4fr 1.1fr 1fr}
+@media(max-width:720px){.usr .r4{grid-template-columns:1fr 1fr}}
+.usr .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);padding-top:26px}
+.usr .chk input{width:auto}
+.badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
+.badge.on{background:#e3f6ee;color:#0a7d55}.badge.off{background:#fdecec;color:#c23438}
+.badge.adm{background:var(--blue-soft);color:var(--blue-ink)}
+</style>
+
+<div class="page-head"><h1>Users</h1>
+<p>Employee logins for the portal. Add staff, set who is an admin, reset passwords, and activate or deactivate accounts. Changes apply to the same login used across the quality app.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="u_form_title">Add user</span></div>
+<div class="panel-body"><div class="usr"><input type="hidden" id="u_id" value="">
+  <div class="row r4">
+    <div class="field"><label>Employee code</label><input id="u_emp_no" placeholder="e.g. BSC/098"></div>
+    <div class="field"><label>Name</label><input id="u_name" placeholder="Full name"></div>
+    <div class="field"><label>Mobile</label><input id="u_mobile" placeholder="10-digit"></div>
+    <div class="chk"><input type="checkbox" id="u_admin"><label for="u_admin" style="margin:0">Admin</label></div>
+  </div>
+  <div class="row r4">
+    <div class="field"><label id="u_pw_lab">Password</label><input id="u_pw" type="text" placeholder="Set a password"></div>
+    <div class="chk"><input type="checkbox" id="u_active" checked><label for="u_active" style="margin:0">Active</label></div>
+  </div>
+  <div style="display:flex;gap:10px;align-items:center">
+    <button class="btn btn-ghost" id="u_cancel" style="display:none" onclick="uReset()">Cancel</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-primary" id="u_save" onclick="uSave()">Add user</button>
+  </div>
+</div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('users',17) }}</span>Employees<span class="sub" id="u_cnt"></span></div>
+<div class="panel-body">
+  <input id="u_search" oninput="uRender()" placeholder="Search name / code / mobile…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
+  <div class="dgrid-wrap" id="u_rows"><div class="empty">Loading…</div></div>
+</div></div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var USERS=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function sv(id,val){var e=document.getElementById(id);if(e)e.value=(val==null?'':val);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function chk(id){var e=document.getElementById(id);return !!(e&&e.checked);}
+function setChk(id,val){var e=document.getElementById(id);if(e)e.checked=!!val;}
+
+async function uLoad(){
+  var h=document.getElementById('u_rows');h.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/admin/users',{cache:'no-store'});if(r.status===401){location.href='/login';return;}USERS=await r.json();if(!Array.isArray(USERS))USERS=[];}
+  catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load users. Try again.</div>';return;}
+  uRender();
+}
+function uRender(){
+  var host=document.getElementById('u_rows'),q=(v('u_search')||'').toLowerCase();
+  var rows=USERS.filter(function(x){if(!q)return true;return [x.emp_no,x.name,x.mobile].join(' ').toLowerCase().indexOf(q)>=0;});
+  document.getElementById('u_cnt').textContent=USERS.length?(USERS.length+' employee'+(USERS.length===1?'':'s')):'';
+  if(!rows.length){host.innerHTML='<div class="empty">'+(USERS.length?'No users match your search.':'No users yet.')+'</div>';return;}
+  var cols=[['Code','16%'],['Name','26%'],['Mobile','15%'],['Role','11%'],['Status','11%'],['','21%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var g=function(a){return(a===''||a==null)?'':esc(a);};
+  var body=rows.map(function(x){
+    var role=x.is_admin?'<span class="badge adm">Admin</span>':'<span class="muted" style="font-size:11px">Staff</span>';
+    var st=x.active?'<span class="badge on">Active</span>':'<span class="badge off">Inactive</span>';
+    var toggle=x.active
+      ? '<a href="#" onclick="uToggle('+x.id+',false);return false" class="ic-del">Deactivate</a>'
+      : '<a href="#" onclick="uToggle('+x.id+',true);return false" class="ic-edit">Activate</a>';
+    return'<tr><td>'+g(x.emp_no)+'</td><td>'+g(x.name)+'</td><td>'+g(x.mobile)+'</td><td class="c">'+role+'</td><td class="c">'+st+'</td>'
+      +'<td class="c"><a href="#" onclick="uEdit('+x.id+');return false" class="ic-edit">Edit</a> · <a href="#" onclick="uResetPw('+x.id+');return false" class="ic-edit">Reset PW</a> · '+toggle+'</td></tr>';
+  }).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+function uReset(){
+  sv('u_id','');sv('u_emp_no','');sv('u_name','');sv('u_mobile','');sv('u_pw','');
+  setChk('u_admin',false);setChk('u_active',true);
+  document.getElementById('u_emp_no').disabled=false;
+  document.getElementById('u_form_title').textContent='Add user';
+  document.getElementById('u_save').textContent='Add user';
+  document.getElementById('u_pw_lab').textContent='Password';
+  document.getElementById('u_pw').placeholder='Set a password';
+  document.getElementById('u_cancel').style.display='none';
+}
+function uEdit(id){var x=USERS.filter(function(r){return r.id===id;})[0];if(!x)return;
+  sv('u_id',x.id);sv('u_emp_no',x.emp_no||'');sv('u_name',x.name||'');sv('u_mobile',x.mobile||'');sv('u_pw','');
+  setChk('u_admin',x.is_admin);setChk('u_active',x.active);
+  document.getElementById('u_form_title').textContent='Edit '+(x.emp_no||'user');
+  document.getElementById('u_save').textContent='Update user';
+  document.getElementById('u_pw_lab').textContent='New password (leave blank to keep)';
+  document.getElementById('u_pw').placeholder='Leave blank to keep current';
+  document.getElementById('u_cancel').style.display='';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+async function uSave(){
+  var p={id:v('u_id')||null,emp_no:v('u_emp_no').trim(),name:v('u_name').trim(),mobile:v('u_mobile').trim(),is_admin:chk('u_admin'),active:chk('u_active'),password:v('u_pw')};
+  if(!p.emp_no){toast('err','Enter the employee code');return;}
+  if(!p.id && !p.password){toast('err','Set a password for the new user');return;}
+  var b=document.getElementById('u_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch('/admin/users/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
+    toast('ok',p.id?'User updated':'User added');uReset();await uLoad();
+  }catch(e){toast('err','Couldn’t save: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=lbl;}
+}
+async function uResetPw(id){var x=USERS.filter(function(r){return r.id===id;})[0];if(!x)return;
+  var pw=prompt('New password for '+(x.emp_no||'user')+':');if(pw==null)return;pw=String(pw).trim();if(pw.length<4){toast('err','Password too short');return;}
+  try{var r=await fetch('/admin/users/reset',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,password:pw})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');toast('ok','Password reset');
+  }catch(e){toast('err','Couldn’t reset: '+((e&&e.message)||e));}}
+async function uToggle(id,active){if(!confirm((active?'Activate':'Deactivate')+' this user?'))return;
+  try{var r=await fetch('/admin/users/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,active:active})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');toast('ok',active?'Activated':'Deactivated');await uLoad();
+  }catch(e){toast('err','Couldn’t update: '+((e&&e.message)||e));}}
+(function(){uReset();uLoad();})();
+</script>
+{% endblock %}

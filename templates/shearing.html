@@ -1013,6 +1013,10 @@ async function shDel(id){if(!confirm('Delete this shearing inspection record?'))
   try{var r=await fetch('/shearing/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
     var j=await r.json().catch(function(){return{};});if(!r.ok||!j.ok)throw new Error('failed');toast('ok','Record deleted');await shLoad();
   }catch(e){toast('err','Couldn’t delete the record');}}
-document.addEventListener('DOMContentLoaded', shInit);
+async function shBoot(){
+  try{var r=await fetch('/admin/settings',{cache:'no-store'});if(r.ok){window.APP_SETTINGS=await r.json()||{};}}catch(e){}
+  shInit();
+}
+document.addEventListener('DOMContentLoaded', shBoot);
 </script>
 {% endblock %}
