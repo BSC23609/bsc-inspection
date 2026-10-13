@@ -26,6 +26,43 @@ IST = ZoneInfo("Asia/Kolkata")
 CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 
+# Equipment master list (MASTER LIST OF EQUIPMENTS, Rev 0, 01-Jun-2024).
+# Seeded once into maint_assets when the table is empty. Edit/add assets in the
+# Assets screen afterwards — re-seeding never overwrites existing rows.
+# (code, name, type, location, make, model, notes)
+SEED_ASSETS = [
+    ("M/C-001", "CTL-1-6MM TO 25 MM", "CTL Line", "A SHED", "WUXI-JAINFA", "", "Capacity: 6 MM TO 25 MM"),
+    ("M/C-001-2", "CTL-2-1.6 TO 6 MM", "CTL Line", "A SHED", "WUXI-JAINFA", "", "Capacity: 1 MM TO 6 MM"),
+    ("EOT-001", "EOT CRANE-15 TON", "EOT Crane", "A SHED", "PRABHA", "", "Capacity: 15 TON"),
+    ("EOT-002", "EOT -CRANE-40 TON", "EOT Crane", "A SHED", "PRABHA", "", "Capacity: 40 TON"),
+    ("M/C-003", "TRAN.TROLLEY-35 TON-AMSAK MAKE", "Transfer Trolley", "A SHED", "AMSAK CRANES", "", "Capacity: 35 TON"),
+    ("M/C-004", "AIR COMPRESSOR-500 LTRS-ELGI MAKE", "Compressor", "A SHED", "ELGI", "", "Capacity: 500 LTR"),
+    ("EOT-006", "EOT CRANE-15 TON-PRABA MAKE", "EOT Crane", "SHED B", "PRABHA", "", "Capacity: 15 TON"),
+    ("EOT-003", "EOT CRANE-15 TON PRABA MAKE", "EOT Crane", "SHED F", "PRABHA", "", "Capacity: 15 TON"),
+    ("EOT-004", "EOT CRANE-35 TON-AMSAKE MAKE", "EOT Crane", "SHED B", "AMSAK", "", "Capacity: 35 TON"),
+    ("EOT-005", "EOT CRANE-MM CRANE-15 TON", "EOT Crane", "SHED C", "MM CRANES", "14 XW", "Capacity: 15 TON"),
+    ("EOT-007", "EOT CRANE-15 TON-K2 CRANE", "EOT Crane", "E SHED", "K2 CRANES", "14XW", "Capacity: 15 TON"),
+    ("EOT-008", "EOT CRANE 15 TON-K2 CRANE", "EOT Crane", "E SHED", "K2 CRNES", "", "Capacity: 15 TON"),
+    ("E0T-009", "EOT CRANE 15 TON-K2 CRANE", "EOT Crane", "E SHED", "K2 CRANES", "", "Capacity: 15 TON"),
+    ("M/C-005", "TMT BENDING M/C 8 MM TO 32 MM", "", "SHED C", "ARUNODYA M/C TOOLS", "", "Capacity: 8-32 MM"),
+    ("M/C-006", "TMT COIL STRAIGTENING M/C", "", "SHED C", "ARUNODYA M/C TOOLS", "SRBM1", "Capacity: 8-12 MM"),
+    ("M/C-007", "TMT COIL STARAIGHTENING &BENDING M/C 8 MM TO 12 MM", "", "SHED C", "ARUNODYA M/C TOOLS", "", "Capacity: 8-12 MM"),
+    ("M/C-008", "TMT COIL STARAIGHTENING &BENDING M/C 8 MM TO 12 MM", "", "SHED C", "ARUNODYA M/C TOOLS", "", "Capacity: 8-12 MM"),
+    ("M/C-009", "RO PLANT", "", "PUMPING STATION", "GSE", "", "Capacity: 250LTR/HOUR"),
+    ("DG-002", "GEN-SET 125 KVA", "DG Set", "SUB STATION", "CUMMINS", "", "Capacity: 125 KVA"),
+    ("DG-001", "GEN-SET 42 KVA", "DG Set", "WEIGHMENT", "ALG POWER", "", "Capacity: 42 KVA"),
+    ("M/C-010", "WEIGHMENT M/C-1", "", "DESPATCH OFFICE", "", "", "Capacity: 100 TON"),
+    ("M/C-011", "WEIGHMENT M/C-2", "", "DESPATCH OFFICE", "", "", "Capacity: 100 TON"),
+    ("MC-001", "MOBILE CRANE - 14 TON", "Crane", "YARD", "ACE", "14 XW", "Capacity: 14 TON"),
+    ("MC-002", "MOBILE CRANE- 14 TON", "Crane", "YARD", "ACE", "14 XW", "Capacity: 14 TON"),
+    ("M/C-015", "SHEARING MACHINE 25MM", "Shearing", "SHED B", "ENERGYMISSION", "", "Capacity: 25MM"),
+    ("M/C-016", "SHEARING MACHINE 3MM", "Shearing", "SHED B", "", "", "Capacity: 3MM"),
+    ("M/C-017", "LEVELLER NACHINE", "Leveller", "SHED B", "", "", "Capacity: 25MM"),
+    ("M/C-018", "IRON WORKER MACHINE", "Iron Worker", "SHED B", "", "", "Capacity: 25MM"),
+    ("M/C-019", "TRANSFER TROLLEY", "Transfer Trolley", "SHED A", "", "INHOUSE", "Capacity: 32 TON"),
+    ("M/C-020", "SEMI GANDRY CRANE", "Gantry Crane", "SHED B", "AMSAK CRANES PVT LTD", "AMSAK", "Capacity: 3 TON"),
+]
+
 
 async def ensure_tables():
     global _ensured
@@ -56,6 +93,17 @@ async def ensure_tables():
         running_hours NUMERIC, status TEXT, results JSONB, remarks TEXT, next_due DATE)""")
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp ON maint_checkpoints (checklist_id, seq)")
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_log ON maint_logs (asset_id, done_at DESC)")
+    # seed the equipment master list once, only when no assets exist yet
+    try:
+        if not await db.fetchval("SELECT COUNT(*) FROM maint_assets"):
+            for code, name, atype, loc, make, model, notes in SEED_ASSETS:
+                await db.execute(
+                    "INSERT INTO maint_assets (code,name,atype,location,make,model,serial_no,"
+                    "running_hours,notes,hours_updated_at) VALUES ($1,$2,$3,$4,$5,$6,'',0,$7,now()) "
+                    "ON CONFLICT (code) DO NOTHING",
+                    code, name, atype, loc, make, model, notes)
+    except Exception as e:
+        print("[maint] seed skipped:", e)
     _ensured = True
 
 
