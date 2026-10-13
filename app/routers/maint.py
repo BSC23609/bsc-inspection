@@ -552,6 +552,8 @@ async def ensure_tables():
     # frequency model (Add Plan): freq_type + day_of_month + end_date
     for col, typ in (("freq_type", "TEXT"), ("day_of_month", "INT"), ("end_date", "DATE")):
         await db.execute(f"ALTER TABLE maint_schedules ADD COLUMN IF NOT EXISTS {col} {typ}")
+    await db.execute("""CREATE TABLE IF NOT EXISTS maint_holidays (
+        id SERIAL PRIMARY KEY, hday DATE UNIQUE, name TEXT, created_at TIMESTAMPTZ DEFAULT now())""")
     await db.execute("""CREATE TABLE IF NOT EXISTS maint_logs (
         id SERIAL PRIMARY KEY, asset_id INT, schedule_id INT, checklist_id INT,
         done_by TEXT, done_by_emp_id INT, done_at TIMESTAMPTZ DEFAULT now(),
@@ -631,8 +633,17 @@ def _d(v):
 
 # ---------- recurrence + due computation ----------
 FREQS = ("daily", "weekly", "monthly", "quarterly")
-# Non-working days other than Sundays (ISO 'YYYY-MM-DD'); add plant holidays here.
+# Non-working days other than Sundays (ISO 'YYYY-MM-DD'), loaded from maint_holidays.
 HOLIDAYS = set()
+
+
+async def _refresh_holidays():
+    global HOLIDAYS
+    try:
+        rows = await db.fetch("SELECT hday FROM maint_holidays")
+        HOLIDAYS = {r["hday"].isoformat() for r in rows if r["hday"]}
+    except Exception as e:
+        print("[maint] holidays load skipped:", e)
 
 
 def _is_offday(d):
@@ -888,6 +899,7 @@ async def _schedule_rows():
 @router.get("/schedules/list")
 async def schedules_list(emp: dict = Depends(require_employee)):
     await ensure_tables()
+    await _refresh_holidays()
     today = _today()
     out = []
     for s in await _schedule_rows():
@@ -949,6 +961,35 @@ async def schedule_toggle(body: dict, emp: dict = Depends(require_employee)):
 async def schedule_delete(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
     await db.execute("DELETE FROM maint_schedules WHERE id=$1", body.get("id"))
+    return {"ok": True}
+
+
+# ---------- holidays (roll PM due dates to the next working day) ----------
+@router.get("/holidays/list")
+async def holidays_list(emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    rows = await db.fetch("SELECT id, hday, name FROM maint_holidays ORDER BY hday")
+    return _json([dict(r) for r in rows])
+
+
+@router.post("/holidays/save")
+async def holidays_save(body: dict, emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    d = _d(body.get("date"))
+    if not d:
+        raise HTTPException(400, "Pick a valid date")
+    await db.execute(
+        "INSERT INTO maint_holidays (hday,name) VALUES ($1,$2) "
+        "ON CONFLICT (hday) DO UPDATE SET name=EXCLUDED.name", d, (body.get("name") or "").strip())
+    await _refresh_holidays()
+    return {"ok": True}
+
+
+@router.post("/holidays/delete")
+async def holidays_delete(body: dict, emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    await db.execute("DELETE FROM maint_holidays WHERE id=$1", body.get("id"))
+    await _refresh_holidays()
     return {"ok": True}
 
 
@@ -1025,6 +1066,7 @@ async def history_list(asset: int = Query(default=0), limit: int = Query(default
 @router.get("/board")
 async def board(emp: dict = Depends(require_employee)):
     await ensure_tables()
+    await _refresh_holidays()
     today = _today()
     due, overdue, upcoming = [], [], []
     for s in await _schedule_rows():
@@ -1053,6 +1095,7 @@ async def board(emp: dict = Depends(require_employee)):
 # =======================================================================
 async def _run_reminders(dry: bool = False) -> dict:
     await ensure_tables()
+    await _refresh_holidays()
     today = _today()
     sent, skipped = [], []
     for s in await _schedule_rows():

@@ -19,9 +19,23 @@
 .chk input{width:auto}
 .badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
 .b-ok{background:#e3f6ee;color:#0a7d55}.b-due{background:#fff4e0;color:#9a6508}.b-over{background:#fdecec;color:#c23438}.b-off{background:#eef2f7;color:#5d6879}
+.scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
+.hmodal{background:#fff;border-radius:14px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.hmodal .hh{padding:16px 18px;border-bottom:1px solid var(--line)}
+.hmodal .hh h3{margin:0;font-size:15px;font-weight:700;letter-spacing:.3px}
+.hmodal .hh p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.hmodal .hb{padding:16px 18px}
+.hrow{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:14px}
+.hrow label{display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase}
+.hrow input{width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px;font-family:inherit}
+.hitem{display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--line);font-size:13px}
+.hitem .d{font-weight:700;color:var(--acc-ink)}.hitem .sp{flex:1}
 </style>
 
-<div class="page-head"><h1>Preventive maintenance plans</h1><p>Set when each machine’s maintenance is due — daily, weekly, monthly or quarterly, and optionally by running hours. If a due date lands on a Sunday or holiday, it rolls to the next working day; daily plans skip Sundays.</p></div>
+<div class="page-head" style="display:flex;align-items:flex-start;gap:16px">
+  <div style="flex:1"><h1>Preventive maintenance plans</h1><p>Set when each machine’s maintenance is due — daily, weekly, monthly or quarterly, and optionally by running hours. If a due date lands on a Sunday or holiday, it rolls to the next working day; daily plans skip Sundays.</p></div>
+  <button class="btn btn-ghost" style="white-space:nowrap" onclick="openHol()">📅 Holidays</button>
+</div>
 
 <div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="s_title">Add plan</span></div>
 <div class="panel-body"><div class="mf"><input type="hidden" id="s_id"><input type="hidden" id="s_freq" value="daily">
@@ -65,6 +79,22 @@
 <div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('calendar',17) }}</span>Plans<span class="sub" id="s_cnt"></span></div>
 <div class="panel-body"><div class="dgrid-wrap" id="s_rows"><div class="empty">Loading…</div></div></div></div>
 </div>
+
+<!-- Holidays modal -->
+<div class="scrim" id="hol_scrim"><div class="hmodal">
+  <div class="hh" style="display:flex;align-items:flex-start">
+    <div style="flex:1"><h3>HOLIDAYS</h3><p>PM dates landing on a Sunday or these dates roll to the next working day.</p></div>
+    <a href="#" onclick="closeHol();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a>
+  </div>
+  <div class="hb">
+    <div class="hrow">
+      <div><label>Date</label><input id="h_date" type="date"></div>
+      <div><label>Name</label><input id="h_name" placeholder="e.g. Diwali"></div>
+      <div><button class="btn btn-primary" onclick="holAdd()">Add</button></div>
+    </div>
+    <div id="hol_list"><div class="empty">No holidays added yet.</div></div>
+  </div>
+</div></div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -144,6 +174,23 @@ async function sSave(){var f=v('s_freq');
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');toast('ok',p.id?'Plan updated':'Plan added');sReset();await sLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
 async function sToggle(id,on){try{var r=await fetch('/maint/schedule/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,active:on})});var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok',on?'Resumed':'Paused');await sLoad();}catch(e){toast('err','Failed');}}
 async function sDel(id){if(!confirm('Delete this plan?'))return;try{var r=await fetch('/maint/schedule/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok','Deleted');await sLoad();}catch(e){toast('err','Failed');}}
+/* ---------- holidays ---------- */
+function openHol(){document.getElementById('hol_scrim').style.display='flex';holLoad();}
+function closeHol(){document.getElementById('hol_scrim').style.display='none';}
+function fmtd(s){if(!s)return'';var p=String(s).slice(0,10).split('-');return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s;}
+async function holLoad(){var box=document.getElementById('hol_list');box.innerHTML='<div class="empty">Loading…</div>';
+  try{var hs=await (await fetch('/maint/holidays/list',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  if(!hs.length){box.innerHTML='<div class="empty">No holidays added yet.</div>';return;}
+  box.innerHTML=hs.map(function(h){return '<div class="hitem"><span class="d">'+esc(fmtd(h.hday))+'</span><span>'+esc(h.name||'')+'</span>'
+    +'<span class="sp"></span><a href="#" class="ic-del" onclick="holDel('+h.id+');return false">Remove</a></div>';}).join('');}
+async function holAdd(){var d=v('h_date'),n=v('h_name').trim();if(!d){toast('err','Pick a date');return;}
+  try{var r=await fetch('/maint/holidays/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:d,name:n})});
+    var o=await r.json().catch(function(){return{};});if(!r.ok||!o.ok)throw new Error(o.detail||'Failed');
+    sv('h_date','');sv('h_name','');toast('ok','Holiday added');await holLoad();await sLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+async function holDel(id){try{var r=await fetch('/maint/holidays/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+  var o=await r.json();if(!r.ok||!o.ok)throw 0;toast('ok','Removed');await holLoad();await sLoad();}catch(e){toast('err','Failed');}}
+document.getElementById('hol_scrim').addEventListener('click',function(e){if(e.target===this)closeHol();});
+
 boot();
 </script>
 {% endblock %}
