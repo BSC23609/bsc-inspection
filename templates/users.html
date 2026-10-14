@@ -16,6 +16,7 @@
 .badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
 .badge.on{background:#e3f6ee;color:#0a7d55}.badge.off{background:#fdecec;color:#c23438}
 .badge.adm{background:var(--blue-soft);color:var(--blue-ink)}
+.badge.mnt{background:#e6f4f3;color:#0a6b63;margin-left:4px}
 </style>
 
 <div class="page-head"><h1>Users</h1>
@@ -31,6 +32,7 @@
   </div>
   <div class="row r4">
     <div class="field"><label id="u_pw_lab">Password</label><input id="u_pw" type="text" placeholder="Set a password"></div>
+    <div class="chk"><input type="checkbox" id="u_maint"><label for="u_maint" style="margin:0">Maintenance user</label></div>
     <div class="chk"><input type="checkbox" id="u_active" checked><label for="u_active" style="margin:0">Active</label></div>
   </div>
   <div style="display:flex;gap:10px;align-items:center">
@@ -73,7 +75,8 @@ function uRender(){
   var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
   var g=function(a){return(a===''||a==null)?'':esc(a);};
   var body=rows.map(function(x){
-    var role=x.is_admin?'<span class="badge adm">Admin</span>':'<span class="muted" style="font-size:11px">Staff</span>';
+    var role=(x.is_admin?'<span class="badge adm">Admin</span>':'<span class="muted" style="font-size:11px">Staff</span>')
+      +(x.is_maint?'<span class="badge mnt">Maint</span>':'');
     var st=x.active?'<span class="badge on">Active</span>':'<span class="badge off">Inactive</span>';
     var toggle=x.active
       ? '<a href="#" onclick="uToggle('+x.id+',false);return false" class="ic-del">Deactivate</a>'
@@ -85,7 +88,7 @@ function uRender(){
 }
 function uReset(){
   sv('u_id','');sv('u_emp_no','');sv('u_name','');sv('u_mobile','');sv('u_pw','');
-  setChk('u_admin',false);setChk('u_active',true);
+  setChk('u_admin',false);setChk('u_maint',false);setChk('u_active',true);
   document.getElementById('u_emp_no').disabled=false;
   document.getElementById('u_form_title').textContent='Add user';
   document.getElementById('u_save').textContent='Add user';
@@ -95,7 +98,7 @@ function uReset(){
 }
 function uEdit(id){var x=USERS.filter(function(r){return r.id===id;})[0];if(!x)return;
   sv('u_id',x.id);sv('u_emp_no',x.emp_no||'');sv('u_name',x.name||'');sv('u_mobile',x.mobile||'');sv('u_pw','');
-  setChk('u_admin',x.is_admin);setChk('u_active',x.active);
+  setChk('u_admin',x.is_admin);setChk('u_maint',x.is_maint);setChk('u_active',x.active);
   document.getElementById('u_form_title').textContent='Edit '+(x.emp_no||'user');
   document.getElementById('u_save').textContent='Update user';
   document.getElementById('u_pw_lab').textContent='New password (leave blank to keep)';
@@ -104,7 +107,7 @@ function uEdit(id){var x=USERS.filter(function(r){return r.id===id;})[0];if(!x)r
   window.scrollTo({top:0,behavior:'smooth'});
 }
 async function uSave(){
-  var p={id:v('u_id')||null,emp_no:v('u_emp_no').trim(),name:v('u_name').trim(),mobile:v('u_mobile').trim(),is_admin:chk('u_admin'),active:chk('u_active'),password:v('u_pw')};
+  var p={id:v('u_id')||null,emp_no:v('u_emp_no').trim(),name:v('u_name').trim(),mobile:v('u_mobile').trim(),is_admin:chk('u_admin'),is_maint:chk('u_maint'),active:chk('u_active'),password:v('u_pw')};
   if(!p.emp_no){toast('err','Enter the employee code');return;}
   if(!p.id && !p.password){toast('err','Set a password for the new user');return;}
   var b=document.getElementById('u_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';

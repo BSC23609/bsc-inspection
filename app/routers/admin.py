@@ -114,11 +114,28 @@ async def _admin_guard(emp: dict):
     raise HTTPException(403, "admin only")
 
 
+_emp_cols_ok = False
+
+
+async def _ensure_emp_cols():
+    """Add the maintenance-user flag to the shared employees table (once)."""
+    global _emp_cols_ok
+    if _emp_cols_ok:
+        return
+    try:
+        await db.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS is_maint BOOLEAN DEFAULT false")
+    except Exception as e:
+        print("[admin] is_maint column add skipped:", e)
+    _emp_cols_ok = True
+
+
 @router.get("/users")
 async def users_list(emp: dict = Depends(require_employee)):
+    await _ensure_emp_cols()
     rows = await db.fetch(
         "SELECT id, emp_no, name, COALESCE(mobile,'') AS mobile, COALESCE(active,true) AS active, "
-        "COALESCE(is_admin,false) AS is_admin, COALESCE(token_version,0) AS token_version "
+        "COALESCE(is_admin,false) AS is_admin, COALESCE(is_maint,false) AS is_maint, "
+        "COALESCE(token_version,0) AS token_version "
         "FROM employees ORDER BY lower(name) NULLS LAST, emp_no")
     return JSONResponse([dict(r) for r in rows], headers={"Cache-Control": "no-store"})
 
@@ -129,6 +146,7 @@ class UserIn(BaseModel):
     name: Optional[str] = ""
     mobile: Optional[str] = ""
     is_admin: Optional[bool] = False
+    is_maint: Optional[bool] = False
     active: Optional[bool] = True
     password: Optional[str] = ""   # only on create, or when explicitly changing
 
@@ -136,15 +154,16 @@ class UserIn(BaseModel):
 @router.post("/users/save")
 async def users_save(body: UserIn, emp: dict = Depends(require_employee)):
     await _admin_guard(emp)
+    await _ensure_emp_cols()
     en = (body.emp_no or "").strip()
     if not en:
         raise HTTPException(400, "emp_no required")
     try:
         if body.id:
             await db.execute(
-                "UPDATE employees SET emp_no=$1, name=$2, mobile=$3, is_admin=$4, active=$5 WHERE id=$6",
+                "UPDATE employees SET emp_no=$1, name=$2, mobile=$3, is_admin=$4, active=$5, is_maint=$6 WHERE id=$7",
                 en, (body.name or "").strip(), (body.mobile or "").strip(),
-                bool(body.is_admin), bool(body.active), body.id)
+                bool(body.is_admin), bool(body.active), bool(body.is_maint), body.id)
             if body.password:
                 await db.execute(
                     "UPDATE employees SET password_hash=$1, token_version=COALESCE(token_version,0)+1 WHERE id=$2",
@@ -157,10 +176,10 @@ async def users_save(body: UserIn, emp: dict = Depends(require_employee)):
         if exists:
             raise HTTPException(400, "an employee with that code already exists")
         new_id = await db.fetchval(
-            "INSERT INTO employees (emp_no, name, mobile, password_hash, is_admin, active, token_version) "
-            "VALUES ($1,$2,$3,$4,$5,true,0) RETURNING id",
+            "INSERT INTO employees (emp_no, name, mobile, password_hash, is_admin, is_maint, active, token_version) "
+            "VALUES ($1,$2,$3,$4,$5,$6,true,0) RETURNING id",
             en, (body.name or "").strip(), (body.mobile or "").strip(),
-            hash_pw(body.password), bool(body.is_admin))
+            hash_pw(body.password), bool(body.is_admin), bool(body.is_maint))
         return {"ok": True, "id": new_id}
     except HTTPException:
         raise

@@ -58,11 +58,7 @@
     <a href="#" onclick="closeBD();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
   <div class="mb"><div class="mf">
     <input type="hidden" id="b_type" value="">
-    <div class="row r2">
-      <div><label>Asset <span class="req">*</span></label><select id="b_asset"><option value="">Select machine…</option></select></div>
-      <div><label>Maintenance user <span class="req">*</span></label><select id="b_assignee"><option value="">— select —</option></select>
-        <div class="note" id="b_autonote" style="display:none">Auto-picked for this type — change if needed.</div></div>
-    </div>
+    <div class="row"><div><label>Asset <span class="req">*</span></label><select id="b_asset"><option value="">Select machine…</option></select></div></div>
     <div style="margin-bottom:14px"><label>Breakdown type <span class="req">*</span></label>
       <div class="pills">
         <div class="pill" data-t="Electrical" onclick="setType('Electrical')">Electrical</div>
@@ -71,6 +67,8 @@
         <div class="pill" data-t="Other" onclick="setType('Other')">Other</div>
       </div>
     </div>
+    <div class="row"><div><label>Maintenance user <span class="req">*</span></label><select id="b_assignee"><option value="">— select —</option></select>
+      <div class="note" id="b_autonote" style="display:none">Auto-picked for this type — change if needed.</div></div></div>
     <div style="margin-bottom:14px"><label>Breakdown detail <span class="req">*</span></label>
       <textarea id="b_problem" placeholder="What has failed / stopped?"></textarea></div>
     <div class="row"><div><label>Breakdown date &amp; time <span class="req">*</span></label>
@@ -97,6 +95,7 @@
 {% block scripts %}
 <script>
 var ASSETS=[],EMPS=[],TYPES=['Electrical','Mechanical','Hydraulic','Other'],TYPE_STAFF={},PHOTOS=[];
+function maintUsers(){var m=EMPS.filter(function(e){return e.is_maint;});return m.length?m:EMPS;}
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -110,7 +109,7 @@ async function boot(){
   try{EMPS=await (await fetch('/admin/users',{cache:'no-store'})).json();}catch(e){EMPS=[];}
   try{TYPE_STAFF=await (await fetch('/maint/type-staff/list',{cache:'no-store'})).json();}catch(e){TYPE_STAFF={};}
   document.getElementById('b_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
-  document.getElementById('b_assignee').innerHTML='<option value="">— select —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''));}).join('');
+  document.getElementById('b_assignee').innerHTML='<option value="">— select —</option>'+maintUsers().map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''));}).join('');
   bdLoad();
 }
 /* ---- raise modal ---- */
@@ -145,7 +144,7 @@ document.getElementById('bd_scrim').addEventListener('click',function(e){if(e.ta
 /* ---- defaults ---- */
 function openDefaults(){document.getElementById('ds_rows').innerHTML=TYPES.map(function(t){
   return '<div class="ds-row"><label>'+t+'</label><select onchange="dsSave(\''+t+'\',this.value)">'
-    +'<option value="">— none —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no),TYPE_STAFF[t]);}).join('')+'</select></div>';}).join('');
+    +'<option value="">— none —</option>'+maintUsers().map(function(e){return opt(e.id,(e.name||e.emp_no),TYPE_STAFF[t]);}).join('')+'</select></div>';}).join('');
   document.getElementById('ds_scrim').style.display='flex';}
 function closeDefaults(){document.getElementById('ds_scrim').style.display='none';}
 async function dsSave(t,eid){try{var r=await fetch('/maint/type-staff/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:t,emp_id:eid||null})});
