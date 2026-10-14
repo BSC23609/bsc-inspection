@@ -577,12 +577,15 @@ async def ensure_tables():
         raised_at TIMESTAMPTZ DEFAULT now(), closed_at TIMESTAMPTZ, closed_by TEXT,
         remarks TEXT)""")
     try:
-        for col, typ in (("btype", "TEXT"), ("photos", "JSONB")):
+        for col, typ in (("btype", "TEXT"), ("photos", "JSONB"), ("assignees", "JSONB")):
             await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
         await db.execute("CREATE INDEX IF NOT EXISTS ix_m_bd ON maint_breakdowns (status, raised_at DESC)")
-        # default maintenance person per breakdown type (auto-pick on the raise form)
+        # maintenance staff per breakdown type — now MANY per type (auto-pick on the form)
         await db.execute("""CREATE TABLE IF NOT EXISTS maint_type_staff (
-            category TEXT PRIMARY KEY, emp_id INT)""")
+            category TEXT, emp_id INT)""")
+        # drop the old one-per-type primary key if this DB still has it, allow many
+        await db.execute("ALTER TABLE maint_type_staff DROP CONSTRAINT IF EXISTS maint_type_staff_pkey")
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_ts ON maint_type_staff (category, emp_id)")
     except Exception as e:
         print("[maint] breakdown schema step skipped:", e)
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp ON maint_checkpoints (checklist_id, seq)")
@@ -1106,7 +1109,8 @@ async def leave_delete(body: dict, emp: dict = Depends(require_employee)):
 
 # ---------- breakdowns (unplanned stoppages — raise, list, close) ----------
 async def _open_breakdowns():
-    """Open breakdown rows with asset + assignee joined, newest first."""
+    """Open breakdown rows with asset + (primary) assignee joined, newest first.
+    The full assignee list is in b.assignees (JSONB)."""
     try:
         rows = await db.fetch(
             "SELECT b.*, a.code AS asset_code, a.name AS asset_name, "
@@ -1118,6 +1122,15 @@ async def _open_breakdowns():
         return [dict(r) for r in rows]
     except Exception:
         return []
+
+
+async def _emp_map():
+    """{emp_id: {'name','mobile'}} for resolving multi-assignee breakdowns/types."""
+    try:
+        rows = await db.fetch("SELECT id, name, emp_no, COALESCE(mobile,'') AS mobile FROM employees")
+        return {r["id"]: {"name": r["name"] or r["emp_no"], "mobile": r["mobile"]} for r in rows}
+    except Exception:
+        return {}
 
 
 BREAKDOWN_TYPES = ["Electrical", "Mechanical", "Hydraulic", "Other"]
@@ -1169,9 +1182,13 @@ async def _send_breakdown_alert(bd: dict):
     tm = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
     params = [label, problem, by, tm, "maint"]   # 5th = dynamic button suffix
     targets, seen = [], set()
-    if bd.get("assignee_mobile"):
-        m = wati.normalize_number(bd["assignee_mobile"])
-        if m:
+    # all assigned maintenance users (multi) get the alert
+    aids = bd.get("assignees") or ([bd["assignee_emp_id"]] if bd.get("assignee_emp_id") else [])
+    emap = await _emp_map()
+    for aid in aids:
+        mob = (emap.get(aid) or {}).get("mobile") or (bd.get("assignee_mobile") if aid == bd.get("assignee_emp_id") else "")
+        m = wati.normalize_number(mob)
+        if m and m not in seen:
             targets.append(m); seen.add(m)
     for sup in _supervisor_mobiles():
         m = wati.normalize_number(sup)
@@ -1188,7 +1205,7 @@ async def _send_breakdown_alert(bd: dict):
 async def breakdowns_list(emp: dict = Depends(require_employee)):
     await ensure_tables()
     rows = await db.fetch(
-        "SELECT b.id, b.asset_id, b.btype, b.problem, b.reported_by, b.assignee_emp_id, "
+        "SELECT b.id, b.asset_id, b.btype, b.problem, b.reported_by, b.assignee_emp_id, b.assignees, "
         "b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, b.photos, "
         "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
         "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
@@ -1201,24 +1218,38 @@ async def breakdowns_list(emp: dict = Depends(require_employee)):
 # ---- default maintenance person per breakdown type (auto-pick on the form) ----
 @router.get("/type-staff/list")
 async def type_staff_list(emp: dict = Depends(require_employee)):
+    """{category: [emp_id, ...]} — many maintenance users may map to one type."""
     await ensure_tables()
     rows = await db.fetch("SELECT category, emp_id FROM maint_type_staff")
-    return _json({r["category"]: r["emp_id"] for r in rows})
+    out = {}
+    for r in rows:
+        out.setdefault(r["category"], []).append(r["emp_id"])
+    return _json(out)
 
 
 @router.post("/type-staff/save")
 async def type_staff_save(body: dict, emp: dict = Depends(require_employee)):
+    """Replace the whole staff list for one breakdown type. body: {category, emp_ids:[...]}."""
     await ensure_tables()
     cat = _norm_type(body.get("category"))
     if not cat:
         raise HTTPException(400, "Pick a breakdown type")
-    eid = body.get("emp_id") or None
-    if eid:
+    ids = body.get("emp_ids")
+    if ids is None and body.get("emp_id"):   # back-compat single value
+        ids = [body.get("emp_id")]
+    seen, clean = set(), []
+    for x in (ids or []):
+        try:
+            n = int(x)
+        except Exception:
+            continue
+        if n and n not in seen:
+            seen.add(n); clean.append(n)
+    await db.execute("DELETE FROM maint_type_staff WHERE category=$1", cat)
+    for eid in clean:
         await db.execute(
-            "INSERT INTO maint_type_staff (category,emp_id) VALUES ($1,$2) "
-            "ON CONFLICT (category) DO UPDATE SET emp_id=EXCLUDED.emp_id", cat, eid)
-    else:
-        await db.execute("DELETE FROM maint_type_staff WHERE category=$1", cat)
+            "INSERT INTO maint_type_staff (category,emp_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+            cat, eid)
     return {"ok": True}
 
 
@@ -1228,23 +1259,35 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
     aid = body.get("asset_id")
     btype = _norm_type(body.get("btype"))
     problem = (body.get("problem") or "").strip()
-    assignee = body.get("assignee_emp_id") or None
+    # one or many maintenance users
+    assignees = body.get("assignees")
+    if assignees is None and body.get("assignee_emp_id"):
+        assignees = [body.get("assignee_emp_id")]
+    seen, aids = set(), []
+    for x in (assignees or []):
+        try:
+            n = int(x)
+        except Exception:
+            continue
+        if n and n not in seen:
+            seen.add(n); aids.append(n)
     if not aid:
         raise HTTPException(400, "Select a machine")
     if not btype:
         raise HTTPException(400, "Select a breakdown type")
     if not problem:
         raise HTTPException(400, "Describe the breakdown")
-    if not assignee:
-        raise HTTPException(400, "Select a maintenance user")
+    if not aids:
+        raise HTTPException(400, "Select at least one maintenance user")
+    primary = aids[0]
     raised_at = _dt(body.get("raised_at"))   # user-supplied date+time; falls back to now
     reporter = emp.get("name") or emp.get("emp_no") or "staff"
     remarks = (body.get("remarks") or "").strip()
     bid = await db.fetchval(
         "INSERT INTO maint_breakdowns (asset_id,btype,problem,reported_by,reported_by_emp_id,"
-        "assignee_emp_id,status,remarks,raised_at) "
-        "VALUES ($1,$2,$3,$4,$5,$6,'open',$7,COALESCE($8,now())) RETURNING id",
-        aid, btype, problem, reporter, emp.get("id"), assignee, remarks, raised_at)
+        "assignee_emp_id,assignees,status,remarks,raised_at) "
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8,COALESCE($9,now())) RETURNING id",
+        aid, btype, problem, reporter, emp.get("id"), primary, aids, remarks, raised_at)
     # photos -> OneDrive (optional)
     paths = []
     try:
@@ -1453,19 +1496,25 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
             else:
                 sup_pm.append(f"{label} - {task} - unassigned")
 
-    # ---- open breakdowns: into the assignee's breakdown list; else to supervisors ----
+    # ---- open breakdowns: to EACH assigned maintenance user; else to supervisors ----
+    emap = await _emp_map()
     for b in await _open_breakdowns():
         label = (str(b.get("asset_code") or "") + " " + str(b.get("asset_name") or "")).strip() or "—"
         prob = (b.get("problem") or "").strip() or "—"
-        aid = b.get("assignee_emp_id")
-        mobile = b.get("assignee_mobile")
-        who = b.get("assignee_name") or "unassigned"
-        if aid and aid in on_leave:
-            continue  # on leave — not flagged to the supervisor's overdue alert
-        elif aid and mobile:
-            _bucket(aid, who, mobile, "bd", f"{label} - {prob}")
-        else:
-            sup_bd.append(f"{label} - {prob} - {who}")
+        aids = b.get("assignees") or ([b["assignee_emp_id"]] if b.get("assignee_emp_id") else [])
+        if not aids:
+            sup_bd.append(f"{label} - {prob} - unassigned")
+            continue
+        for aid in aids:
+            if aid in on_leave:
+                continue  # that person is on leave — skip (not raised to supervisor)
+            info = emap.get(aid) or {}
+            mob = info.get("mobile") or (b.get("assignee_mobile") if aid == b.get("assignee_emp_id") else "")
+            who = info.get("name") or "unassigned"
+            if mob:
+                _bucket(aid, who, mob, "bd", f"{label} - {prob}")
+            else:
+                sup_bd.append(f"{label} - {prob} - {who}")
 
     sent, skipped = [], []
 

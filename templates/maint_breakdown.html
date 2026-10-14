@@ -38,6 +38,12 @@
 .ds-row{display:grid;grid-template-columns:140px 1fr;gap:10px;align-items:center;margin-bottom:10px}
 .ds-row label{font-size:12.5px;font-weight:600;color:var(--ink-2)}
 .ds-row select{width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px}
+.chkbox{border:1px solid var(--line-2);border-radius:9px;padding:8px 10px;max-height:160px;overflow:auto}
+.chkbox label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);padding:4px 0;cursor:pointer}
+.chkbox input{width:auto}
+.chkbox .none{color:var(--muted);font-size:12.5px;padding:2px 0}
+.ds-grp{margin-bottom:14px}
+.ds-grp>.lab{font-size:12.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
 </style>
 
 <div class="page-head"><h1>Raise Breakdown</h1><p>Log an unplanned machine stoppage. The assigned maintenance user and the supervisor get a WhatsApp alert immediately, and the breakdown stays on the daily reminder until it is closed.</p></div>
@@ -67,8 +73,9 @@
         <div class="pill" data-t="Other" onclick="setType('Other')">Other</div>
       </div>
     </div>
-    <div class="row"><div><label>Maintenance user <span class="req">*</span></label><select id="b_assignee"><option value="">— select —</option></select>
-      <div class="note" id="b_autonote" style="display:none">Auto-picked for this type — change if needed.</div></div></div>
+    <div class="row"><div><label>Maintenance user(s) <span class="req">*</span></label>
+      <div class="chkbox" id="b_assignees"><div class="none">Pick a breakdown type above.</div></div>
+      <div class="note" id="b_autonote" style="display:none">Auto-picked for this type — add or remove as needed.</div></div></div>
     <div style="margin-bottom:14px"><label>Breakdown detail <span class="req">*</span></label>
       <textarea id="b_problem" placeholder="What has failed / stopped?"></textarea></div>
     <div class="row"><div><label>Breakdown date &amp; time <span class="req">*</span></label>
@@ -94,8 +101,14 @@
 {% endblock %}
 {% block scripts %}
 <script>
-var ASSETS=[],EMPS=[],TYPES=['Electrical','Mechanical','Hydraulic','Other'],TYPE_STAFF={},PHOTOS=[];
+var ASSETS=[],EMPS=[],EMPBY={},TYPES=['Electrical','Mechanical','Hydraulic','Other'],TYPE_STAFF={},PHOTOS=[];
 function maintUsers(){var m=EMPS.filter(function(e){return e.is_maint;});return m.length?m:EMPS;}
+function renderAssignees(sel){sel=sel||[];var set={};sel.forEach(function(x){set[String(x)]=1;});
+  var us=maintUsers();
+  document.getElementById('b_assignees').innerHTML=us.length
+    ? us.map(function(e){return '<label><input type="checkbox" class="b_asg" value="'+esc(e.id)+'"'+(set[String(e.id)]?' checked':'')+'>'+esc((e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''))+'</label>';}).join('')
+    : '<div class="none">No maintenance users. Mark some in Users → Maintenance users.</div>';}
+function selectedAssignees(){return [].map.call(document.querySelectorAll('#b_assignees .b_asg:checked'),function(c){return c.value;});}
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -107,20 +120,21 @@ function fmtdt(s){if(!s)return'—';var d=new Date(s);if(isNaN(d))return String(
 async function boot(){
   try{var r=await fetch('/maint/assets/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}ASSETS=await r.json();}catch(e){ASSETS=[];}
   try{EMPS=await (await fetch('/admin/users',{cache:'no-store'})).json();}catch(e){EMPS=[];}
+  EMPBY={};EMPS.forEach(function(e){EMPBY[e.id]={name:e.name||e.emp_no,mobile:e.mobile};});
   try{TYPE_STAFF=await (await fetch('/maint/type-staff/list',{cache:'no-store'})).json();}catch(e){TYPE_STAFF={};}
   document.getElementById('b_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
-  document.getElementById('b_assignee').innerHTML='<option value="">— select —</option>'+maintUsers().map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''));}).join('');
   bdLoad();
 }
 /* ---- raise modal ---- */
-function openBD(){PHOTOS=[];document.getElementById('b_thumbs').innerHTML='';sv('b_type','');sv('b_asset','');sv('b_assignee','');
+function openBD(){PHOTOS=[];document.getElementById('b_thumbs').innerHTML='';sv('b_type','');sv('b_asset','');
   sv('b_problem','');sv('b_remarks','');sv('b_files','');document.getElementById('b_autonote').style.display='none';
+  document.getElementById('b_assignees').innerHTML='<div class="none">Pick a breakdown type above.</div>';
   [].forEach.call(document.querySelectorAll('#bd_scrim .pill'),function(p){p.classList.remove('on');});
   sv('b_when',nowLocal());document.getElementById('bd_scrim').style.display='flex';}
 function closeBD(){document.getElementById('bd_scrim').style.display='none';}
 function setType(t){sv('b_type',t);[].forEach.call(document.querySelectorAll('#bd_scrim .pill'),function(p){p.classList.toggle('on',p.getAttribute('data-t')===t);});
-  var mapped=TYPE_STAFF[t];if(mapped){sv('b_assignee',mapped);document.getElementById('b_autonote').style.display='';}
-  else{document.getElementById('b_autonote').style.display='none';}}
+  var mapped=TYPE_STAFF[t]||[];renderAssignees(mapped);
+  document.getElementById('b_autonote').style.display=mapped.length?'':'none';}
 function addFiles(inp){var files=inp.files||[];var left=6-PHOTOS.length;
   [].slice.call(files,0,Math.max(0,left)).forEach(function(f){if(!/^image\//.test(f.type))return;
     var rd=new FileReader();rd.onload=function(){PHOTOS.push(rd.result);renderThumbs();};rd.readAsDataURL(f);});
@@ -128,13 +142,13 @@ function addFiles(inp){var files=inp.files||[];var left=6-PHOTOS.length;
 function renderThumbs(){document.getElementById('b_thumbs').innerHTML=PHOTOS.map(function(src,i){
   return '<div class="thumb"><img src="'+src+'"><span class="x" onclick="delPhoto('+i+')">×</span></div>';}).join('');}
 function delPhoto(i){PHOTOS.splice(i,1);renderThumbs();}
-async function bdRaise(){var aid=v('b_asset'),bt=v('b_type'),prob=v('b_problem').trim(),asg=v('b_assignee'),when=v('b_when'),rm=v('b_remarks').trim();
+async function bdRaise(){var aid=v('b_asset'),bt=v('b_type'),prob=v('b_problem').trim(),asg=selectedAssignees(),when=v('b_when'),rm=v('b_remarks').trim();
   if(!aid){toast('err','Select a machine');return;}if(!bt){toast('err','Select a breakdown type');return;}
-  if(!prob){toast('err','Enter the breakdown detail');return;}if(!asg){toast('err','Select a maintenance user');return;}
+  if(!prob){toast('err','Enter the breakdown detail');return;}if(!asg.length){toast('err','Select at least one maintenance user');return;}
   if(!when){toast('err','Pick the breakdown date & time');return;}
   var btn=document.getElementById('b_save');btn.disabled=true;var l=btn.textContent;btn.textContent='Sending…';
   try{var r=await fetch('/maint/breakdown/raise',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({asset_id:aid,btype:bt,problem:prob,assignee_emp_id:asg,raised_at:when,remarks:rm,photos:PHOTOS})});
+      body:JSON.stringify({asset_id:aid,btype:bt,problem:prob,assignees:asg,raised_at:when,remarks:rm,photos:PHOTOS})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
     var n=(d.alert||[]).filter(function(x){return x.result==='sent';}).length;
     toast('ok','Breakdown raised'+(n?(' · alerted '+n):'')+(d.photos?(' · '+d.photos+' photo(s)'):''));closeBD();await bdLoad();}
@@ -143,12 +157,16 @@ document.getElementById('bd_scrim').addEventListener('click',function(e){if(e.ta
 
 /* ---- defaults ---- */
 function openDefaults(){document.getElementById('ds_rows').innerHTML=TYPES.map(function(t){
-  return '<div class="ds-row"><label>'+t+'</label><select onchange="dsSave(\''+t+'\',this.value)">'
-    +'<option value="">— none —</option>'+maintUsers().map(function(e){return opt(e.id,(e.name||e.emp_no),TYPE_STAFF[t]);}).join('')+'</select></div>';}).join('');
+  var sel={};(TYPE_STAFF[t]||[]).forEach(function(x){sel[String(x)]=1;});
+  var boxes=maintUsers().length
+    ? maintUsers().map(function(e){return '<label><input type="checkbox" value="'+esc(e.id)+'" onchange="dsChange(\''+t+'\')"'+(sel[String(e.id)]?' checked':'')+'>'+esc(e.name||e.emp_no)+'</label>';}).join('')
+    : '<div class="none">No maintenance users yet — mark some in Users → Maintenance users.</div>';
+  return '<div class="ds-grp" data-t="'+t+'"><div class="lab">'+t+'</div><div class="chkbox">'+boxes+'</div></div>';}).join('');
   document.getElementById('ds_scrim').style.display='flex';}
 function closeDefaults(){document.getElementById('ds_scrim').style.display='none';}
-async function dsSave(t,eid){try{var r=await fetch('/maint/type-staff/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:t,emp_id:eid||null})});
-  var d=await r.json();if(!r.ok||!d.ok)throw 0;if(eid)TYPE_STAFF[t]=parseInt(eid,10);else delete TYPE_STAFF[t];toast('ok','Saved');}catch(e){toast('err','Failed');}}
+function dsChange(t){var ids=[].map.call(document.querySelectorAll('#ds_rows .ds-grp[data-t="'+t+'"] input:checked'),function(c){return c.value;});dsSave(t,ids);}
+async function dsSave(t,ids){try{var r=await fetch('/maint/type-staff/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:t,emp_ids:ids})});
+  var d=await r.json();if(!r.ok||!d.ok)throw 0;TYPE_STAFF[t]=ids.map(function(x){return parseInt(x,10);});toast('ok','Saved');}catch(e){toast('err','Failed');}}
 document.getElementById('ds_scrim').addEventListener('click',function(e){if(e.target===this)closeDefaults();});
 
 /* ---- list ---- */
@@ -157,7 +175,9 @@ async function bdLoad(){var box=document.getElementById('bd_list');box.innerHTML
   if(!ls.length){box.innerHTML='<div class="empty">No breakdowns raised.</div>';return;}
   box.innerHTML=ls.map(function(b){var mac=((b.asset_code?b.asset_code+' ':'')+(b.asset_name||'')).trim()||'—';
     var isOpen=b.status==='open';var ph=b.photos;if(typeof ph==='string'){try{ph=JSON.parse(ph);}catch(e){ph=[];}}var np=(ph&&ph.length)||0;
-    var meta='Raised '+fmtdt(b.raised_at)+' by '+esc(b.reported_by||'—')+(b.assignee_name?(' · '+esc(b.assignee_name)):' · unassigned')
+    var ag=b.assignees;if(typeof ag==='string'){try{ag=JSON.parse(ag);}catch(e){ag=[];}}
+    var who=(ag&&ag.length)?ag.map(function(id){return (EMPBY[id]&&EMPBY[id].name)||('#'+id);}).join(', '):(b.assignee_name||'unassigned');
+    var meta='Raised '+fmtdt(b.raised_at)+' by '+esc(b.reported_by||'—')+' · '+esc(who)
       +(b.remarks?(' · '+esc(b.remarks)):'')+(np?(' · '+np+' photo(s)'):'')
       +(isOpen?'':(' · closed '+fmtdt(b.closed_at)+(b.closed_by?(' by '+esc(b.closed_by)):'')));
     return '<div class="bd-item"><div class="mac">'+esc(mac)+'<div><span class="chip '+(isOpen?'open':'closed')+'">'+(isOpen?'OPEN':'CLOSED')+'</span>'
