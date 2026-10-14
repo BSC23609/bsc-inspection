@@ -43,6 +43,8 @@ NAV_GROUPS = [
           "href": "/maint/checklists", "active_key": "maint_checklists"},
          {"name": "Schedules", "icon": "calendar", "desc": "PM cycles by date interval and running hours.",
           "href": "/maint/schedules", "active_key": "maint_schedules"},
+         {"name": "Leave", "icon": "users", "desc": "Mark staff on leave so they skip reminders.",
+          "href": "/maint/leave", "active_key": "maint_leave"},
      ]},
     {"key": "generator", "title": "Generator", "accent": "sky", "icon": "bolt",
      "blurb": "Daily diesel generator running records.",
@@ -196,6 +198,7 @@ _MAINT_PAGES = [
     ("/maint/assets", "maint_assets.html", "maint_assets", "Assets"),
     ("/maint/checklists", "maint_checklists.html", "maint_checklists", "Checklists"),
     ("/maint/schedules", "maint_schedules.html", "maint_schedules", "Schedules"),
+    ("/maint/leave", "maint_leave.html", "maint_leave", "Leave"),
 ]
 
 

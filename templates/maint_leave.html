@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Staff on leave · {{ app_name }}{% endblock %}
+{% block tb_title %}Staff on leave{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.mf label{display:block;font-size:11.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
+.mf input,.mf select{width:100%;padding:10px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none}
+.mf input:focus,.mf select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.lv-top{display:grid;grid-template-columns:1.3fr 1fr 1fr auto;gap:12px;align-items:end;margin-bottom:4px}
+.lv-reason{display:grid;grid-template-columns:1fr auto;gap:12px;align-items:end;margin-top:12px}
+@media(max-width:720px){.lv-top{grid-template-columns:1fr 1fr}.lv-reason{grid-template-columns:1fr}}
+.lv-item{display:flex;align-items:center;gap:12px;padding:11px 2px;border-top:1px solid var(--line);font-size:13.5px}
+.lv-item .who{font-weight:700;color:var(--acc-ink);min-width:150px}
+.lv-item .rng{color:var(--ink-2)}.lv-item .rs{color:var(--muted)}.lv-item .sp{flex:1}
+.lv-item .on{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px;background:#e3f6ee;color:#0a7d55;margin-left:4px}
+</style>
+
+<div class="page-head"><h1>Staff on leave</h1><p>While a person is on leave they get no WhatsApp reminders. Their <b>due</b> tasks are flagged to the supervisor as “arrange cover”, and their <b>overdue</b> tasks are left out of the 3&nbsp;PM overdue alert.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('users',17) }}</span>Add leave</div>
+<div class="panel-body"><div class="mf">
+  <div class="lv-top">
+    <div><label>Staff</label><select id="lv_emp"></select></div>
+    <div><label>From</label><input id="lv_from" type="date"></div>
+    <div><label>To</label><input id="lv_to" type="date"></div>
+    <div><button class="btn btn-primary" onclick="lvAdd()">Add</button></div>
+  </div>
+  <div class="lv-reason">
+    <div><label>Reason <span style="text-transform:none;color:var(--muted);font-weight:400">(optional)</span></label><input id="lv_reason" placeholder="e.g. casual leave"></div>
+  </div>
+</div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('calendar',17) }}</span>On leave</div>
+<div class="panel-body"><div id="leave_list"><div class="empty">Loading…</div></div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var EMPS=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function opt(val,txt){return '<option value="'+esc(val)+'">'+esc(txt)+'</option>';}
+function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function fmtd(s){if(!s)return'—';var p=String(s).slice(0,10).split('-');return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s;}
+function isActive(l){var t=today();var f=(l.from_date||'').slice(0,10),to=(l.to_date||f).slice(0,10);return f&&f<=t&&t<=to;}
+
+async function boot(){
+  try{var r=await fetch('/admin/users',{cache:'no-store'});if(r.status===401){location.href='/login';return;}EMPS=await r.json();}catch(e){EMPS=[];}
+  document.getElementById('lv_emp').innerHTML='<option value="">— staff —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no));}).join('');
+  sv('lv_from',today());sv('lv_to',today());lvLoad();
+}
+async function lvLoad(){var box=document.getElementById('leave_list');box.innerHTML='<div class="empty">Loading…</div>';
+  try{var ls=await (await fetch('/maint/leave/list',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  if(!ls.length){box.innerHTML='<div class="empty">No one is marked on leave.</div>';return;}
+  box.innerHTML=ls.map(function(l){var range=fmtd(l.from_date)+(l.to_date&&l.to_date!==l.from_date?(' → '+fmtd(l.to_date)):'');
+    return '<div class="lv-item"><span class="who">'+esc(l.emp_name||('#'+l.emp_id))+(isActive(l)?'<span class="on">on leave now</span>':'')+'</span>'
+      +'<span class="rng">'+esc(range)+'</span>'+(l.reason?('<span class="rs">· '+esc(l.reason)+'</span>'):'')
+      +'<span class="sp"></span><a href="#" class="ic-del" onclick="lvDel('+l.id+');return false">Remove</a></div>';}).join('');}
+async function lvAdd(){var eid=v('lv_emp'),f=v('lv_from'),t=v('lv_to'),rs=v('lv_reason').trim();
+  if(!eid){toast('err','Pick a staff member');return;}if(!f){toast('err','Pick a from-date');return;}
+  if(t&&t<f){toast('err','“To” is before “From”');return;}
+  try{var r=await fetch('/maint/leave/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emp_id:eid,from_date:f,to_date:t||f,reason:rs})});
+    var o=await r.json().catch(function(){return{};});if(!r.ok||!o.ok)throw new Error(o.detail||'Failed');
+    sv('lv_reason','');toast('ok','Leave added');await lvLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+async function lvDel(id){if(!confirm('Remove this leave entry?'))return;
+  try{var r=await fetch('/maint/leave/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+  var o=await r.json();if(!r.ok||!o.ok)throw 0;toast('ok','Removed');await lvLoad();}catch(e){toast('err','Failed');}}
+boot();
+</script>
+{% endblock %}
