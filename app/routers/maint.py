@@ -957,6 +957,15 @@ async def schedule_toggle(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True}
 
 
+@router.post("/schedules/toggle-all")
+async def schedules_toggle_all(body: dict, emp: dict = Depends(require_employee)):
+    """Pause or resume every plan at once."""
+    await ensure_tables()
+    await db.execute("UPDATE maint_schedules SET active=$1", bool(body.get("active")))
+    n = await db.fetchval("SELECT COUNT(*) FROM maint_schedules")
+    return {"ok": True, "count": int(n or 0)}
+
+
 @router.post("/schedule/delete")
 async def schedule_delete(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()

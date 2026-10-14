@@ -149,9 +149,11 @@ function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.g
   var badge=document.getElementById('s_cnt');badge.textContent='Due / overdue: '+dueCnt;badge.classList.toggle('zero',dueCnt===0);
   var rows=dueOnly?SCHED.filter(function(x){return x.active&&(x.due||x.overdue);}):SCHED;
   if(!rows.length){host.innerHTML='<div class="empty">'+(SCHED.length?'No plans match the filter.':'No plans yet. Add one to start scheduling preventive maintenance.')+'</div>';return;}
-  var cols=[['Asset','16%'],['Task','17%'],['Schedule','14%'],['Last done','10%'],['Next due','10%'],['Meter now','12%'],['Status','9%'],['','12%']];
+  var cols=[['Asset','15%'],['Task','16%'],['Schedule','13%'],['Last done','9%'],['Next due','10%'],['Meter now','11%'],['Status','9%'],['Actions','17%']];
   var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
-  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var anyActive=SCHED.some(function(x){return x.active;});
+  var allBtn='<a href="#" class="'+(anyActive?'ic-del':'ic-edit')+'" style="font-weight:700;margin-left:6px" onclick="toggleAll('+(!anyActive)+');return false">'+(anyActive?'Pause all':'Resume all')+'</a>';
+  var hd='<tr>'+cols.map(function(c,i){return'<th>'+(i===cols.length-1?('Actions '+allBtn):c[0])+'</th>';}).join('')+'</tr>';
   var body=rows.map(function(x){
     var nd=x.next_due?esc(fmtd(x.next_due)):(x.hours_due?'by hours':'—');
     var tog=x.active?'<a href="#" onclick="sToggle('+x.id+',false);return false" class="ic-del">Pause</a>'
@@ -185,6 +187,9 @@ async function sSave(){var f=v('s_freq');
   try{var r=await fetch('/maint/schedule/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');toast('ok',p.id?'Plan updated':'Plan added');closePlan();await sLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
 async function sToggle(id,on){try{var r=await fetch('/maint/schedule/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,active:on})});var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok',on?'Resumed':'Paused');await sLoad();}catch(e){toast('err','Failed');}}
+async function toggleAll(on){if(!confirm((on?'Resume':'Pause')+' ALL plans?'))return;
+  try{var r=await fetch('/maint/schedules/toggle-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:on})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw 0;toast('ok',on?'All plans resumed':'All plans paused');await sLoad();}catch(e){toast('err','Failed');}}
 async function sDel(id){if(!confirm('Delete this plan?'))return;try{var r=await fetch('/maint/schedule/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok','Deleted');await sLoad();}catch(e){toast('err','Failed');}}
 document.getElementById('plan_scrim').addEventListener('click',function(e){if(e.target===this)closePlan();});
 
