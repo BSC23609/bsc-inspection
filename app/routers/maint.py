@@ -20,10 +20,17 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse
 
 from .. import db, wati, graph
+from .. import config as _cfg
 from ..auth import require_employee
-from ..config import (WATI_MAINT_DUE_TEMPLATE, WATI_MAINT_OVERDUE_TEMPLATE,
-                      WATI_MAINT_BREAKDOWN_TEMPLATE,
-                      MAINT_SUPERVISOR_MOBILE, AGENT_TOKEN, ONEDRIVE_BASE)
+
+# Read config defensively so a slightly older app/config.py (missing one of the
+# newer maintenance vars) can never crash the whole app at import time.
+WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "")
+WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "")
+WATI_MAINT_BREAKDOWN_TEMPLATE = getattr(_cfg, "WATI_MAINT_BREAKDOWN_TEMPLATE", "bsc_breakdown_alert")
+MAINT_SUPERVISOR_MOBILE       = getattr(_cfg, "MAINT_SUPERVISOR_MOBILE", "")
+AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
+ONEDRIVE_BASE                 = getattr(_cfg, "ONEDRIVE_BASE", "BSC Inspections")
 
 router = APIRouter(prefix="/maint", tags=["maintenance"])
 IST = ZoneInfo("Asia/Kolkata")
@@ -569,12 +576,15 @@ async def ensure_tables():
         reported_by_emp_id INT, assignee_emp_id INT, status TEXT DEFAULT 'open',
         raised_at TIMESTAMPTZ DEFAULT now(), closed_at TIMESTAMPTZ, closed_by TEXT,
         remarks TEXT)""")
-    for col, typ in (("btype", "TEXT"), ("photos", "JSONB")):
-        await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
-    await db.execute("CREATE INDEX IF NOT EXISTS ix_m_bd ON maint_breakdowns (status, raised_at DESC)")
-    # default maintenance person per breakdown type (auto-pick on the raise form)
-    await db.execute("""CREATE TABLE IF NOT EXISTS maint_type_staff (
-        category TEXT PRIMARY KEY, emp_id INT)""")
+    try:
+        for col, typ in (("btype", "TEXT"), ("photos", "JSONB")):
+            await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
+        await db.execute("CREATE INDEX IF NOT EXISTS ix_m_bd ON maint_breakdowns (status, raised_at DESC)")
+        # default maintenance person per breakdown type (auto-pick on the raise form)
+        await db.execute("""CREATE TABLE IF NOT EXISTS maint_type_staff (
+            category TEXT PRIMARY KEY, emp_id INT)""")
+    except Exception as e:
+        print("[maint] breakdown schema step skipped:", e)
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp ON maint_checkpoints (checklist_id, seq)")
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_log ON maint_logs (asset_id, done_at DESC)")
     # seed the equipment master list once, only when no assets exist yet
