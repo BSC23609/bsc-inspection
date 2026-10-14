@@ -10,6 +10,8 @@ overdue escalation to a supervisor) via WATI.
 All tables are Neon and self-create on first use.
 """
 import json
+import re
+import base64
 import calendar
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -17,10 +19,11 @@ from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse
 
-from .. import db, wati
+from .. import db, wati, graph
 from ..auth import require_employee
 from ..config import (WATI_MAINT_DUE_TEMPLATE, WATI_MAINT_OVERDUE_TEMPLATE,
-                      MAINT_SUPERVISOR_MOBILE, AGENT_TOKEN)
+                      WATI_MAINT_BREAKDOWN_TEMPLATE,
+                      MAINT_SUPERVISOR_MOBILE, AGENT_TOKEN, ONEDRIVE_BASE)
 
 router = APIRouter(prefix="/maint", tags=["maintenance"])
 IST = ZoneInfo("Asia/Kolkata")
@@ -554,10 +557,24 @@ async def ensure_tables():
         await db.execute(f"ALTER TABLE maint_schedules ADD COLUMN IF NOT EXISTS {col} {typ}")
     await db.execute("""CREATE TABLE IF NOT EXISTS maint_holidays (
         id SERIAL PRIMARY KEY, hday DATE UNIQUE, name TEXT, created_at TIMESTAMPTZ DEFAULT now())""")
+    await db.execute("""CREATE TABLE IF NOT EXISTS maint_leave (
+        id SERIAL PRIMARY KEY, emp_id INT, from_date DATE, to_date DATE, reason TEXT,
+        created_at TIMESTAMPTZ DEFAULT now())""")
     await db.execute("""CREATE TABLE IF NOT EXISTS maint_logs (
         id SERIAL PRIMARY KEY, asset_id INT, schedule_id INT, checklist_id INT,
         done_by TEXT, done_by_emp_id INT, done_at TIMESTAMPTZ DEFAULT now(),
         running_hours NUMERIC, status TEXT, results JSONB, remarks TEXT, next_due DATE)""")
+    await db.execute("""CREATE TABLE IF NOT EXISTS maint_breakdowns (
+        id SERIAL PRIMARY KEY, asset_id INT, problem TEXT, reported_by TEXT,
+        reported_by_emp_id INT, assignee_emp_id INT, status TEXT DEFAULT 'open',
+        raised_at TIMESTAMPTZ DEFAULT now(), closed_at TIMESTAMPTZ, closed_by TEXT,
+        remarks TEXT)""")
+    for col, typ in (("btype", "TEXT"), ("photos", "JSONB")):
+        await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
+    await db.execute("CREATE INDEX IF NOT EXISTS ix_m_bd ON maint_breakdowns (status, raised_at DESC)")
+    # default maintenance person per breakdown type (auto-pick on the raise form)
+    await db.execute("""CREATE TABLE IF NOT EXISTS maint_type_staff (
+        category TEXT PRIMARY KEY, emp_id INT)""")
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp ON maint_checkpoints (checklist_id, seq)")
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_log ON maint_logs (asset_id, done_at DESC)")
     # seed the equipment master list once, only when no assets exist yet
@@ -631,6 +648,21 @@ def _d(v):
         return None
 
 
+def _dt(v):
+    """Parse an HTML datetime-local value ('YYYY-MM-DDTHH:MM') to an IST datetime, else None."""
+    if not v:
+        return None
+    if isinstance(v, datetime):
+        return v
+    s = str(v).strip().replace("T", " ")[:19]
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=IST)
+        except Exception:
+            continue
+    return None
+
+
 # ---------- recurrence + due computation ----------
 FREQS = ("daily", "weekly", "monthly", "quarterly")
 # Non-working days other than Sundays (ISO 'YYYY-MM-DD'), loaded from maint_holidays.
@@ -644,6 +676,22 @@ async def _refresh_holidays():
         HOLIDAYS = {r["hday"].isoformat() for r in rows if r["hday"]}
     except Exception as e:
         print("[maint] holidays load skipped:", e)
+
+
+async def _on_leave_ids(today: date) -> set:
+    """Employee ids on leave today."""
+    try:
+        rows = await db.fetch(
+            "SELECT emp_id FROM maint_leave WHERE from_date<=$1 AND to_date>=$1", today)
+        return {r["emp_id"] for r in rows if r["emp_id"]}
+    except Exception:
+        return set()
+
+
+def _supervisor_mobiles() -> list:
+    """MAINT_SUPERVISOR_MOBILE may be a comma/space separated list of numbers."""
+    raw = MAINT_SUPERVISOR_MOBILE or ""
+    return [p.strip() for p in raw.replace(";", ",").split(",") if p.strip()]
 
 
 def _is_offday(d):
@@ -1011,6 +1059,220 @@ async def holidays_delete(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True}
 
 
+# ---------- leave (while on leave a person is skipped entirely — no reminders,
+#            and their tasks are not raised to the supervisor's overdue alert) ----------
+@router.get("/leave/list")
+async def leave_list(emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    rows = await db.fetch(
+        "SELECT l.id, l.emp_id, l.from_date, l.to_date, l.reason, e.name AS emp_name, "
+        "e.emp_no AS emp_code FROM maint_leave l LEFT JOIN employees e ON e.id=l.emp_id "
+        "ORDER BY l.from_date DESC")
+    return _json([dict(r) for r in rows])
+
+
+@router.post("/leave/save")
+async def leave_save(body: dict, emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    eid = body.get("emp_id")
+    f = _d(body.get("from_date"))
+    t = _d(body.get("to_date")) or f
+    if not eid or not f:
+        raise HTTPException(400, "Pick a staff member and a from-date")
+    if t < f:
+        raise HTTPException(400, "To-date can't be before from-date")
+    await db.execute(
+        "INSERT INTO maint_leave (emp_id,from_date,to_date,reason) VALUES ($1,$2,$3,$4)",
+        eid, f, t, (body.get("reason") or "").strip())
+    return {"ok": True}
+
+
+@router.post("/leave/delete")
+async def leave_delete(body: dict, emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    await db.execute("DELETE FROM maint_leave WHERE id=$1", body.get("id"))
+    return {"ok": True}
+
+
+# ---------- breakdowns (unplanned stoppages — raise, list, close) ----------
+async def _open_breakdowns():
+    """Open breakdown rows with asset + assignee joined, newest first."""
+    try:
+        rows = await db.fetch(
+            "SELECT b.*, a.code AS asset_code, a.name AS asset_name, "
+            "e.name AS assignee_name, e.mobile AS assignee_mobile "
+            "FROM maint_breakdowns b "
+            "LEFT JOIN maint_assets a ON a.id=b.asset_id "
+            "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
+            "WHERE b.status='open' ORDER BY b.raised_at DESC")
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+BREAKDOWN_TYPES = ["Electrical", "Mechanical", "Hydraulic", "Other"]
+
+
+def _norm_type(t):
+    t = (t or "").strip().lower()
+    for x in BREAKDOWN_TYPES:
+        if x.lower() == t:
+            return x
+    return "Other" if t else ""
+
+
+async def _breakdown_photos(bid: int, photos: list) -> list:
+    """Upload breakdown photos (data-URL base64) to OneDrive, return stored paths."""
+    out = []
+    try:
+        token = await graph.get_token()
+    except Exception as e:
+        print("[maint] breakdown photo token failed:", e)
+        return out
+    for idx, p in enumerate(photos or []):
+        m = re.match(r"^data:image/(png|jpe?g|webp);base64,(.+)$", p or "", re.I | re.S)
+        if not m:
+            continue
+        ext = "jpg" if m.group(1).lower().startswith("jp") else m.group(1).lower()
+        try:
+            raw = base64.b64decode(m.group(2))
+        except Exception:
+            continue
+        stamp = datetime.now(IST).strftime("%Y%m%d-%H%M%S")
+        path = f"{ONEDRIVE_BASE}/Maintenance/Breakdowns/BD{bid}_{idx+1}_{stamp}.{ext}"
+        ct = "image/png" if ext == "png" else "image/jpeg" if ext in ("jpg", "jpeg") else "image/webp"
+        try:
+            await graph.upload_file(token, path, raw, ct)
+            out.append(path)
+        except Exception as e:
+            print("[maint] breakdown photo upload failed:", e)
+    return out
+
+
+async def _send_breakdown_alert(bd: dict):
+    """Fire bsc_breakdown_alert to the assignee (if any) + every supervisor."""
+    label = (str(bd.get("asset_code") or "") + " " + str(bd.get("asset_name") or "")).strip() or "—"
+    detail = (bd.get("problem") or "—").strip() or "—"
+    btype = _norm_type(bd.get("btype"))
+    problem = (f"{btype}: {detail}" if btype else detail)
+    by = (bd.get("reported_by") or "—").strip() or "—"
+    tm = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
+    params = [label, problem, by, tm, "maint"]   # 5th = dynamic button suffix
+    targets, seen = [], set()
+    if bd.get("assignee_mobile"):
+        m = wati.normalize_number(bd["assignee_mobile"])
+        if m:
+            targets.append(m); seen.add(m)
+    for sup in _supervisor_mobiles():
+        m = wati.normalize_number(sup)
+        if m and m not in seen:
+            targets.append(m); seen.add(m)
+    results = []
+    for m in targets:
+        ok, detail = await wati.send_template(WATI_MAINT_BREAKDOWN_TEMPLATE, m, params)
+        results.append({"to": m, "result": "sent" if ok else f"failed: {detail}"})
+    return results
+
+
+@router.get("/breakdowns/list")
+async def breakdowns_list(emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    rows = await db.fetch(
+        "SELECT b.id, b.asset_id, b.btype, b.problem, b.reported_by, b.assignee_emp_id, "
+        "b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, b.photos, "
+        "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
+        "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+        "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
+        "WHERE b.status='open' OR b.closed_at > now() - interval '7 days' "
+        "ORDER BY (b.status='open') DESC, b.raised_at DESC")
+    return _json([dict(r) for r in rows])
+
+
+# ---- default maintenance person per breakdown type (auto-pick on the form) ----
+@router.get("/type-staff/list")
+async def type_staff_list(emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    rows = await db.fetch("SELECT category, emp_id FROM maint_type_staff")
+    return _json({r["category"]: r["emp_id"] for r in rows})
+
+
+@router.post("/type-staff/save")
+async def type_staff_save(body: dict, emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    cat = _norm_type(body.get("category"))
+    if not cat:
+        raise HTTPException(400, "Pick a breakdown type")
+    eid = body.get("emp_id") or None
+    if eid:
+        await db.execute(
+            "INSERT INTO maint_type_staff (category,emp_id) VALUES ($1,$2) "
+            "ON CONFLICT (category) DO UPDATE SET emp_id=EXCLUDED.emp_id", cat, eid)
+    else:
+        await db.execute("DELETE FROM maint_type_staff WHERE category=$1", cat)
+    return {"ok": True}
+
+
+@router.post("/breakdown/raise")
+async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    aid = body.get("asset_id")
+    btype = _norm_type(body.get("btype"))
+    problem = (body.get("problem") or "").strip()
+    assignee = body.get("assignee_emp_id") or None
+    if not aid:
+        raise HTTPException(400, "Select a machine")
+    if not btype:
+        raise HTTPException(400, "Select a breakdown type")
+    if not problem:
+        raise HTTPException(400, "Describe the breakdown")
+    if not assignee:
+        raise HTTPException(400, "Select a maintenance user")
+    raised_at = _dt(body.get("raised_at"))   # user-supplied date+time; falls back to now
+    reporter = emp.get("name") or emp.get("emp_no") or "staff"
+    remarks = (body.get("remarks") or "").strip()
+    bid = await db.fetchval(
+        "INSERT INTO maint_breakdowns (asset_id,btype,problem,reported_by,reported_by_emp_id,"
+        "assignee_emp_id,status,remarks,raised_at) "
+        "VALUES ($1,$2,$3,$4,$5,$6,'open',$7,COALESCE($8,now())) RETURNING id",
+        aid, btype, problem, reporter, emp.get("id"), assignee, remarks, raised_at)
+    # photos -> OneDrive (optional)
+    paths = []
+    try:
+        paths = await _breakdown_photos(bid, body.get("photos") or [])
+        if paths:
+            # jsonb codec encodes the list itself — pass the raw list, not a string
+            await db.execute("UPDATE maint_breakdowns SET photos=$1 WHERE id=$2",
+                             paths, bid)
+    except Exception as e:
+        print("[maint] breakdown photos skipped:", e)
+    bd = await db.fetchrow(
+        "SELECT b.*, a.code AS asset_code, a.name AS asset_name, e.mobile AS assignee_mobile "
+        "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+        "LEFT JOIN employees e ON e.id=b.assignee_emp_id WHERE b.id=$1", bid)
+    alert = []
+    try:
+        alert = await _send_breakdown_alert(dict(bd))
+    except Exception as e:
+        print("[maint] breakdown alert skipped:", e)
+    return {"ok": True, "id": bid, "photos": len(paths), "alert": alert}
+
+
+@router.post("/breakdown/close")
+async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    if not body.get("id"):
+        raise HTTPException(400, "Missing id")
+    note = (body.get("remarks") or "").strip()
+    # keep the original raise remarks; append the close note rather than overwrite
+    await db.execute(
+        "UPDATE maint_breakdowns SET status='closed', closed_at=now(), closed_by=$2, "
+        "remarks = CASE WHEN $3='' THEN remarks "
+        "WHEN COALESCE(remarks,'')='' THEN $3 ELSE remarks || ' | closed: ' || $3 END "
+        "WHERE id=$1", body.get("id"),
+        emp.get("name") or emp.get("emp_no") or "staff", note)
+    return {"ok": True}
+
+
 # =======================================================================
 #  DO / COMPLETE + HISTORY
 # =======================================================================
@@ -1111,47 +1373,146 @@ async def board(emp: dict = Depends(require_employee)):
 # =======================================================================
 #  WHATSAPP REMINDERS (cron / agent endpoint)
 # =======================================================================
-async def _run_reminders(dry: bool = False) -> dict:
+def _asset_label(s):
+    code = s.get("asset_code") or ""
+    name = s.get("asset_name") or ""
+    return (code + " " + name).strip()
+
+
+def _join_items(items, cap=900):
+    """One-line join with ' | ' (safe for templates)."""
+    out, used = [], 0
+    for i, it in enumerate(items):
+        if used + len(it) + 3 > cap:
+            out.append(f"…and {len(items) - i} more"); break
+        out.append(it); used += len(it) + 3
+    return " | ".join(out) if out else "—"
+
+
+def _numbered(items, cap=1000):
+    """Numbered list, one per line (1  text / 2  text …). WhatsApp may strip the
+    line breaks depending on the provider; the numbers keep it readable either way."""
+    out, used = [], 0
+    for i, it in enumerate(items):
+        line = f"{i + 1}  {it}"
+        if used + len(line) + 1 > cap:
+            out.append(f"…and {len(items) - i} more"); break
+        out.append(line); used += len(line) + 1
+    return "\n".join(out) if out else "—"
+
+
+async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
     await ensure_tables()
     await _refresh_holidays()
     today = _today()
-    sent, skipped = [], []
+    on_leave = await _on_leave_ids(today)
+    tdisp = today.strftime("%d-%m-%Y")
+
+    # each person's morning digest keeps preventive and breakdown lists separate
+    due_by_assignee = {}   # emp_id -> {"name","mobile","pm":[],"bd":[]}
+    sup_pm = []            # preventive: overdue + due-on-leave cover + unassigned -> supervisors
+    sup_bd = []            # breakdown: unassigned / on-leave open breakdowns -> supervisors
+
+    def _bucket(aid, name, mobile, kind, text):
+        g = due_by_assignee.setdefault(aid, {"name": name, "mobile": mobile, "pm": [], "bd": []})
+        g[kind].append(text)
+
+    # ---- preventive maintenance: each person's PM list = pending (overdue + due) ----
     for s in await _schedule_rows():
         if not s.get("active"):
             continue
         info = compute_due(s, s.get("asset_hours"), today)
         if not info["due"] and not info["overdue"]:
             continue
-        assignee_mobile = s.get("assignee_mobile") or ""
-        asset = f'{s.get("asset_name") or ""} ({s.get("asset_code") or ""})'.strip()
-        when = "OVERDUE" if info["overdue"] else "due today"
+        label = _asset_label(s)
+        task = s.get("title") or "PM"
+        assignee = s.get("assignee_name") or "unassigned"
+        aid = s.get("assignee_emp_id")
+        mobile = s.get("assignee_mobile")
         if info["overdue"]:
-            tmpl, target = WATI_MAINT_OVERDUE_TEMPLATE, (MAINT_SUPERVISOR_MOBILE or assignee_mobile)
-            params = [asset, s.get("title") or "", info.get("next_due") or "", s.get("assignee_name") or "unassigned"]
+            if aid and aid in on_leave:
+                continue  # assignee on leave — don't flag their overdue work
+            sup_pm.append(f"{label} - {task} - {assignee}")   # 3pm escalation
+            if aid and mobile:
+                _bucket(aid, assignee, mobile, "pm", f"{label} - {task} (overdue)")  # 9am
+        else:  # due today
+            if aid and aid in on_leave:
+                continue  # on leave — not flagged to the supervisor's overdue alert
+            elif aid and mobile:
+                _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
+            else:
+                sup_pm.append(f"{label} - {task} - unassigned")
+
+    # ---- open breakdowns: into the assignee's breakdown list; else to supervisors ----
+    for b in await _open_breakdowns():
+        label = (str(b.get("asset_code") or "") + " " + str(b.get("asset_name") or "")).strip() or "—"
+        prob = (b.get("problem") or "").strip() or "—"
+        aid = b.get("assignee_emp_id")
+        mobile = b.get("assignee_mobile")
+        who = b.get("assignee_name") or "unassigned"
+        if aid and aid in on_leave:
+            continue  # on leave — not flagged to the supervisor's overdue alert
+        elif aid and mobile:
+            _bucket(aid, who, mobile, "bd", f"{label} - {prob}")
         else:
-            tmpl, target = WATI_MAINT_DUE_TEMPLATE, assignee_mobile
-            params = [s.get("assignee_name") or "", asset, s.get("title") or "", info.get("next_due") or "today"]
-        rec = {"schedule_id": s["id"], "asset": asset, "title": s.get("title"),
-               "state": when, "to": target, "assignee": s.get("assignee_name")}
-        if not target:
-            rec["result"] = "skipped: no mobile"; skipped.append(rec); continue
+            sup_bd.append(f"{label} - {prob} - {who}")
+
+    sent, skipped = [], []
+
+    async def _dispatch(tmpl, mobile, params, meta):
+        rec = dict(meta); rec["to"] = mobile
+        if not mobile:
+            rec["result"] = "skipped: no mobile"; skipped.append(rec); return
         if not tmpl:
-            rec["result"] = "skipped: template not set"; skipped.append(rec); continue
+            rec["result"] = "skipped: template not set"; skipped.append(rec); return
         if dry:
-            rec["result"] = "dry-run"; sent.append(rec); continue
-        ok, detail = await wati.send_template(tmpl, target, params)
+            rec["result"] = "dry-run"; sent.append(rec); return
+        ok, detail = await wati.send_template(tmpl, mobile, params)
         rec["result"] = "sent" if ok else f"failed: {detail}"
         (sent if ok else skipped).append(rec)
+
+    # due digests (morning run) — preventive and breakdown kept in separate variables
+    if kind in ("due", "all"):
+        for aid, g in due_by_assignee.items():
+            pm_list = _join_items(g["pm"])
+            bd_list = _join_items(g["bd"])
+            # body vars: 1 name, 2 date, 3 preventive list, 4 breakdown list,
+            # then the dynamic-URL button suffix (WATI param "5"): .../{{1}} -> "maint"
+            params = [g["name"], tdisp, pm_list, bd_list, "maint"]
+            await _dispatch(WATI_MAINT_DUE_TEMPLATE, g["mobile"], params,
+                            {"kind": "due-digest", "assignee": g["name"],
+                             "preventive": len(g["pm"]), "breakdown": len(g["bd"])})
+
+    # overdue/cover digest to every supervisor (afternoon run) — preventive + breakdown apart
+    if kind in ("overdue", "all") and (sup_pm or sup_bd):
+        pm_num = _numbered(sup_pm)
+        bd_num = _numbered(sup_bd)
+        # body vars: 1 date, 2 preventive list, 3 breakdown list
+        params = [tdisp, pm_num, bd_num]
+        sups = _supervisor_mobiles()
+        for sup in sups:
+            await _dispatch(WATI_MAINT_OVERDUE_TEMPLATE, sup, params,
+                            {"kind": "overdue-digest", "preventive": len(sup_pm),
+                             "breakdown": len(sup_bd)})
+        if not sups:
+            skipped.append({"kind": "overdue-digest",
+                            "preventive": len(sup_pm), "breakdown": len(sup_bd),
+                            "result": "skipped: no supervisor number (set MAINT_SUPERVISOR_MOBILE)"})
     return {"today": today.isoformat(), "sent": sent, "skipped": skipped,
             "counts": {"sent": len(sent), "skipped": len(skipped)}}
 
 
 @router.get("/run-reminders")
-async def run_reminders(token: str = Query(default=""), dry: int = Query(default=0)):
-    """Protected cron endpoint — call daily. ?token=<AGENT_TOKEN>  (&dry=1 to preview)."""
+async def run_reminders(token: str = Query(default=""), dry: int = Query(default=0),
+                        kind: str = Query(default="all")):
+    """Protected cron endpoint. ?token=<AGENT_TOKEN>
+       &kind=due     -> morning due reminders to assignees (run ~9am)
+       &kind=overdue -> overdue list to supervisors (run ~3pm)
+       &kind=all     -> both (default).  &dry=1 to preview without sending."""
     if not AGENT_TOKEN or token != AGENT_TOKEN:
         raise HTTPException(401, "bad token")
-    return _json(await _run_reminders(dry=bool(dry)))
+    k = kind if kind in ("due", "overdue", "all") else "all"
+    return _json(await _run_reminders(dry=bool(dry), kind=k))
 
 
 @router.get("/reminders/preview")
