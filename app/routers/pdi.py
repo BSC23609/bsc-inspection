@@ -106,7 +106,8 @@ async def pdi_list(emp: dict = Depends(require_employee)):
     await ensure_table()
     rows = await db.fetch(
         "SELECT report_no,report_date,customer,inspected_by,created_by,created_at,pdf_path,"
-        "COALESCE(jsonb_array_length(items),0) AS item_count FROM pdi_reports "
+        "CASE WHEN jsonb_typeof(items)='array' THEN jsonb_array_length(items) ELSE 0 END "
+        "AS item_count FROM pdi_reports "
         "ORDER BY created_at DESC LIMIT 3000")
     return JSONResponse(jsonable_encoder([dict(r) for r in rows]),
                         headers={"Cache-Control": "no-store"})
@@ -155,7 +156,7 @@ async def pdi_submit(body: PdiIn, emp: dict = Depends(require_employee)):
         "ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,"
         "customer=EXCLUDED.customer,items=EXCLUDED.items,inspected_by=EXCLUDED.inspected_by,"
         "reviewed_by=EXCLUDED.reviewed_by,approved_by=EXCLUDED.approved_by,updated_at=now()",
-        rno, rdate, body.customer or "", json.dumps(body.items or []),
+        rno, rdate, body.customer or "", (body.items or []),
         body.inspected_by or "", body.reviewed_by or "", body.approved_by or "", by)
     rep = _rep(body)
 
