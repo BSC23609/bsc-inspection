@@ -64,7 +64,7 @@
     <a href="#" onclick="closeBD();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
   <div class="mb"><div class="mf">
     <input type="hidden" id="b_type" value="">
-    <div class="row"><div><label>Asset <span class="req">*</span></label><select id="b_asset"><option value="">Select machine…</option></select></div></div>
+    <div class="row"><div><label>Asset <span class="req">*</span></label><select id="b_asset" onchange="onAssetChange()"><option value="">Select machine…</option></select></div></div>
     <div style="margin-bottom:14px"><label>Breakdown type <span class="req">*</span></label>
       <div class="pills">
         <div class="pill" data-t="Electrical" onclick="setType('Electrical')">Electrical</div>
@@ -101,13 +101,23 @@
 {% endblock %}
 {% block scripts %}
 <script>
-var ASSETS=[],EMPS=[],EMPBY={},TYPES=['Electrical','Mechanical','Hydraulic','Other'],TYPE_STAFF={},PHOTOS=[];
+var ASSETS=[],EMPS=[],EMPBY={},TYPES=['Electrical','Mechanical','Hydraulic','Other'],TYPE_STAFF={},ASSET_ELEC={},PHOTOS=[];
 function maintUsers(){var m=EMPS.filter(function(e){return e.is_maint;});return m.length?m:EMPS;}
+function uname(id){var e=EMPBY[id]||{};return (e.name||('#'+id))+(e.mobile?(' · '+e.mobile):'');}
 function renderAssignees(sel,multi){sel=sel||[];var set={};sel.forEach(function(x){set[String(x)]=1;});
   var us=maintUsers();var typ=multi?'checkbox':'radio';var nm=multi?'':' name="b_asg_one"';
   document.getElementById('b_assignees').innerHTML=us.length
     ? us.map(function(e){return '<label><input type="'+typ+'" class="b_asg"'+nm+' value="'+esc(e.id)+'"'+(set[String(e.id)]?' checked':'')+'>'+esc((e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''))+'</label>';}).join('')
     : '<div class="none">No maintenance users. Mark some in Users → Maintenance users.</div>';}
+function renderFixed(empId){   // Mechanical / Hydraulic — one fixed person, read-only
+  document.getElementById('b_assignees').innerHTML=
+    '<label style="opacity:.95"><input type="checkbox" class="b_asg" value="'+esc(empId)+'" checked disabled>'+esc(uname(empId))+'</label>';}
+function renderElec(){         // Electrical — the selected machine's electrical users (multi)
+  var host=document.getElementById('b_assignees'),aid=v('b_asset');
+  if(!aid){host.innerHTML='<div class="none">Select a machine first.</div>';return;}
+  var ids=ASSET_ELEC[String(aid)]||[];
+  if(!ids.length){host.innerHTML='<div class="none">No electrical users set for this machine — add them in Assets → Elec users.</div>';return;}
+  host.innerHTML=ids.map(function(id){return '<label><input type="checkbox" class="b_asg" value="'+esc(id)+'" checked>'+esc(uname(id))+'</label>';}).join('');}
 function selectedAssignees(){return [].map.call(document.querySelectorAll('#b_assignees .b_asg:checked'),function(c){return c.value;});}
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
@@ -122,6 +132,7 @@ async function boot(){
   try{EMPS=await (await fetch('/admin/users',{cache:'no-store'})).json();}catch(e){EMPS=[];}
   EMPBY={};EMPS.forEach(function(e){EMPBY[e.id]={name:e.name||e.emp_no,mobile:e.mobile};});
   try{TYPE_STAFF=await (await fetch('/maint/type-staff/list',{cache:'no-store'})).json();}catch(e){TYPE_STAFF={};}
+  try{ASSET_ELEC=await (await fetch('/maint/asset-elec/list',{cache:'no-store'})).json();}catch(e){ASSET_ELEC={};}
   document.getElementById('b_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
   bdLoad();
 }
@@ -133,14 +144,18 @@ function openBD(){PHOTOS=[];document.getElementById('b_thumbs').innerHTML='';sv(
   sv('b_when',nowLocal());document.getElementById('bd_scrim').style.display='flex';}
 function closeBD(){document.getElementById('bd_scrim').style.display='none';}
 function setType(t){sv('b_type',t);[].forEach.call(document.querySelectorAll('#bd_scrim .pill'),function(p){p.classList.toggle('on',p.getAttribute('data-t')===t);});
-  var multi=(t==='Mechanical');                       // multiple users only for Mechanical
-  var mapped=TYPE_STAFF[t]||[];
-  var sel=multi?mapped:(mapped.length?[mapped[0]]:[]); // single types auto-pick one
-  renderAssignees(sel,multi);
-  document.getElementById('b_autonote').textContent=multi
-    ? 'Auto-picked for Mechanical — add or remove as needed.'
-    : 'Auto-picked for this type — change if needed.';
-  document.getElementById('b_autonote').style.display=sel.length?'':'none';}
+  var note=document.getElementById('b_autonote');
+  if(t==='Mechanical'||t==='Hydraulic'){            // one fixed person, read-only
+    var one=(TYPE_STAFF[t]||[])[0];
+    if(one){renderFixed(one);note.textContent='Fixed '+t.toLowerCase()+' maintenance user.';note.style.display='';}
+    else{document.getElementById('b_assignees').innerHTML='<div class="none">No '+t+' user set — set it in “Default staff by type”.</div>';note.style.display='none';}
+  }else if(t==='Electrical'){                        // the machine's electrical users (multi)
+    renderElec();note.textContent='Electrical users for the selected machine.';note.style.display='';
+  }else{                                             // Other — single pick, auto from default
+    var mapped=TYPE_STAFF[t]||[];renderAssignees(mapped.length?[mapped[0]]:[],false);
+    note.textContent='Auto-picked for this type — change if needed.';note.style.display=mapped.length?'':'none';
+  }}
+function onAssetChange(){if(v('b_type')==='Electrical')renderElec();}
 function addFiles(inp){var files=inp.files||[];var left=6-PHOTOS.length;
   [].slice.call(files,0,Math.max(0,left)).forEach(function(f){if(!/^image\//.test(f.type))return;
     var rd=new FileReader();rd.onload=function(){PHOTOS.push(rd.result);renderThumbs();};rd.readAsDataURL(f);});
@@ -163,18 +178,16 @@ document.getElementById('bd_scrim').addEventListener('click',function(e){if(e.ta
 
 /* ---- defaults ---- */
 function openDefaults(){var us=maintUsers();document.getElementById('ds_rows').innerHTML=TYPES.map(function(t){
-  var cur=TYPE_STAFF[t]||[];var sel={};cur.forEach(function(x){sel[String(x)]=1;});
-  var body;
-  if(!us.length){
+  var cur=TYPE_STAFF[t]||[];var one=cur.length?cur[0]:'';var body;
+  if(t==='Electrical'){                              // Electrical = per machine
+    body='<div class="none">Set electrical users per machine on the <b>Assets</b> page → <b>Elec users</b>.</div>';
+  }else if(!us.length){
     body='<div class="none">No maintenance users yet — mark some in Users → Maintenance users.</div>';
-  }else if(t==='Mechanical'){                       // Mechanical = multiple (checkboxes)
-    body='<div class="chkbox">'+us.map(function(e){return '<label><input type="checkbox" value="'+esc(e.id)+'" onchange="dsChange(\''+t+'\')"'+(sel[String(e.id)]?' checked':'')+'>'+esc(e.name||e.emp_no)+'</label>';}).join('')+'</div>';
-  }else{                                             // single — one person (dropdown)
-    var one=cur.length?cur[0]:'';
+  }else{                                             // Mechanical / Hydraulic / Other — one fixed person
     body='<select onchange="dsSaveSingle(\''+t+'\',this.value)" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px">'
       +'<option value="">— none —</option>'+us.map(function(e){return opt(e.id,e.name||e.emp_no,one);}).join('')+'</select>';
   }
-  return '<div class="ds-grp" data-t="'+t+'"><div class="lab">'+t+(t==='Mechanical'?' (multiple)':'')+'</div>'+body+'</div>';}).join('');
+  return '<div class="ds-grp" data-t="'+t+'"><div class="lab">'+t+'</div>'+body+'</div>';}).join('');
   document.getElementById('ds_scrim').style.display='flex';}
 function closeDefaults(){document.getElementById('ds_scrim').style.display='none';}
 function dsChange(t){var ids=[].map.call(document.querySelectorAll('#ds_rows .ds-grp[data-t="'+t+'"] input:checked'),function(c){return c.value;});dsSave(t,ids);}

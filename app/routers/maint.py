@@ -587,6 +587,10 @@ async def ensure_tables():
         # drop the old one-per-type primary key if this DB still has it, allow many
         await db.execute("ALTER TABLE maint_type_staff DROP CONSTRAINT IF EXISTS maint_type_staff_pkey")
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_ts ON maint_type_staff (category, emp_id)")
+        # per-asset ELECTRICAL maintenance users (Electrical breakdowns pick from these)
+        await db.execute("""CREATE TABLE IF NOT EXISTS maint_asset_elec (
+            asset_id INT, emp_id INT)""")
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_ae ON maint_asset_elec (asset_id, emp_id)")
     except Exception as e:
         print("[maint] breakdown schema step skipped:", e)
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp ON maint_checkpoints (checklist_id, seq)")
@@ -1252,6 +1256,44 @@ async def type_staff_save(body: dict, emp: dict = Depends(require_employee)):
         await db.execute(
             "INSERT INTO maint_type_staff (category,emp_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
             cat, eid)
+    return {"ok": True}
+
+
+# ---- per-asset electrical maintenance users ----
+@router.get("/asset-elec/list")
+async def asset_elec_list(emp: dict = Depends(require_employee)):
+    """{asset_id: [emp_id, ...]} — electrical maintenance users for each asset."""
+    await ensure_tables()
+    try:
+        rows = await db.fetch("SELECT asset_id, emp_id FROM maint_asset_elec")
+    except Exception:
+        rows = []
+    out = {}
+    for r in rows:
+        out.setdefault(str(r["asset_id"]), []).append(r["emp_id"])
+    return _json(out)
+
+
+@router.post("/asset-elec/save")
+async def asset_elec_save(body: dict, emp: dict = Depends(require_employee)):
+    """Replace the electrical-user list for one asset. body: {asset_id, emp_ids:[...]}."""
+    await ensure_tables()
+    aid = body.get("asset_id")
+    if not aid:
+        raise HTTPException(400, "Missing asset")
+    seen, clean = set(), []
+    for x in (body.get("emp_ids") or []):
+        try:
+            n = int(x)
+        except Exception:
+            continue
+        if n and n not in seen:
+            seen.add(n); clean.append(n)
+    await db.execute("DELETE FROM maint_asset_elec WHERE asset_id=$1", int(aid))
+    for eid in clean:
+        await db.execute(
+            "INSERT INTO maint_asset_elec (asset_id,emp_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+            int(aid), eid)
     return {"ok": True}
 
 

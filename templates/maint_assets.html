@@ -13,6 +13,15 @@
 @media(max-width:720px){.mf .r4,.mf .r3{grid-template-columns:1fr 1fr}}
 .badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
 .badge.on{background:#e3f6ee;color:#0a7d55}.badge.off{background:#fdecec;color:#c23438}
+.scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:flex-start;justify-content:center;z-index:60;padding:28px 16px;overflow:auto}
+.emodal{background:#fff;border-radius:16px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.emodal .mh{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line)}
+.emodal .mh b{font-size:15px;letter-spacing:.3px}
+.emodal .mb{padding:14px 18px}.emodal .mfoot{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end}
+.enote{font-size:12px;color:var(--muted);margin:0 0 12px}
+.elist{max-height:52vh;overflow:auto;border:1px solid var(--line-2);border-radius:9px;padding:8px 10px}
+.elist label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);padding:5px 0;cursor:pointer}
+.elist input{width:auto}.elist .none{color:var(--muted);font-size:12.5px;padding:2px 0}
 </style>
 
 <div class="page-head"><h1>Assets</h1><p>Your machine and equipment register. Running hours feed the meter-based maintenance schedules.</p></div>
@@ -45,10 +54,21 @@
   <div class="dgrid-wrap" id="a_rows"><div class="empty">Loading…</div></div>
 </div></div>
 </div>
+
+<!-- Electrical users per asset -->
+<div class="scrim" id="elec_scrim"><div class="emodal">
+  <div class="mh">{{ icon('bolt',18) }}<b id="elec_title">ELECTRICAL USERS</b><span style="flex:1"></span>
+    <a href="#" onclick="closeElec();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb">
+    <p class="enote">Tick the electrical maintenance user(s) for this machine. These are shown when an <b>Electrical</b> breakdown is raised for it.</p>
+    <div id="elec_rows" class="elist"><div class="none">Loading…</div></div>
+  </div>
+  <div class="mfoot"><button class="btn btn-primary" onclick="closeElec()">Done</button></div>
+</div></div>
 {% endblock %}
 {% block scripts %}
 <script>
-var ASSETS=[];
+var ASSETS=[],MUSERS=[],ASSET_ELEC={},elecAsset=null;
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -70,7 +90,8 @@ function aRender(){var host=document.getElementById('a_rows'),q=(v('a_search')||
     return'<tr><td>'+g(x.code)+'</td><td>'+g(x.name)+'</td><td>'+g(x.atype)+'</td><td>'+g(x.location)+'</td>'
       +'<td class="c">'+(x.running_hours!=null?esc(x.running_hours):'—')+'</td><td class="c">'+st+'</td>'
       +'<td class="c"><a href="#" onclick="aEdit('+x.id+');return false" class="ic-edit">Edit</a> · '
-      +'<a href="#" onclick="aHours('+x.id+');return false" class="ic-edit">Hours</a> · '+tog+'</td></tr>';
+      +'<a href="#" onclick="aHours('+x.id+');return false" class="ic-edit">Hours</a> · '
+      +'<a href="#" onclick="openElec('+x.id+');return false" class="ic-edit">Elec users</a> · '+tog+'</td></tr>';
   }).join('');
   host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
 }
@@ -96,6 +117,26 @@ async function aHours(id){var x=ASSETS.filter(function(r){return r.id===id;})[0]
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');toast('ok','Hours updated');await aLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
 async function aToggle(id,on){try{var r=await fetch('/maint/assets/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,active:on})});
   var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');toast('ok',on?'Activated':'Deactivated');await aLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
-aReset();aLoad();
+/* ---- electrical users per asset ---- */
+function maintUsers(){var m=MUSERS.filter(function(e){return e.is_maint;});return m.length?m:MUSERS;}
+async function elecBoot(){
+  try{MUSERS=await (await fetch('/admin/users',{cache:'no-store'})).json();}catch(e){MUSERS=[];}
+  try{ASSET_ELEC=await (await fetch('/maint/asset-elec/list',{cache:'no-store'})).json();}catch(e){ASSET_ELEC={};}
+}
+function openElec(id){elecAsset=id;var a=ASSETS.filter(function(x){return x.id===id;})[0]||{};
+  document.getElementById('elec_title').textContent='ELECTRICAL USERS — '+((a.code||'')+' '+(a.name||'')).trim();
+  var cur=ASSET_ELEC[String(id)]||[];var set={};cur.forEach(function(x){set[String(x)]=1;});
+  var us=maintUsers();
+  document.getElementById('elec_rows').innerHTML=us.length
+    ? us.map(function(e){return '<label><input type="checkbox" value="'+esc(e.id)+'" onchange="elecSave()"'+(set[String(e.id)]?' checked':'')+'>'+esc((e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''))+'</label>';}).join('')
+    : '<div class="none">No maintenance users yet — mark some in Users → Maintenance users.</div>';
+  document.getElementById('elec_scrim').style.display='flex';}
+function closeElec(){document.getElementById('elec_scrim').style.display='none';}
+async function elecSave(){var ids=[].map.call(document.querySelectorAll('#elec_rows input:checked'),function(c){return c.value;});
+  try{var r=await fetch('/maint/asset-elec/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({asset_id:elecAsset,emp_ids:ids})});
+    var d=await r.json();if(!r.ok||!d.ok)throw 0;ASSET_ELEC[String(elecAsset)]=ids.map(function(x){return parseInt(x,10);});toast('ok','Saved');}catch(e){toast('err','Failed');}}
+document.getElementById('elec_scrim').addEventListener('click',function(e){if(e.target===this)closeElec();});
+
+aReset();aLoad();elecBoot();
 </script>
 {% endblock %}
