@@ -1331,6 +1331,42 @@ async def breakdowns_list(emp: dict = Depends(require_employee)):
     return _json([dict(r) for r in rows])
 
 
+def _mask(num: str) -> str:
+    num = str(num or "")
+    return (num[:4] + "****" + num[-2:]) if len(num) >= 6 else (num or "—")
+
+
+@router.get("/wati-status")
+async def wati_status(emp: dict = Depends(require_employee)):
+    """Diagnostics: what WhatsApp (WATI) config the running app actually sees.
+    Open qms.bharatsteels.in/maint/wati-status in a browser."""
+    await ensure_tables()
+    st = wati.status()
+    sups = _supervisor_mobiles()
+    st["breakdown_template"] = WATI_MAINT_BREAKDOWN_TEMPLATE
+    st["supervisor_count"] = len(sups)
+    st["supervisor_sample"] = _mask(sups[0]) if sups else "(none set)"
+    return _json(st)
+
+
+@router.get("/wati-test")
+async def wati_test(to: str = "", emp: dict = Depends(require_employee)):
+    """Diagnostics: send the breakdown template to ONE number and return WATI's raw reply.
+    Open qms.bharatsteels.in/maint/wati-test?to=919XXXXXXXXX in a browser."""
+    await ensure_tables()
+    num = wati.normalize_number(to) if to else ""
+    if not num:
+        sups = _supervisor_mobiles()
+        num = wati.normalize_number(sups[0]) if sups else ""
+    if not num:
+        return _json({"ok": False,
+                      "detail": "No number. Add ?to=919XXXXXXXXX to the URL, or set MAINT_SUPERVISOR_MOBILE."})
+    params = ["TEST MACHINE", "Other: WATI test message", "Diagnostics",
+              datetime.now(IST).strftime("%d-%m-%Y %H:%M"), "maint"]
+    ok, detail = await wati.send_template(WATI_MAINT_BREAKDOWN_TEMPLATE, num, params)
+    return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_BREAKDOWN_TEMPLATE, "wati_reply": detail})
+
+
 # ---- fixed maintenance person per breakdown type (hard-coded in the backend) ----
 # Mechanical -> Velu C ; Hydraulic -> Surajit Sasanka Maity. Electrical is per-asset
 # (maint_asset_elec). Matched to the employees table by mobile (preferred) or name.
