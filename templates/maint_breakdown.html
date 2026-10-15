@@ -103,13 +103,17 @@ function renderAssignees(sel,multi){sel=sel||[];var set={};sel.forEach(function(
 function renderFixed(empId){   // Mechanical / Hydraulic — one fixed person, read-only
   document.getElementById('b_assignees').innerHTML=
     '<label style="opacity:.95"><input type="checkbox" class="b_asg" value="'+esc(empId)+'" checked disabled>'+esc(uname(empId))+'</label>';}
-function renderElec(){         // Electrical — the selected machine's electrical users (multi)
+function renderElec(){         // Electrical — dropdown of all maintenance users, default by asset
   var host=document.getElementById('b_assignees'),aid=v('b_asset');
   if(!aid){host.innerHTML='<div class="none">Select a machine first.</div>';return;}
-  var ids=ASSET_ELEC[String(aid)]||[];
-  if(!ids.length){host.innerHTML='<div class="none">No electrical users set for this machine — add them in Assets → Elec users.</div>';return;}
-  host.innerHTML=ids.map(function(id){return '<label><input type="checkbox" class="b_asg" value="'+esc(id)+'" checked>'+esc(uname(id))+'</label>';}).join('');}
-function selectedAssignees(){return [].map.call(document.querySelectorAll('#b_assignees .b_asg:checked'),function(c){return c.value;});}
+  var us=maintUsers();
+  if(!us.length){host.innerHTML='<div class="none">No maintenance users. Mark some in Users → Maintenance users.</div>';return;}
+  var def=(ASSET_ELEC[String(aid)]||[])[0];
+  host.innerHTML='<select class="b_asg_sel" style="width:100%;padding:10px 11px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;background:#fff;color:var(--ink);font-family:inherit">'
+    +'<option value="">— select —</option>'+us.map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''),def);}).join('')+'</select>';}
+function selectedAssignees(){var sel=document.querySelector('#b_assignees select.b_asg_sel');
+  if(sel){return sel.value?[sel.value]:[];}
+  return [].map.call(document.querySelectorAll('#b_assignees .b_asg:checked'),function(c){return c.value;});}
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}

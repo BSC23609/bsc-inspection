@@ -1281,9 +1281,36 @@ async def type_staff_save(body: dict, emp: dict = Depends(require_employee)):
 
 
 # ---- per-asset electrical maintenance users ----
+# Default rule (when no explicit mapping is set for the asset):
+#   SHED A / SHED B  (and RO PLANT, booster, embossing, transformer) -> Ragupathi
+#   everything else (DG sets, SHED C/E/F, ...)                        -> Mohan
+ELEC_RAGUPATHI = "ragupathi"
+ELEC_MOHAN = "mohan"
+_ELEC_RAG_NAMES = ("RO PLANT", "ROPLANT", "BOOSTER", "EMBOSS", "TRANSFORMER")
+
+
+async def _elec_default_ids():
+    async def _one(nm):
+        try:
+            r = await db.fetchrow(
+                "SELECT id FROM employees WHERE lower(COALESCE(name,'')) LIKE '%'||$1||'%' ORDER BY id LIMIT 1", nm)
+            return r["id"] if r else None
+        except Exception:
+            return None
+    return await _one(ELEC_RAGUPATHI), await _one(ELEC_MOHAN)
+
+
+def _elec_default_for(asset: dict, rag, moh):
+    loc = (asset.get("location") or "").upper().replace(" ", "")
+    nm = (asset.get("name") or "").upper()
+    is_rag = ("SHEDA" in loc or "ASHED" in loc or "SHEDB" in loc or "BSHED" in loc
+              or any(k in nm for k in _ELEC_RAG_NAMES))
+    return (rag if is_rag else moh)
+
+
 @router.get("/asset-elec/list")
 async def asset_elec_list(emp: dict = Depends(require_employee)):
-    """{asset_id: [emp_id, ...]} — electrical maintenance users for each asset."""
+    """{asset_id: [emp_id, ...]} — explicit electrical users, else the location-based default."""
     await ensure_tables()
     try:
         rows = await db.fetch("SELECT asset_id, emp_id FROM maint_asset_elec")
@@ -1292,6 +1319,19 @@ async def asset_elec_list(emp: dict = Depends(require_employee)):
     out = {}
     for r in rows:
         out.setdefault(str(r["asset_id"]), []).append(r["emp_id"])
+    # fill a default for every active asset that has no explicit mapping
+    try:
+        rag, moh = await _elec_default_ids()
+        if rag or moh:
+            assets = await db.fetch("SELECT id, name, location FROM maint_assets WHERE COALESCE(active,true)")
+            for a in assets:
+                k = str(a["id"])
+                if k not in out:
+                    d = _elec_default_for(dict(a), rag, moh)
+                    if d:
+                        out[k] = [d]
+    except Exception as e:
+        print("[maint] elec default fill skipped:", e)
     return _json(out)
 
 
