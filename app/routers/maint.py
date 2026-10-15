@@ -1291,7 +1291,8 @@ async def type_staff_save(body: dict, emp: dict = Depends(require_employee)):
 #   everything else (DG sets, SHED C/E/F, ...)                        -> Mohan
 ELEC_RAGUPATHI = "ragupathi"
 ELEC_MOHAN = "mohan"
-_ELEC_RAG_NAMES = ("RO PLANT", "ROPLANT", "BOOSTER", "EMBOSS", "TRANSFORMER")
+_ELEC_RAG_NAMES = ("RO PLANT", "ROPLANT", "BOOSTER", "EMBOSS", "TRANSFORMER", "ESCORT")
+_ELEC_MOHAN_NAMES = ("WEIGH",)   # weighing machines -> Mohan (overrides the Ragupathi rule)
 
 
 async def _elec_default_ids():
@@ -1308,6 +1309,8 @@ async def _elec_default_ids():
 def _elec_default_for(asset: dict, rag, moh):
     loc = (asset.get("location") or "").upper().replace(" ", "")
     nm = (asset.get("name") or "").upper()
+    if any(k in nm for k in _ELEC_MOHAN_NAMES):   # weighing -> Mohan, takes precedence
+        return moh
     is_rag = ("SHEDA" in loc or "ASHED" in loc or "SHEDB" in loc or "BSHED" in loc
               or any(k in nm for k in _ELEC_RAG_NAMES))
     return (rag if is_rag else moh)
