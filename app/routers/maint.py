@@ -1221,16 +1221,37 @@ async def breakdowns_list(emp: dict = Depends(require_employee)):
     return _json([dict(r) for r in rows])
 
 
-# ---- default maintenance person per breakdown type (auto-pick on the form) ----
+# ---- fixed maintenance person per breakdown type (hard-coded in the backend) ----
+# Mechanical -> Velu C ; Hydraulic -> Surajit Sasanka Maity. Electrical is per-asset
+# (maint_asset_elec). Matched to the employees table by mobile (preferred) or name.
+FIXED_TYPE_STAFF = {
+    "Mechanical": {"mobile": "9840816602", "name": "velu"},
+    "Hydraulic":  {"mobile": "9324774674", "name": "surajit"},
+}
+
+
+async def _fixed_type_staff() -> dict:
+    """Resolve the hard-coded fixed users to live employee ids. {category: [emp_id]}."""
+    out = {}
+    for cat, info in FIXED_TYPE_STAFF.items():
+        try:
+            row = await db.fetchrow(
+                "SELECT id FROM employees "
+                "WHERE COALESCE(mobile,'') LIKE '%'||$1||'%' OR lower(COALESCE(name,'')) LIKE '%'||$2||'%' "
+                "ORDER BY (COALESCE(mobile,'') LIKE '%'||$1||'%') DESC, id LIMIT 1",
+                info["mobile"], info["name"])
+            if row:
+                out[cat] = [row["id"]]
+        except Exception as e:
+            print("[maint] fixed type-staff resolve skipped:", cat, e)
+    return out
+
+
 @router.get("/type-staff/list")
 async def type_staff_list(emp: dict = Depends(require_employee)):
-    """{category: [emp_id, ...]} — many maintenance users may map to one type."""
+    """{category: [emp_id]} — Mechanical/Hydraulic are fixed in the backend."""
     await ensure_tables()
-    rows = await db.fetch("SELECT category, emp_id FROM maint_type_staff")
-    out = {}
-    for r in rows:
-        out.setdefault(r["category"], []).append(r["emp_id"])
-    return _json(out)
+    return _json(await _fixed_type_staff())
 
 
 @router.post("/type-staff/save")

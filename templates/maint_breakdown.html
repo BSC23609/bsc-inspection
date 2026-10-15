@@ -51,7 +51,6 @@
 <div class="panel">
   <div class="toolbar">
     <span style="flex:1"></span>
-    <button class="btn btn-ghost" onclick="openDefaults()">Default staff by type</button>
     <button class="btn btn-primary" onclick="openBD()">+ Raise breakdown</button>
   </div>
   <div class="panel-body"><div id="bd_list"><div class="empty">Loading…</div></div></div>
@@ -90,14 +89,6 @@
     <button class="btn btn-primary" id="b_save" onclick="bdRaise()">Raise &amp; alert</button></div>
 </div></div>
 
-<!-- Default staff by type modal -->
-<div class="scrim" id="ds_scrim"><div class="pmodal" style="max-width:440px">
-  <div class="mh">{{ icon('users',18) }}<b>DEFAULT STAFF BY TYPE</b><span style="flex:1"></span>
-    <a href="#" onclick="closeDefaults();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
-  <div class="mb"><p class="note" style="margin:0 0 14px">Who to auto-assign when a breakdown of each type is raised. You can still change the person on the form.</p>
-    <div id="ds_rows"></div></div>
-  <div class="mfoot"><button class="btn btn-primary" onclick="closeDefaults()">Done</button></div>
-</div></div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -148,7 +139,7 @@ function setType(t){sv('b_type',t);[].forEach.call(document.querySelectorAll('#b
   if(t==='Mechanical'||t==='Hydraulic'){            // one fixed person, read-only
     var one=(TYPE_STAFF[t]||[])[0];
     if(one){renderFixed(one);note.textContent='Fixed '+t.toLowerCase()+' maintenance user.';note.style.display='';}
-    else{document.getElementById('b_assignees').innerHTML='<div class="none">No '+t+' user set — set it in “Default staff by type”.</div>';note.style.display='none';}
+    else{document.getElementById('b_assignees').innerHTML='<div class="none">No '+t+' user configured.</div>';note.style.display='none';}
   }else if(t==='Electrical'){                        // the machine's electrical users (multi)
     renderElec();note.textContent='Electrical users for the selected machine.';note.style.display='';
   }else{                                             // Other — single pick, auto from default
@@ -175,26 +166,6 @@ async function bdRaise(){var aid=v('b_asset'),bt=v('b_type'),prob=v('b_problem')
     toast('ok','Breakdown raised'+(n?(' · alerted '+n):'')+(d.photos?(' · '+d.photos+' photo(s)'):''));closeBD();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{btn.disabled=false;btn.textContent=l;}}
 document.getElementById('bd_scrim').addEventListener('click',function(e){if(e.target===this)closeBD();});
-
-/* ---- defaults ---- */
-function openDefaults(){var us=maintUsers();document.getElementById('ds_rows').innerHTML=TYPES.map(function(t){
-  var cur=TYPE_STAFF[t]||[];var one=cur.length?cur[0]:'';var body;
-  if(t==='Electrical'){                              // Electrical = per machine
-    body='<div class="none">Set electrical users per machine on the <b>Assets</b> page → <b>Elec users</b>.</div>';
-  }else if(!us.length){
-    body='<div class="none">No maintenance users yet — mark some in Users → Maintenance users.</div>';
-  }else{                                             // Mechanical / Hydraulic / Other — one fixed person
-    body='<select onchange="dsSaveSingle(\''+t+'\',this.value)" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px">'
-      +'<option value="">— none —</option>'+us.map(function(e){return opt(e.id,e.name||e.emp_no,one);}).join('')+'</select>';
-  }
-  return '<div class="ds-grp" data-t="'+t+'"><div class="lab">'+t+'</div>'+body+'</div>';}).join('');
-  document.getElementById('ds_scrim').style.display='flex';}
-function closeDefaults(){document.getElementById('ds_scrim').style.display='none';}
-function dsChange(t){var ids=[].map.call(document.querySelectorAll('#ds_rows .ds-grp[data-t="'+t+'"] input:checked'),function(c){return c.value;});dsSave(t,ids);}
-function dsSaveSingle(t,id){dsSave(t,id?[id]:[]);}
-async function dsSave(t,ids){try{var r=await fetch('/maint/type-staff/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({category:t,emp_ids:ids})});
-  var d=await r.json();if(!r.ok||!d.ok)throw 0;TYPE_STAFF[t]=ids.map(function(x){return parseInt(x,10);});toast('ok','Saved');}catch(e){toast('err','Failed');}}
-document.getElementById('ds_scrim').addEventListener('click',function(e){if(e.target===this)closeDefaults();});
 
 /* ---- list ---- */
 async function bdLoad(){var box=document.getElementById('bd_list');box.innerHTML='<div class="empty">Loading…</div>';
