@@ -563,6 +563,11 @@ async def ensure_tables():
     for col, typ in (("freq_type", "TEXT"), ("day_of_month", "INT"), ("end_date", "DATE"),
                      ("due_time", "TEXT")):
         await db.execute(f"ALTER TABLE maint_schedules ADD COLUMN IF NOT EXISTS {col} {typ}")
+    # every machine's schedule defaults to 09:00 (morning) unless a time was set
+    try:
+        await db.execute("UPDATE maint_schedules SET due_time='09:00' WHERE COALESCE(due_time,'')=''")
+    except Exception as e:
+        print("[maint] due_time backfill skipped:", e)
     await db.execute("""CREATE TABLE IF NOT EXISTS maint_holidays (
         id SERIAL PRIMARY KEY, hday DATE UNIQUE, name TEXT, created_at TIMESTAMPTZ DEFAULT now())""")
     await db.execute("""CREATE TABLE IF NOT EXISTS maint_leave (
@@ -633,7 +638,7 @@ async def ensure_tables():
                     ft, dom, fdays = "quarterly", today.day, 90
                 await db.execute(
                     "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_type,day_of_month,"
-                    "freq_days,start_date,active) VALUES ($1,$2,$3,$4,$5,$6,$7,true)",
+                    "freq_days,start_date,due_time,active) VALUES ($1,$2,$3,$4,$5,$6,$7,'09:00',true)",
                     aid, f"{kind} PM", cid, ft, dom, fdays, today)
     except Exception as e:
         print("[maint] checklist seed skipped:", e)
@@ -998,7 +1003,7 @@ async def schedule_save(body: dict, emp: dict = Depends(require_employee)):
     else:
         dom = None
     assignee = body.get("assignee_emp_id") or None
-    due_time = (body.get("due_time") or "").strip() or None
+    due_time = (body.get("due_time") or "").strip() or "09:00"   # default 9:00 AM
     vals = (asset_id, title, body.get("checklist_id") or None, ft, dom,
             _FREQ_DAYS.get(ft), _num(body.get("hours_interval")), assignee,
             _d(body.get("start_date")) or _today(), _d(body.get("end_date")),

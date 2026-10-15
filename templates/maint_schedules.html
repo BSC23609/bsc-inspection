@@ -193,13 +193,13 @@ function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.g
   }).join('');
   host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
 }
-function sReset(){sv('s_id','');sv('s_asset','');sv('s_name','');sv('s_checklist','');sv('s_dom','');sv('s_end','');sv('s_hours','');sv('s_assignee','');sv('s_time','');
+function sReset(){sv('s_id','');sv('s_asset','');sv('s_name','');sv('s_checklist','');sv('s_dom','');sv('s_end','');sv('s_hours','');sv('s_assignee','');sv('s_time','09:00');
   sv('s_start',today());document.getElementById('s_active').checked=true;setFreq('daily');
   document.getElementById('s_save').textContent='Save';}
 function sEdit(id){var x=SCHED.filter(function(r){return r.id===id;})[0];if(!x)return;sReset();
   sv('s_id',x.id);sv('s_asset',x.asset_id);loadChecklists();sv('s_checklist',x.checklist_id||'');sv('s_name',x.title);
   setFreq((x.freq_type||'daily').toLowerCase());sv('s_dom',x.day_of_month||'');
-  sv('s_start',(x.start_date||'').slice(0,10));sv('s_time',(x.due_time||'').slice(0,5));sv('s_end',(x.end_date||'').slice(0,10));sv('s_hours',x.hours_interval||'');sv('s_assignee',x.assignee_emp_id||'');
+  sv('s_start',(x.start_date||'').slice(0,10));sv('s_time',(x.due_time||'09:00').slice(0,5));sv('s_end',(x.end_date||'').slice(0,10));sv('s_hours',x.hours_interval||'');sv('s_assignee',x.assignee_emp_id||'');
   document.getElementById('s_active').checked=!!x.active;
   document.getElementById('s_title').textContent='EDIT PLAN';document.getElementById('s_save').textContent='Update';
   document.getElementById('plan_scrim').style.display='flex';}
