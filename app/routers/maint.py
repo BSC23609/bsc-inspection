@@ -559,8 +559,9 @@ async def ensure_tables():
         freq_days INT, hours_interval NUMERIC, category TEXT, location TEXT,
         assignee_emp_id INT, start_date DATE, last_done DATE, last_done_hours NUMERIC,
         active BOOLEAN DEFAULT true, created_at TIMESTAMPTZ DEFAULT now())""")
-    # frequency model (Add Plan): freq_type + day_of_month + end_date
-    for col, typ in (("freq_type", "TEXT"), ("day_of_month", "INT"), ("end_date", "DATE")):
+    # frequency model (Add Plan): freq_type + day_of_month + end_date + due_time
+    for col, typ in (("freq_type", "TEXT"), ("day_of_month", "INT"), ("end_date", "DATE"),
+                     ("due_time", "TEXT")):
         await db.execute(f"ALTER TABLE maint_schedules ADD COLUMN IF NOT EXISTS {col} {typ}")
     await db.execute("""CREATE TABLE IF NOT EXISTS maint_holidays (
         id SERIAL PRIMARY KEY, hday DATE UNIQUE, name TEXT, created_at TIMESTAMPTZ DEFAULT now())""")
@@ -993,21 +994,22 @@ async def schedule_save(body: dict, emp: dict = Depends(require_employee)):
     else:
         dom = None
     assignee = body.get("assignee_emp_id") or None
+    due_time = (body.get("due_time") or "").strip() or None
     vals = (asset_id, title, body.get("checklist_id") or None, ft, dom,
             _FREQ_DAYS.get(ft), _num(body.get("hours_interval")), assignee,
             _d(body.get("start_date")) or _today(), _d(body.get("end_date")),
-            bool(body.get("active", True)))
+            due_time, bool(body.get("active", True)))
     sid = body.get("id")
     if sid:
         await db.execute(
             "UPDATE maint_schedules SET asset_id=$1,title=$2,checklist_id=$3,freq_type=$4,"
             "day_of_month=$5,freq_days=$6,hours_interval=$7,assignee_emp_id=$8,start_date=$9,"
-            "end_date=$10,active=$11 WHERE id=$12", *vals, sid)
+            "end_date=$10,due_time=$11,active=$12 WHERE id=$13", *vals, sid)
         return {"ok": True, "id": sid}
     sid = await db.fetchval(
         "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_type,day_of_month,"
-        "freq_days,hours_interval,assignee_emp_id,start_date,end_date,active) "
-        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id", *vals)
+        "freq_days,hours_interval,assignee_emp_id,start_date,end_date,due_time,active) "
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id", *vals)
     return {"ok": True, "id": sid}
 
 

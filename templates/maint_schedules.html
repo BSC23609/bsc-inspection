@@ -17,8 +17,8 @@
 .mf label{display:block;font-size:11.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
 .mf input,.mf select{width:100%;padding:10px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none}
 .mf input:focus,.mf select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
-.mf .row{display:grid;gap:14px;margin-bottom:14px}.mf .r2{grid-template-columns:1fr 1fr}
-@media(max-width:560px){.mf .r2{grid-template-columns:1fr}}
+.mf .row{display:grid;gap:14px;margin-bottom:14px}.mf .r2{grid-template-columns:1fr 1fr}.mf .r3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:560px){.mf .r2,.mf .r3{grid-template-columns:1fr}}
 .req{color:#e5484d}.opt{text-transform:none;color:var(--muted);font-weight:400}
 .pills{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
 .pill{padding:10px;border:1px solid var(--line-2);background:#fff;border-radius:9px;font-weight:600;font-size:13px;color:var(--ink-2);cursor:pointer;text-align:center}
@@ -44,6 +44,7 @@
     <span class="cnt-badge zero" id="s_cnt">Due / overdue: 0</span>
     <label class="due-only"><input type="checkbox" id="s_dueonly" onchange="sRender()"> Due only</label>
     <span style="flex:1"></span>
+    <button class="btn btn-ghost" onclick="openLeave()">Leave</button>
     <button class="btn btn-ghost" onclick="openHol()">Holidays</button>
     <button class="btn btn-primary" onclick="openPlan()">+ Add plan</button>
   </div>
@@ -73,8 +74,9 @@
       <input id="s_dom" type="number" min="1" max="31" placeholder="15">
       <div class="note">If it lands on a Sunday or holiday, it rolls to the next working day.</div>
     </div>
-    <div class="row r2">
+    <div class="row r3">
       <div><label>Start date <span class="req">*</span></label><input id="s_start" type="date"></div>
+      <div><label>Time <span class="opt">(optional)</span></label><input id="s_time" type="time"></div>
       <div><label>End date <span class="opt">(optional)</span></label><input id="s_end" type="date"></div>
     </div>
     <div class="row r2">
@@ -85,6 +87,29 @@
   </div></div>
   <div class="mfoot"><button class="btn btn-ghost" onclick="closePlan()">Cancel</button>
     <button class="btn btn-primary" id="s_save" onclick="sSave()">Save</button></div>
+</div></div>
+
+<!-- Leave modal -->
+<div class="scrim" id="leave_scrim"><div class="hmodal" style="align-self:flex-start;max-width:520px">
+  <div class="hh" style="display:flex;align-items:flex-start">
+    <div style="flex:1"><h3>STAFF ON LEAVE</h3><p>While on leave, a person gets no reminders; their due tasks go to the supervisor as "arrange cover".</p></div>
+    <a href="#" onclick="closeLeave();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="hb">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end;margin-bottom:10px">
+      <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase">Staff</label>
+        <select id="lv_emp" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px"></select></div>
+      <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase">From</label>
+        <input id="lv_from" type="date" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px"></div>
+      <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase">To</label>
+        <input id="lv_to" type="date" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px"></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:end;margin-bottom:14px">
+      <div style="flex:1"><label style="display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase">Reason</label>
+        <input id="lv_reason" placeholder="optional" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px"></div>
+      <button class="btn btn-primary" onclick="lvAdd()">Add</button>
+    </div>
+    <div id="leave_list"><div class="empty">No leave added yet.</div></div>
+  </div>
 </div></div>
 
 <!-- Holidays modal -->
@@ -157,6 +182,7 @@ function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.g
   var hd='<tr>'+cols.map(function(c,i){return'<th>'+(i===cols.length-1?('Actions '+allBtn):c[0])+'</th>';}).join('')+'</tr>';
   var body=rows.map(function(x){
     var nd=x.next_due?esc(fmtd(x.next_due)):(x.hours_due?'by hours':'—');
+    if(x.due_time&&x.next_due)nd+=' '+esc(String(x.due_time).slice(0,5));
     var tog=x.active?'<a href="#" onclick="sToggle('+x.id+',false);return false" class="ic-del">Pause</a>'
                     :'<a href="#" onclick="sToggle('+x.id+',true);return false" class="ic-edit">Resume</a>';
     return '<tr><td>'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+'</td><td>'+esc(x.title||'')+'</td>'
@@ -167,20 +193,20 @@ function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.g
   }).join('');
   host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
 }
-function sReset(){sv('s_id','');sv('s_asset','');sv('s_name','');sv('s_checklist','');sv('s_dom','');sv('s_end','');sv('s_hours','');sv('s_assignee','');
+function sReset(){sv('s_id','');sv('s_asset','');sv('s_name','');sv('s_checklist','');sv('s_dom','');sv('s_end','');sv('s_hours','');sv('s_assignee','');sv('s_time','');
   sv('s_start',today());document.getElementById('s_active').checked=true;setFreq('daily');
   document.getElementById('s_save').textContent='Save';}
 function sEdit(id){var x=SCHED.filter(function(r){return r.id===id;})[0];if(!x)return;sReset();
   sv('s_id',x.id);sv('s_asset',x.asset_id);loadChecklists();sv('s_checklist',x.checklist_id||'');sv('s_name',x.title);
   setFreq((x.freq_type||'daily').toLowerCase());sv('s_dom',x.day_of_month||'');
-  sv('s_start',(x.start_date||'').slice(0,10));sv('s_end',(x.end_date||'').slice(0,10));sv('s_hours',x.hours_interval||'');sv('s_assignee',x.assignee_emp_id||'');
+  sv('s_start',(x.start_date||'').slice(0,10));sv('s_time',(x.due_time||'').slice(0,5));sv('s_end',(x.end_date||'').slice(0,10));sv('s_hours',x.hours_interval||'');sv('s_assignee',x.assignee_emp_id||'');
   document.getElementById('s_active').checked=!!x.active;
   document.getElementById('s_title').textContent='EDIT PLAN';document.getElementById('s_save').textContent='Update';
   document.getElementById('plan_scrim').style.display='flex';}
 async function sSave(){var f=v('s_freq');
   var p={id:v('s_id')||null,asset_id:v('s_asset')||null,title:v('s_name').trim(),checklist_id:v('s_checklist')||null,
     freq_type:f,day_of_month:v('s_dom'),hours_interval:v('s_hours'),assignee_emp_id:v('s_assignee')||null,
-    start_date:v('s_start'),end_date:v('s_end'),active:document.getElementById('s_active').checked};
+    start_date:v('s_start'),due_time:v('s_time'),end_date:v('s_end'),active:document.getElementById('s_active').checked};
   if(!p.asset_id){toast('err','Select a machine');return;}if(!p.title){toast('err','Enter a task');return;}
   if((f==='monthly'||f==='quarterly')&&!p.day_of_month){toast('err','Enter a day of month');return;}
   if(!p.start_date){toast('err','Pick a start date');return;}
@@ -213,6 +239,26 @@ async function holAdd(){var d=v('h_date'),n=v('h_name').trim();if(!d){toast('err
 async function holDel(id){try{var r=await fetch('/maint/holidays/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
   var o=await r.json();if(!r.ok||!o.ok)throw 0;toast('ok','Removed');await holLoad();await sLoad();}catch(e){toast('err','Failed');}}
 document.getElementById('hol_scrim').addEventListener('click',function(e){if(e.target===this)closeHol();});
+
+/* ---------- leave ---------- */
+function openLeave(){
+  document.getElementById('lv_emp').innerHTML='<option value="">— staff —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no));}).join('');
+  sv('lv_from',today());sv('lv_to',today());document.getElementById('leave_scrim').style.display='flex';lvLoad();}
+function closeLeave(){document.getElementById('leave_scrim').style.display='none';}
+async function lvLoad(){var box=document.getElementById('leave_list');box.innerHTML='<div class="empty">Loading…</div>';
+  try{var ls=await (await fetch('/maint/leave/list',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  if(!ls.length){box.innerHTML='<div class="empty">No leave added yet.</div>';return;}
+  box.innerHTML=ls.map(function(l){var range=fmtd(l.from_date)+(l.to_date&&l.to_date!==l.from_date?(' → '+fmtd(l.to_date)):'');
+    return '<div class="hitem"><span class="d">'+esc(l.emp_name||('#'+l.emp_id))+'</span><span>'+esc(range)+(l.reason?(' · '+esc(l.reason)):'')+'</span>'
+      +'<span class="sp"></span><a href="#" class="ic-del" onclick="lvDel('+l.id+');return false">Remove</a></div>';}).join('');}
+async function lvAdd(){var eid=v('lv_emp'),f=v('lv_from'),t=v('lv_to'),rs=v('lv_reason').trim();
+  if(!eid){toast('err','Pick a staff member');return;}if(!f){toast('err','Pick a from-date');return;}
+  try{var r=await fetch('/maint/leave/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emp_id:eid,from_date:f,to_date:t,reason:rs})});
+    var o=await r.json().catch(function(){return{};});if(!r.ok||!o.ok)throw new Error(o.detail||'Failed');
+    sv('lv_reason','');toast('ok','Leave added');await lvLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+async function lvDel(id){try{var r=await fetch('/maint/leave/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+  var o=await r.json();if(!r.ok||!o.ok)throw 0;toast('ok','Removed');await lvLoad();}catch(e){toast('err','Failed');}}
+document.getElementById('leave_scrim').addEventListener('click',function(e){if(e.target===this)closeLeave();});
 
 boot();
 </script>
