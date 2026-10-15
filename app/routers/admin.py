@@ -17,7 +17,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 SETTINGS_PATH = f"{ONEDRIVE_BASE}/Config/settings.json"
 
 DEFAULT_SETTINGS = {
-    "inspectors_inward": ["Sathya", "Kumar", "Mahendran", "Dhanush"],
+    "inspectors_inward": ["Sathya", "Kumar", "Mahendran", "Dhanush", "Sam"],
     "inspectors_quality": ["Sathya", "Kumar", "Mahendran", "Dhanush", "Vignesh"],
     "qc_shearing_default": "Vignesh",
     "mills": ["SAIL", "SAIL RSP", "SAIL BSP", "JSW", "TATA", "AMNS", "NMDC", "JSPL"],
@@ -155,31 +155,24 @@ class UserIn(BaseModel):
     name: Optional[str] = ""
     mobile: Optional[str] = ""
     is_admin: Optional[bool] = False
-    is_maint: Optional[bool] = False
     active: Optional[bool] = True
     password: Optional[str] = ""   # only on create, or when explicitly changing
 
 
 @router.post("/users/save")
 async def users_save(body: UserIn, emp: dict = Depends(require_employee)):
+    # The maintenance-user flag is managed in its own popup (/users/maint-toggle),
+    # so this save never touches is_maint and can't clobber it.
     await _admin_guard(emp)
-    await _ensure_emp_cols()
     en = (body.emp_no or "").strip()
     if not en:
         raise HTTPException(400, "emp_no required")
     try:
         if body.id:
-            try:
-                await db.execute(
-                    "UPDATE employees SET emp_no=$1, name=$2, mobile=$3, is_admin=$4, active=$5, is_maint=$6 WHERE id=$7",
-                    en, (body.name or "").strip(), (body.mobile or "").strip(),
-                    bool(body.is_admin), bool(body.active), bool(body.is_maint), body.id)
-            except Exception as e:
-                print("[admin] user update is_maint fallback:", e)
-                await db.execute(
-                    "UPDATE employees SET emp_no=$1, name=$2, mobile=$3, is_admin=$4, active=$5 WHERE id=$6",
-                    en, (body.name or "").strip(), (body.mobile or "").strip(),
-                    bool(body.is_admin), bool(body.active), body.id)
+            await db.execute(
+                "UPDATE employees SET emp_no=$1, name=$2, mobile=$3, is_admin=$4, active=$5 WHERE id=$6",
+                en, (body.name or "").strip(), (body.mobile or "").strip(),
+                bool(body.is_admin), bool(body.active), body.id)
             if body.password:
                 await db.execute(
                     "UPDATE employees SET password_hash=$1, token_version=COALESCE(token_version,0)+1 WHERE id=$2",
@@ -191,19 +184,11 @@ async def users_save(body: UserIn, emp: dict = Depends(require_employee)):
         exists = await db.fetchval("SELECT id FROM employees WHERE lower(emp_no)=lower($1)", en)
         if exists:
             raise HTTPException(400, "an employee with that code already exists")
-        try:
-            new_id = await db.fetchval(
-                "INSERT INTO employees (emp_no, name, mobile, password_hash, is_admin, is_maint, active, token_version) "
-                "VALUES ($1,$2,$3,$4,$5,$6,true,0) RETURNING id",
-                en, (body.name or "").strip(), (body.mobile or "").strip(),
-                hash_pw(body.password), bool(body.is_admin), bool(body.is_maint))
-        except Exception as e:
-            print("[admin] user insert is_maint fallback:", e)
-            new_id = await db.fetchval(
-                "INSERT INTO employees (emp_no, name, mobile, password_hash, is_admin, active, token_version) "
-                "VALUES ($1,$2,$3,$4,$5,true,0) RETURNING id",
-                en, (body.name or "").strip(), (body.mobile or "").strip(),
-                hash_pw(body.password), bool(body.is_admin))
+        new_id = await db.fetchval(
+            "INSERT INTO employees (emp_no, name, mobile, password_hash, is_admin, active, token_version) "
+            "VALUES ($1,$2,$3,$4,$5,true,0) RETURNING id",
+            en, (body.name or "").strip(), (body.mobile or "").strip(),
+            hash_pw(body.password), bool(body.is_admin))
         return {"ok": True, "id": new_id}
     except HTTPException:
         raise
@@ -247,4 +232,24 @@ async def users_toggle(body: UserToggleIn, emp: dict = Depends(require_employee)
     await db.execute(
         "UPDATE employees SET active=$1, token_version=COALESCE(token_version,0)+1 WHERE id=$2",
         bool(body.active), body.id)
+    return {"ok": True}
+
+
+class MaintToggleIn(BaseModel):
+    id: int
+    is_maint: bool
+
+
+@router.post("/users/maint-toggle")
+async def users_maint_toggle(body: MaintToggleIn, emp: dict = Depends(require_employee)):
+    """Mark / unmark an employee as a maintenance user (from the Users popup)."""
+    await _admin_guard(emp)
+    await _ensure_emp_cols()
+    try:
+        await db.execute("UPDATE employees SET is_maint=$1 WHERE id=$2", bool(body.is_maint), body.id)
+    except Exception as e:
+        # column still absent — add it then retry once
+        print("[admin] maint-toggle retry:", e)
+        await db.execute("ALTER TABLE employees ADD COLUMN IF NOT EXISTS is_maint BOOLEAN DEFAULT false")
+        await db.execute("UPDATE employees SET is_maint=$1 WHERE id=$2", bool(body.is_maint), body.id)
     return {"ok": True}

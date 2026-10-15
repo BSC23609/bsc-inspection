@@ -173,8 +173,8 @@ async function pdiEdit(rno){
 async function pdiSubmit(){
   var items=collectItems();
   if(!items.length){toast('err','Add at least one item row');return;}
+  if(!v('pdi_report_no')){await pdiNextNumber();}          // try to fill it; server assigns if still blank
   var payload={report_no:v('pdi_report_no'),report_date:v('pdi_date'),customer:v('pdi_customer'),items:items,inspected_by:v('pdi_inspected')};
-  if(!payload.report_no){toast('err','No report number — reload the page');return;}
   var b=document.getElementById('pdi_save');b.disabled=true;var lbl=b.textContent;b.textContent='Submitting…';
   try{var r=await fetch('/pdi/submit',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Submit failed');

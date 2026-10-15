@@ -141,9 +141,9 @@ def _rep(body: PdiIn):
 @router.post("/submit")
 async def pdi_submit(body: PdiIn, emp: dict = Depends(require_employee)):
     await ensure_table()
-    if not body.report_no:
-        raise HTTPException(400, "report_no required")
-    rno = body.report_no.strip()
+    rno = (body.report_no or "").strip()
+    if not rno:                       # auto-assign if the form didn't have a number yet
+        rno = await _next_number()
     by = _emp_name(emp)
     try:
         rdate = date.fromisoformat(str(body.report_date)[:10]) if body.report_date else None

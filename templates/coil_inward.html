@@ -305,7 +305,8 @@ function rebuildPills(target,values,withOther){
 }
 async function coilSettings(){
   try{var r=await fetch('/settings',{cache:'no-store'});if(!r.ok)return;var s=await r.json();
-    rebuildPills('c_make',s.mills,true);rebuildPills('c_grade',s.grades,true);rebuildPills('c_insp',s.inspectors_inward,true);
+    var insp=(s.inspectors_inward||[]).slice();if(insp.indexOf('Sam')<0)insp.push('Sam');
+    rebuildPills('c_make',s.mills,true);rebuildPills('c_grade',s.grades,true);rebuildPills('c_insp',insp,true);
   }catch(e){}
 }
 (function(){coilSettings().then(function(){coilReset();coilLoad();});})();
