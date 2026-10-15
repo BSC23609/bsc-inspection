@@ -9,6 +9,7 @@ overdue escalation to a supervisor) via WATI.
 
 All tables are Neon and self-create on first use.
 """
+import os
 import json
 import re
 import base64
@@ -27,7 +28,9 @@ from ..auth import require_employee
 # newer maintenance vars) can never crash the whole app at import time.
 WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "")
 WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "")
-WATI_MAINT_BREAKDOWN_TEMPLATE = getattr(_cfg, "WATI_MAINT_BREAKDOWN_TEMPLATE", "bsc_breakdown_alert")
+# New template (5 vars + ref-based dynamic button) is bsc_breakdown_alert2.
+# Env var still wins if ever set; otherwise use the new approved template directly.
+WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") or "bsc_breakdown_alert2"
 MAINT_SUPERVISOR_MOBILE       = getattr(_cfg, "MAINT_SUPERVISOR_MOBILE", "")
 AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
 ONEDRIVE_BASE                 = getattr(_cfg, "ONEDRIVE_BASE", "BSC Inspections")
