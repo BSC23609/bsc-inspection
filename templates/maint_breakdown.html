@@ -51,6 +51,7 @@
 <div class="panel">
   <div class="toolbar">
     <span style="flex:1"></span>
+    {% if emp.is_admin %}<button class="btn btn-ghost" style="color:#c23438;border-color:#f3c9cb" onclick="bdDeleteAll()">Delete all</button>{% endif %}
     <button class="btn btn-primary" onclick="openBD()">+ Raise breakdown</button>
   </div>
   <div class="panel-body"><div id="bd_list"><div class="empty">Loading…</div></div></div>
@@ -93,6 +94,7 @@
 {% block scripts %}
 <script>
 var ASSETS=[],EMPS=[],EMPBY={},TYPES=['Electrical','Mechanical','Hydraulic','Other'],TYPE_STAFF={},ASSET_ELEC={},PHOTOS=[];
+var IS_ADMIN={{ 'true' if emp.is_admin else 'false' }};
 function maintUsers(){var m=EMPS.filter(function(e){return e.is_maint;});return m.length?m:EMPS;}
 function uname(id){var e=EMPBY[id]||{};return (e.name||('#'+id))+(e.mobile?(' · '+e.mobile):'');}
 function renderAssignees(sel,multi){sel=sel||[];var set={};sel.forEach(function(x){set[String(x)]=1;});
@@ -189,10 +191,21 @@ async function bdLoad(){var box=document.getElementById('bd_list');box.innerHTML
       +(b.btype?('<span class="tchip">'+esc(b.btype)+'</span>'):'')+'</div></div>'
       +'<div class="pr">'+esc(b.problem||'—')+'<div class="meta">'+meta+'</div></div>'
       +'<span class="sp"></span>'+(isOpen?('<a href="#" class="ic-edit" style="font-weight:700" onclick="bdClose('+b.id+');return false">Close</a>'):'')
+      +(IS_ADMIN?('<a href="#" style="font-weight:700;color:#c23438;margin-left:14px" onclick="bdDelete('+b.id+');return false">Delete</a>'):'')
       +'</div>';}).join('');}
 async function bdClose(id){var rm=prompt('Close this breakdown — remarks (optional):','');if(rm===null)return;
   try{var r=await fetch('/maint/breakdown/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,remarks:rm})});
     var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok','Closed');await bdLoad();}catch(e){toast('err','Failed');}}
+async function bdDelete(id){if(!IS_ADMIN)return;if(!confirm('Delete this breakdown ticket permanently? This cannot be undone.'))return;
+  try{var r=await fetch('/maint/breakdown/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');toast('ok','Deleted');await bdLoad();}
+  catch(e){toast('err',(e&&e.message)||'Failed');}}
+async function bdDeleteAll(){if(!IS_ADMIN)return;if(!confirm('Delete ALL breakdown tickets permanently? This cannot be undone.'))return;
+  if(!confirm('Are you sure? Every raised ticket will be removed.'))return;
+  try{var r=await fetch('/maint/breakdowns/delete-all',{method:'POST',headers:{'Content-Type':'application/json'}});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
+    toast('ok','Deleted '+(d.deleted||0)+' ticket(s)');await bdLoad();}
+  catch(e){toast('err',(e&&e.message)||'Failed');}}
 boot();
 </script>
 {% endblock %}

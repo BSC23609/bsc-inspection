@@ -1547,6 +1547,34 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True}
 
 
+def _require_admin(emp: dict):
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admin only")
+
+
+@router.post("/breakdown/delete")
+async def breakdown_delete(body: dict, emp: dict = Depends(require_employee)):
+    """Delete ONE raised ticket (admin only)."""
+    await ensure_tables()
+    _require_admin(emp)
+    try:
+        bid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Missing id")
+    await db.execute("DELETE FROM maint_breakdowns WHERE id=$1", bid)
+    return {"ok": True}
+
+
+@router.post("/breakdowns/delete-all")
+async def breakdowns_delete_all(emp: dict = Depends(require_employee)):
+    """Delete EVERY raised ticket (admin only)."""
+    await ensure_tables()
+    _require_admin(emp)
+    n = await db.fetchval("SELECT COUNT(*) FROM maint_breakdowns")
+    await db.execute("DELETE FROM maint_breakdowns")
+    return {"ok": True, "deleted": int(n or 0)}
+
+
 # =======================================================================
 #  DO / COMPLETE + HISTORY
 # =======================================================================
