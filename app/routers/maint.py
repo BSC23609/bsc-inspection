@@ -642,7 +642,68 @@ async def ensure_tables():
                     aid, f"{kind} PM", cid, ft, dom, fdays, today)
     except Exception as e:
         print("[maint] checklist seed skipped:", e)
+    # one-time: apply the Annual PM Schedule dates to each machine's quarterly plan
+    try:
+        await db.execute("CREATE TABLE IF NOT EXISTS maint_meta (mkey TEXT PRIMARY KEY, mval TEXT)")
+        done = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey=$1", ANNUAL_PLAN_KEY)
+        if not done:
+            await _apply_annual_plan()
+            await db.execute(
+                "INSERT INTO maint_meta (mkey,mval) VALUES ($1,'1') ON CONFLICT (mkey) DO NOTHING",
+                ANNUAL_PLAN_KEY)
+    except Exception as e:
+        print("[maint] annual plan apply skipped:", e)
     _ensured = True
+
+
+# --- Annual Preventive Maintenance Schedule (BSCQMS-PRD-005) ---------------
+# Each machine's quarterly PM: day-of-month + the first (start) month; it then
+# repeats every 3 months. Applied once to the quarterly schedules, at 09:00.
+ANNUAL_PLAN_YEAR = 2026
+ANNUAL_PLAN_KEY = "annual_plan_2026_v1"   # bump to re-apply after editing the plan
+SCHEDULE_PLAN = {
+    'DG-001': (15, 3), 'DG-002': (18, 1), 'EOT-001': (5, 1), 'EOT-002': (3, 3),
+    'EOT-003': (26, 2), 'EOT-004': (8, 1), 'EOT-005': (8, 3), 'EOT-006': (8, 2),
+    'EOT-007': (24, 3), 'EOT-008': (27, 1), 'EOT-009': (27, 3), 'M/C-001': (2, 1),
+    'M/C-002': (2, 2), 'M/C-003': (5, 2), 'M/C-005': (12, 1), 'M/C-006': (5, 3),
+    'M/C-007': (11, 2), 'M/C-008': (15, 1), 'M/C-009': (14, 2), 'M/C-010': (17, 2),
+    'M/C-011': (18, 3), 'M/C-013': (21, 3), 'M/C-015': (30, 1), 'M/C-017': (3, 2),
+    'M/C-018': (30, 3), 'M/C-019': (3, 1), 'M/C-020': (21, 1), 'M/C-021': (20, 2),
+    'MC-001': (24, 1), 'MC-002': (23, 2),
+}
+
+
+def _next_plan_start(day, sm, today):
+    """Next upcoming quarterly date (day-of-month, months sm,sm+3,sm+6,sm+9) on/after today."""
+    months = [((sm - 1 + 3 * k) % 12) + 1 for k in range(4)]
+    best = None
+    for y in (today.year, today.year + 1):
+        for mo in months:
+            dim = calendar.monthrange(y, mo)[1]
+            d = date(y, mo, min(day, dim))
+            if d >= today and (best is None or d < best):
+                best = d
+    return best or date(today.year, sm, min(day, calendar.monthrange(today.year, sm)[1]))
+
+
+async def _apply_annual_plan():
+    today = _today()
+    applied = 0
+    for code, (day, sm) in SCHEDULE_PLAN.items():
+        try:
+            aid = await db.fetchval("SELECT id FROM maint_assets WHERE lower(code)=lower($1)", code)
+            if not aid:
+                continue
+            start = _next_plan_start(day, sm, today)   # schedule forward from today
+            await db.execute(
+                "UPDATE maint_schedules SET freq_type='quarterly', day_of_month=$2, "
+                "freq_days=90, start_date=$3, due_time='09:00' "
+                "WHERE asset_id=$1 AND lower(COALESCE(freq_type,''))='quarterly'",
+                aid, day, start)
+            applied += 1
+        except Exception as e:
+            print("[maint] annual plan row skipped:", code, e)
+    print(f"[maint] annual plan applied to {applied} machines")
 
 
 def _today() -> date:
