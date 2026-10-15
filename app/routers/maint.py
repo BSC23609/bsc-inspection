@@ -1296,7 +1296,7 @@ async def _send_breakdown_alert(bd: dict):
     problem = (f"{btype}: {detail}" if btype else detail)
     by = (bd.get("reported_by") or "—").strip() or "—"
     tm = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
-    params = [label, problem, by, tm, "maint"]   # 5th = dynamic button suffix
+    params = [label, problem, by, tm]   # matches the approved template's {{1}}–{{4}} exactly
     targets, seen = [], set()
     # all assigned maintenance users (multi) get the alert
     aids = bd.get("assignees") or ([bd["assignee_emp_id"]] if bd.get("assignee_emp_id") else [])
@@ -1362,7 +1362,7 @@ async def wati_test(to: str = "", emp: dict = Depends(require_employee)):
         return _json({"ok": False,
                       "detail": "No number. Add ?to=919XXXXXXXXX to the URL, or set MAINT_SUPERVISOR_MOBILE."})
     params = ["TEST MACHINE", "Other: WATI test message", "Diagnostics",
-              datetime.now(IST).strftime("%d-%m-%Y %H:%M"), "maint"]
+              datetime.now(IST).strftime("%d-%m-%Y %H:%M")]
     ok, detail = await wati.send_template(WATI_MAINT_BREAKDOWN_TEMPLATE, num, params)
     return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_BREAKDOWN_TEMPLATE, "wati_reply": detail})
 
