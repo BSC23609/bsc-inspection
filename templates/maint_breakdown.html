@@ -166,8 +166,11 @@ async function bdRaise(){var aid=v('b_asset'),bt=v('b_type'),prob=v('b_problem')
   try{var r=await fetch('/maint/breakdown/raise',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({asset_id:aid,btype:bt,problem:prob,assignees:asg,raised_at:when,remarks:rm,photos:PHOTOS})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
-    var n=(d.alert||[]).filter(function(x){return x.result==='sent';}).length;
-    toast('ok','Breakdown raised'+(n?(' · alerted '+n):'')+(d.photos?(' · '+d.photos+' photo(s)'):''));closeBD();await bdLoad();}
+    var al=d.alert||[];var n=al.filter(function(x){return x.result==='sent';}).length;
+    var fail=al.filter(function(x){return x.result!=='sent';});
+    toast('ok','Breakdown raised'+(n?(' · alerted '+n):'')+(d.photos?(' · '+d.photos+' photo(s)'):''));
+    if(!n){toast('err', al.length?('WhatsApp not sent: '+(fail[0].result||'')):'WhatsApp not sent: no recipient (check mobiles / supervisor number)');}
+    closeBD();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{btn.disabled=false;btn.textContent=l;}}
 document.getElementById('bd_scrim').addEventListener('click',function(e){if(e.target===this)closeBD();});
 
