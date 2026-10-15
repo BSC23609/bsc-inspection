@@ -150,20 +150,27 @@ async def pdi_submit(body: PdiIn, emp: dict = Depends(require_employee)):
         rdate = date.fromisoformat(str(body.report_date)[:10]) if body.report_date else None
     except ValueError:
         rdate = None
-    await db.execute(
-        "INSERT INTO pdi_reports (report_no,report_date,customer,items,inspected_by,reviewed_by,"
-        "approved_by,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) "
-        "ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,"
-        "customer=EXCLUDED.customer,items=EXCLUDED.items,inspected_by=EXCLUDED.inspected_by,"
-        "reviewed_by=EXCLUDED.reviewed_by,approved_by=EXCLUDED.approved_by,updated_at=now()",
-        rno, rdate, body.customer or "", (body.items or []),
-        body.inspected_by or "", body.reviewed_by or "", body.approved_by or "", by)
+    try:
+        await db.execute(
+            "INSERT INTO pdi_reports (report_no,report_date,customer,items,inspected_by,reviewed_by,"
+            "approved_by,created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) "
+            "ON CONFLICT (report_no) DO UPDATE SET report_date=EXCLUDED.report_date,"
+            "customer=EXCLUDED.customer,items=EXCLUDED.items,inspected_by=EXCLUDED.inspected_by,"
+            "reviewed_by=EXCLUDED.reviewed_by,approved_by=EXCLUDED.approved_by,updated_at=now()",
+            rno, rdate, body.customer or "", (body.items or []),
+            body.inspected_by or "", body.reviewed_by or "", body.approved_by or "", by)
+    except Exception as e:
+        print("[pdi-submit]", repr(e))
+        raise HTTPException(500, f"Save failed: {e}")
     rep = _rep(body)
-
-    async def _bg():
-        await _write_pdf(rno, rep)
-        await _append_csv(rep, by)
-    asyncio.create_task(_bg())
+    # PDF + CSV are best-effort; never let them fail the submit.
+    try:
+        async def _bg():
+            await _write_pdf(rno, rep)
+            await _append_csv(rep, by)
+        asyncio.create_task(_bg())
+    except Exception as e:
+        print("[pdi-bg]", repr(e))
     return {"ok": True, "report_no": rno}
 
 
