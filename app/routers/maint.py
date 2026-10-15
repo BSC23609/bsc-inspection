@@ -1367,6 +1367,49 @@ async def wati_test(to: str = "", emp: dict = Depends(require_employee)):
     return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_BREAKDOWN_TEMPLATE, "wati_reply": detail})
 
 
+@router.get("/wati-template")
+async def wati_template(name: str = "", emp: dict = Depends(require_employee)):
+    """Diagnostics: read ONE approved template's definition straight from WATI, so we can
+    see its exact body variables + button. Open qms.bharatsteels.in/maint/wati-template"""
+    await ensure_tables()
+    name = name or WATI_MAINT_BREAKDOWN_TEMPLATE
+    j, detail = await wati.fetch_templates()
+    if j is None:
+        return _json({"error": detail})
+    items = None
+    if isinstance(j, dict):
+        items = (j.get("messageTemplates") or j.get("templates")
+                 or j.get("data") or j.get("result") or [])
+    elif isinstance(j, list):
+        items = j
+    items = items or []
+
+    def _nm(t):
+        return t.get("elementName") or t.get("templateName") or t.get("name") or ""
+
+    match = next((t for t in items if _nm(t) == name), None)
+    if not match:
+        return _json({"error": f"template '{name}' not found",
+                      "available": [_nm(t) for t in items][:60]})
+    # Pull out the useful bits: body text, its {{n}} count, and buttons
+    body_text = ""
+    buttons = None
+    comps = match.get("components") or match.get("template") or []
+    if isinstance(comps, list):
+        for c in comps:
+            ct = (c.get("type") or "").upper()
+            if ct == "BODY":
+                body_text = c.get("text") or body_text
+            if ct == "BUTTONS":
+                buttons = c.get("buttons")
+    body_text = body_text or match.get("body") or ""
+    if buttons is None:
+        buttons = match.get("buttons")
+    var_count = len(re.findall(r"\{\{\s*\d+\s*\}\}", body_text or ""))
+    return _json({"name": name, "body_text": body_text, "body_variable_count": var_count,
+                  "buttons": buttons, "raw": match})
+
+
 # ---- fixed maintenance person per breakdown type (hard-coded in the backend) ----
 # Mechanical -> Velu C ; Hydraulic -> Surajit Sasanka Maity. Electrical is per-asset
 # (maint_asset_elec). Matched to the employees table by mobile (preferred) or name.

@@ -72,6 +72,23 @@ def status() -> dict:
     }
 
 
+async def fetch_templates():
+    """GET every message template from WATI (diagnostics). Returns (json, detail)."""
+    if not (WATI_BASE_URL and WATI_TOKEN):
+        return None, "WATI not configured"
+    base = (WATI_BASE_URL or "").rstrip("/")
+    url = base + ("/getMessageTemplates" if base.lower().endswith("/api/v1")
+                  else "/api/v1/getMessageTemplates")
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.get(url, headers={"Authorization": _auth()},
+                            params={"pageSize": 500, "pageNumber": 0})
+            j = r.json() if r.content else {}
+    except Exception as e:
+        return None, f"fetch failed: {e}"
+    return j, "ok"
+
+
 async def send_template(template: str, number: str, params, broadcast: str = ""):
     """Send any approved WATI template. `params` is an ordered list of values,
     mapped to WATI's positional parameter names ("1","2",...). Returns (ok, detail)."""
