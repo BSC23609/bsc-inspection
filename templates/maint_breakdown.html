@@ -31,6 +31,7 @@
 .bd-item .mac{font-weight:700;color:var(--acc-ink);min-width:150px}
 .bd-item .pr{color:var(--ink-2);flex:1}.bd-item .meta{color:var(--muted);font-size:12px;margin-top:2px}
 .bd-item .sp{flex:1}
+.bd-item.bd-hi{background:#fff7e6;outline:2px solid #f0b429;border-radius:10px;padding-left:10px;padding-right:10px}
 .chip{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
 .chip.open{background:#fdecec;color:#c23438}.chip.closed{background:#e3f6ee;color:#0a7d55}
 .tchip{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px;background:#eef2f7;color:#41506a;margin-left:6px}
@@ -131,7 +132,15 @@ async function boot(){
   try{TYPE_STAFF=await (await fetch('/maint/type-staff/list',{cache:'no-store'})).json();}catch(e){TYPE_STAFF={};}
   try{ASSET_ELEC=await (await fetch('/maint/asset-elec/list',{cache:'no-store'})).json();}catch(e){ASSET_ELEC={};}
   document.getElementById('b_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
-  bdLoad();
+  await bdLoad();highlightFromUrl();
+}
+/* open a specific breakdown when arriving from the WhatsApp button (?id=…) */
+function highlightFromUrl(){
+  var id;try{id=new URLSearchParams(location.search).get('id');}catch(e){id='';}
+  if(!id)return;
+  var el=document.getElementById('bd-row-'+id);
+  if(el){el.classList.add('bd-hi');el.scrollIntoView({behavior:'smooth',block:'center'});}
+  else{toast('err','Breakdown #'+id+' isn’t in the current list (it may be closed or older).');}
 }
 /* ---- raise modal ---- */
 function openBD(){PHOTOS=[];document.getElementById('b_thumbs').innerHTML='';sv('b_type','');sv('b_asset','');
@@ -187,7 +196,7 @@ async function bdLoad(){var box=document.getElementById('bd_list');box.innerHTML
     var meta='Raised '+fmtdt(b.raised_at)+' by '+esc(b.reported_by||'—')+' · '+esc(who)
       +(b.remarks?(' · '+esc(b.remarks)):'')+(np?(' · '+np+' photo(s)'):'')
       +(isOpen?'':(' · closed '+fmtdt(b.closed_at)+(b.closed_by?(' by '+esc(b.closed_by)):'')));
-    return '<div class="bd-item"><div class="mac">'+esc(mac)+'<div><span class="chip '+(isOpen?'open':'closed')+'">'+(isOpen?'OPEN':'CLOSED')+'</span>'
+    return '<div class="bd-item" id="bd-row-'+b.id+'"><div class="mac">'+esc(mac)+'<div><span class="chip '+(isOpen?'open':'closed')+'">'+(isOpen?'OPEN':'CLOSED')+'</span>'
       +(b.btype?('<span class="tchip">'+esc(b.btype)+'</span>'):'')+'</div></div>'
       +'<div class="pr">'+esc(b.problem||'—')+'<div class="meta">'+meta+'</div></div>'
       +'<span class="sp"></span>'+(isOpen?('<a href="#" class="ic-edit" style="font-weight:700" onclick="bdClose('+b.id+');return false">Close</a>'):'')

@@ -1296,7 +1296,11 @@ async def _send_breakdown_alert(bd: dict):
     problem = (f"{btype}: {detail}" if btype else detail)
     by = (bd.get("reported_by") or "—").strip() or "—"
     tm = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
-    params = [label, problem, by, tm]   # matches the approved template's {{1}}–{{4}} exactly
+    ref = str(bd.get("id") or "")
+    # Template order: {{1}}=Ref (also the button URL ?id=), {{2}}=Machine, {{3}}=Problem,
+    # {{4}}=Reported by, {{5}}=Time. Keeping the ref in slot 1 makes the dynamic button URL
+    # https://qms.bharatsteels.in/maint/breakdown?id={{1}} a valid link to this exact breakdown.
+    params = [ref, label, problem, by, tm]
     targets, seen = [], set()
     # all assigned maintenance users (multi) get the alert
     aids = bd.get("assignees") or ([bd["assignee_emp_id"]] if bd.get("assignee_emp_id") else [])
@@ -1361,7 +1365,7 @@ async def wati_test(to: str = "", emp: dict = Depends(require_employee)):
     if not num:
         return _json({"ok": False,
                       "detail": "No number. Add ?to=919XXXXXXXXX to the URL, or set MAINT_SUPERVISOR_MOBILE."})
-    params = ["TEST MACHINE", "Other: WATI test message", "Diagnostics",
+    params = ["0", "TEST MACHINE", "Other: WATI test message", "Diagnostics",
               datetime.now(IST).strftime("%d-%m-%Y %H:%M")]
     ok, detail = await wati.send_template(WATI_MAINT_BREAKDOWN_TEMPLATE, num, params)
     return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_BREAKDOWN_TEMPLATE, "wati_reply": detail})
