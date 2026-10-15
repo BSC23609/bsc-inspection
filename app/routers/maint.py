@@ -1474,7 +1474,10 @@ async def asset_elec_save(body: dict, emp: dict = Depends(require_employee)):
 @router.post("/breakdown/raise")
 async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
-    aid = body.get("asset_id")
+    try:
+        aid = int(body.get("asset_id"))          # column is INT — coerce the form's string
+    except (TypeError, ValueError):
+        aid = None
     btype = _norm_type(body.get("btype"))
     problem = (body.get("problem") or "").strip()
     # one or many maintenance users
