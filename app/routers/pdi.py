@@ -36,6 +36,16 @@ async def ensure_table():
             pdf_path TEXT, created_by TEXT, created_at TIMESTAMPTZ DEFAULT now(),
             updated_at TIMESTAMPTZ)
     """)
+    # Self-heal: older copies of this table may be missing newer columns, which
+    # makes the ON CONFLICT ... DO UPDATE (e.g. updated_at=now()) fail. Add any gaps.
+    for col, typ in (("report_date", "DATE"), ("customer", "TEXT"), ("items", "JSONB"),
+                     ("inspected_by", "TEXT"), ("reviewed_by", "TEXT"), ("approved_by", "TEXT"),
+                     ("pdf_path", "TEXT"), ("created_by", "TEXT"),
+                     ("created_at", "TIMESTAMPTZ"), ("updated_at", "TIMESTAMPTZ")):
+        try:
+            await db.execute(f"ALTER TABLE pdi_reports ADD COLUMN IF NOT EXISTS {col} {typ}")
+        except Exception as e:
+            print("[pdi-ensure]", col, e)
     _ensured = True
 
 
