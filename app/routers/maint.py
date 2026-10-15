@@ -660,16 +660,43 @@ async def ensure_tables():
 # Each machine's quarterly PM: day-of-month + the first (start) month; it then
 # repeats every 3 months. Applied once to the quarterly schedules, at 09:00.
 ANNUAL_PLAN_YEAR = 2026
-ANNUAL_PLAN_KEY = "annual_plan_2026_v1"   # bump to re-apply after editing the plan
+ANNUAL_PLAN_KEY = "annual_plan_2026_v2"   # bump to re-apply after editing the plan
+# code -> (day_of_month, start_month, name, location). All 32 machines from the
+# Annual PM Schedule; the two duplicated codes were given unique codes:
+#   TMT Coil Straightening cum Bending -> M/C-012 ; Transformer 800 KVA -> M/C-022
 SCHEDULE_PLAN = {
-    'DG-001': (15, 3), 'DG-002': (18, 1), 'EOT-001': (5, 1), 'EOT-002': (3, 3),
-    'EOT-003': (26, 2), 'EOT-004': (8, 1), 'EOT-005': (8, 3), 'EOT-006': (8, 2),
-    'EOT-007': (24, 3), 'EOT-008': (27, 1), 'EOT-009': (27, 3), 'M/C-001': (2, 1),
-    'M/C-002': (2, 2), 'M/C-003': (5, 2), 'M/C-005': (12, 1), 'M/C-006': (5, 3),
-    'M/C-007': (11, 2), 'M/C-008': (15, 1), 'M/C-009': (14, 2), 'M/C-010': (17, 2),
-    'M/C-011': (18, 3), 'M/C-013': (21, 3), 'M/C-015': (30, 1), 'M/C-017': (3, 2),
-    'M/C-018': (30, 3), 'M/C-019': (3, 1), 'M/C-020': (21, 1), 'M/C-021': (20, 2),
-    'MC-001': (24, 1), 'MC-002': (23, 2),
+    'DG-001': (15, 3, 'GEN SET 42 KVA', 'WEIGHMENT AREA'),
+    'DG-002': (18, 1, 'GEN SET 320 KVA', 'NEAR OFFICE'),
+    'EOT-001': (5, 1, 'EOT CRANE - 40 TON', 'SHED A'),
+    'EOT-002': (3, 3, 'EOT CRANE - 15 TON', 'SHED A'),
+    'EOT-003': (26, 2, 'EOT CRANE - 15 TON', 'SHED F'),
+    'EOT-004': (8, 1, 'EOT CRANE - 15 TON', 'SHED B'),
+    'EOT-005': (8, 3, 'EOT CRANE - 15 TON', 'SHED C'),
+    'EOT-006': (8, 2, 'EOT CRANE - 35 TON', 'SHED B'),
+    'EOT-007': (24, 3, 'EOT CRANE - 15 TON', 'SHED E'),
+    'EOT-008': (27, 1, 'EOT CRANE - 15 TON', 'SHED E'),
+    'EOT-009': (27, 3, 'EOT CRANE-15TON', 'SHED F'),
+    'M/C-001': (2, 1, 'CTL-1 -6 MM TO 25 MM', 'SHED A'),
+    'M/C-002': (2, 2, 'CTL-2 1.6 MM TO 6 MM', 'SHED A'),
+    'M/C-003': (5, 2, 'TRANSFER TROLLEY', 'SHED A'),
+    'M/C-005': (12, 1, 'TMT BENDING M/C-8MM to 32 MM', 'SHED C'),
+    'M/C-006': (5, 3, 'AIR COMPRESSOR', 'SHED A'),
+    'M/C-007': (11, 2, 'TMT COIL STRAIGHTENING M/C', 'SHED C'),
+    'M/C-008': (15, 1, 'TMT COIL STRAIGHTENINGCUM BENDING', 'SHED C'),
+    'M/C-009': (14, 2, 'RO PLANT', 'NEAR SHED B'),
+    'M/C-010': (17, 2, 'WEIGHING M/C 100 TON', 'NEAR C SHED'),
+    'M/C-011': (18, 3, 'WEIGHING M/C 100 TON', 'NEAR C SHED'),
+    'M/C-012': (12, 3, 'TMT COIL STRAIGHTENING CUM BENDING', 'SHED C'),
+    'M/C-013': (21, 3, 'EMBOSSING M/C', 'CTL-1'),
+    'M/C-015': (30, 1, 'SHEARING MACHINE', 'SHED B'),
+    'M/C-017': (3, 2, 'LEVELLER MACHINE', 'SHED B'),
+    'M/C-018': (30, 3, 'IRON WORKER MACHINE', 'SHED B'),
+    'M/C-019': (3, 1, 'TRANSFER TROLLEY', 'SHED A'),
+    'M/C-020': (9, 2, 'SEMI-GANDRY CRANE', 'SHED B'),
+    'M/C-021': (20, 2, 'BOOSTER PUMP', 'ADMIN OFFICE'),
+    'M/C-022': (21, 1, 'TRANSFORMER 800 KVA', 'EB ROOM'),
+    'MC-001': (24, 1, 'ESCORT -14TON', 'SHED A'),
+    'MC-002': (23, 2, 'ESCORT - 14 TON', 'YARD'),
 }
 
 
@@ -687,23 +714,40 @@ def _next_plan_start(day, sm, today):
 
 
 async def _apply_annual_plan():
+    """Create/refresh every machine's quarterly PM straight from the Annual Schedule,
+    at 09:00 — no Add Plan needed. Missing machines are created."""
     today = _today()
-    applied = 0
-    for code, (day, sm) in SCHEDULE_PLAN.items():
+    made = 0
+    for code, (day, sm, name, loc) in SCHEDULE_PLAN.items():
         try:
             aid = await db.fetchval("SELECT id FROM maint_assets WHERE lower(code)=lower($1)", code)
+            if not aid:   # create the machine if it isn't in the register yet
+                aid = await db.fetchval(
+                    "INSERT INTO maint_assets (code,name,location,active,hours_updated_at) "
+                    "VALUES ($1,$2,$3,true,now()) ON CONFLICT (code) DO NOTHING RETURNING id",
+                    code, name, loc)
+                if not aid:
+                    aid = await db.fetchval("SELECT id FROM maint_assets WHERE lower(code)=lower($1)", code)
             if not aid:
                 continue
             start = _next_plan_start(day, sm, today)   # schedule forward from today
-            await db.execute(
-                "UPDATE maint_schedules SET freq_type='quarterly', day_of_month=$2, "
-                "freq_days=90, start_date=$3, due_time='09:00' "
-                "WHERE asset_id=$1 AND lower(COALESCE(freq_type,''))='quarterly'",
-                aid, day, start)
-            applied += 1
+            sid = await db.fetchval(
+                "SELECT id FROM maint_schedules WHERE asset_id=$1 AND lower(COALESCE(freq_type,''))='quarterly' "
+                "ORDER BY id LIMIT 1", aid)
+            if sid:
+                await db.execute(
+                    "UPDATE maint_schedules SET freq_type='quarterly', day_of_month=$2, "
+                    "freq_days=90, start_date=$3, due_time='09:00', active=true WHERE id=$1",
+                    sid, day, start)
+            else:   # no quarterly plan yet -> create one from the annual schedule
+                await db.execute(
+                    "INSERT INTO maint_schedules (asset_id,title,freq_type,day_of_month,freq_days,"
+                    "start_date,due_time,active) VALUES ($1,'Quarterly PM','quarterly',$2,90,$3,'09:00',true)",
+                    aid, day, start)
+            made += 1
         except Exception as e:
             print("[maint] annual plan row skipped:", code, e)
-    print(f"[maint] annual plan applied to {applied} machines")
+    print(f"[maint] annual plan applied to {made} machines")
 
 
 def _today() -> date:
