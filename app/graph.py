@@ -82,27 +82,38 @@ async def get_item_id(token: str, path: str) -> str | None:
 
 
 async def table_columns(token: str, item_id: str, table: str) -> list[str]:
-    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}/columns?$select=name"
-    async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+    """The table's real header row (every column, in order). Uses headerRowRange,
+    which — unlike the /columns collection — always returns the full width."""
+    base = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}"
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.get(f"{base}/headerRowRange?$select=values",
+                        headers={"Authorization": f"Bearer {token}"})
+        if r.status_code == 200:
+            vals = r.json().get("values") or [[]]
+            return ["" if v is None else str(v) for v in (vals[0] if vals else [])]
+        r = await c.get(f"{base}/columns?$select=name&$top=2000",
+                        headers={"Authorization": f"Bearer {token}"})
     if r.status_code != 200:
         return []
     return [col.get("name", "") for col in (r.json().get("value") or [])]
 
 
 async def ensure_table_columns(token: str, item_id: str, table: str, expected: list[str]):
-    """Add any missing trailing columns so the table holds at least `expected`."""
+    """Add only the expected columns whose names the table doesn't have yet."""
     cur = await table_columns(token, item_id, table)
+    have = {h.strip().lower() for h in cur}
+    missing = [h for h in expected if h.strip().lower() not in have]
     added = 0
     async with httpx.AsyncClient(timeout=30) as c:
-        for i in range(len(cur), len(expected)):
+        for name in missing:
             r = await c.post(
                 f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}/columns",
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-                json={"name": expected[i]})
+                json={"name": name})
             if r.status_code < 300:
                 added += 1
             else:
+                print(f"[graph] couldn't add column {name!r} to {table}: {r.text[:200]}")
                 break
     return {"before": len(cur), "expected": len(expected), "added": added}
 

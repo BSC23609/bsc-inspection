@@ -141,3 +141,21 @@ def csv_line(values) -> str:
 
 def norm(v) -> str:
     return str(v or "").strip().lower()
+
+
+def fit_row(actual: list, expected: list, values: list) -> list:
+    """Shape `values` (laid out as `expected` headers) to the live table's real
+    columns. Same layout -> positional; otherwise each value goes under the column
+    with the same header name, and columns we don't know about stay blank. This is
+    what stops 'number of rows or columns ... doesn't match' when someone has
+    added, removed or reordered columns in the workbook."""
+    values = list(values) + [""] * max(0, len(expected) - len(values))
+    if not actual:
+        return values[:len(expected)]
+    n = len(actual)
+    if [a.strip().lower() for a in actual[:len(expected)]] == [e.strip().lower() for e in expected]:
+        return (values + [""] * n)[:n]
+    by_name = {}
+    for h, v in zip(expected, values):
+        by_name.setdefault(h.strip().lower(), v)
+    return [by_name.get(str(a).strip().lower(), "") for a in actual]

@@ -210,15 +210,22 @@ async def _write_excel(token, data: dict, file_name: str, old_name: str = "", de
         names = await graph.column_values(token, item_id, QUALITY_TABLE, 0)
         if file_name in names or (old_name and old_name in names):
             return "exists"
-        bat = await graph.column_values(token, item_id, QUALITY_TABLE, headers.index("Batch Number"))
-        dts = await graph.column_values(token, item_id, QUALITY_TABLE, headers.index("Date"))
+        live = [h.strip().lower() for h in await graph.table_columns(token, item_id, QUALITY_TABLE)]
+
+        def pos(name):
+            return live.index(name.lower()) if name.lower() in live else headers.index(name)
+        bat = await graph.column_values(token, item_id, QUALITY_TABLE, pos("Batch Number"))
+        dts = await graph.column_values(token, item_id, QUALITY_TABLE, pos("Date"))
         have = {(odsync.norm(b), xlsxlog.date_part(d)) for b, d in zip(bat, dts)}
         if (odsync.norm(data.get("batch_number")), str(data.get("date") or "")[:10]) in have:
             return "exists"
     await graph.ensure_table_columns(token, item_id, QUALITY_TABLE, headers)
-    row = quality_row(data, file_name)
-    row = (row + [""] * len(headers))[:len(headers)]
-    await graph.add_table_row(token, item_id, QUALITY_TABLE, row)
+    actual = await graph.table_columns(token, item_id, QUALITY_TABLE)
+    row = odsync.fit_row(actual, headers, quality_row(data, file_name))
+    try:
+        await graph.add_table_row(token, item_id, QUALITY_TABLE, row)
+    except RuntimeError as e:
+        raise RuntimeError(f"{e} [table has {len(actual)} columns, sent {len(row)}]")
 
 
 async def _write_meas_csv(token, data: dict, file_name: str, when):
