@@ -35,8 +35,8 @@ NAV_GROUPS = [
     {"key": "maintenance", "title": "Maintenance", "accent": "teal", "icon": "wrench",
      "blurb": "Assets, PM schedules, checklists and machine history.",
      "items": [
-         {"name": "Dashboard", "icon": "gauge", "desc": "Breakdown, PM completion and reliability analytics.",
-          "href": "/maint/dashboard", "active_key": "maint_dashboard"},
+         {"name": "Analytics", "icon": "gauge", "desc": "MTTR, MTBF, availability, downtime and PM compliance.",
+          "href": "/maint/analytics", "active_key": "maint_analytics"},
          {"name": "Maintenance Board", "icon": "gauge", "desc": "Due today, overdue and upcoming PM at a glance.",
           "href": "/maint", "active_key": "maint"},
          {"name": "Assets", "icon": "cube", "desc": "Machine / asset register with running hours.",
@@ -45,8 +45,6 @@ NAV_GROUPS = [
           "href": "/maint/checklists", "active_key": "maint_checklists"},
          {"name": "Schedules", "icon": "calendar", "desc": "PM cycles by date interval and running hours.",
           "href": "/maint/schedules", "active_key": "maint_schedules"},
-         {"name": "Run-hour Readings", "icon": "gauge", "desc": "Daily per-machine running-hour / meter capture.",
-          "href": "/maint/readings", "active_key": "maint_readings"},
          {"name": "Raise Breakdown", "icon": "warn", "desc": "Raise an unplanned stoppage and alert the team.",
           "href": "/maint/breakdown", "active_key": "maint_breakdown"},
          {"name": "Leave", "icon": "users", "desc": "Mark staff on leave so they skip reminders.",
@@ -200,12 +198,11 @@ async def customers_page(request: Request):
 
 # ---- Maintenance module pages ----
 _MAINT_PAGES = [
-    ("/maint/dashboard", "maint_dashboard.html", "maint_dashboard", "Maintenance Dashboard"),
+    ("/maint/analytics", "maint_analytics.html", "maint_analytics", "Maintenance Analytics"),
     ("/maint", "maint_board.html", "maint", "Maintenance Board"),
     ("/maint/assets", "maint_assets.html", "maint_assets", "Assets"),
     ("/maint/checklists", "maint_checklists.html", "maint_checklists", "Checklists"),
     ("/maint/schedules", "maint_schedules.html", "maint_schedules", "Schedules"),
-    ("/maint/readings", "maint_readings.html", "maint_readings", "Run-hour Readings"),
     ("/maint/breakdown", "maint_breakdown.html", "maint_breakdown", "Raise Breakdown"),
     ("/maint/leave", "maint_leave.html", "maint_leave", "Leave"),
 ]

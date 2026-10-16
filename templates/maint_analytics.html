@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Maintenance Analytics · {{ app_name }}{% endblock %}
+{% block tb_title %}Maintenance Analytics{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.an-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.an-tools label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)}
+.an-tools select{padding:8px 11px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;background:#fff}
+.kgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+@media(max-width:900px){.kgrid{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:15px 16px;position:relative;overflow:hidden}
+.kpi .lab{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.kpi .val{font-size:26px;font-weight:800;line-height:1.1;margin-top:6px;color:var(--ink)}
+.kpi .sub{font-size:11px;color:var(--muted);margin-top:3px}
+.kpi .bar{position:absolute;left:0;top:0;bottom:0;width:5px}
+.kpi.k-blue .bar{background:#2f6fb0}.kpi.k-green .bar{background:#15a06e}.kpi.k-amber .bar{background:#f0b429}.kpi.k-red .bar{background:#e5484d}.kpi.k-violet .bar{background:#7c5cbf}
+.crow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+@media(max-width:900px){.crow{grid-template-columns:1fr}}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+.card h3{font-size:13px;font-weight:700;color:var(--ink);margin:0 0 12px}
+.card .cv{position:relative;height:240px}
+.rtable{width:100%;border-collapse:collapse;font-size:12.5px}
+.rtable th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);padding:8px 8px;position:sticky;top:0;background:#fff}
+.rtable td{border-bottom:1px solid var(--line);padding:8px 8px}
+.rtable .mac{font-weight:700;color:var(--acc-ink)}
+.rtable .num{text-align:right;font-variant-numeric:tabular-nums}
+.av-hi{color:#0a7d55;font-weight:700}.av-lo{color:#c23438;font-weight:700}.av-md{color:#b7791f;font-weight:700}
+.empty{color:var(--muted);text-align:center;padding:18px}
+.note{font-size:11px;color:var(--muted);margin-top:8px}
+</style>
+
+<div class="page-head"><h1>Maintenance Analytics</h1><p>Reliability KPIs — MTTR, MTBF, availability, downtime and PM compliance across the plant.</p></div>
+
+<div class="an-tools">
+  <label>Period</label>
+  <select id="an_days" onchange="loadAn()">
+    <option value="30">Last 30 days</option>
+    <option value="90" selected>Last 90 days</option>
+    <option value="180">Last 180 days</option>
+    <option value="365">Last 1 year</option>
+  </select>
+  <span style="flex:1"></span>
+  <button class="btn btn-ghost" onclick="loadAn()">Reload</button>
+</div>
+
+<div class="kgrid">
+  <div class="kpi k-amber"><div class="bar"></div><div class="lab">MTTR</div><div class="val" id="k_mttr">–</div><div class="sub">mean time to repair (hrs)</div></div>
+  <div class="kpi k-green"><div class="bar"></div><div class="lab">MTBF</div><div class="val" id="k_mtbf">–</div><div class="sub" id="k_mtbf_h">mean time between failures</div></div>
+  <div class="kpi k-blue"><div class="bar"></div><div class="lab">Availability</div><div class="val" id="k_avail">–</div><div class="sub">uptime of the fleet</div></div>
+  <div class="kpi k-red"><div class="bar"></div><div class="lab">Downtime</div><div class="val" id="k_down">–</div><div class="sub">total breakdown hours</div></div>
+  <div class="kpi k-red"><div class="bar"></div><div class="lab">Failures</div><div class="val" id="k_fail">–</div><div class="sub" id="k_open">breakdowns raised</div></div>
+  <div class="kpi k-green"><div class="bar"></div><div class="lab">PM completed</div><div class="val" id="k_pm">–</div><div class="sub">preventive tasks done</div></div>
+  <div class="kpi k-violet"><div class="bar"></div><div class="lab">PM quality</div><div class="val" id="k_pmok">–</div><div class="sub" id="k_pmiss">completed without issues</div></div>
+  <div class="kpi k-blue"><div class="bar"></div><div class="lab">Active machines</div><div class="val" id="k_mc">–</div><div class="sub" id="k_sch">under PM schedule</div></div>
+</div>
+
+<div class="crow">
+  <div class="card"><h3>Failures by machine (Pareto)</h3><div class="cv"><canvas id="chPareto"></canvas></div></div>
+  <div class="card"><h3>Failures by scope</h3><div class="cv"><canvas id="chType"></canvas></div></div>
+</div>
+<div class="crow">
+  <div class="card"><h3>Failures &amp; downtime — 6-month trend</h3><div class="cv"><canvas id="chTrend"></canvas></div></div>
+  <div class="card"><h3>MTTR trend (hrs) — 6 months</h3><div class="cv"><canvas id="chMttr"></canvas></div></div>
+</div>
+
+<div class="card">
+  <h3>Per-machine reliability <span id="an_cnt" style="font-weight:400;color:var(--muted);font-size:12px"></span></h3>
+  <div style="max-height:360px;overflow:auto">
+    <table class="rtable">
+      <thead><tr><th>Machine</th><th class="num">Failures</th><th class="num">Downtime (hrs)</th><th class="num">MTTR (hrs)</th><th class="num">MTBF (days)</th><th class="num">Availability</th><th>Last failure</th></tr></thead>
+      <tbody id="an_rows"><tr><td colspan="7" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </div>
+  <div class="note">Availability and MTBF are calculated on a 24×7 calendar basis over the selected period. MTTR = total breakdown hours ÷ closed breakdowns. MTBF = uptime ÷ number of failures.</div>
+</div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+var CT="#2f6fb0",CM="#15a06e",CH="#e08e0b",CO="#8a93a6",CHARTS={};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function fdate(s){if(!s)return'—';var d=new Date(s);if(isNaN(d))return'—';return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear();}
+function kill(id){if(CHARTS[id]){CHARTS[id].destroy();delete CHARTS[id];}}
+function avCls(a){return a>=95?'av-hi':(a>=85?'av-md':'av-lo');}
+async function loadAn(){
+  var days=document.getElementById('an_days').value;var d;
+  try{var r=await fetch('/maint/analytics/data?days='+days,{cache:'no-store'});if(r.status===401){location.href='/login';return;}d=await r.json();}catch(e){return;}
+  document.getElementById('k_mttr').textContent=d.mttr_hours;
+  document.getElementById('k_mtbf').textContent=d.mtbf_days+'d';
+  document.getElementById('k_mtbf_h').textContent=d.mtbf_hours+' hrs between failures';
+  document.getElementById('k_avail').textContent=d.availability_pct+'%';
+  document.getElementById('k_down').textContent=d.downtime_hours;
+  document.getElementById('k_fail').textContent=d.failures;
+  document.getElementById('k_open').textContent=d.open_now+' still open';
+  document.getElementById('k_pm').textContent=d.pm_done;
+  document.getElementById('k_pmok').textContent=d.pm_ok_pct+'%';
+  document.getElementById('k_pmiss').textContent=d.pm_issues+' had issues';
+  document.getElementById('k_mc').textContent=d.machines;
+  document.getElementById('k_sch').textContent=d.active_schedules+' active PM schedules';
+
+  var tm=(d.machines_table||[]).slice(0,10);
+  kill('chPareto');CHARTS.chPareto=new Chart(document.getElementById('chPareto'),{type:'bar',
+    data:{labels:tm.map(function(x){return x.machine.slice(0,22);}),datasets:[{data:tm.map(function(x){return x.failures;}),backgroundColor:'#2f6fb0'}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{beginAtZero:true,ticks:{precision:0}},y:{grid:{display:false}}}}});
+
+  var bt=d.by_type||{};
+  kill('chType');CHARTS.chType=new Chart(document.getElementById('chType'),{type:'doughnut',
+    data:{labels:['Electrical','Mechanical','Hydraulic','Other'],datasets:[{data:[bt.Electrical||0,bt.Mechanical||0,bt.Hydraulic||0,bt.Other||0],backgroundColor:[CT,CM,CH,CO],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}}});
+
+  var t=d.trend||{months:[],failures:[],downtime:[],mttr:[]};
+  kill('chTrend');CHARTS.chTrend=new Chart(document.getElementById('chTrend'),{type:'bar',
+    data:{labels:t.months,datasets:[{label:'Failures',data:t.failures,backgroundColor:'#e5484d',yAxisID:'y'},{label:'Downtime (hrs)',data:t.downtime,type:'line',borderColor:'#2f6fb0',backgroundColor:'rgba(47,111,176,.1)',tension:.3,yAxisID:'y1'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}},scales:{x:{grid:{display:false}},y:{beginAtZero:true,position:'left',ticks:{precision:0}},y1:{beginAtZero:true,position:'right',grid:{display:false}}}}});
+
+  kill('chMttr');CHARTS.chMttr=new Chart(document.getElementById('chMttr'),{type:'line',
+    data:{labels:t.months,datasets:[{data:t.mttr,borderColor:'#e08e0b',backgroundColor:'rgba(224,142,11,.12)',fill:true,tension:.3,pointRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{beginAtZero:true}}}});
+
+  var rows=d.machines_table||[];document.getElementById('an_cnt').textContent='('+rows.length+' machines with failures)';
+  var b=document.getElementById('an_rows');
+  b.innerHTML=rows.length?rows.map(function(x){
+    return '<tr><td class="mac">'+esc(x.machine)+'</td><td class="num">'+x.failures+'</td><td class="num">'+x.downtime+'</td>'
+      +'<td class="num">'+x.mttr+'</td><td class="num">'+x.mtbf_days+'</td>'
+      +'<td class="num '+avCls(x.avail)+'">'+x.avail+'%</td><td>'+fdate(x.last_fail)+'</td></tr>';
+  }).join(''):'<tr><td colspan="7" class="empty">No breakdowns in this period 🎉</td></tr>';
+}
+loadAn();
+</script>
+{% endblock %}

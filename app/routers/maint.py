@@ -39,6 +39,9 @@ router = APIRouter(prefix="/maint", tags=["maintenance"])
 IST = ZoneInfo("Asia/Kolkata")
 CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
+# Bump this string whenever the ensure_tables() DDL changes, so one request after a
+# deploy re-applies the schema and every later request skips it (big per-request speedup).
+SCHEMA_VER = "2026-10-16a"
 
 # Equipment master list (MASTER LIST OF EQUIPMENTS, Rev 0, 01-Jun-2024).
 # Seeded once into maint_assets when the table is empty. Edit/add assets in the
@@ -546,6 +549,14 @@ async def ensure_tables():
     global _ensured
     if _ensured:
         return
+    # Fast path: when this exact schema version is already applied, skip the ~25
+    # create/alter/index/seed statements and return after a single cheap SELECT.
+    try:
+        if await db.fetchval("SELECT mval FROM maint_meta WHERE mkey='maint_schema_ver'") == SCHEMA_VER:
+            _ensured = True
+            return
+    except Exception:
+        pass
     await db.execute("""CREATE TABLE IF NOT EXISTS maint_assets (
         id SERIAL PRIMARY KEY, code TEXT UNIQUE, name TEXT, atype TEXT, location TEXT,
         make TEXT, model TEXT, serial_no TEXT, running_hours NUMERIC DEFAULT 0,
@@ -663,6 +674,13 @@ async def ensure_tables():
                 ANNUAL_PLAN_KEY)
     except Exception as e:
         print("[maint] annual plan apply skipped:", e)
+    # stamp the schema version so later requests take the fast path above
+    try:
+        await db.execute(
+            "INSERT INTO maint_meta (mkey,mval) VALUES ('maint_schema_ver',$1) "
+            "ON CONFLICT (mkey) DO UPDATE SET mval=$1", SCHEMA_VER)
+    except Exception as e:
+        print("[maint] schema version stamp skipped:", e)
     _ensured = True
 
 
@@ -1864,6 +1882,98 @@ async def dashboard_data(emp: dict = Depends(require_employee)):
     except Exception as e:
         print("[maint-dash open]", e)
     out["open_list"] = openlist
+    return _json(out)
+
+
+@router.get("/analytics/data")
+async def analytics_data(days: int = 90, emp: dict = Depends(require_employee)):
+    """Full reliability analytics: MTTR, MTBF, availability, downtime, PM compliance,
+    6-month trends and a per-machine reliability table. `days` sets the window."""
+    await ensure_tables()
+    try:
+        days = max(7, min(int(days), 730))
+    except Exception:
+        days = 90
+    hours = days * 24.0
+    machines = int(await _dash_val("SELECT COUNT(*) FROM maint_assets WHERE COALESCE(active,true)"))
+    failures = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_breakdowns WHERE raised_at > now()-make_interval(days=>$1)", days))
+    closed = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
+        "AND closed_at > now()-make_interval(days=>$1)", days))
+    downtime = float(await _dash_val(
+        "SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (closed_at-raised_at))/3600.0),0) FROM maint_breakdowns "
+        "WHERE status='closed' AND closed_at IS NOT NULL AND closed_at > now()-make_interval(days=>$1)", days) or 0)
+    open_now = int(await _dash_val("SELECT COUNT(*) FROM maint_breakdowns WHERE status='open'"))
+    pm_done = int(await _dash_val("SELECT COUNT(*) FROM maint_logs WHERE done_at > now()-make_interval(days=>$1)", days))
+    pm_issues = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_logs WHERE status='issues' AND done_at > now()-make_interval(days=>$1)", days))
+    active_sched = int(await _dash_val("SELECT COUNT(*) FROM maint_schedules WHERE COALESCE(active,true)"))
+    base = machines * hours
+    uptime = max(base - downtime, 0.0)
+    out = {
+        "days": days, "machines": machines, "failures": failures, "closed": closed,
+        "downtime_hours": round(downtime, 1), "open_now": open_now,
+        "mttr_hours": round(downtime / closed, 1) if closed else 0,
+        "mtbf_hours": round(uptime / failures, 1) if failures else 0,
+        "mtbf_days": round(uptime / failures / 24.0, 1) if failures else 0,
+        "availability_pct": round(uptime / base * 100, 1) if base else 100,
+        "pm_done": pm_done, "pm_issues": pm_issues,
+        "pm_ok_pct": round((pm_done - pm_issues) / pm_done * 100, 1) if pm_done else 100,
+        "active_schedules": active_sched,
+    }
+    bt = {"Electrical": 0, "Mechanical": 0, "Hydraulic": 0, "Other": 0}
+    try:
+        for r in await db.fetch(
+            "SELECT COALESCE(NULLIF(btype,''),'Other') t, COUNT(*) c FROM maint_breakdowns "
+            "WHERE raised_at > now()-make_interval(days=>$1) GROUP BY 1", days):
+            bt[r["t"] if r["t"] in bt else "Other"] = bt.get(r["t"], 0) + int(r["c"])
+    except Exception as e:
+        print("[maint-an bt]", e)
+    out["by_type"] = bt
+    months, fl, dt, mt = [], [], [], []
+    try:
+        for i in range(5, -1, -1):
+            lbl = await db.fetchval("SELECT to_char(date_trunc('month',now())-make_interval(months=>$1),'Mon')", i)
+            f = await _dash_val(
+                "SELECT COUNT(*) FROM maint_breakdowns WHERE date_trunc('month',raised_at)"
+                "=date_trunc('month',now())-make_interval(months=>$1)", i)
+            d = await _dash_val(
+                "SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (closed_at-raised_at))/3600.0),0) FROM maint_breakdowns "
+                "WHERE status='closed' AND closed_at IS NOT NULL AND date_trunc('month',closed_at)"
+                "=date_trunc('month',now())-make_interval(months=>$1)", i)
+            cc = await _dash_val(
+                "SELECT COUNT(*) FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
+                "AND date_trunc('month',closed_at)=date_trunc('month',now())-make_interval(months=>$1)", i)
+            months.append(lbl); fl.append(int(f)); dv = round(float(d or 0), 1)
+            dt.append(dv); mt.append(round(dv / int(cc), 1) if cc else 0)
+    except Exception as e:
+        print("[maint-an trend]", e)
+    out["trend"] = {"months": months, "failures": fl, "downtime": dt, "mttr": mt}
+    rows = []
+    try:
+        q = await db.fetch(
+            "SELECT a.code, a.name, COUNT(*) failures, "
+            "COALESCE(SUM(EXTRACT(EPOCH FROM (b.closed_at-b.raised_at))/3600.0) "
+            "  FILTER (WHERE b.status='closed' AND b.closed_at IS NOT NULL),0) downtime, "
+            "COUNT(*) FILTER (WHERE b.status='closed' AND b.closed_at IS NOT NULL) closedc, "
+            "MAX(b.raised_at) last_fail "
+            "FROM maint_breakdowns b JOIN maint_assets a ON a.id=b.asset_id "
+            "WHERE b.raised_at > now()-make_interval(days=>$1) "
+            "GROUP BY a.code,a.name ORDER BY failures DESC, downtime DESC LIMIT 50", days)
+        for r in q:
+            f = int(r["failures"]); dn = float(r["downtime"] or 0); cc = int(r["closedc"])
+            up = max(hours - dn, 0.0)
+            rows.append({
+                "machine": ((r["code"] or "") + " " + (r["name"] or "")).strip(),
+                "failures": f, "downtime": round(dn, 1),
+                "mttr": round(dn / cc, 1) if cc else 0,
+                "mtbf_days": round(up / f / 24.0, 1) if f else 0,
+                "avail": round(up / hours * 100, 1) if hours else 100,
+                "last_fail": r["last_fail"]})
+    except Exception as e:
+        print("[maint-an rows]", e)
+    out["machines_table"] = rows
     return _json(out)
 
 
