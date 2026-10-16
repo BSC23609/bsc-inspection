@@ -1,10 +1,11 @@
 """Coil Inward Inspection API — mother-coil arrival checks. Stores to Neon
-(`coil_inward`), appends a CSV log to OneDrive, uploads coil/sticker photos and
-renders a single-record PDF with ReportLab. Mirrors the DG module's shape."""
-import asyncio
+(`coil_inward`) and, inside the request, writes to OneDrive exactly like the Node
+app: PDF -> Inward/PDF/<batch>_(dd-mm-yyyy)_Inward.pdf, row -> Inward_Log.xlsx
+(table InwardLog), photos -> Inward/Photos/<file name>/."""
 import base64
 import re
-from datetime import date, datetime
+from datetime import date
+from decimal import Decimal
 from typing import Optional
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -12,7 +13,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph, xlsxlog
+from .. import db, graph, xlsxlog, odsync
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_coil_pdf
@@ -113,6 +114,7 @@ async def ensure_table():
             created_by TEXT, created_at TIMESTAMPTZ DEFAULT now(), updated_at TIMESTAMPTZ)
     """)
     await db.execute("CREATE INDEX IF NOT EXISTS ix_coil_date ON coil_inward (log_date)")
+    await db.execute("ALTER TABLE coil_inward ADD COLUMN IF NOT EXISTS file_name TEXT")
     _ensured = True
 
 
@@ -159,7 +161,7 @@ _DATAURL = re.compile(r"^data:image/(png|jpe?g|webp);base64,(.+)$", re.I | re.S)
 
 
 async def _save_photo(token, kind: str, batch: str, data_url: str) -> str:
-    """Upload a base64 data URL to OneDrive and return its folder path."""
+    """Upload a base64 data URL to Inward/Photos/<file name>/ (Node layout)."""
     m = _DATAURL.match(data_url or "")
     if not m:
         return ""
@@ -168,9 +170,8 @@ async def _save_photo(token, kind: str, batch: str, data_url: str) -> str:
         raw = base64.b64decode(m.group(2))
     except Exception:
         return ""
-    stamp = datetime.now(IST).strftime("%Y%m%d-%H%M%S")
-    safe = re.sub(r"[^A-Za-z0-9_-]+", "", (batch or "coil"))[:24] or "coil"
-    path = f"{ONEDRIVE_BASE}/Inward/photos/{safe}_{kind}_{stamp}.{ext}"
+    fn = odsync.legacy_file_name(batch, None, "Inward")
+    path = f"{ONEDRIVE_BASE}/Inward/Photos/{fn}/{kind}_photo.{ext}"
     ct = "image/png" if ext == "png" else "image/jpeg" if ext in ("jpg", "jpeg") else "image/webp"
     await graph.upload_file(token, path, raw, ct)
     return path
@@ -222,32 +223,6 @@ def _emp_name(emp: dict) -> str:
     return emp.get("name") or emp.get("emp_no") or ""
 
 
-async def _append_csv(row: dict, by: str):
-    try:
-        token = await graph.get_token()
-        path = f"{ONEDRIVE_BASE}/Inward/Inward_Log.csv"
-        ex = await graph.read_text(token, path) or (
-            "Date,Vehicle No,Batch No,Make,Grade,Width (mm),Thickness (mm),Coil Weight (T),"
-            "Coil ID (mm),Actual Thickness,Actual Width,ID Sticker,Edge Inner,Edge Outer,"
-            "Scratch,Strapping,Rust,Other Damages,Wheels India,Inspected By,Remarks,"
-            "Coil Photo,Sticker Photo,Entered By,Entered At\n")
-
-        def c(v):
-            v = "" if v is None else str(v)
-            return '"' + v.replace('"', '""') + '"' if any(ch in v for ch in ',"\n') else v
-
-        line = ",".join(c(x) for x in [
-            row["log_date"], row["vehicle_number"], row["batch_number"], row["make_of_coil"],
-            row["grade"], row["width"], row["thickness"], row["coil_weight"], row["coil_id"],
-            row["actual_thickness"], row["actual_width"], row["id_sticker"], row["edge_inner"],
-            row["edge_outer"], row["scratch"], row["strapping"], row["rust"], row["other_damages"],
-            row["wheels_india"], row["inspected_by"], row["remarks"], row["coil_photo"],
-            row["sticker_photo"], by, datetime.now(IST).strftime("%d-%b-%Y %H:%M")]) + "\n"
-        await graph.upload_file(token, path, (ex + line).encode("utf-8"), "text/csv")
-    except Exception as e:
-        print("[coil-csv]", e)
-
-
 def _key(rec):
     return (str(rec.get("batch_number") or "").strip().lower(),
             str(rec.get("vehicle_number") or "").strip().lower(),
@@ -267,38 +242,52 @@ async def coil_list(emp: dict = Depends(require_employee)):
     return JSONResponse(jsonable_encoder(merged), headers={"Cache-Control": "no-store"})
 
 
-async def _append_inward_xlsx(r: dict):
-    """Append a new coil to the existing InwardLog workbook (legacy column order)."""
-    try:
-        token = await graph.get_token()
-        item_id = await graph.get_item_id(token, INWARD_XLSX)
-        if not item_id:
-            return
-        fname = f"Coil_{_safe(r.get('batch_number')) or 'rec'}"
-        ts = datetime.now(IST).isoformat()
-        value = {
-            "file": fname, "timestamp": ts,
-            "vehicle_number": r.get("vehicle_number"), "batch_number": r.get("batch_number"),
-            "make_of_coil": r.get("make_of_coil"), "grade": r.get("grade"),
-            "width": r.get("width"), "thickness": r.get("thickness"),
-            "coil_weight": r.get("coil_weight"), "coil_id": r.get("coil_id"),
-            "actual_thickness": r.get("actual_thickness"), "actual_width": r.get("actual_width"),
-            "id_sticker": r.get("id_sticker"), "edge_inner": r.get("edge_inner"),
-            "edge_outer": r.get("edge_outer"), "scratch": r.get("scratch"),
-            "strapping": r.get("strapping"), "rust": r.get("rust"),
-            "other_damages": r.get("other_damages"), "inspected_by": r.get("inspected_by"),
-            "remarks": r.get("remarks"),
-        }
-        row = ["" if value.get(k) is None else str(value.get(k)) for k in _INWARD_POS]
-        # fit to the table's actual width
+async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False) -> dict:
+    """Write one coil record to OneDrive (PDF + InwardLog row). Awaited inside the
+    request. `dedupe` (backfill) skips the Excel row if the batch is already logged."""
+    await ensure_table()
+    st = odsync.Steps("coil", rec_id)
+    row = await db.fetchrow("SELECT * FROM coil_inward WHERE id=$1", rec_id)
+    if not row:
+        st.fail("record", "not found in database")
+        return await odsync.record(st)
+    r = dict(row)
+    fn = r.get("file_name") or odsync.legacy_file_name(r.get("batch_number"), r.get("created_at"), "Inward")
+    if not r.get("file_name"):
+        await db.execute("UPDATE coil_inward SET file_name=$1 WHERE id=$2", fn, rec_id)
+    token = await st.run("OneDrive sign-in", graph.get_token())
+    if not token:
+        return await odsync.record(st)
+
+    async def _pdf():
+        await graph.upload_file(token, f"{ONEDRIVE_BASE}/Inward/PDF/{fn}.pdf",
+                                build_coil_pdf(r), "application/pdf")
+    await st.run("PDF report", _pdf())
+
+    async def _xlsx():
+        item_id = await graph.require_item_id(token, INWARD_XLSX)
+        if dedupe:
+            names = await graph.column_values(token, item_id, INWARD_TABLE, 0)
+            batches = await graph.column_values(token, item_id, INWARD_TABLE, _INWARD_POS.index("batch_number"))
+            if fn in names or odsync.norm(r.get("batch_number")) in {odsync.norm(b) for b in batches}:
+                return "exists"
+
+        def v(k):
+            x = r.get(k)
+            if x is None:
+                return ""
+            return f"{float(x):g}" if isinstance(x, (float, Decimal)) else str(x)
+        value = {k: v(k) for k in _INWARD_POS}
+        value["file"] = fn
+        value["timestamp"] = odsync.iso_z(r.get("created_at"))
+        row_vals = [value.get(k, "") for k in _INWARD_POS]
         cols = await graph.table_columns(token, item_id, INWARD_TABLE)
         if cols:
-            if len(row) < len(cols):
-                row += [""] * (len(cols) - len(row))
-            row = row[:len(cols)]
-        await graph.add_table_row(token, item_id, INWARD_TABLE, row)
-    except Exception as e:
-        print("[coil-inwardlog]", e)
+            row_vals = (row_vals + [""] * len(cols))[:len(cols)]
+        await graph.add_table_row(token, item_id, INWARD_TABLE, row_vals)
+    if excel:
+        await st.run("Excel log (Inward_Log.xlsx)", _xlsx())
+    return await odsync.record(st)
 
 
 @router.post("/submit")
@@ -312,9 +301,8 @@ async def coil_submit(body: CoilIn, emp: dict = Depends(require_employee)):
     new_id = await db.fetchval(
         f"INSERT INTO coil_inward ({cols},created_by) VALUES ({ph},${len(_FIELDS)+1}) RETURNING id",
         *vals, by)
-    asyncio.create_task(_append_csv(r, by))
-    asyncio.create_task(_append_inward_xlsx(r))
-    return {"ok": True, "id": new_id}
+    od = await od_sync(new_id)          # awaited: Vercel kills post-response work
+    return {"ok": True, "id": new_id, "onedrive": od}
 
 
 @router.post("/update")
@@ -328,7 +316,8 @@ async def coil_update(body: CoilIn, emp: dict = Depends(require_employee)):
     await db.execute(
         f"UPDATE coil_inward SET {sets},updated_at=now() WHERE id=${len(_FIELDS)+1}",
         *vals, body.id)
-    return {"ok": True, "id": body.id}
+    od = await od_sync(body.id, excel=False)   # refresh the PDF with the edits
+    return {"ok": True, "id": body.id, "onedrive": od}
 
 
 class DelIn(BaseModel):

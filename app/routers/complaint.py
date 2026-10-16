@@ -1,8 +1,9 @@
 """Quality Complaint API — customer & vendor complaint intake with a register
 and status tracking (Open → Under Investigation → Resolved → Closed). Stores to
-Neon (`quality_complaints`), appends a CSV register, uploads defect photos and
-document attachments to OneDrive, and renders a per-complaint PDF."""
-import asyncio
+Neon (`quality_complaints`), uploads defect photos and document attachments to
+OneDrive, and (awaited, see app/odsync.py) writes the PDF to Complaints/PDF/,
+keeps the row in the legacy Complaints_Log.xlsx (table ComplaintsLog) up to date
+on every status change, and appends the CSV register."""
 import base64
 import json
 import re
@@ -14,7 +15,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph
+from .. import db, graph, odsync
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_complaint_pdf
@@ -24,6 +25,8 @@ IST = ZoneInfo("Asia/Kolkata")
 _ensured = False
 
 CSV_PATH = f"{ONEDRIVE_BASE}/Complaints/Complaints_Register.csv"
+LOG_XLSX = f"{ONEDRIVE_BASE}/Complaints/Complaints_Log.xlsx"
+LOG_TABLE = "ComplaintsLog"
 _DATAURL = re.compile(r"^data:([^;]+);base64,(.+)$", re.I | re.S)
 
 _FIELDS = ("source", "filed_by", "qc_date", "customer_name", "customer_email", "grade",
@@ -133,36 +136,86 @@ async def _handle_assets(cno: str, attachments: dict, photos: list) -> dict:
     return out
 
 
-async def _append_csv(row: dict, by: str):
-    try:
-        token = await graph.get_token()
-        ex = await graph.read_text(token, CSV_PATH) or (
-            "Complaint No,Source,Date,Filed By,Customer,Grade,Batch,Invoice,Qty (T),Mill,"
-            "Vendor,Status,Defect,Created By,Created At\n")
-
-        def c(v):
-            v = "" if v is None else str(v)
-            return '"' + v.replace('"', '""') + '"' if any(ch in v for ch in ',"\n') else v
-
-        line = ",".join(c(x) for x in [
-            row["complaint_no"], row["source"], row["qc_date"], row["filed_by"],
-            row["customer_name"], row["grade"], row["batch_number"], row["invoice_no"],
-            row["quantity"], row["mill"], row["vendor_name"], row["status"],
-            row["defect_description"], by, datetime.now(IST).strftime("%d-%b-%Y %H:%M")]) + "\n"
-        await graph.upload_file(token, CSV_PATH, (ex + line).encode("utf-8"), "text/csv")
-    except Exception as e:
-        print("[qc-csv]", e)
+async def _append_csv(token, row: dict):
+    ex = await graph.read_text(token, CSV_PATH) or (
+        "Complaint No,Source,Date,Filed By,Customer,Grade,Batch,Invoice,Qty (T),Mill,"
+        "Vendor,Status,Defect,Created By,Created At\n")
+    key = odsync.csv_cell(row["complaint_no"]) + ","
+    if ex.startswith(key) or ("\n" + key) in ex:
+        return "exists"
+    line = odsync.csv_line([
+        row["complaint_no"], row["source"], row["qc_date"], row["filed_by"],
+        row["customer_name"], row["grade"], row["batch_number"], row["invoice_no"],
+        row["quantity"], row["mill"], row["vendor_name"], row["status"],
+        row["defect_description"], row.get("created_by", ""), row.get("created_at_ist", "")])
+    if not ex.endswith("\n"):
+        ex += "\n"
+    await graph.upload_file(token, CSV_PATH, (ex + line).encode("utf-8"), "text/csv")
 
 
-async def _write_pdf(cno: str, rep: dict):
-    try:
-        pdf = build_complaint_pdf(rep)
-        path = f"{ONEDRIVE_BASE}/Complaints/{_safe(cno)}.pdf"
-        token = await graph.get_token()
-        await graph.upload_file(token, path, pdf, "application/pdf")
-        await db.execute("UPDATE quality_complaints SET pdf_path=$1 WHERE complaint_no=$2", path, cno)
-    except Exception as e:
-        print("[qc-pdf]", e)
+def _log_row(d: dict) -> list:
+    """Complaints_Log.xlsx column order — identical to the Node appendComplaintRow."""
+    def s(v):
+        return "" if v is None else str(v)
+    done = (d.get("status") or "") in DONE
+    upd = d.get("updated_at")
+    return [
+        s(d.get("complaint_no")), odsync.iso_z(d.get("created_at")), s(d.get("source")),
+        s(d.get("filed_by")), s(d.get("customer_name")), s(d.get("batch_number")), s(d.get("grade")),
+        s(d.get("dimensions")), s(d.get("tc_number")), s(d.get("invoice_no")),
+        s(d.get("invoice_date") or ""), s(d.get("quantity")), s(d.get("mill")),
+        s(d.get("defect_description")), "", s(d.get("status") or "Open"),
+        s(d.get("handler")), "", s(d.get("decision")), s(d.get("vendor_name")),
+        s(d.get("vendor_email")), s(d.get("resolution")),
+        upd.astimezone(IST).strftime("%Y-%m-%d") if (done and upd) else "",
+        s(d.get("customer_email")), "", s(d.get("sales_reviewer")), s(d.get("customer_message")),
+        "", ""]
+
+
+async def _upsert_log(token, d: dict):
+    item_id = await graph.require_item_id(token, LOG_XLSX)
+    cols = await graph.table_columns(token, item_id, LOG_TABLE)
+    width = max(len(cols), 1)
+    new = _log_row(d)
+    ids = await graph.column_values(token, item_id, LOG_TABLE, 0)
+    idx = next((i for i, v in enumerate(ids) if str(v).strip() == d["complaint_no"]), -1)
+    if idx < 0:
+        await graph.add_table_row(token, item_id, LOG_TABLE, (new + [""] * width)[:width])
+        return
+    cur = await graph.get_table_row(token, item_id, LOG_TABLE, idx)
+    cur = (cur + [""] * width)[:width]
+    for i, v in enumerate(new[:width]):   # only overwrite with values we actually hold
+        if v != "":
+            cur[i] = v
+    await graph.update_table_row(token, item_id, LOG_TABLE, idx, cur)
+
+
+async def od_sync(cno: str, dedupe: bool = False) -> dict:
+    """PDF + Complaints_Log.xlsx row (added or updated) + CSV register. Awaited."""
+    await ensure_table()
+    st = odsync.Steps("complaint", cno)
+    row = await db.fetchrow("SELECT * FROM quality_complaints WHERE complaint_no=$1", cno)
+    if not row:
+        st.fail("record", "not found in database")
+        return await odsync.record(st)
+    d = dict(row)
+    payload = odsync.as_obj(d.get("payload"), {}) or {}
+    rep = {f: (d.get(f) if d.get(f) is not None else "") for f in _FIELDS}
+    rep.update({"complaint_no": cno, "created_by": d.get("created_by") or "",
+                "qc_date": str(d.get("qc_date") or ""), "invoice_date": str(d.get("invoice_date") or ""),
+                "assets": payload.get("assets", {}),
+                "created_at_ist": d["created_at"].astimezone(IST).strftime("%d-%b-%Y %H:%M")
+                if d.get("created_at") else ""})
+    path = f"{ONEDRIVE_BASE}/Complaints/PDF/{_safe(cno)}_Defect_Report.pdf"
+    token = await st.run("OneDrive sign-in", graph.get_token())
+    if token:
+        await st.run("PDF report", graph.upload_file(token, path, build_complaint_pdf(rep),
+                                                     "application/pdf"))
+        if "PDF report" in st.saved:
+            await db.execute("UPDATE quality_complaints SET pdf_path=$1 WHERE complaint_no=$2", path, cno)
+        await st.run("Excel log (Complaints_Log.xlsx)", _upsert_log(token, d))
+        await st.run("Register CSV", _append_csv(token, rep))
+    return await odsync.record(st)
 
 
 class QCIn(BaseModel):
@@ -263,13 +316,8 @@ async def qc_submit(body: QCIn, emp: dict = Depends(require_employee)):
         vals["tc_number"], vals["invoice_no"], _d(body.invoice_date), vals["quantity"], vals["mill"],
         vals["vendor_name"], vals["vendor_email"], vals["defect_description"],
         vals["status"] or "Open", vals["resolution"], json.dumps({"assets": assets}), by)
-    rep = _rep(body, by, assets)
-
-    async def _bg():
-        await _write_pdf(cno, rep)
-        await _append_csv(rep, by)
-    asyncio.create_task(_bg())
-    return {"ok": True, "complaint_no": cno}
+    od = await od_sync(cno)              # awaited: Vercel kills post-response work
+    return {"ok": True, "complaint_no": cno, "onedrive": od}
 
 
 class StatusIn(BaseModel):
@@ -284,7 +332,8 @@ async def qc_status(body: StatusIn, emp: dict = Depends(require_employee)):
     await db.execute(
         "UPDATE quality_complaints SET status=$1, resolution=$2, updated_at=now() WHERE complaint_no=$3",
         body.status, body.resolution or "", body.complaint_no)
-    return {"ok": True}
+    od = await od_sync(body.complaint_no)   # keep the Excel row + PDF current
+    return {"ok": True, "onedrive": od}
 
 
 class AdvanceIn(BaseModel):
@@ -383,7 +432,8 @@ async def qc_advance(body: AdvanceIn, emp: dict = Depends(require_employee)):
     args.append(body.complaint_no)
     sql = f"UPDATE quality_complaints SET {', '.join(sets)} WHERE complaint_no=${len(args)}"
     await db.execute(sql, *args)
-    return {"ok": True, "status": new_status}
+    od = await od_sync(body.complaint_no)   # keep the Excel row + PDF current
+    return {"ok": True, "status": new_status, "onedrive": od}
 
 
 class DelIn(BaseModel):

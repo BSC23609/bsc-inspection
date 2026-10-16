@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}OneDrive Sync · {{ app_name }}{% endblock %}
+{% block tb_title %}OneDrive Sync{% endblock %}
+{% block content %}
+<div class="acc-steel">
+<style>
+.ods .bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px}
+.ods .bar label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.ods .bar input{padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font:inherit;font-size:13px;color:var(--ink);background:#fff}
+.ods table{width:100%;border-collapse:collapse;font-size:13px}
+.ods th{text-align:left;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;padding:9px 10px;border-bottom:1px solid var(--line-2)}
+.ods td{padding:10px;border-bottom:1px solid var(--line);vertical-align:top}
+.ods td.n{font-variant-numeric:tabular-nums;text-align:right;width:90px}
+.ods .ok{color:#0a7d55;font-weight:600}.ods .bad{color:#c23438;font-weight:600}
+.ods .err{font-size:12px;color:#c23438;margin-top:4px;line-height:1.45}
+.ods .log{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.55;max-height:320px;overflow:auto;background:#f6f8fc;border:1px solid var(--line);border-radius:10px;padding:10px 12px;white-space:pre-wrap;margin-top:14px;display:none}
+@media(max-width:720px){.ods td.n{width:auto}.ods .hide-sm{display:none}}
+</style>
+
+<div class="page-head"><h1>OneDrive Sync</h1>
+<p>Every inspection, report and log entry is written to OneDrive when it's saved. This page lists anything from the chosen date onward that hasn't reached OneDrive yet, including entries saved before this fix and any save where OneDrive failed. <b>Sync</b> creates the missing PDFs and adds the missing rows to the Excel logs and CSV registers. Rows already in a log are skipped, so it's safe to run again.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('cloud',17) }}</span>Missing on OneDrive</div>
+<div class="panel-body ods">
+  <div class="bar">
+    <div><label for="od_since">Check records saved from</label><input type="date" id="od_since"></div>
+    <button class="btn btn-ghost" onclick="odLoad()">Refresh</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-primary" id="od_all" onclick="odSyncAll()">Sync everything missing</button>
+  </div>
+  <div style="overflow-x:auto"><table>
+    <thead><tr><th>Module</th><th class="n hide-sm">Saved</th><th class="n">Missing</th><th></th></tr></thead>
+    <tbody id="od_body"><tr><td colspan="4" class="muted">Loading…</td></tr></tbody>
+  </table></div>
+  <div class="log" id="od_log"></div>
+</div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function(){var d=new Date();d.setDate(d.getDate()-14);document.getElementById('od_since').value=d.toISOString().slice(0,10);})();
+var OD_BUSY=false;
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function odLog(t){var l=document.getElementById('od_log');l.style.display='block';l.textContent+=t+'\n';l.scrollTop=l.scrollHeight;}
+async function odLoad(){
+  var b=document.getElementById('od_body');
+  try{
+    var r=await fetch('/onedrive-sync/status?since='+encodeURIComponent(document.getElementById('od_since').value),{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);var rows=await r.json();
+    b.innerHTML=rows.map(function(m){
+      if(m.error)return '<tr><td>'+esc(m.label)+'<div class="err">'+esc(m.error)+'</div></td><td class="n hide-sm">–</td><td class="n">–</td><td></td></tr>';
+      var errs=(m.failed||[]).slice(0,3).map(function(f){return '<div class="err">'+esc(f.label||f.ref)+': '+esc(f.errors)+'</div>';}).join('');
+      return '<tr><td><b>'+esc(m.label)+'</b>'+errs+'</td><td class="n hide-sm">'+m.total+'</td><td class="n '+(m.pending?'bad':'ok')+'">'+(m.pending||'✓')+'</td>'+
+        '<td style="text-align:right">'+(m.pending?'<button class="btn btn-ghost" onclick="odSync(\''+m.key+'\',\''+esc(m.label)+'\')">Sync</button>':'')+'</td></tr>';
+    }).join('');
+    return rows;
+  }catch(e){b.innerHTML='<tr><td colspan="4" class="err">Couldn’t load: '+esc(e.message||e)+'</td></tr>';return [];}
+}
+async function odSync(key,label,noReload){
+  if(OD_BUSY&&!noReload)return;OD_BUSY=true;
+  var tried=[],okN=0,badN=0,since=document.getElementById('od_since').value;
+  odLog('— '+label+' —');
+  try{
+    while(true){
+      var r=await fetch('/onedrive-sync/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({module:key,since:since,limit:2,exclude:tried})});
+      var j=await r.json().catch(function(){return{};});
+      if(!r.ok)throw new Error(j.detail||('HTTP '+r.status));
+      (j.processed||[]).forEach(function(p){tried.push(p.ref);
+        if(p.ok){okN++;odLog('✓ '+(p.label||p.ref)+'  ['+(p.saved||[]).concat(p.skipped||[]).join(', ')+']');}
+        else{badN++;odLog('✗ '+(p.label||p.ref)+'  '+(p.errors||[]).join(' | '));}});
+      if(!(j.processed||[]).length||!j.remaining)break;
+    }
+  }catch(e){odLog('Stopped: '+(e.message||e));}
+  odLog(label+': '+okN+' synced'+(badN?', '+badN+' failed':''));
+  if(!noReload){OD_BUSY=false;await odLoad();toast(badN?'err':'ok',label+': '+okN+' synced'+(badN?', '+badN+' failed':''));}
+  return badN;
+}
+async function odSyncAll(){
+  if(OD_BUSY)return;OD_BUSY=true;var btn=document.getElementById('od_all');btn.disabled=true;btn.textContent='Syncing…';
+  var bad=0;
+  try{var rows=await odLoad();for(var i=0;i<rows.length;i++){if(rows[i].pending)bad+=await odSync(rows[i].key,rows[i].label,true);}}
+  finally{OD_BUSY=false;btn.disabled=false;btn.textContent='Sync everything missing';await odLoad();toast(bad?'err':'ok',bad?bad+' record(s) still failing, see the log below':'Everything is on OneDrive');}
+}
+odLoad();
+</script>
+{% endblock %}

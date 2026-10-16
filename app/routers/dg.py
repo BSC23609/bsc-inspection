@@ -1,6 +1,5 @@
 """Diesel Generator Log API. Reuses the `dg_log` table (same schema as the Node
 build), writes a CSV log to OneDrive and renders the monthly PDF with ReportLab."""
-import asyncio
 from datetime import date, datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
@@ -9,7 +8,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph
+from .. import db, graph, odsync
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_dg_pdf, dg_minutes, fmt_min
@@ -89,26 +88,54 @@ def _emp_name(emp: dict) -> str:
     return emp.get("name") or emp.get("emp_no") or ""
 
 
-async def _append_csv(row: dict, by: str):
-    try:
-        token = await graph.get_token()
-        path = f"{ONEDRIVE_BASE}/DG Log/DG_Log.csv"
-        ex = await graph.read_text(token, path) or (
-            "DG Set,Date,Start Time,End Time,Running Hours,Fuel Added (L),Diesel Level (L),"
-            "Start Load (kWh),End Load (kWh),Units (kWh),Remarks,Sign,Entered By,Entered At\n")
+async def _append_csv(token, row: dict):
+    path = f"{ONEDRIVE_BASE}/DG Log/DG_Log.csv"
+    ex = await graph.read_text(token, path) or (
+        "DG Set,Date,Start Time,End Time,Running Hours,Fuel Added (L),Diesel Level (L),"
+        "Start Load (kWh),End Load (kWh),Units (kWh),Remarks,Sign,Entered By,Entered At\n")
+    key = ",".join(odsync.csv_cell(x) for x in (row["dg_set"], row["log_date"], row["start_at"])) + ","
+    if ex.startswith(key) or ("\n" + key) in ex:
+        return "exists"
+    ca = row.get("created_at")
+    line = odsync.csv_line([
+        row["dg_set"], row["log_date"], row["start_at"], row["stop_at"],
+        fmt_min(row["running_minutes"]), row["fuel_added"], row["diesel_level"],
+        row["kwh_start"], row["kwh_end"], row["units"], row["remarks"], row["sign"],
+        row.get("created_by") or "",
+        (ca.astimezone(IST) if ca else datetime.now(IST)).strftime("%d-%b-%Y %H:%M")])
+    if not ex.endswith("\n"):
+        ex += "\n"
+    await graph.upload_file(token, path, (ex + line).encode("utf-8"), "text/csv")
 
-        def c(v):
-            v = "" if v is None else str(v)
-            return '"' + v.replace('"', '""') + '"' if any(ch in v for ch in ',"\n') else v
 
-        line = ",".join(c(x) for x in [
-            row["dg_set"], row["log_date"], row["start_at"], row["stop_at"],
-            fmt_min(row["running_minutes"]), row["fuel_added"], row["diesel_level"],
-            row["kwh_start"], row["kwh_end"], row["units"], row["remarks"], row["sign"],
-            by, datetime.now(IST).strftime("%d-%b-%Y %H:%M")]) + "\n"
-        await graph.upload_file(token, path, (ex + line).encode("utf-8"), "text/csv")
-    except Exception as e:  # never block the save on the log write
-        print("[dg-csv]", e)
+async def _month_pdf(token, dg_set: str, log_date):
+    """Refresh that DG set's monthly report PDF on OneDrive (DG Log/PDF/)."""
+    if not log_date:
+        return "none"
+    rows = [dict(r) for r in await db.fetch(
+        "SELECT * FROM dg_log WHERE dg_set=$1 AND date_trunc('month',log_date)=date_trunc('month',$2::date) "
+        "ORDER BY log_date ASC NULLS LAST, start_at ASC", dg_set, log_date)]
+    month = log_date.strftime("%Y-%m")
+    pdf = build_dg_pdf(rows, dg_set, month)
+    name = f"DG_Log_{dg_set.replace(' ', '_')}_{month}.pdf"
+    await graph.upload_file(token, f"{ONEDRIVE_BASE}/DG Log/PDF/{name}", pdf, "application/pdf")
+
+
+async def od_sync(rec_id: int, csv: bool = True, dedupe: bool = False) -> dict:
+    """DG_Log.csv line + refreshed monthly PDF (awaited inside the request)."""
+    await ensure_table()
+    st = odsync.Steps("dg", rec_id)
+    row = await db.fetchrow("SELECT * FROM dg_log WHERE id=$1", rec_id)
+    if not row:
+        st.fail("record", "not found in database")
+        return await odsync.record(st)
+    r = dict(row)
+    token = await st.run("OneDrive sign-in", graph.get_token())
+    if token:
+        if csv:
+            await st.run("Log CSV (DG_Log.csv)", _append_csv(token, r))
+        await st.run("Monthly PDF report", _month_pdf(token, r["dg_set"], r["log_date"]))
+    return await odsync.record(st)
 
 
 @router.get("/list")
@@ -134,8 +161,8 @@ async def dg_submit(body: DgIn, emp: dict = Depends(require_employee)):
         r["dg_set"], r["log_date"], r["start_at"], r["stop_at"], r["running_minutes"],
         r["fuel_added"], r["diesel_level"], r["kwh_start"], r["kwh_end"], r["units"],
         r["remarks"], r["sign"], by)
-    asyncio.create_task(_append_csv(r, by))
-    return {"ok": True, "id": new_id}
+    od = await od_sync(new_id)           # awaited: Vercel kills post-response work
+    return {"ok": True, "id": new_id, "onedrive": od}
 
 
 @router.post("/update")
@@ -151,7 +178,8 @@ async def dg_update(body: DgIn, emp: dict = Depends(require_employee)):
         r["dg_set"], r["log_date"], r["start_at"], r["stop_at"], r["running_minutes"],
         r["fuel_added"], r["diesel_level"], r["kwh_start"], r["kwh_end"], r["units"],
         r["remarks"], r["sign"], body.id)
-    return {"ok": True, "id": body.id}
+    od = await od_sync(body.id, csv=False)   # refresh the monthly PDF
+    return {"ok": True, "id": body.id, "onedrive": od}
 
 
 class DelIn(BaseModel):

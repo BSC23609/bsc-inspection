@@ -1,11 +1,13 @@
 """Shearing Quality Inspection API — full-parity with the legacy form. Stores
 the complete payload to Neon (JSONB) and appends the exact 351-column row to the
-EXISTING OneDrive workbook `Shearing_Log.xlsx` (table ShearingLog) via Graph."""
-import asyncio
+EXISTING OneDrive workbook `Shearing_Log.xlsx` (table ShearingLog) via Graph.
+OneDrive writes are awaited inside the request (see app/odsync.py):
+PDF -> Shearing/PDF/<batch>_(dd-mm-yyyy)_Shearing.pdf, photos -> Shearing/Photos/<file name>/,
+row -> ShearingLog, reworks -> Shearing_Rework_Register.csv."""
 import base64
 import json
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -13,7 +15,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph, xlsxlog
+from .. import db, graph, xlsxlog, odsync
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_shearing_pdf
@@ -159,9 +161,19 @@ def _safe(s: str, n=40) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "", str(s or ""))[:n]
 
 
-async def _upload_photos(token, batch: str, photos: list) -> list:
-    out = []
+REWORK_DEFECTS = {"RW-01": "Length variation", "RW-02": "Width variation",
+                  "RW-03": "Diagonal variation / squareness", "RW-04": "Burr",
+                  "RW-05": "Blade impression", "RW-06": "Edge crack / damaged edge",
+                  "RW-07": "Camber", "RW-08": "Bow / flatness issue",
+                  "RW-09": "Surface damage", "RW-10": "Other"}
+
+
+async def _upload_photos(token, photo_folder: str, photos: list) -> list:
+    """Node layout: Shearing/Photos/<file name>/photo_<n>_image.<ext>. Raises if any fail."""
+    out, failed = [], 0
     for idx, p in enumerate(photos or []):
+        if isinstance(p, dict):
+            p = p.get("data") or ""
         m = re.match(r"^data:image/(png|jpe?g|webp);base64,(.+)$", p or "", re.I | re.S)
         if not m:
             continue
@@ -169,34 +181,100 @@ async def _upload_photos(token, batch: str, photos: list) -> list:
         try:
             raw = base64.b64decode(m.group(2))
         except Exception:
+            failed += 1
             continue
-        stamp = datetime.now(IST).strftime("%Y%m%d-%H%M%S")
-        path = f"{ONEDRIVE_BASE}/Shearing/Photos/{_safe(batch) or 'sh'}_{idx+1}_{stamp}.{ext}"
+        path = f"{photo_folder}/photo_{idx+1}_image.{ext}"
         ct = "image/png" if ext == "png" else "image/jpeg" if ext in ("jpg", "jpeg") else "image/webp"
         try:
             await graph.upload_file(token, path, raw, ct)
             out.append(path)
         except Exception as e:
+            failed += 1
             print("[shearing-photo]", e)
+    if failed:
+        raise RuntimeError(f"{failed} of {len(photos)} photo(s) failed to upload")
     return out
 
 
-async def _write_excel(data: dict, file_name: str):
-    try:
-        token = await graph.get_token()
-        item_id = await graph.get_item_id(token, SHEAR_XLSX)
-        if not item_id:
-            print("[shearing-xlsx] workbook not found:", SHEAR_XLSX)
-            return
-        headers = shearing_headers()
-        await graph.ensure_table_columns(token, item_id, SHEAR_TABLE, headers)
-        row = shearing_row(data, file_name)
-        if len(row) < len(headers):
-            row += [""] * (len(headers) - len(row))
-        row = row[:len(headers)]
-        await graph.add_table_row(token, item_id, SHEAR_TABLE, row)
-    except Exception as e:
-        print("[shearing-xlsx]", e)
+async def _write_excel(token, data: dict, file_name: str, old_name: str = "", dedupe: bool = False):
+    """Append the row to the existing OneDrive ShearingLog table (raises on failure)."""
+    item_id = await graph.require_item_id(token, SHEAR_XLSX)
+    headers = shearing_headers()
+    if dedupe:
+        names = await graph.column_values(token, item_id, SHEAR_TABLE, 0)
+        if file_name in names or (old_name and old_name in names):
+            return "exists"
+        bat = await graph.column_values(token, item_id, SHEAR_TABLE, headers.index("Batch"))
+        dts = await graph.column_values(token, item_id, SHEAR_TABLE, headers.index("Date"))
+        have = {(odsync.norm(b), xlsxlog.date_part(d)) for b, d in zip(bat, dts)}
+        if (odsync.norm(data.get("batch_number")), str(data.get("date") or "")[:10]) in have:
+            return "exists"
+    await graph.ensure_table_columns(token, item_id, SHEAR_TABLE, headers)
+    row = shearing_row(data, file_name)
+    row = (row + [""] * len(headers))[:len(headers)]
+    await graph.add_table_row(token, item_id, SHEAR_TABLE, row)
+
+
+async def _write_reworks(token, data: dict, file_name: str):
+    """Node appendShearingReworks: one line per rework in Shearing_Rework_Register.csv."""
+    reworks = data.get("reworks") or []
+    if str(data.get("has_reworks") or "").lower() != "yes" or not reworks:
+        return "none"
+    path = f"{ONEDRIVE_BASE}/Shearing/Shearing_Rework_Register.csv"
+    ex = await graph.read_text(token, path) or (
+        "Sl. No.,Date,Batch / Coil No.,Customer,Grade,Thickness (mm),Defect Code,Defect Description,"
+        "Rework Qty,Required,Actual,Variation,Blade Gap,Reason,Details,Action Taken,QC Verify,"
+        "Disposition,Remarks\n")
+    marker = f"{data.get('date') or ''},{odsync.csv_cell(data.get('batch_number') or '')},"
+    if marker in ex:
+        return "exists"
+    prior = len(ex.strip().split("\n")) - 1
+    thick = data.get("coil_thickness") or data.get("thickness") or ""
+    lines = ""
+    for i, rw in enumerate(reworks):
+        code = rw.get("defect_code") or ""
+        lines += odsync.csv_line([prior + i + 1, data.get("date") or "", data.get("batch_number") or "",
+                                  data.get("customer_name") or "", data.get("grade") or "", thick, code,
+                                  rw.get("defect_desc") or REWORK_DEFECTS.get(code, ""),
+                                  rw.get("rework_qty"), rw.get("required"), rw.get("actual"),
+                                  rw.get("variation"), rw.get("blade_gap"), rw.get("reason"),
+                                  rw.get("details"), rw.get("action_taken"), rw.get("qc_verification"),
+                                  rw.get("disposition"), rw.get("remarks")])
+    if not ex.endswith("\n"):
+        ex += "\n"
+    await graph.upload_file(token, path, (ex + lines).encode("utf-8"), "text/csv")
+
+
+async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: bool = False) -> dict:
+    """Write one shearing inspection to OneDrive — PDF, photos, ShearingLog row, rework CSV."""
+    await ensure_table()
+    st = odsync.Steps("shearing", rec_id)
+    row = await db.fetchrow("SELECT id, payload, file_name, created_at FROM shearing_inspection WHERE id=$1", rec_id)
+    if not row:
+        st.fail("record", "not found in database")
+        return await odsync.record(st)
+    r = dict(row)
+    data = odsync.as_obj(r.get("payload"), {})
+    if not data.get("timestamp"):
+        data["timestamp"] = odsync.iso_z(r.get("created_at") or datetime.now(timezone.utc))
+    old_name = r.get("file_name") or ""
+    fn = old_name if "_(" in old_name else odsync.legacy_file_name(
+        data.get("batch_number"), r.get("created_at"), "Shearing")
+    token = await st.run("OneDrive sign-in", graph.get_token())
+    if token:
+        if photos:
+            paths = await st.run("Photos", _upload_photos(token, f"{ONEDRIVE_BASE}/Shearing/Photos/{fn}", photos))
+            if paths:
+                data["photo_paths"] = paths
+        await st.run("PDF report", graph.upload_file(
+            token, f"{ONEDRIVE_BASE}/Shearing/PDF/{fn}.pdf",
+            build_shearing_pdf(data, rec_id, MP_SPEC), "application/pdf"))
+        if excel:
+            await st.run("Excel log (Shearing_Log.xlsx)", _write_excel(token, data, fn, old_name, dedupe))
+            await st.run("Rework register CSV", _write_reworks(token, data, fn))
+    await db.execute("UPDATE shearing_inspection SET file_name=$1, payload=$2 WHERE id=$3",
+                     fn, json.dumps(data), rec_id)
+    return await odsync.record(st)
 
 
 class SIn(BaseModel):
@@ -366,18 +444,8 @@ async def s_submit(body: SIn, emp: dict = Depends(require_employee)):
         s["process"], s["qc_name"], s["sheets_measured"], s["rejection_flag"],
         s["has_reworks"], json.dumps(data), file_name, by)
 
-    async def _bg():
-        try:
-            if photos:
-                token = await graph.get_token()
-                paths = await _upload_photos(token, s["batch_number"], photos)
-                if paths:
-                    data["photo_paths"] = paths
-        except Exception as e:
-            print("[shearing-photos-bg]", e)
-        await _write_excel(data, file_name)
-    asyncio.create_task(_bg())
-    return {"ok": True, "id": new_id}
+    od = await od_sync(new_id, photos=photos)   # awaited: Vercel kills post-response work
+    return {"ok": True, "id": new_id, "onedrive": od}
 
 
 @router.post("/update")
@@ -395,7 +463,8 @@ async def s_update(body: SIn, emp: dict = Depends(require_employee)):
         s["log_date"], s["customer_name"], s["batch_number"], s["grade"], s["make"],
         s["process"], s["qc_name"], s["sheets_measured"], s["rejection_flag"],
         s["has_reworks"], json.dumps(data), body.id)
-    return {"ok": True, "id": body.id}
+    od = await od_sync(body.id, excel=False)    # refresh the PDF with the edits
+    return {"ok": True, "id": body.id, "onedrive": od}
 
 
 class DelIn(BaseModel):

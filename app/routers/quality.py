@@ -1,20 +1,23 @@
 """CTL Quality Inspection API — full-parity with the legacy form. Stores the
 complete collected payload to Neon (JSONB) for list/edit/PDF, and appends the
 exact 315-column row to the EXISTING OneDrive workbook `Quality_Log.xlsx`
-(table QualityLog) via Microsoft Graph — same contract as the Node app."""
-import asyncio
+(table QualityLog) via Microsoft Graph — same contract as the Node app.
+OneDrive writes are awaited inside the request (see app/odsync.py):
+PDF -> Quality/PDF/CTL-n/<batch>_(dd-mm-yyyy)_CTL_Inspection.pdf,
+photos -> Quality/Photos/CTL-n/<file name>/, row -> QualityLog,
+cut-length sheets -> Quality_Measurements_Log.csv."""
 import base64
 import json
 import re
-from datetime import date, datetime
-from typing import Optional, Any
+from datetime import date
+from typing import Optional
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph, xlsxlog
+from .. import db, graph, xlsxlog, odsync
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_quality_pdf
@@ -163,9 +166,17 @@ def _safe(s: str, n=40) -> str:
     return re.sub(r"[^A-Za-z0-9_-]+", "", str(s or ""))[:n]
 
 
-async def _upload_photos(token, batch: str, photos: list) -> list:
-    out = []
+def _machine_sub(machine) -> str:
+    m = re.sub(r"\s+", "", str(machine or "")).upper()
+    return "CTL-1" if m in ("CTL-1", "CTL1") else "CTL-2" if m in ("CTL-2", "CTL2") else ""
+
+
+async def _upload_photos(token, photo_folder: str, photos: list) -> list:
+    """Node layout: <Photos[/CTL-n]>/<file name>/photo_<n>_image.<ext>. Raises if any fail."""
+    out, failed = [], 0
     for idx, p in enumerate(photos or []):
+        if isinstance(p, dict):
+            p = p.get("data") or ""
         m = re.match(r"^data:image/(png|jpe?g|webp);base64,(.+)$", p or "", re.I | re.S)
         if not m:
             continue
@@ -173,36 +184,90 @@ async def _upload_photos(token, batch: str, photos: list) -> list:
         try:
             raw = base64.b64decode(m.group(2))
         except Exception:
+            failed += 1
             continue
-        stamp = datetime.now(IST).strftime("%Y%m%d-%H%M%S")
-        path = f"{ONEDRIVE_BASE}/Quality/Photos/{_safe(batch) or 'ctl'}_{idx+1}_{stamp}.{ext}"
+        path = f"{photo_folder}/photo_{idx+1}_image.{ext}"
         ct = "image/png" if ext == "png" else "image/jpeg" if ext in ("jpg", "jpeg") else "image/webp"
         try:
             await graph.upload_file(token, path, raw, ct)
             out.append(path)
         except Exception as e:
+            failed += 1
             print("[quality-photo]", e)
+    if failed:
+        raise RuntimeError(f"{failed} of {len(photos)} photo(s) failed to upload")
     return out
 
 
-async def _write_excel(data: dict, file_name: str):
-    """Append the 315-col row to the existing OneDrive QualityLog table."""
-    try:
-        token = await graph.get_token()
-        item_id = await graph.get_item_id(token, QUALITY_XLSX)
-        if not item_id:
-            print("[quality-xlsx] workbook not found:", QUALITY_XLSX)
-            return
-        headers = quality_headers()
-        await graph.ensure_table_columns(token, item_id, QUALITY_TABLE, headers)
-        row = quality_row(data, file_name)
-        # pad/truncate defensively to the header length
-        if len(row) < len(headers):
-            row += [""] * (len(headers) - len(row))
-        row = row[:len(headers)]
-        await graph.add_table_row(token, item_id, QUALITY_TABLE, row)
-    except Exception as e:
-        print("[quality-xlsx]", e)
+async def _write_excel(token, data: dict, file_name: str, old_name: str = "", dedupe: bool = False):
+    """Append the 315-col row to the existing OneDrive QualityLog table (raises on failure)."""
+    item_id = await graph.require_item_id(token, QUALITY_XLSX)
+    headers = quality_headers()
+    if dedupe:
+        names = await graph.column_values(token, item_id, QUALITY_TABLE, 0)
+        if file_name in names or (old_name and old_name in names):
+            return "exists"
+        bat = await graph.column_values(token, item_id, QUALITY_TABLE, headers.index("Batch Number"))
+        dts = await graph.column_values(token, item_id, QUALITY_TABLE, headers.index("Date"))
+        have = {(odsync.norm(b), xlsxlog.date_part(d)) for b, d in zip(bat, dts)}
+        if (odsync.norm(data.get("batch_number")), str(data.get("date") or "")[:10]) in have:
+            return "exists"
+    await graph.ensure_table_columns(token, item_id, QUALITY_TABLE, headers)
+    row = quality_row(data, file_name)
+    row = (row + [""] * len(headers))[:len(headers)]
+    await graph.add_table_row(token, item_id, QUALITY_TABLE, row)
+
+
+async def _write_meas_csv(token, data: dict, file_name: str, when):
+    """Node appendMeasCsv: one line per measured sheet in Quality_Measurements_Log.csv."""
+    groups = [g for g in (data.get("cut_groups") or []) if g and (g.get("sheets") or [])]
+    if not groups:
+        return "none"
+    path = f"{ONEDRIVE_BASE}/Quality/Quality_Measurements_Log.csv"
+    ex = await graph.read_text(token, path) or (
+        "Timestamp,File Name,Cut Length,Sheet No,Thickness,Width,Length,Diag 1,Diag 2,Out Of Tolerance\n")
+    if f",{odsync.csv_cell(file_name)}," in ex:
+        return "exists"
+    ts = odsync.iso_z(when)
+    lines = "".join(odsync.csv_line([ts, file_name, g.get("cut_length"), sh.get("sheet_no"),
+                                     sh.get("thickness"), sh.get("width"), sh.get("length"),
+                                     sh.get("d1"), sh.get("d2"), "YES" if sh.get("out_of_tol") else ""])
+                    for g in groups for sh in (g.get("sheets") or []))
+    if not ex.endswith("\n"):
+        ex += "\n"
+    await graph.upload_file(token, path, (ex + lines).encode("utf-8"), "text/csv")
+
+
+async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: bool = False) -> dict:
+    """Write one CTL inspection to OneDrive — PDF, photos, QualityLog row, measurements CSV."""
+    await ensure_table()
+    st = odsync.Steps("quality", rec_id)
+    row = await db.fetchrow("SELECT id, payload, file_name, created_at FROM quality_inspection WHERE id=$1", rec_id)
+    if not row:
+        st.fail("record", "not found in database")
+        return await odsync.record(st)
+    r = dict(row)
+    data = odsync.as_obj(r.get("payload"), {})
+    old_name = r.get("file_name") or ""
+    fn = old_name if "_(" in old_name else odsync.legacy_file_name(
+        data.get("batch_number"), r.get("created_at"), "CTL_Inspection")
+    sub = _machine_sub(data.get("machine_name"))
+    pdf_folder = f"{ONEDRIVE_BASE}/Quality/PDF" + (f"/{sub}" if sub else "")
+    photo_folder = f"{ONEDRIVE_BASE}/Quality/Photos" + (f"/{sub}" if sub else "") + f"/{fn}"
+    token = await st.run("OneDrive sign-in", graph.get_token())
+    if token:
+        if photos:
+            paths = await st.run("Photos", _upload_photos(token, photo_folder, photos))
+            if paths:
+                data["photo_paths"] = paths
+        await st.run("PDF report", graph.upload_file(
+            token, f"{pdf_folder}/{fn}.pdf", build_quality_pdf(data, rec_id, MP_SPEC), "application/pdf"))
+        if excel:
+            await st.run("Excel log (Quality_Log.xlsx)", _write_excel(token, data, fn, old_name, dedupe))
+            await st.run("Measurements CSV", _write_meas_csv(token, data, fn, r.get("created_at")))
+    await db.execute("UPDATE quality_inspection SET file_name=$1, payload=$2 WHERE id=$3",
+                     fn, json.dumps(data), rec_id)
+    return await odsync.record(st)
 
 
 class QIn(BaseModel):
@@ -389,19 +454,8 @@ async def q_submit(body: QIn, emp: dict = Depends(require_employee)):
         s["grade"], s["make"], s["machine_name"], s["inspector"], s["sheets_measured"],
         s["oot_count"], s["rejection_flag"], json.dumps(data), file_name, by)
 
-    async def _bg():
-        token = None
-        try:
-            if photos:
-                token = await graph.get_token()
-                paths = await _upload_photos(token, s["batch_number"], photos)
-                if paths:
-                    data["photo_paths"] = paths
-        except Exception as e:
-            print("[quality-photos-bg]", e)
-        await _write_excel(data, file_name)
-    asyncio.create_task(_bg())
-    return {"ok": True, "id": new_id}
+    od = await od_sync(new_id, photos=photos)   # awaited: Vercel kills post-response work
+    return {"ok": True, "id": new_id, "onedrive": od}
 
 
 @router.post("/update")
@@ -419,7 +473,8 @@ async def q_update(body: QIn, emp: dict = Depends(require_employee)):
         s["log_date"], s["time"], s["customer_name"], s["coil_number"], s["batch_number"],
         s["grade"], s["make"], s["machine_name"], s["inspector"], s["sheets_measured"],
         s["oot_count"], s["rejection_flag"], json.dumps(data), body.id)
-    return {"ok": True, "id": body.id}
+    od = await od_sync(body.id, excel=False)    # refresh the PDF with the edits
+    return {"ok": True, "id": body.id, "onedrive": od}
 
 
 class DelIn(BaseModel):

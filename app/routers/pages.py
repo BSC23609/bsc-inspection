@@ -60,6 +60,7 @@ ADMIN_NAV = [
     {"name": "Users", "icon": "users", "href": "/users", "active_key": "users"},
     {"name": "Customers", "icon": "store", "href": "/customers", "active_key": "customers"},
     {"name": "Settings", "icon": "gear", "href": "/admin", "active_key": "admin"},
+    {"name": "OneDrive Sync", "icon": "cloud", "href": "/onedrive-sync", "active_key": "onedrive_sync"},
 ]
 
 router = APIRouter()

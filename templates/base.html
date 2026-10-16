@@ -107,6 +107,23 @@ function closeModal(){document.getElementById('scrim').classList.remove('show');
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
 function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.className='toast '+(kind||'');t.textContent=msg;t.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(function(){t.classList.remove('show');},2600);}
 </script>
+<div id="od_warn" style="display:none;position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;max-width:min(560px,calc(100vw - 32px));background:#fff7e6;color:#7a4b00;border:1px solid #f3c97a;border-radius:12px;padding:12px 40px 12px 14px;font-size:13px;line-height:1.45;box-shadow:0 8px 28px rgba(0,0,0,.14)">
+  <b>Saved in QMS, but not fully on OneDrive.</b> <span id="od_warn_t"></span>
+  <div style="margin-top:6px"><a href="/onedrive-sync" style="color:#0069aa;font-weight:600">Open OneDrive Sync to retry →</a></div>
+  <button onclick="this.parentElement.style.display='none'" aria-label="Close" style="position:absolute;top:8px;right:10px;border:0;background:none;font-size:18px;color:#7a4b00;cursor:pointer">×</button>
+</div>
+<script>
+/* Every save now returns {onedrive:{ok,saved,errors}}. If OneDrive failed, say so. */
+(function(){
+  if(!window.fetch||window._odHooked)return;window._odHooked=true;var f=window.fetch;
+  window.fetch=function(){return f.apply(this,arguments).then(function(r){
+    try{var ct=r.headers.get('content-type')||'';if(ct.indexOf('application/json')>-1){r.clone().json().then(function(j){
+      if(j&&j.onedrive&&j.onedrive.ok===false){var e=(j.onedrive.errors||[]).join(' · ');
+        document.getElementById('od_warn_t').textContent=e;document.getElementById('od_warn').style.display='block';}
+    }).catch(function(){});}}catch(e){}
+    return r;});};
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>

@@ -2,7 +2,6 @@
 dimensions, surface checks and auto out-of-spec flags. Same contract as the Node
 app: Neon table `pdi_reports`, auto report number BSCQMS-PRD-009-<DDMMYY>-<NN>,
 a CSV register on OneDrive and a per-report PDF."""
-import asyncio
 import json
 from datetime import date, datetime
 from typing import Optional
@@ -12,7 +11,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph
+from .. import db, graph, odsync
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_pdi_pdf
@@ -69,36 +68,47 @@ async def pdi_next(emp: dict = Depends(require_employee)):
     return JSONResponse({"report_no": await _next_number()}, headers={"Cache-Control": "no-store"})
 
 
-async def _append_csv(row: dict, by: str):
-    try:
-        token = await graph.get_token()
-        ex = await graph.read_text(token, CSV_PATH) or (
-            "Report No,Date,Customer,Items,Inspected By,Reviewed By,Approved By,Created By,Created At\n")
-
-        def c(v):
-            v = "" if v is None else str(v)
-            return '"' + v.replace('"', '""') + '"' if any(ch in v for ch in ',"\n') else v
-
-        line = ",".join(c(x) for x in [
-            row["report_no"], row["report_date"], row["customer"],
-            f"{len(row.get('items') or [])} item(s)", row["inspected_by"],
-            row.get("reviewed_by", ""), row.get("approved_by", ""), by,
-            datetime.now(IST).strftime("%d-%b-%Y %H:%M")]) + "\n"
-        await graph.upload_file(token, CSV_PATH, (ex + line).encode("utf-8"), "text/csv")
-    except Exception as e:
-        print("[pdi-csv]", e)
+async def _append_csv(token, row: dict):
+    ex = await graph.read_text(token, CSV_PATH) or (
+        "Report No,Date,Customer,Items,Inspected By,Reviewed By,Approved By,Created By,Created At\n")
+    key = odsync.csv_cell(row["report_no"]) + ","
+    if ex.startswith(key) or ("\n" + key) in ex:
+        return "exists"
+    line = odsync.csv_line([
+        row["report_no"], row["report_date"], row["customer"],
+        f"{len(row.get('items') or [])} item(s)", row["inspected_by"],
+        row.get("reviewed_by", ""), row.get("approved_by", ""), row.get("created_by", ""),
+        row.get("created_at", "")])
+    if not ex.endswith("\n"):
+        ex += "\n"
+    await graph.upload_file(token, CSV_PATH, (ex + line).encode("utf-8"), "text/csv")
 
 
-async def _write_pdf(rno: str, rep: dict):
-    try:
-        pdf = build_pdi_pdf(rep, PDI_TOL)
-        safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in rno)
-        path = f"{ONEDRIVE_BASE}/Pre-Delivery/{safe}.pdf"
-        token = await graph.get_token()
-        await graph.upload_file(token, path, pdf, "application/pdf")
-        await db.execute("UPDATE pdi_reports SET pdf_path=$1 WHERE report_no=$2", path, rno)
-    except Exception as e:
-        print("[pdi-pdf]", e)
+async def od_sync(rno: str, dedupe: bool = False) -> dict:
+    """PDF -> Pre-Delivery/<report no>.pdf and a line in PDI_Register.csv (awaited)."""
+    await ensure_table()
+    st = odsync.Steps("pdi", rno)
+    row = await db.fetchrow("SELECT * FROM pdi_reports WHERE report_no=$1", rno)
+    if not row:
+        st.fail("record", "not found in database")
+        return await odsync.record(st)
+    d = dict(row)
+    ca = d.get("created_at")
+    rep = {"report_no": d["report_no"], "report_date": str(d.get("report_date") or ""),
+           "customer": d.get("customer") or "", "items": odsync.as_obj(d.get("items"), []) or [],
+           "inspected_by": d.get("inspected_by") or "", "reviewed_by": d.get("reviewed_by") or "",
+           "approved_by": d.get("approved_by") or "", "created_by": d.get("created_by") or "",
+           "created_at": ca.astimezone(IST).strftime("%d-%b-%Y %H:%M") if ca else ""}
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in rno)
+    path = f"{ONEDRIVE_BASE}/Pre-Delivery/{safe}.pdf"
+    token = await st.run("OneDrive sign-in", graph.get_token())
+    if token:
+        await st.run("PDF report", graph.upload_file(token, path, build_pdi_pdf(rep, PDI_TOL),
+                                                     "application/pdf"))
+        if "PDF report" in st.saved:
+            await db.execute("UPDATE pdi_reports SET pdf_path=$1 WHERE report_no=$2", path, rno)
+        await st.run("Register CSV (PDI_Register.csv)", _append_csv(token, rep))
+    return await odsync.record(st)
 
 
 class PdiIn(BaseModel):
@@ -172,16 +182,8 @@ async def pdi_submit(body: PdiIn, emp: dict = Depends(require_employee)):
     except Exception as e:
         print("[pdi-submit]", repr(e))
         raise HTTPException(500, f"Save failed: {e}")
-    rep = _rep(body)
-    # PDF + CSV are best-effort; never let them fail the submit.
-    try:
-        async def _bg():
-            await _write_pdf(rno, rep)
-            await _append_csv(rep, by)
-        asyncio.create_task(_bg())
-    except Exception as e:
-        print("[pdi-bg]", repr(e))
-    return {"ok": True, "report_no": rno}
+    od = await od_sync(rno)              # awaited: Vercel kills post-response work
+    return {"ok": True, "report_no": rno, "onedrive": od}
 
 
 class DelIn(BaseModel):

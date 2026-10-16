@@ -2,7 +2,6 @@
 register. Same contract as the Node app: Neon table `eightd_reports`, auto report
 number BSC-8D-<YYYY>-<NNN>, a CSV register on OneDrive and a per-report PDF.
 The full D1–D8 content is stored in an added `details` JSONB column."""
-import asyncio
 import json
 from datetime import date, datetime
 from typing import Optional
@@ -12,7 +11,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph
+from .. import db, graph, odsync
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_8d_pdf
@@ -58,35 +57,46 @@ async def eightd_next(emp: dict = Depends(require_employee)):
     return JSONResponse({"report_no": await _next_number()}, headers={"Cache-Control": "no-store"})
 
 
-async def _append_csv(row: dict, by: str):
-    try:
-        token = await graph.get_token()
-        ex = await graph.read_text(token, CSV_PATH) or (
-            "Report No,Date,Customer,Part,NCR Ref,Priority,Status,PDF,Created By,Created At\n")
-
-        def c(v):
-            v = "" if v is None else str(v)
-            return '"' + v.replace('"', '""') + '"' if any(ch in v for ch in ',"\n') else v
-
-        line = ",".join(c(x) for x in [
-            row["report_no"], row["report_date"], row["customer"], row["part"],
-            row["ncr_ref"], row["priority"], row["status"], row.get("pdf_path", ""),
-            by, datetime.now(IST).strftime("%d-%b-%Y %H:%M")]) + "\n"
-        await graph.upload_file(token, CSV_PATH, (ex + line).encode("utf-8"), "text/csv")
-    except Exception as e:
-        print("[8d-csv]", e)
+async def _append_csv(token, row: dict):
+    ex = await graph.read_text(token, CSV_PATH) or (
+        "Report No,Date,Customer,Part,NCR Ref,Priority,Status,PDF,Created By,Created At\n")
+    key = odsync.csv_cell(row["report_no"]) + ","
+    if ex.startswith(key) or ("\n" + key) in ex:
+        return "exists"
+    line = odsync.csv_line([
+        row["report_no"], row["report_date"], row["customer"], row["part"],
+        row["ncr_ref"], row["priority"], row["status"], row.get("pdf_path", ""),
+        row.get("created_by", ""), row.get("created_at", "")])
+    if not ex.endswith("\n"):
+        ex += "\n"
+    await graph.upload_file(token, CSV_PATH, (ex + line).encode("utf-8"), "text/csv")
 
 
-async def _write_pdf(rno: str, rep: dict):
-    try:
-        pdf = build_8d_pdf(rep)
-        safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in rno)
-        path = f"{ONEDRIVE_BASE}/8D reports/{safe}.pdf"
-        token = await graph.get_token()
-        await graph.upload_file(token, path, pdf, "application/pdf")
-        await db.execute("UPDATE eightd_reports SET pdf_path=$1 WHERE report_no=$2", path, rno)
-    except Exception as e:
-        print("[8d-pdf]", e)
+async def od_sync(rno: str, dedupe: bool = False) -> dict:
+    """PDF -> 8D reports/<report no>.pdf and a line in 8D_Register.csv (awaited)."""
+    await ensure_table()
+    st = odsync.Steps("eightd", rno)
+    row = await db.fetchrow("SELECT * FROM eightd_reports WHERE report_no=$1", rno)
+    if not row:
+        st.fail("record", "not found in database")
+        return await odsync.record(st)
+    d = dict(row)
+    ca = d.get("created_at")
+    safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in rno)
+    path = f"{ONEDRIVE_BASE}/8D reports/{safe}.pdf"
+    rep = {"report_no": d["report_no"], "report_date": str(d.get("report_date") or ""),
+           "customer": d.get("customer") or "", "part": d.get("part") or "",
+           "ncr_ref": d.get("ncr_ref") or "", "priority": d.get("priority") or "",
+           "status": d.get("status") or "", "details": odsync.as_obj(d.get("details"), {}) or {},
+           "created_by": d.get("created_by") or "", "pdf_path": path,
+           "created_at": ca.astimezone(IST).strftime("%d-%b-%Y %H:%M") if ca else ""}
+    token = await st.run("OneDrive sign-in", graph.get_token())
+    if token:
+        await st.run("PDF report", graph.upload_file(token, path, build_8d_pdf(rep), "application/pdf"))
+        if "PDF report" in st.saved:
+            await db.execute("UPDATE eightd_reports SET pdf_path=$1 WHERE report_no=$2", path, rno)
+        await st.run("Register CSV (8D_Register.csv)", _append_csv(token, rep))
+    return await odsync.record(st)
 
 
 class EightDIn(BaseModel):
@@ -156,13 +166,8 @@ async def eightd_submit(body: EightDIn, emp: dict = Depends(require_employee)):
         "priority=EXCLUDED.priority,status=EXCLUDED.status,details=EXCLUDED.details,updated_at=now()",
         rno, rdate, body.customer or "", body.part or "", body.ncr_ref or "",
         body.priority or "", body.status or "Open", json.dumps(body.details or {}), by)
-    rep = _rep(body, by)
-
-    async def _bg():
-        await _write_pdf(rno, rep)
-        await _append_csv(rep, by)
-    asyncio.create_task(_bg())
-    return {"ok": True, "report_no": rno}
+    od = await od_sync(rno)              # awaited: Vercel kills post-response work
+    return {"ok": True, "report_no": rno, "onedrive": od}
 
 
 class DelIn(BaseModel):

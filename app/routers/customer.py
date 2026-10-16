@@ -7,7 +7,6 @@ source='Customer', status='Open', so they flow into the internal 3-role
 workflow. Complaints are tied to the signed-in customer (id + email) so each
 customer only ever sees their own.
 """
-import asyncio
 import json
 import os
 from datetime import datetime
@@ -147,10 +146,7 @@ async def customer_submit(body: PublicComplaintIn, request: Request):
                 "quantity": body.quantity or "", "defect_description": defect,
                 "status": "Open", "created_by": contact, "assets": assets})
 
-    async def _bg():
-        await C._write_pdf(cno, rep)
-        await C._append_csv(rep, f"Customer portal · {company}")
-    asyncio.create_task(_bg())
+    await C.od_sync(cno)                 # awaited: Vercel kills post-response work
     return {"ok": True, "ref": cno}
 
 
