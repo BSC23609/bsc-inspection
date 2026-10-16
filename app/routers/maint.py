@@ -600,6 +600,12 @@ async def ensure_tables():
         await db.execute("""CREATE TABLE IF NOT EXISTS maint_asset_elec (
             asset_id INT, emp_id INT)""")
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_ae ON maint_asset_elec (asset_id, emp_id)")
+        # daily per-machine running-hour / meter readings
+        await db.execute("""CREATE TABLE IF NOT EXISTS maint_readings (
+            id SERIAL PRIMARY KEY, asset_id INT, read_date DATE, running_hours NUMERIC,
+            reading NUMERIC, note TEXT, taken_by TEXT, taken_by_emp_id INT,
+            created_at TIMESTAMPTZ DEFAULT now())""")
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_rd ON maint_readings (asset_id, read_date)")
     except Exception as e:
         print("[maint] breakdown schema step skipped:", e)
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp ON maint_checkpoints (checklist_id, seq)")
@@ -1058,6 +1064,105 @@ async def checklist_delete(body: dict, emp: dict = Depends(require_employee)):
     await db.execute("DELETE FROM maint_checkpoints WHERE checklist_id=$1", cid)
     await db.execute("DELETE FROM maint_checklists WHERE id=$1", cid)
     return {"ok": True}
+
+
+_CL_GENERIC = ("upload  a photo", "upload a photo", "describe  any abnormalities",
+               "describe any abnormalities", "sign here", "record voice")
+
+
+def _scope_cat(label: str) -> str:
+    """Auto-tag a checkpoint to Electrical / Mechanical / Hydraulic from its wording."""
+    t = (label or "").lower().strip()
+    if "current" in t or "amps" in t:
+        return "Electrical"
+    if "bolt" in t or " nut" in t or " bush" in t:
+        return "Mechanical"
+    if any(k in t for k in ("hydraulic oil", "hydraulic line", "hydraulic valve", "power pack",
+                            "powerpack", "oil leak", "oil temperature", "thruster brake",
+                            "piston rod", "pneumatic", "hydraulic and")):
+        return "Hydraulic"
+    if "hydraulic" in t and "function" in t:
+        return "Hydraulic"
+    if any(k in t for k in ("inverter", "invertor", "encoder", "sensor", "panel", "cable wire",
+                            "wiring", " wire ", "battery", "alternator", "load cell", "junction box",
+                            "earth", "mv output", " mv ", "indicator", "remote", "vfd", " plc",
+                            "solenoid", "photocell", "proximity", "relay", "contactor",
+                            "limit switch", "electrical", "polarity", "the cells")):
+        return "Electrical"
+    return "Mechanical"
+
+
+@router.post("/checklists/import")
+async def checklists_import(body: dict, emp: dict = Depends(require_employee)):
+    """Bulk-create checklists from an uploaded workbook (one sheet per machine).
+    The client parses the xlsx and posts {sheets:[{title, points:[{text,options,min,max}]}]}."""
+    await ensure_tables()
+    rows = await db.fetch("SELECT id, code, name FROM maint_assets")
+    by_code = {}
+    by_name = []
+    for a in rows:
+        c = (a["code"] or "").upper().replace(" ", "")
+        if c:
+            by_code[c] = a["id"]
+        by_name.append((a["id"], (a["name"] or "").lower()))
+
+    def match_asset(title: str):
+        t = (title or "").upper()
+        m = re.search(r'M/C\s*N?O?\.?-?\s*0*(\d{1,3})', t)
+        if m and ("M/C-%03d" % int(m.group(1))) in by_code:
+            return by_code["M/C-%03d" % int(m.group(1))]
+        m = re.search(r'EOT[-\s]*0*(\d{1,3})', t)
+        if m and ("EOT-%03d" % int(m.group(1))) in by_code:
+            return by_code["EOT-%03d" % int(m.group(1))]
+        tl = (title or "").lower()
+        for aid, nm in by_name:
+            if nm and len(nm) >= 5 and nm[:16] in tl:
+                return aid
+        return None
+
+    created = updated = cps = 0
+    unmatched = []
+    for sh in (body.get("sheets") or []):
+        title = (sh.get("title") or "").strip()
+        if not title:
+            continue
+        aid = match_asset(title)
+        if not aid:
+            unmatched.append(title[:50])
+            continue
+        pts = []
+        for p in (sh.get("points") or []):
+            txt = (str(p.get("text") or "")).strip()
+            if not txt or txt.lower() in _CL_GENERIC:
+                continue
+            mn = str(p.get("min") if p.get("min") is not None else "").strip()
+            mx = str(p.get("max") if p.get("max") is not None else "").strip()
+            opts = str(p.get("options") or "").strip()
+            if mn or mx:
+                it, spec = "value", (mn + "-" + mx).strip("-")
+            elif opts:
+                it, spec = "radio", ""
+            else:
+                it, spec = "check", ""
+            pts.append((txt, _scope_cat(txt), it, spec))
+        if not pts:
+            continue
+        cid = await db.fetchval(
+            "SELECT id FROM maint_checklists WHERE asset_id=$1 AND lower(name)=lower($2)", aid, title)
+        if cid:
+            await db.execute("DELETE FROM maint_checkpoints WHERE checklist_id=$1", cid)
+            updated += 1
+        else:
+            cid = await db.fetchval(
+                "INSERT INTO maint_checklists (asset_id,name) VALUES ($1,$2) RETURNING id", aid, title)
+            created += 1
+        for i, (txt, cat, it, spec) in enumerate(pts):
+            await db.execute(
+                "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec) "
+                "VALUES ($1,$2,$3,$4,$5,$6,$7)", cid, i + 1, txt, cat, it, "", spec)
+            cps += 1
+    return {"ok": True, "created": created, "updated": updated,
+            "checkpoints": cps, "unmatched": unmatched}
 
 
 # =======================================================================
@@ -1760,6 +1865,73 @@ async def dashboard_data(emp: dict = Depends(require_employee)):
         print("[maint-dash open]", e)
     out["open_list"] = openlist
     return _json(out)
+
+
+# =======================================================================
+#  RUN-HOUR / METER READINGS  (daily per-machine capture)
+# =======================================================================
+@router.get("/readings/list")
+async def readings_list(emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    assets = await db.fetch(
+        "SELECT id, code, name, COALESCE(running_hours,0) AS running_hours "
+        "FROM maint_assets WHERE COALESCE(active,true) ORDER BY code, name")
+    todays = {}
+    try:
+        rows = await db.fetch(
+            "SELECT asset_id, running_hours, reading, note FROM maint_readings WHERE read_date=$1", _today())
+        for r in rows:
+            todays[str(r["asset_id"])] = {
+                "running_hours": float(r["running_hours"]) if r["running_hours"] is not None else None,
+                "reading": float(r["reading"]) if r["reading"] is not None else None,
+                "note": r["note"] or ""}
+    except Exception as e:
+        print("[maint readings today]", e)
+    recent = []
+    try:
+        rows = await db.fetch(
+            "SELECT r.read_date, r.running_hours, r.reading, r.note, r.taken_by, "
+            "COALESCE(a.code,'') code, COALESCE(a.name,'') name "
+            "FROM maint_readings r LEFT JOIN maint_assets a ON a.id=r.asset_id "
+            "ORDER BY r.read_date DESC, a.code LIMIT 150")
+        recent = [dict(x) for x in rows]
+    except Exception as e:
+        print("[maint readings recent]", e)
+    return _json({"today": _today().isoformat(),
+                  "assets": [dict(a) for a in assets], "todays": todays, "recent": recent})
+
+
+@router.post("/readings/save")
+async def readings_save(body: dict, emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    try:
+        rd = date.fromisoformat(str(body.get("read_date"))[:10]) if body.get("read_date") else _today()
+    except Exception:
+        rd = _today()
+    by = emp.get("name") or emp.get("emp_no") or "staff"
+    saved = 0
+    for r in (body.get("rows") or []):
+        try:
+            aid = int(r.get("asset_id"))
+        except (TypeError, ValueError):
+            continue
+        rh = _num(r.get("running_hours")); mr = _num(r.get("reading"))
+        note = (r.get("note") or "").strip()
+        if rh is None and mr is None and not note:
+            continue
+        await db.execute(
+            "INSERT INTO maint_readings (asset_id,read_date,running_hours,reading,note,taken_by,taken_by_emp_id) "
+            "VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (asset_id,read_date) DO UPDATE SET "
+            "running_hours=EXCLUDED.running_hours, reading=EXCLUDED.reading, note=EXCLUDED.note, "
+            "taken_by=EXCLUDED.taken_by, taken_by_emp_id=EXCLUDED.taken_by_emp_id, created_at=now()",
+            aid, rd, rh, mr, note, by, emp.get("id"))
+        if rh is not None:
+            try:
+                await db.execute("UPDATE maint_assets SET running_hours=$1, hours_updated_at=now() WHERE id=$2", rh, aid)
+            except Exception as e:
+                print("[maint readings asset-hrs]", e)
+        saved += 1
+    return {"ok": True, "saved": saved}
 
 
 # =======================================================================

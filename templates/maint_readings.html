@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Run-hour Readings · {{ app_name }}{% endblock %}
+{% block tb_title %}Run-hour Readings{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.rtoolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.rtoolbar label{font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--ink-2);margin-right:6px}
+.rtoolbar input[type=date]{padding:8px 10px;border:1px solid var(--line-2);border-radius:9px;font-size:13px}
+.rtable{width:100%;border-collapse:collapse;font-size:13px}
+.rtable th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);padding:9px 8px;position:sticky;top:0;background:#fff}
+.rtable td{border-bottom:1px solid var(--line);padding:7px 8px;vertical-align:middle}
+.rtable .mac{font-weight:700;color:var(--acc-ink);min-width:150px}
+.rtable input{width:100%;padding:8px 9px;border:1px solid var(--line-2);border-radius:8px;font-size:13px;font-family:inherit}
+.rtable input:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px var(--acc-soft)}
+.cur{font-size:11.5px;color:var(--muted)}
+.rt-wrap{max-height:62vh;overflow:auto}
+.rhead{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--line)}
+.recent td,.recent th{font-size:12.5px;padding:7px 8px;border-bottom:1px solid var(--line)}
+.empty{color:var(--muted);text-align:center;padding:22px}
+@media(max-width:620px){.hide-sm{display:none}}
+</style>
+
+<div class="page-head"><h1>Run-hour Readings</h1><p>Enter each machine's running hours for the day. Readings keep the asset's current hours up to date and feed hours-based PM.</p></div>
+
+<div class="panel">
+  <div class="rtoolbar">
+    <span><label>Date</label><input type="date" id="r_date" onchange="loadReadings()"></span>
+    <span style="flex:1"></span>
+    <button class="btn btn-ghost" onclick="loadReadings()">Reload</button>
+    <button class="btn btn-primary" id="r_save" onclick="saveReadings()">Save readings</button>
+  </div>
+  <div class="rt-wrap">
+    <table class="rtable">
+      <thead><tr><th>Machine</th><th style="width:150px">Running hours</th><th style="width:150px" class="hide-sm">Meter / count</th><th class="hide-sm">Note</th></tr></thead>
+      <tbody id="r_body"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
+    </table>
+  </div>
+</div>
+
+<div class="panel" style="margin-top:16px">
+  <div class="rhead"><b style="font-size:14px">Recent readings</b></div>
+  <div class="panel-body" style="max-height:48vh;overflow:auto">
+    <table class="recent" style="width:100%;border-collapse:collapse">
+      <thead><tr><th>Date</th><th>Machine</th><th>Run hrs</th><th class="hide-sm">Meter</th><th class="hide-sm">Note</th><th class="hide-sm">By</th></tr></thead>
+      <tbody id="r_recent"><tr><td colspan="6" class="empty">—</td></tr></tbody>
+    </table>
+  </div>
+</div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script>
+var ASSETS=[],TODAYS={};
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function fdate(s){if(!s)return'—';var d=new Date(s);if(isNaN(d))return String(s).slice(0,10);return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear();}
+async function loadReadings(){
+  var box=document.getElementById('r_body');box.innerHTML='<tr><td colspan="4" class="empty">Loading…</td></tr>';
+  var d;try{var r=await fetch('/maint/readings/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}d=await r.json();}catch(e){box.innerHTML='<tr><td colspan="4" class="empty" style="color:#c23438">Couldn’t load.</td></tr>';return;}
+  ASSETS=d.assets||[];TODAYS=d.todays||{};
+  if(!document.getElementById('r_date').value)document.getElementById('r_date').value=d.today;
+  if(!ASSETS.length){box.innerHTML='<tr><td colspan="4" class="empty">No active machines.</td></tr>';return;}
+  box.innerHTML=ASSETS.map(function(a){
+    var t=TODAYS[String(a.id)]||{};var mac=((a.code?a.code+' ':'')+(a.name||'')).trim();
+    return '<tr data-id="'+a.id+'"><td><div class="mac">'+esc(mac)+'</div><div class="cur">current: '+(a.running_hours||0)+' hrs</div></td>'
+      +'<td><input type="number" step="any" class="r_rh" placeholder="'+(a.running_hours||0)+'" value="'+(t.running_hours!=null?t.running_hours:'')+'"></td>'
+      +'<td class="hide-sm"><input type="number" step="any" class="r_mr" value="'+(t.reading!=null?t.reading:'')+'"></td>'
+      +'<td class="hide-sm"><input type="text" class="r_note" value="'+esc(t.note||'')+'"></td></tr>';
+  }).join('');
+  var rec=d.recent||[];var rb=document.getElementById('r_recent');
+  rb.innerHTML=rec.length?rec.map(function(x){var mac=((x.code?x.code+' ':'')+(x.name||'')).trim()||'—';
+    return '<tr><td>'+fdate(x.read_date)+'</td><td>'+esc(mac)+'</td><td>'+(x.running_hours!=null?x.running_hours:'—')+'</td>'
+      +'<td class="hide-sm">'+(x.reading!=null?x.reading:'—')+'</td><td class="hide-sm">'+esc(x.note||'')+'</td><td class="hide-sm">'+esc(x.taken_by||'')+'</td></tr>';}).join(''):'<tr><td colspan="6" class="empty">No readings yet.</td></tr>';
+}
+async function saveReadings(){
+  var rows=[].map.call(document.querySelectorAll('#r_body tr[data-id]'),function(tr){
+    return {asset_id:tr.getAttribute('data-id'),
+      running_hours:tr.querySelector('.r_rh').value,
+      reading:(tr.querySelector('.r_mr')||{}).value||'',
+      note:(tr.querySelector('.r_note')||{}).value||''};
+  }).filter(function(x){return x.running_hours!==''||x.reading!==''||x.note!=='';});
+  if(!rows.length){toast('err','Enter at least one reading');return;}
+  var b=document.getElementById('r_save');b.disabled=true;var l=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch('/maint/readings/save',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({read_date:document.getElementById('r_date').value,rows:rows})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
+    toast('ok','Saved '+(d.saved||0)+' reading(s)');await loadReadings();}
+  catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}
+}
+loadReadings();
+</script>
+{% endblock %}

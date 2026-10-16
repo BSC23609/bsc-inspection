@@ -1,0 +1,112 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Maintenance Dashboard · {{ app_name }}{% endblock %}
+{% block tb_title %}Maintenance Dashboard{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.dash-wrap{padding:4px 2px}
+.kgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:16px}
+@media(max-width:900px){.kgrid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.kgrid{grid-template-columns:1fr 1fr}}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px 16px;position:relative;overflow:hidden}
+.kpi .lab{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.kpi .val{font-size:30px;font-weight:800;line-height:1.1;margin-top:6px;color:var(--ink)}
+.kpi .sub{font-size:11.5px;color:var(--muted);margin-top:3px}
+.kpi.k-red .val{color:#c23438}.kpi.k-amber .val{color:#b7791f}.kpi.k-green .val{color:#0a7d55}.kpi.k-blue .val{color:#1f4e79}
+.kpi .bar{position:absolute;left:0;top:0;bottom:0;width:5px}
+.kpi.k-red .bar{background:#e5484d}.kpi.k-amber .bar{background:#f0b429}.kpi.k-green .bar{background:#15a06e}.kpi.k-blue .bar{background:#2f6fb0}
+.crow{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px}
+@media(max-width:900px){.crow{grid-template-columns:1fr}}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px}
+.card h3{font-size:13px;font-weight:700;color:var(--ink);margin:0 0 12px}
+.card .cv{position:relative;height:240px}
+.olist{width:100%;border-collapse:collapse;font-size:13px}
+.olist th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);padding:8px 8px}
+.olist td{border-bottom:1px solid var(--line);padding:9px 8px;vertical-align:top}
+.olist a{font-weight:700;color:var(--acc-ink)}
+.tchip{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px;background:#eef2f7;color:#41506a}
+.age{font-weight:700}.age.hot{color:#c23438}
+.empty{color:var(--muted);text-align:center;padding:22px}
+</style>
+
+<div class="page-head"><h1>Maintenance Dashboard</h1><p>Live view of breakdowns, preventive-maintenance completion and machine reliability.</p></div>
+
+<div class="dash-wrap">
+  <div class="kgrid" id="kpis">
+    <div class="kpi k-red"><div class="bar"></div><div class="lab">Open Breakdowns</div><div class="val" id="k_open">–</div><div class="sub" id="k_oldest"></div></div>
+    <div class="kpi k-green"><div class="bar"></div><div class="lab">PM done (30 days)</div><div class="val" id="k_pm">–</div><div class="sub">preventive tasks completed</div></div>
+    <div class="kpi k-blue"><div class="bar"></div><div class="lab">Breakdowns closed (30d)</div><div class="val" id="k_closed">–</div><div class="sub" id="k_mttr"></div></div>
+    <div class="kpi k-amber"><div class="bar"></div><div class="lab">Active machines</div><div class="val" id="k_assets">–</div><div class="sub" id="k_sched"></div></div>
+  </div>
+
+  <div class="crow">
+    <div class="card"><h3>Breakdowns by scope (last 6 months)</h3><div class="cv"><canvas id="chType"></canvas></div></div>
+    <div class="card"><h3>Breakdowns raised vs PM done — 6-month trend</h3><div class="cv"><canvas id="chTrend"></canvas></div></div>
+  </div>
+
+  <div class="crow">
+    <div class="card"><h3>Top machines by breakdowns</h3><div class="cv"><canvas id="chTop"></canvas></div></div>
+    <div class="card"><h3>Open breakdowns <span style="font-weight:400;color:var(--muted);font-size:12px" id="o_cnt"></span></h3>
+      <div style="max-height:240px;overflow:auto">
+        <table class="olist"><thead><tr><th>Machine</th><th>Scope</th><th>Problem</th><th>Age</th></tr></thead>
+        <tbody id="o_body"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody></table>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+{% endblock %}
+{% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function fmtAge(iso){if(!iso)return'—';var d=new Date(iso);if(isNaN(d))return'—';var days=Math.floor((Date.now()-d.getTime())/86400000);return days<=0?'today':(days+'d');}
+var CT="#2f6fb0",CM="#15a06e",CH="#e08e0b",CO="#8a93a6";
+async function load(){
+  var d;try{var r=await fetch('/maint/dashboard/data',{cache:'no-store'});if(r.status===401){location.href='/login';return;}d=await r.json();}catch(e){return;}
+  document.getElementById('k_open').textContent=d.open_breakdowns;
+  document.getElementById('k_oldest').textContent=d.open_breakdowns? ('oldest open '+d.oldest_open_days+' day(s)') : 'all clear';
+  document.getElementById('k_pm').textContent=d.pm_done_30d;
+  document.getElementById('k_closed').textContent=d.closed_30d;
+  document.getElementById('k_mttr').textContent='avg repair '+(d.mttr_hours||0)+' hrs';
+  document.getElementById('k_assets').textContent=d.active_assets;
+  document.getElementById('k_sched').textContent=d.active_schedules+' active PM schedules';
+
+  var bt=d.by_type||{};
+  new Chart(document.getElementById('chType'),{type:'doughnut',
+    data:{labels:['Electrical','Mechanical','Hydraulic','Other'],
+      datasets:[{data:[bt.Electrical||0,bt.Mechanical||0,bt.Hydraulic||0,bt.Other||0],
+      backgroundColor:[CT,CM,CH,CO],borderWidth:0}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{boxWidth:12,font:{size:11}}}}}});
+
+  var t=d.trend||{months:[],breakdowns:[],pm_done:[]};
+  new Chart(document.getElementById('chTrend'),{type:'bar',
+    data:{labels:t.months,datasets:[
+      {label:'Breakdowns',data:t.breakdowns,backgroundColor:'#e5484d'},
+      {label:'PM done',data:t.pm_done,backgroundColor:'#15a06e'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}},
+      scales:{x:{grid:{display:false}},y:{beginAtZero:true,ticks:{precision:0}}}}});
+
+  var tm=d.top_machines||[];
+  new Chart(document.getElementById('chTop'),{type:'bar',
+    data:{labels:tm.map(function(x){return x.label;}),datasets:[{data:tm.map(function(x){return x.count;}),backgroundColor:'#2f6fb0'}]},
+    options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},
+      scales:{x:{beginAtZero:true,ticks:{precision:0},grid:{color:'#eef'}},y:{grid:{display:false}}}}});
+
+  var ol=d.open_list||[];document.getElementById('o_cnt').textContent='('+ol.length+')';
+  var b=document.getElementById('o_body');
+  if(!ol.length){b.innerHTML='<tr><td colspan="4" class="empty">No open breakdowns 🎉</td></tr>';return;}
+  b.innerHTML=ol.map(function(x){
+    var mac=((x.code?x.code+' ':'')+(x.name||'')).trim()||'—';
+    var days=Math.floor((Date.now()-new Date(x.raised_at).getTime())/86400000);
+    return '<tr><td><a href="/maint/breakdown?id='+x.id+'">'+esc(mac)+'</a></td>'
+      +'<td><span class="tchip">'+esc(x.btype)+'</span></td>'
+      +'<td>'+esc((x.problem||'').slice(0,60))+'</td>'
+      +'<td class="age'+(days>=3?' hot':'')+'">'+fmtAge(x.raised_at)+'</td></tr>';
+  }).join('');
+}
+load();
+</script>
+{% endblock %}
