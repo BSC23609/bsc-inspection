@@ -168,10 +168,12 @@ REWORK_DEFECTS = {"RW-01": "Length variation", "RW-02": "Width variation",
                   "RW-09": "Surface damage", "RW-10": "Other"}
 
 
-async def _upload_photos(token, photo_folder: str, photos: list) -> list:
+async def _upload_photos(token, photo_folder: str, photos: list, start: int = 0) -> list:
     """Node layout: Shearing/Photos/<file name>/photo_<n>_image.<ext>. Raises if any fail."""
     out, failed = [], 0
     for idx, p in enumerate(photos or []):
+        # the form sends {name, data, type}; accept a bare data: URL too
+        name = (p.get("name") if isinstance(p, dict) else "") or "image.jpg"
         if isinstance(p, dict):
             p = p.get("data") or ""
         m = re.match(r"^data:image/(png|jpe?g|webp);base64,(.+)$", p or "", re.I | re.S)
@@ -183,7 +185,8 @@ async def _upload_photos(token, photo_folder: str, photos: list) -> list:
         except Exception:
             failed += 1
             continue
-        path = f"{photo_folder}/photo_{idx+1}_image.{ext}"
+        base = re.sub(r"[^a-zA-Z0-9.\-_]", "_", name.rsplit(".", 1)[0])[:60] or "image"
+        path = f"{photo_folder}/photo_{start+idx+1}_{base}.{ext}"
         ct = "image/png" if ext == "png" else "image/jpeg" if ext in ("jpg", "jpeg") else "image/webp"
         try:
             await graph.upload_file(token, path, raw, ct)
@@ -263,9 +266,10 @@ async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: 
     token = await st.run("OneDrive sign-in", graph.get_token())
     if token:
         if photos:
-            paths = await st.run("Photos", _upload_photos(token, f"{ONEDRIVE_BASE}/Shearing/Photos/{fn}", photos))
+            have = list(data.get("photo_paths") or [])
+            paths = await st.run("Photos", _upload_photos(token, f"{ONEDRIVE_BASE}/Shearing/Photos/{fn}", photos, start=len(have)))
             if paths:
-                data["photo_paths"] = paths
+                data["photo_paths"] = have + paths
         await st.run("PDF report", graph.upload_file(
             token, f"{ONEDRIVE_BASE}/Shearing/PDF/{fn}.pdf",
             build_shearing_pdf(data, rec_id, MP_SPEC), "application/pdf"))
@@ -454,7 +458,12 @@ async def s_update(body: SIn, emp: dict = Depends(require_employee)):
     if not body.id:
         raise HTTPException(400, "id required")
     data = body.data or {}
-    data.pop("photos", None)
+    photos = data.pop("photos", []) if isinstance(data.get("photos"), list) else []
+    prev = await db.fetchrow("SELECT payload FROM shearing_inspection WHERE id=$1", body.id)
+    if prev:   # the edit form doesn't carry photo_paths — keep the ones already saved
+        old = odsync.as_obj(dict(prev).get("payload"), {}) or {}
+        if old.get("photo_paths"):
+            data["photo_paths"] = old["photo_paths"]
     s = _summ(data)
     await db.execute(
         "UPDATE shearing_inspection SET log_date=$1,customer_name=$2,batch_number=$3,grade=$4,"
@@ -463,7 +472,7 @@ async def s_update(body: SIn, emp: dict = Depends(require_employee)):
         s["log_date"], s["customer_name"], s["batch_number"], s["grade"], s["make"],
         s["process"], s["qc_name"], s["sheets_measured"], s["rejection_flag"],
         s["has_reworks"], json.dumps(data), body.id)
-    od = await od_sync(body.id, excel=False)    # refresh the PDF with the edits
+    od = await od_sync(body.id, photos=photos, excel=False)   # new photos + refreshed PDF
     return {"ok": True, "id": body.id, "onedrive": od}
 
 
