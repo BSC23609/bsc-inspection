@@ -5,90 +5,110 @@
 {% block content %}
 <div class="acc-teal">
 <style>
-.mf label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
-.mf input,.mf select{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none}
-.mf input:focus,.mf select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
-.cl-top{display:grid;grid-template-columns:1.4fr 1fr auto;gap:12px;align-items:end;margin-bottom:14px}
-@media(max-width:720px){.cl-top{grid-template-columns:1fr}}
-.cl-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
-.cl-chip{border:1px solid var(--line-2);background:#fff;border-radius:9px;padding:7px 12px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink-2)}
-.cl-chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
-.cp{display:grid;grid-template-columns:28px 1fr 130px 110px 90px 110px 30px;gap:8px;align-items:center;margin-bottom:8px}
-.cp .n{color:var(--muted);font-size:12px;text-align:center}
-.cp input,.cp select{padding:8px 9px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;background:#fff;width:100%}
-.cp .del{color:#c23438;cursor:pointer;text-align:center;font-weight:700}
-.cp-head{font-size:11px;color:var(--muted);font-weight:600}
-@media(max-width:860px){.cp{grid-template-columns:1fr 1fr;}.cp .n,.cp-head{display:none}}
+/* table */
 .cl-head2{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line)}
 .cl-head2 b{font-size:14px}
 .cl-table{width:100%;border-collapse:collapse;font-size:13px}
 .cl-table th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);padding:9px 8px}
-.cl-table td{border-bottom:1px solid var(--line);padding:9px 8px;vertical-align:top}
+.cl-table td{border-bottom:1px solid var(--line);padding:10px 8px;vertical-align:top}
 .cl-table .code{font-weight:700;color:var(--acc-ink);white-space:nowrap}
-.cl-table .names{color:var(--ink-2)}
-.cl-table .pc{font-size:11px;color:var(--muted)}
-.cl-table a.edit{font-weight:700;color:var(--acc-ink);cursor:pointer}
+.cl-table .names{color:var(--ink-2)}.cl-table .pc{font-size:11px;color:var(--muted)}
+.cl-table .act a{font-weight:700;cursor:pointer;margin-right:14px;white-space:nowrap}
+.cl-table .act .vw{color:#1f4e79}.cl-table .act .ed{color:var(--acc-ink)}
 .cl-none{color:var(--muted);font-size:12.5px}
 .empty{color:var(--muted);text-align:center;padding:18px}
+@media(max-width:620px){.hide-sm{display:none}.cl-table .act a{display:block;margin:0 0 6px}}
+/* modal */
+.scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:flex-start;justify-content:center;z-index:60;padding:28px 16px;overflow:auto}
+.pmodal{background:#fff;border-radius:16px;max-width:720px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.pmodal .mh{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.pmodal .mh b{font-size:16px}
+.pmodal .mb{padding:18px 20px}
+.pmodal .mfoot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center}
+.mf label{display:block;font-size:12px;font-weight:600;color:var(--ink-2);margin-bottom:6px}
+.mf input,.mf select{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none}
+.cl-top{display:grid;grid-template-columns:1.4fr 1fr;gap:12px;margin-bottom:12px}
+@media(max-width:620px){.cl-top{grid-template-columns:1fr}}
+.cl-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
+.cl-chip{border:1px solid var(--line-2);background:#fff;border-radius:9px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink-2)}
+.cl-chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.cp{display:grid;grid-template-columns:1fr 130px 110px 90px 110px 28px;gap:8px;align-items:center;margin-bottom:8px}
+.cp input,.cp select{padding:8px 9px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;background:#fff;width:100%}
+.cp .del{color:#c23438;cursor:pointer;text-align:center;font-weight:700}
+.cp-head{font-size:11px;color:var(--muted);font-weight:600}
+@media(max-width:720px){.cp{grid-template-columns:1fr 1fr}.cp-head{display:none}}
+/* view */
+.vw-cl{margin-bottom:16px}
+.vw-cl h4{margin:0 0 8px;font-size:13.5px;color:var(--acc-ink)}
+.vw-pt{display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-top:1px solid var(--line);font-size:13px}
+.vw-pt .t{flex:1}.vw-pt .sp{font-size:11px;color:var(--muted)}
+.ctag{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px;white-space:nowrap}
+.ctag.E{background:#ddebf7;color:#1f4e79}.ctag.M{background:#e2efda;color:#375623}.ctag.H{background:#fce4d6;color:#843c0b}
 </style>
 
-<div class="page-head"><h1>Checklists</h1><p>Define what to check on each asset. Every checkpoint is tagged with a category (Hydraulic / Mechanical / Electrical) used to route the work to the right person.</p></div>
+<div class="page-head"><h1>Checklists</h1><p>Define what to check on each machine. Every checkpoint is tagged Hydraulic / Mechanical / Electrical to route the work to the right person.</p></div>
 
-<div class="panel"><div class="panel-head"><span class="hi">{{ icon('clipboard',17) }}</span>Checklist</div>
-<div class="panel-body"><div class="mf">
-  <div class="cl-top">
-    <div><label>Asset</label><select id="c_asset" onchange="loadChecklists()"></select></div>
-    <div><label>Checklist name</label><input id="c_name" placeholder="e.g. Daily line check"></div>
-    <div><button class="btn btn-ghost" onclick="newChecklist()">+ New checklist</button></div>
-  </div>
-  <div class="cl-list" id="c_chips"></div>
-  <input type="hidden" id="c_id">
-
-  <div style="border-top:1px solid var(--line);margin:14px 0 12px"></div>
-  <div class="cp cp-head"><div></div><div>Checkpoint</div><div>Category</div><div>Type</div><div>Unit</div><div>Spec / range</div><div></div></div>
-  <div id="c_points"></div>
-  <button class="btn btn-ghost" style="margin-top:4px" onclick="addRow()">+ Add checkpoint</button>
-
-  <div style="display:flex;gap:10px;align-items:center;margin-top:16px">
-    <button class="btn btn-ghost" id="c_del" style="display:none;color:#c23438" onclick="delChecklist()">Delete</button>
-    <div style="flex:1"></div>
-    <button class="btn btn-primary" onclick="saveChecklist()">Save checklist</button>
-  </div>
-</div></div></div>
-
-<div class="panel" style="margin-top:16px">
-  <div class="cl-head2">
-    <b>Machines &amp; checklists</b>
-    <span style="flex:1"></span>
-    <input type="file" id="imp_file" accept=".xlsx,.xls" style="display:none" onchange="importFile(this)">
-    <button class="btn btn-ghost" id="imp_btn" onclick="document.getElementById('imp_file').click()">⬆ Import from Excel</button>
-  </div>
+<div class="panel">
+  <div class="cl-head2"><b>Machines &amp; checklists</b><span style="flex:1"></span>
+    <button class="btn btn-primary" onclick="openEdit(0)">+ New checklist</button></div>
   <div class="panel-body">
-    <div class="note" style="font-size:11.5px;color:var(--muted);margin-bottom:10px">
-      Upload the checklist workbook (one sheet per machine). Each sheet's items are imported as a checklist and
-      auto-tagged Electrical / Mechanical / Hydraulic from the wording — review and adjust in the editor above.
-    </div>
     <table class="cl-table">
-      <thead><tr><th style="width:110px">Code</th><th>Machine</th><th>Checklists</th><th style="width:70px">Action</th></tr></thead>
+      <thead><tr><th style="width:110px">Code</th><th>Machine</th><th>Checklists</th><th style="width:140px">Action</th></tr></thead>
       <tbody id="cl_all"><tr><td colspan="4" class="empty">Loading…</td></tr></tbody>
     </table>
   </div>
 </div>
 </div>
+
+<!-- VIEW modal -->
+<div class="scrim" id="vw_scrim"><div class="pmodal">
+  <div class="mh">{{ icon('clipboard',18) }}<b id="vw_title">Checklist</b><span style="flex:1"></span>
+    <a href="#" onclick="closeVw();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb" id="vw_body"><div class="empty">Loading…</div></div>
+  <div class="mfoot"><div style="flex:1"></div>
+    <button class="btn btn-ghost" onclick="closeVw()">Close</button>
+    <button class="btn btn-primary" id="vw_edit" onclick="editFromView()">Edit</button></div>
+</div></div>
+
+<!-- EDIT modal -->
+<div class="scrim" id="ed_scrim"><div class="pmodal">
+  <div class="mh">{{ icon('clipboard',18) }}<b>Edit checklist</b><span style="flex:1"></span>
+    <a href="#" onclick="closeEd();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb"><div class="mf">
+    <div class="cl-top">
+      <div><label>Machine</label><select id="c_asset" onchange="loadChecklists()"></select></div>
+      <div><label>Checklist name</label><input id="c_name" placeholder="e.g. Daily line check"></div>
+    </div>
+    <div class="cl-list" id="c_chips"></div>
+    <input type="hidden" id="c_id">
+    <div style="border-top:1px solid var(--line);margin:12px 0"></div>
+    <div class="cp cp-head"><div>Checkpoint</div><div>Category</div><div>Type</div><div>Unit</div><div>Spec / range</div><div></div></div>
+    <div id="c_points"></div>
+    <button class="btn btn-ghost" style="margin-top:4px" onclick="addRow()">+ Add checkpoint</button>
+  </div></div>
+  <div class="mfoot">
+    <button class="btn btn-ghost" id="c_del" style="display:none;color:#c23438" onclick="delChecklist()">Delete</button>
+    <button class="btn btn-ghost" onclick="newChecklist()">+ New for this machine</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-ghost" onclick="closeEd()">Close</button>
+    <button class="btn btn-primary" onclick="saveChecklist()">Save checklist</button>
+  </div>
+</div></div>
 {% endblock %}
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-var ASSETS=[],CATS=['Hydraulic','Mechanical','Electrical'],CHECKLISTS=[];
+var ASSETS=[],CATS=['Hydraulic','Mechanical','Electrical'],CHECKLISTS=[],CUR_AID=0;
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-function opt(val,txt,sel){return '<option value="'+esc(val)+'"'+(sel==val?' selected':'')+'>'+esc(txt)+'</option>';}
+function opt(val,txt,sel){return '<option value="'+esc(val)+'"'+(String(sel)==String(val)?' selected':'')+'>'+esc(txt)+'</option>';}
+function catCls(c){c=(c||'').toLowerCase();return c[0]==='e'?'E':(c[0]==='h'?'H':'M');}
 async function boot(){
   try{var m=await (await fetch('/maint/meta',{cache:'no-store'})).json();if(m&&m.categories)CATS=m.categories;}catch(e){}
-  try{var r=await fetch('/maint/assets/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}ASSETS=await r.json();}catch(e){}
-  document.getElementById('c_asset').innerHTML=ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('')||'<option value="">No assets</option>';
-  addRow();loadChecklists();loadAll();
+  try{var r=await fetch('/maint/assets/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}ASSETS=await r.json();}catch(e){ASSETS=[];}
+  document.getElementById('c_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
+  loadAll();
 }
+/* ---- table ---- */
 async function loadAll(){
   var box=document.getElementById('cl_all');
   var cls;try{cls=await (await fetch('/maint/checklists/list',{cache:'no-store'})).json();}catch(e){cls=[];}
@@ -98,52 +118,48 @@ async function loadAll(){
   box.innerHTML=list.map(function(a){
     var cs=byA[a.id]||[];
     var names=cs.length?cs.map(function(c){return esc(c.name)+' <span class="pc">('+(c.points||0)+')</span>';}).join('<br>'):'<span class="cl-none">No checklist yet</span>';
+    var view=cs.length?('<a class="vw" onclick="openView('+a.id+')">View</a>'):'';
     return '<tr><td class="code">'+esc(a.code||'')+'</td><td>'+esc(a.name||'')+'</td>'
       +'<td class="names">'+names+'</td>'
-      +'<td><a class="edit" onclick="editAsset('+a.id+')">Edit</a></td></tr>';
+      +'<td class="act">'+view+'<a class="ed" onclick="openEdit('+a.id+')">Edit</a></td></tr>';
   }).join('');
 }
-function editAsset(aid){
-  var sel=document.getElementById('c_asset');sel.value=aid;
-  loadChecklists().then(function(){
-    if((CHECKLISTS||[]).length){openChecklist(CHECKLISTS[0].id);}else{newChecklist();}
-    window.scrollTo({top:0,behavior:'smooth'});
-  });
+/* ---- view modal ---- */
+async function openView(aid){
+  CUR_AID=aid;var a=ASSETS.filter(function(x){return x.id==aid;})[0]||{};
+  document.getElementById('vw_title').textContent=((a.code?a.code+' — ':'')+(a.name||'Checklist'));
+  var body=document.getElementById('vw_body');body.innerHTML='<div class="empty">Loading…</div>';
+  document.getElementById('vw_scrim').style.display='flex';
+  var cls;try{cls=await (await fetch('/maint/checklists/list?asset='+aid,{cache:'no-store'})).json();}catch(e){cls=[];}
+  if(!cls.length){body.innerHTML='<div class="empty">No checklist for this machine yet.</div>';return;}
+  var full=await Promise.all(cls.map(function(c){return fetch('/maint/checklist/get?id='+c.id,{cache:'no-store'}).then(function(r){return r.json();}).catch(function(){return null;});}));
+  body.innerHTML=full.filter(Boolean).map(function(d){
+    var pts=(d.checkpoints||[]).map(function(p){
+      var sp=[p.input_type,(p.unit||''),(p.spec||'')].filter(Boolean).join(' · ');
+      return '<div class="vw-pt"><span class="ctag '+catCls(p.category)+'">'+esc((p.category||'—').slice(0,4))+'</span>'
+        +'<span class="t">'+esc(p.text)+(sp?('<div class="sp">'+esc(sp)+'</div>'):'')+'</span></div>';
+    }).join('')||'<div class="empty">No checkpoints.</div>';
+    return '<div class="vw-cl"><h4>'+esc(d.checklist.name)+' · '+(d.checkpoints||[]).length+' point(s)</h4>'+pts+'</div>';
+  }).join('');
 }
-async function importFile(inp){
-  var f=(inp.files||[])[0];if(!f){return;}
-  if(typeof XLSX==='undefined'){toast('err','Excel reader still loading — try again in a second');return;}
-  var btn=document.getElementById('imp_btn');btn.disabled=true;var l=btn.textContent;btn.textContent='Reading…';
-  try{
-    var buf=await f.arrayBuffer();var wb=XLSX.read(buf,{type:'array'});var sheets=[];
-    wb.SheetNames.forEach(function(sn){
-      var aoa=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,blankrows:false});if(!aoa.length)return;
-      var title='';for(var i=0;i<aoa.length&&!title;i++){var row=aoa[i]||[];for(var j=0;j<row.length;j++){if(row[j]!=null&&String(row[j]).trim()){title=String(row[j]).trim();break;}}}
-      var hr=-1;for(var i=0;i<aoa.length;i++){if((aoa[i]||[])[0]&&String(aoa[i][0]).trim().toLowerCase()==='label'){hr=i;break;}}
-      var start=hr>=0?hr+1:1;var pts=[];
-      for(var i=start;i<aoa.length;i++){var r=aoa[i]||[];var lab=r[0]!=null?String(r[0]).trim():'';
-        if(!lab||lab.toLowerCase()==='label')continue;
-        pts.push({text:lab,options:r[2]||'',min:(r[4]!=null?r[4]:''),max:(r[5]!=null?r[5]:'')});}
-      if(pts.length)sheets.push({title:title||sn,points:pts});
-    });
-    if(!sheets.length){toast('err','No checklist rows found in the file');return;}
-    btn.textContent='Importing…';
-    var r=await fetch('/maint/checklists/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sheets:sheets})});
-    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Import failed');
-    toast('ok','Imported '+(d.created||0)+' new, '+(d.updated||0)+' updated · '+(d.checkpoints||0)+' checkpoints');
-    if((d.unmatched||[]).length){toast('err',d.unmatched.length+' sheet(s) didn’t match a machine: '+d.unmatched.slice(0,3).join('; '));}
-    await loadChecklists();loadAll();
-  }catch(e){toast('err',(e&&e.message)||'Import failed');}
-  finally{btn.disabled=false;btn.textContent=l;inp.value='';}
+function closeVw(){document.getElementById('vw_scrim').style.display='none';}
+function editFromView(){closeVw();openEdit(CUR_AID);}
+/* ---- edit modal ---- */
+function openEdit(aid){
+  document.getElementById('ed_scrim').style.display='flex';
+  var sel=document.getElementById('c_asset');
+  if(aid){sel.value=aid;loadChecklists().then(function(){if((CHECKLISTS||[]).length){openChecklist(CHECKLISTS[0].id);}else{newChecklist();}});}
+  else{sel.value='';document.getElementById('c_chips').innerHTML='';newChecklist();}
 }
+function closeEd(){document.getElementById('ed_scrim').style.display='none';}
 async function loadChecklists(){
-  var aid=v('c_asset');if(!aid){document.getElementById('c_chips').innerHTML='';return;}
+  var aid=v('c_asset');if(!aid){document.getElementById('c_chips').innerHTML='';CHECKLISTS=[];return;}
   try{CHECKLISTS=await (await fetch('/maint/checklists/list?asset='+aid,{cache:'no-store'})).json();}catch(e){CHECKLISTS=[];}
-  document.getElementById('c_chips').innerHTML=CHECKLISTS.map(function(c){return '<span class="cl-chip" onclick="openChecklist('+c.id+')">'+esc(c.name)+' · '+(c.points||0)+'</span>';}).join('')||'<span class="muted" style="font-size:12.5px">No checklists yet for this asset.</span>';
+  document.getElementById('c_chips').innerHTML=CHECKLISTS.map(function(c){return '<span class="cl-chip" onclick="openChecklist('+c.id+')">'+esc(c.name)+' · '+(c.points||0)+'</span>';}).join('')||'<span class="cl-none">No checklists yet — add one below.</span>';
 }
+function markChip(id){[].forEach.call(document.querySelectorAll('#c_chips .cl-chip'),function(x){x.classList.remove('on');});}
 function newChecklist(){document.getElementById('c_id').value='';document.getElementById('c_name').value='';
-  document.getElementById('c_points').innerHTML='';addRow();document.getElementById('c_del').style.display='none';
-  [].forEach.call(document.querySelectorAll('.cl-chip'),function(x){x.classList.remove('on');});}
+  document.getElementById('c_points').innerHTML='';addRow();document.getElementById('c_del').style.display='none';markChip();}
 async function openChecklist(id){
   try{var d=await (await fetch('/maint/checklist/get?id='+id,{cache:'no-store'})).json();}catch(e){toast('err','Could not open');return;}
   document.getElementById('c_id').value=d.checklist.id;document.getElementById('c_name').value=d.checklist.name||'';
@@ -152,8 +168,7 @@ async function openChecklist(id){
   document.getElementById('c_del').style.display='';
 }
 function addRow(p){p=p||{};var wrap=document.createElement('div');wrap.className='cp';
-  wrap.innerHTML='<div class="n">•</div>'
-   +'<input class="cp-text" placeholder="e.g. Hydraulic oil level" value="'+esc(p.text||'')+'">'
+  wrap.innerHTML='<input class="cp-text" placeholder="e.g. Hydraulic oil level" value="'+esc(p.text||'')+'">'
    +'<select class="cp-cat">'+CATS.map(function(c){return opt(c,c,p.category);}).join('')+'</select>'
    +'<select class="cp-type">'+['check','radio','value','text'].map(function(t){return opt(t,{check:'OK / Not OK',radio:'Options',value:'Reading',text:'Note'}[t],p.input_type||'check');}).join('')+'</select>'
    +'<input class="cp-unit" placeholder="bar / °C" value="'+esc(p.unit||'')+'">'
@@ -166,14 +181,17 @@ function collect(){return [].map.call(document.querySelectorAll('#c_points .cp')
     spec:row.querySelector('.cp-spec').value.trim()};}).filter(function(p){return p.text;});}
 async function saveChecklist(){
   var p={id:v('c_id')||null,asset_id:v('c_asset')||null,name:v('c_name').trim(),checkpoints:collect()};
-  if(!p.asset_id){toast('err','Choose an asset');return;}if(!p.name){toast('err','Enter a checklist name');return;}
+  if(!p.asset_id){toast('err','Choose a machine');return;}if(!p.name){toast('err','Enter a checklist name');return;}
   if(!p.checkpoints.length){toast('err','Add at least one checkpoint');return;}
   try{var r=await fetch('/maint/checklist/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
-    toast('ok','Checklist saved');document.getElementById('c_id').value=d.id;document.getElementById('c_del').style.display='';await loadChecklists();loadAll();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+    toast('ok','Checklist saved');document.getElementById('c_id').value=d.id;document.getElementById('c_del').style.display='';
+    await loadChecklists();loadAll();}catch(e){toast('err',(e&&e.message)||'Failed');}}
 async function delChecklist(){var id=v('c_id');if(!id)return;if(!confirm('Delete this checklist?'))return;
   try{var r=await fetch('/maint/checklist/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');toast('ok','Deleted');newChecklist();await loadChecklists();loadAll();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+document.getElementById('vw_scrim').addEventListener('click',function(e){if(e.target===this)closeVw();});
+document.getElementById('ed_scrim').addEventListener('click',function(e){if(e.target===this)closeEd();});
 boot();
 </script>
 {% endblock %}
