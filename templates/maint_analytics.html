@@ -34,14 +34,20 @@
 <div class="page-head"><h1>Maintenance Analytics</h1><p>Reliability KPIs — MTTR, MTBF, availability, downtime and PM compliance across the plant.</p></div>
 
 <div class="an-tools">
+  <label>Machine</label>
+  <select id="an_asset" onchange="loadAn()"><option value="0">All machines</option></select>
   <label>Period</label>
-  <select id="an_days" onchange="loadAn()">
+  <select id="an_days" onchange="onPeriod()">
     <option value="30">Last 30 days</option>
     <option value="90" selected>Last 90 days</option>
     <option value="180">Last 180 days</option>
     <option value="365">Last 1 year</option>
   </select>
+  <label>From</label><input type="datetime-local" id="an_from" onchange="loadAn()">
+  <label>To</label><input type="datetime-local" id="an_to" onchange="loadAn()">
+  <button class="btn btn-ghost" onclick="clearRange()">Clear dates</button>
   <span style="flex:1"></span>
+  <span id="an_range" style="font-size:11.5px;color:var(--muted)"></span>
   <button class="btn btn-ghost" onclick="loadAn()">Reload</button>
 </div>
 
@@ -86,9 +92,24 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return
 function fdate(s){if(!s)return'—';var d=new Date(s);if(isNaN(d))return'—';return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear();}
 function kill(id){if(CHARTS[id]){CHARTS[id].destroy();delete CHARTS[id];}}
 function avCls(a){return a>=95?'av-hi':(a>=85?'av-md':'av-lo');}
+function onPeriod(){document.getElementById('an_from').value='';document.getElementById('an_to').value='';loadAn();}
+function clearRange(){document.getElementById('an_from').value='';document.getElementById('an_to').value='';loadAn();}
+async function bootAssets(){
+  try{var a=await (await fetch('/maint/assets/list',{cache:'no-store'})).json();
+    var sel=document.getElementById('an_asset');
+    sel.innerHTML='<option value="0">All machines</option>'+a.filter(function(x){return x.active;}).map(function(x){return '<option value="'+x.id+'">'+esc((x.code?x.code+' — ':'')+x.name)+'</option>';}).join('');
+  }catch(e){}
+  loadAn();
+}
 async function loadAn(){
-  var days=document.getElementById('an_days').value;var d;
-  try{var r=await fetch('/maint/analytics/data?days='+days,{cache:'no-store'});if(r.status===401){location.href='/login';return;}d=await r.json();}catch(e){return;}
+  var asset=document.getElementById('an_asset').value||'0';
+  var frm=document.getElementById('an_from').value,to=document.getElementById('an_to').value;
+  var qs='asset='+asset;
+  if(frm&&to){qs+='&frm='+encodeURIComponent(frm)+'&to='+encodeURIComponent(to);}
+  else{qs+='&days='+document.getElementById('an_days').value;}
+  var d;
+  try{var r=await fetch('/maint/analytics/data?'+qs,{cache:'no-store'});if(r.status===401){location.href='/login';return;}d=await r.json();}catch(e){return;}
+  var rg=document.getElementById('an_range');if(rg)rg.textContent=(d.from&&d.to)?(d.from+'  →  '+d.to):'';
   document.getElementById('k_mttr').textContent=d.mttr_hours;
   document.getElementById('k_mtbf').textContent=d.mtbf_days+'d';
   document.getElementById('k_mtbf_h').textContent=d.mtbf_hours+' hrs between failures';
@@ -129,6 +150,6 @@ async function loadAn(){
       +'<td class="num '+avCls(x.avail)+'">'+x.avail+'%</td><td>'+fdate(x.last_fail)+'</td></tr>';
   }).join(''):'<tr><td colspan="7" class="empty">No breakdowns in this period 🎉</td></tr>';
 }
-loadAn();
+bootAssets();
 </script>
 {% endblock %}

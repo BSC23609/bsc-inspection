@@ -1886,33 +1886,61 @@ async def dashboard_data(emp: dict = Depends(require_employee)):
 
 
 @router.get("/analytics/data")
-async def analytics_data(days: int = 90, emp: dict = Depends(require_employee)):
-    """Full reliability analytics: MTTR, MTBF, availability, downtime, PM compliance,
-    6-month trends and a per-machine reliability table. `days` sets the window."""
+async def analytics_data(days: int = 90, asset: int = 0, frm: str = "", to: str = "",
+                         emp: dict = Depends(require_employee)):
+    """Reliability analytics (MTTR, MTBF, availability, downtime, PM compliance). Window is
+    the preset `days`, or an explicit date-time range (frm/to), and optionally one machine."""
     await ensure_tables()
+
+    def _pdt(s):
+        try:
+            return datetime.fromisoformat(str(s)[:16]).replace(tzinfo=IST)
+        except Exception:
+            return None
+
+    now = datetime.now(IST)
+    to_dt = _pdt(to) or now
+    frm_dt = _pdt(frm)
+    if not frm_dt:
+        try:
+            days = max(1, min(int(days), 1460))
+        except Exception:
+            days = 90
+        frm_dt = to_dt - timedelta(days=days)
+    if frm_dt >= to_dt:
+        frm_dt = to_dt - timedelta(days=90)
+    hours = max((to_dt - frm_dt).total_seconds() / 3600.0, 1.0)
     try:
-        days = max(7, min(int(days), 730))
+        aid = int(asset)
     except Exception:
-        days = 90
-    hours = days * 24.0
-    machines = int(await _dash_val("SELECT COUNT(*) FROM maint_assets WHERE COALESCE(active,true)"))
+        aid = 0
+
+    machines = 1 if aid else int(await _dash_val("SELECT COUNT(*) FROM maint_assets WHERE COALESCE(active,true)"))
     failures = int(await _dash_val(
-        "SELECT COUNT(*) FROM maint_breakdowns WHERE raised_at > now()-make_interval(days=>$1)", days))
+        "SELECT COUNT(*) FROM maint_breakdowns WHERE raised_at>=$1 AND raised_at<=$2 "
+        "AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid))
     closed = int(await _dash_val(
         "SELECT COUNT(*) FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
-        "AND closed_at > now()-make_interval(days=>$1)", days))
+        "AND closed_at>=$1 AND closed_at<=$2 AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid))
     downtime = float(await _dash_val(
         "SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (closed_at-raised_at))/3600.0),0) FROM maint_breakdowns "
-        "WHERE status='closed' AND closed_at IS NOT NULL AND closed_at > now()-make_interval(days=>$1)", days) or 0)
-    open_now = int(await _dash_val("SELECT COUNT(*) FROM maint_breakdowns WHERE status='open'"))
-    pm_done = int(await _dash_val("SELECT COUNT(*) FROM maint_logs WHERE done_at > now()-make_interval(days=>$1)", days))
+        "WHERE status='closed' AND closed_at IS NOT NULL AND closed_at>=$1 AND closed_at<=$2 "
+        "AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid) or 0)
+    open_now = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_breakdowns WHERE status='open' AND ($1=0 OR asset_id=$1)", aid))
+    pm_done = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_logs WHERE done_at>=$1 AND done_at<=$2 AND ($3=0 OR asset_id=$3)",
+        frm_dt, to_dt, aid))
     pm_issues = int(await _dash_val(
-        "SELECT COUNT(*) FROM maint_logs WHERE status='issues' AND done_at > now()-make_interval(days=>$1)", days))
-    active_sched = int(await _dash_val("SELECT COUNT(*) FROM maint_schedules WHERE COALESCE(active,true)"))
+        "SELECT COUNT(*) FROM maint_logs WHERE status='issues' AND done_at>=$1 AND done_at<=$2 "
+        "AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid))
+    active_sched = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_schedules WHERE COALESCE(active,true) AND ($1=0 OR asset_id=$1)", aid))
     base = machines * hours
     uptime = max(base - downtime, 0.0)
     out = {
-        "days": days, "machines": machines, "failures": failures, "closed": closed,
+        "from": frm_dt.strftime("%d-%m-%Y %H:%M"), "to": to_dt.strftime("%d-%m-%Y %H:%M"),
+        "machines": machines, "failures": failures, "closed": closed,
         "downtime_hours": round(downtime, 1), "open_now": open_now,
         "mttr_hours": round(downtime / closed, 1) if closed else 0,
         "mtbf_hours": round(uptime / failures, 1) if failures else 0,
@@ -1926,7 +1954,8 @@ async def analytics_data(days: int = 90, emp: dict = Depends(require_employee)):
     try:
         for r in await db.fetch(
             "SELECT COALESCE(NULLIF(btype,''),'Other') t, COUNT(*) c FROM maint_breakdowns "
-            "WHERE raised_at > now()-make_interval(days=>$1) GROUP BY 1", days):
+            "WHERE raised_at>=$1 AND raised_at<=$2 AND ($3=0 OR asset_id=$3) GROUP BY 1",
+            frm_dt, to_dt, aid):
             bt[r["t"] if r["t"] in bt else "Other"] = bt.get(r["t"], 0) + int(r["c"])
     except Exception as e:
         print("[maint-an bt]", e)
@@ -1937,14 +1966,15 @@ async def analytics_data(days: int = 90, emp: dict = Depends(require_employee)):
             lbl = await db.fetchval("SELECT to_char(date_trunc('month',now())-make_interval(months=>$1),'Mon')", i)
             f = await _dash_val(
                 "SELECT COUNT(*) FROM maint_breakdowns WHERE date_trunc('month',raised_at)"
-                "=date_trunc('month',now())-make_interval(months=>$1)", i)
+                "=date_trunc('month',now())-make_interval(months=>$1) AND ($2=0 OR asset_id=$2)", i, aid)
             d = await _dash_val(
                 "SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (closed_at-raised_at))/3600.0),0) FROM maint_breakdowns "
                 "WHERE status='closed' AND closed_at IS NOT NULL AND date_trunc('month',closed_at)"
-                "=date_trunc('month',now())-make_interval(months=>$1)", i)
+                "=date_trunc('month',now())-make_interval(months=>$1) AND ($2=0 OR asset_id=$2)", i, aid)
             cc = await _dash_val(
                 "SELECT COUNT(*) FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
-                "AND date_trunc('month',closed_at)=date_trunc('month',now())-make_interval(months=>$1)", i)
+                "AND date_trunc('month',closed_at)=date_trunc('month',now())-make_interval(months=>$1) "
+                "AND ($2=0 OR asset_id=$2)", i, aid)
             months.append(lbl); fl.append(int(f)); dv = round(float(d or 0), 1)
             dt.append(dv); mt.append(round(dv / int(cc), 1) if cc else 0)
     except Exception as e:
@@ -1959,8 +1989,9 @@ async def analytics_data(days: int = 90, emp: dict = Depends(require_employee)):
             "COUNT(*) FILTER (WHERE b.status='closed' AND b.closed_at IS NOT NULL) closedc, "
             "MAX(b.raised_at) last_fail "
             "FROM maint_breakdowns b JOIN maint_assets a ON a.id=b.asset_id "
-            "WHERE b.raised_at > now()-make_interval(days=>$1) "
-            "GROUP BY a.code,a.name ORDER BY failures DESC, downtime DESC LIMIT 50", days)
+            "WHERE b.raised_at>=$1 AND b.raised_at<=$2 AND ($3=0 OR b.asset_id=$3) "
+            "GROUP BY a.code,a.name ORDER BY failures DESC, downtime DESC LIMIT 50",
+            frm_dt, to_dt, aid)
         for r in q:
             f = int(r["failures"]); dn = float(r["downtime"] or 0); cc = int(r["closedc"])
             up = max(hours - dn, 0.0)
