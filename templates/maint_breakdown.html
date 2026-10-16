@@ -107,8 +107,10 @@
     <div id="cl_ctx" class="note" style="margin-bottom:12px"></div>
     <div style="margin-bottom:14px"><label>Action taken <span class="req">*</span></label>
       <textarea id="cl_action" placeholder="What was done to fix it?"></textarea></div>
-    <div><label>Remarks <span class="opt">(optional)</span></label>
+    <div style="margin-bottom:14px"><label>Remarks <span class="opt">(optional)</span></label>
       <textarea id="cl_remarks" placeholder="parts used, follow-up needed, etc."></textarea></div>
+    <div><label>Completion date &amp; time <span class="req">*</span></label>
+      <input id="cl_when" type="datetime-local"></div>
   </div></div>
   <div class="mfoot"><button class="btn btn-ghost" onclick="closeCloseModal()">Cancel</button>
     <button class="btn btn-primary" id="cl_save" onclick="doClose()">Close breakdown</button></div>
@@ -219,7 +221,7 @@ async function bdLoad(){var box=document.getElementById('bd_list');box.innerHTML
     var who=(ag&&ag.length)?ag.map(function(id){return (EMPBY[id]&&EMPBY[id].name)||('#'+id);}).join(', '):(b.assignee_name||'unassigned');
     var meta='Raised '+fmtdt(b.raised_at)+' by '+esc(b.reported_by||'—')+' · '+esc(who)
       +(b.remarks?(' · '+esc(b.remarks)):'')+(np?(' · '+np+' photo(s)'):'')
-      +(isOpen?'':(' · closed '+fmtdt(b.closed_at)+(b.closed_by?(' by '+esc(b.closed_by)):'')));
+      +(isOpen?'':(' · closed '+fmtdt(b.closed_at)+(b.closed_by?(' by '+esc(b.closed_by)):'')+(b.resolution?(' · action: '+esc(b.resolution)):'')));
     var acts='<div class="acts">'
       +(isOpen?('<a class="act-close" onclick="openClose('+b.id+')">Close</a>'):'')
       +(IS_ADMIN?('<a class="act-del" onclick="bdDelete('+b.id+')">Delete</a>'):'')
@@ -229,15 +231,16 @@ async function bdLoad(){var box=document.getElementById('bd_list');box.innerHTML
       +'<div class="pr">'+esc(b.problem||'—')+'<div class="meta">'+meta+'</div></div>'
       +acts
       +'</div>';}).join('');}
-function openClose(id){document.getElementById('cl_id').value=id;sv('cl_action','');sv('cl_remarks','');
+function openClose(id){document.getElementById('cl_id').value=id;sv('cl_action','');sv('cl_remarks','');sv('cl_when',nowLocal());
   var ctx=document.getElementById('cl_ctx');if(ctx)ctx.textContent='Breakdown Ref #'+id;
   document.getElementById('cl_scrim').style.display='flex';}
 function closeCloseModal(){document.getElementById('cl_scrim').style.display='none';}
-async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl_remarks').trim();
+async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl_remarks').trim(),when=v('cl_when');
   if(!action){toast('err','Enter the action taken');return;}
-  var note='Action: '+action+(rm?(' | '+rm):'');
+  if(!when){toast('err','Pick the completion date & time');return;}
   var b=document.getElementById('cl_save');b.disabled=true;var l=b.textContent;b.textContent='Closing…';
-  try{var r=await fetch('/maint/breakdown/close',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,remarks:note})});
+  try{var r=await fetch('/maint/breakdown/close',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({id:id,action:action,remarks:rm,closed_at:when})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
     toast('ok','Breakdown closed');closeCloseModal();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}

@@ -586,7 +586,8 @@ async def ensure_tables():
         raised_at TIMESTAMPTZ DEFAULT now(), closed_at TIMESTAMPTZ, closed_by TEXT,
         remarks TEXT)""")
     try:
-        for col, typ in (("btype", "TEXT"), ("photos", "JSONB"), ("assignees", "JSONB")):
+        for col, typ in (("btype", "TEXT"), ("photos", "JSONB"), ("assignees", "JSONB"),
+                         ("resolution", "TEXT")):
             await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
         await db.execute("CREATE INDEX IF NOT EXISTS ix_m_bd ON maint_breakdowns (status, raised_at DESC)")
         # maintenance staff per breakdown type — now MANY per type (auto-pick on the form)
@@ -1329,7 +1330,7 @@ async def breakdowns_list(emp: dict = Depends(require_employee)):
     await ensure_tables()
     rows = await db.fetch(
         "SELECT b.id, b.asset_id, b.btype, b.problem, b.reported_by, b.assignee_emp_id, b.assignees, "
-        "b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, b.photos, "
+        "b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, b.resolution, b.photos, "
         "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
         "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
         "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
@@ -1622,14 +1623,23 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
     if not body.get("id"):
         raise HTTPException(400, "Missing id")
-    note = (body.get("remarks") or "").strip()
-    # keep the original raise remarks; append the close note rather than overwrite
+    action = (body.get("action") or "").strip()        # what was done to fix it
+    note = (body.get("remarks") or "").strip()          # optional extra remark
+    # completion time from the form (local IST); fall back to now
+    closed = None
+    ct = (body.get("closed_at") or "").strip()
+    if ct:
+        try:
+            closed = datetime.fromisoformat(ct[:16]).replace(tzinfo=IST)
+        except Exception:
+            closed = None
     await db.execute(
-        "UPDATE maint_breakdowns SET status='closed', closed_at=now(), closed_by=$2, "
+        "UPDATE maint_breakdowns SET status='closed', closed_at=COALESCE($4, now()), "
+        "closed_by=$2, resolution=$5, "
         "remarks = CASE WHEN $3='' THEN remarks "
         "WHEN COALESCE(remarks,'')='' THEN $3 ELSE remarks || ' | closed: ' || $3 END "
         "WHERE id=$1", body.get("id"),
-        emp.get("name") or emp.get("emp_no") or "staff", note)
+        emp.get("name") or emp.get("emp_no") or "staff", note, closed, action)
     return {"ok": True}
 
 
@@ -1659,6 +1669,97 @@ async def breakdowns_delete_all(emp: dict = Depends(require_employee)):
     n = await db.fetchval("SELECT COUNT(*) FROM maint_breakdowns")
     await db.execute("DELETE FROM maint_breakdowns")
     return {"ok": True, "deleted": int(n or 0)}
+
+
+# =======================================================================
+#  DASHBOARD — maintenance analytics (KPIs, charts)
+# =======================================================================
+async def _dash_val(sql, *args, default=0):
+    try:
+        v = await db.fetchval(sql, *args)
+        return v if v is not None else default
+    except Exception as e:
+        print("[maint-dash]", e)
+        return default
+
+
+@router.get("/dashboard/data")
+async def dashboard_data(emp: dict = Depends(require_employee)):
+    """Aggregated maintenance KPIs + chart series for the dashboard page."""
+    await ensure_tables()
+    out = {}
+    # ---- headline KPIs ----
+    out["open_breakdowns"] = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_breakdowns WHERE status='open'"))
+    out["closed_30d"] = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_breakdowns WHERE status='closed' "
+        "AND closed_at > now() - interval '30 days'"))
+    out["pm_done_30d"] = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_logs WHERE done_at > now() - interval '30 days'"))
+    out["active_assets"] = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_assets WHERE COALESCE(active,true)"))
+    out["active_schedules"] = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_schedules WHERE COALESCE(active,true)"))
+    mttr = await _dash_val(
+        "SELECT ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - raised_at))/3600.0)::numeric,1) "
+        "FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
+        "AND closed_at > now() - interval '180 days'", default=0)
+    out["mttr_hours"] = float(mttr or 0)
+    # oldest open breakdown age (days)
+    out["oldest_open_days"] = int(await _dash_val(
+        "SELECT COALESCE(MAX(EXTRACT(DAY FROM (now()-raised_at))),0) "
+        "FROM maint_breakdowns WHERE status='open'"))
+    # ---- breakdowns by type (last 180 days) ----
+    bt = {"Electrical": 0, "Mechanical": 0, "Hydraulic": 0, "Other": 0}
+    try:
+        rows = await db.fetch(
+            "SELECT COALESCE(NULLIF(btype,''),'Other') AS t, COUNT(*) c FROM maint_breakdowns "
+            "WHERE raised_at > now() - interval '180 days' GROUP BY 1")
+        for r in rows:
+            bt[r["t"] if r["t"] in bt else "Other"] = bt.get(r["t"], 0) + int(r["c"])
+    except Exception as e:
+        print("[maint-dash bt]", e)
+    out["by_type"] = bt
+    # ---- top machines by breakdowns (all time) ----
+    top = []
+    try:
+        rows = await db.fetch(
+            "SELECT COALESCE(a.code,'?') code, COALESCE(a.name,'(unknown)') name, COUNT(*) c "
+            "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+            "GROUP BY 1,2 ORDER BY c DESC LIMIT 6")
+        top = [{"label": (r["code"] + " " + r["name"]).strip()[:28], "count": int(r["c"])} for r in rows]
+    except Exception as e:
+        print("[maint-dash top]", e)
+    out["top_machines"] = top
+    # ---- 6-month trend: breakdowns raised vs PM done ----
+    months, bd, pm = [], [], []
+    try:
+        for i in range(5, -1, -1):
+            lbl = await db.fetchval(
+                "SELECT to_char(date_trunc('month', now()) - make_interval(months => $1), 'Mon')", i)
+            c_bd = await _dash_val(
+                "SELECT COUNT(*) FROM maint_breakdowns WHERE date_trunc('month',raised_at) "
+                "= date_trunc('month', now()) - make_interval(months => $1)", i)
+            c_pm = await _dash_val(
+                "SELECT COUNT(*) FROM maint_logs WHERE date_trunc('month',done_at) "
+                "= date_trunc('month', now()) - make_interval(months => $1)", i)
+            months.append(lbl); bd.append(int(c_bd)); pm.append(int(c_pm))
+    except Exception as e:
+        print("[maint-dash trend]", e)
+    out["trend"] = {"months": months, "breakdowns": bd, "pm_done": pm}
+    # ---- current open breakdown list ----
+    openlist = []
+    try:
+        rows = await db.fetch(
+            "SELECT b.id, COALESCE(a.code,'') code, COALESCE(a.name,'') name, "
+            "COALESCE(NULLIF(b.btype,''),'Other') btype, b.problem, b.raised_at, b.reported_by "
+            "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+            "WHERE b.status='open' ORDER BY b.raised_at ASC LIMIT 15")
+        openlist = [dict(r) for r in rows]
+    except Exception as e:
+        print("[maint-dash open]", e)
+    out["open_list"] = openlist
+    return _json(out)
 
 
 # =======================================================================
