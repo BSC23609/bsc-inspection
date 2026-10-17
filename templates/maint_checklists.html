@@ -50,8 +50,6 @@
 
 <div class="panel">
   <div class="cl-head2"><b>Machines &amp; checklists</b><span style="flex:1"></span>
-    {% if emp.is_admin %}<input type="file" id="imp_file" accept=".xlsx,.xls" style="display:none" onchange="doImport(this)">
-    <button class="btn btn-ghost" id="imp_btn" onclick="document.getElementById('imp_file').click()">Import from Excel</button>{% endif %}
     <button class="btn btn-primary" onclick="openEdit(0)">+ New checklist</button></div>
   <div class="panel-body">
     <table class="cl-table">
@@ -99,7 +97,6 @@
 </div></div>
 {% endblock %}
 {% block scripts %}
-<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
 var ASSETS=[],CATS=['Hydraulic','Mechanical','Electrical'],CHECKLISTS=[],CUR_AID=0,EMPS=[];
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
@@ -113,41 +110,6 @@ async function boot(){
   var dl=document.getElementById('emp_dl');if(dl)dl.innerHTML=EMPS.map(function(e){return '<option value="'+esc(e.name||e.emp_no||'')+'">';}).join('');
   document.getElementById('c_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
   loadAll();
-}
-async function doImport(inp){
-  var f=inp.files&&inp.files[0];if(!f)return;
-  if(typeof XLSX==='undefined'){toast('err','Excel reader still loading — try again in a moment');inp.value='';return;}
-  var btn=document.getElementById('imp_btn');var lbl=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Reading…';}
-  try{
-    var wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
-    var sheets=[];
-    wb.SheetNames.forEach(function(nm){
-      if(/^summary$/i.test(nm))return;
-      var aoa=XLSX.utils.sheet_to_json(wb.Sheets[nm],{header:1,blankrows:false,defval:''});
-      if(!aoa.length)return;
-      var title=(aoa[0]&&aoa[0][0])?String(aoa[0][0]).trim():nm;
-      var hr=-1;for(var i=0;i<Math.min(aoa.length,4);i++){var j=(aoa[i]||[]).map(function(x){return String(x||'').toLowerCase().trim();});
-        if(j.indexOf('checklist item')>=0||j.indexOf('frequency')>=0){hr=i;break;}}
-      if(hr<0)hr=1;
-      var hdr=(aoa[hr]||[]).map(function(x){return String(x||'').toLowerCase().trim();});
-      function col(names,def){for(var k=0;k<hdr.length;k++){if(names.indexOf(hdr[k])>=0)return k;}return def;}
-      var fi=col(['frequency','freq'],0),ti=col(['checklist item','checkpoint','item'],1),
-          si=col(['scope','category'],2),ui=col(['user','assigned to','assignee','name'],3);
-      var rows=[];
-      for(var r=hr+1;r<aoa.length;r++){var row=aoa[r]||[];var txt=String(row[ti]||'').trim();if(!txt)continue;
-        rows.push({freq:String(row[fi]||'').trim(),text:txt,scope:String(row[si]||'').trim(),user:String(row[ui]||'').trim()});}
-      if(rows.length)sheets.push({title:title,rows:rows});
-    });
-    if(!sheets.length){toast('err','No machine sheets found in that file');return;}
-    var r=await fetch('/maint/checklists/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sheets:sheets})});
-    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Import failed');
-    var msg=(d.checkpoints||0)+' checkpoints across '+((d.created||0)+(d.updated||0))+' checklists imported';
-    if((d.unmatched||[]).length)msg+=' · '+d.unmatched.length+' machine(s) not matched';
-    toast('ok',msg);
-    if((d.unmatched_users||[]).length)alert('These names in the sheet did not match any user account, so their items will not appear under My Checklist until the account name matches:\n\n'+d.unmatched_users.join(', ')+'\n\nFix: create these users (or correct the name) in the Users screen, then import again.');
-    loadAll();
-  }catch(e){toast('err',(e&&e.message)||'Import failed');}
-  finally{if(btn){btn.disabled=false;btn.textContent=lbl;}inp.value='';}
 }
 /* ---- table ---- */
 async function loadAll(){
