@@ -32,7 +32,7 @@
 .cl-list{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
 .cl-chip{border:1px solid var(--line-2);background:#fff;border-radius:9px;padding:6px 11px;font-size:12.5px;font-weight:600;cursor:pointer;color:var(--ink-2)}
 .cl-chip.on{background:var(--acc);color:#fff;border-color:var(--acc)}
-.cp{display:grid;grid-template-columns:1fr 130px 110px 90px 110px 28px;gap:8px;align-items:center;margin-bottom:8px}
+.cp{display:grid;grid-template-columns:1fr 112px 92px 72px 96px 118px 26px;gap:7px;align-items:center;margin-bottom:8px}
 .cp input,.cp select{padding:8px 9px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;background:#fff;width:100%}
 .cp .del{color:#c23438;cursor:pointer;text-align:center;font-weight:700}
 .cp-head{font-size:11px;color:var(--muted);font-weight:600}
@@ -50,6 +50,8 @@
 
 <div class="panel">
   <div class="cl-head2"><b>Machines &amp; checklists</b><span style="flex:1"></span>
+    {% if emp.is_admin %}<input type="file" id="imp_file" accept=".xlsx,.xls" style="display:none" onchange="doImport(this)">
+    <button class="btn btn-ghost" id="imp_btn" onclick="document.getElementById('imp_file').click()">Import from Excel</button>{% endif %}
     <button class="btn btn-primary" onclick="openEdit(0)">+ New checklist</button></div>
   <div class="panel-body">
     <table class="cl-table">
@@ -82,8 +84,9 @@
     <div class="cl-list" id="c_chips"></div>
     <input type="hidden" id="c_id">
     <div style="border-top:1px solid var(--line);margin:12px 0"></div>
-    <div class="cp cp-head"><div>Checkpoint</div><div>Category</div><div>Type</div><div>Unit</div><div>Spec / range</div><div></div></div>
+    <div class="cp cp-head"><div>Checkpoint</div><div>Category</div><div>Type</div><div>Unit</div><div>Spec / range</div><div>User</div><div></div></div>
     <div id="c_points"></div>
+    <datalist id="emp_dl"></datalist>
     <button class="btn btn-ghost" style="margin-top:4px" onclick="addRow()">+ Add checkpoint</button>
   </div></div>
   <div class="mfoot">
@@ -96,8 +99,9 @@
 </div></div>
 {% endblock %}
 {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-var ASSETS=[],CATS=['Hydraulic','Mechanical','Electrical'],CHECKLISTS=[],CUR_AID=0;
+var ASSETS=[],CATS=['Hydraulic','Mechanical','Electrical'],CHECKLISTS=[],CUR_AID=0,EMPS=[];
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function opt(val,txt,sel){return '<option value="'+esc(val)+'"'+(String(sel)==String(val)?' selected':'')+'>'+esc(txt)+'</option>';}
@@ -105,8 +109,45 @@ function catCls(c){c=(c||'').toLowerCase();return c[0]==='e'?'E':(c[0]==='h'?'H'
 async function boot(){
   try{var m=await (await fetch('/maint/meta',{cache:'no-store'})).json();if(m&&m.categories)CATS=m.categories;}catch(e){}
   try{var r=await fetch('/maint/assets/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}ASSETS=await r.json();}catch(e){ASSETS=[];}
+  try{EMPS=await (await fetch('/maint/emp-list',{cache:'no-store'})).json();}catch(e){EMPS=[];}
+  var dl=document.getElementById('emp_dl');if(dl)dl.innerHTML=EMPS.map(function(e){return '<option value="'+esc(e.name||e.emp_no||'')+'">';}).join('');
   document.getElementById('c_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
   loadAll();
+}
+async function doImport(inp){
+  var f=inp.files&&inp.files[0];if(!f)return;
+  if(typeof XLSX==='undefined'){toast('err','Excel reader still loading — try again in a moment');inp.value='';return;}
+  var btn=document.getElementById('imp_btn');var lbl=btn?btn.textContent:'';if(btn){btn.disabled=true;btn.textContent='Reading…';}
+  try{
+    var wb=XLSX.read(await f.arrayBuffer(),{type:'array'});
+    var sheets=[];
+    wb.SheetNames.forEach(function(nm){
+      if(/^summary$/i.test(nm))return;
+      var aoa=XLSX.utils.sheet_to_json(wb.Sheets[nm],{header:1,blankrows:false,defval:''});
+      if(!aoa.length)return;
+      var title=(aoa[0]&&aoa[0][0])?String(aoa[0][0]).trim():nm;
+      var hr=-1;for(var i=0;i<Math.min(aoa.length,4);i++){var j=(aoa[i]||[]).map(function(x){return String(x||'').toLowerCase().trim();});
+        if(j.indexOf('checklist item')>=0||j.indexOf('frequency')>=0){hr=i;break;}}
+      if(hr<0)hr=1;
+      var hdr=(aoa[hr]||[]).map(function(x){return String(x||'').toLowerCase().trim();});
+      function col(names,def){for(var k=0;k<hdr.length;k++){if(names.indexOf(hdr[k])>=0)return k;}return def;}
+      var fi=col(['frequency','freq'],0),ti=col(['checklist item','checkpoint','item'],1),
+          si=col(['scope','category'],2),ui=col(['user','assigned to','assignee','name'],3);
+      var rows=[];
+      for(var r=hr+1;r<aoa.length;r++){var row=aoa[r]||[];var txt=String(row[ti]||'').trim();if(!txt)continue;
+        rows.push({freq:String(row[fi]||'').trim(),text:txt,scope:String(row[si]||'').trim(),user:String(row[ui]||'').trim()});}
+      if(rows.length)sheets.push({title:title,rows:rows});
+    });
+    if(!sheets.length){toast('err','No machine sheets found in that file');return;}
+    var r=await fetch('/maint/checklists/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({sheets:sheets})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Import failed');
+    var msg=(d.checkpoints||0)+' checkpoints across '+((d.created||0)+(d.updated||0))+' checklists imported';
+    if((d.unmatched||[]).length)msg+=' · '+d.unmatched.length+' machine(s) not matched';
+    toast('ok',msg);
+    if((d.unmatched_users||[]).length)alert('These names in the sheet did not match any user account, so their items will not appear under My Checklist until the account name matches:\n\n'+d.unmatched_users.join(', ')+'\n\nFix: create these users (or correct the name) in the Users screen, then import again.');
+    loadAll();
+  }catch(e){toast('err',(e&&e.message)||'Import failed');}
+  finally{if(btn){btn.disabled=false;btn.textContent=lbl;}inp.value='';}
 }
 /* ---- table ---- */
 async function loadAll(){
@@ -136,8 +177,9 @@ async function openView(aid){
   body.innerHTML=full.filter(Boolean).map(function(d){
     var pts=(d.checkpoints||[]).map(function(p){
       var sp=[p.input_type,(p.unit||''),(p.spec||'')].filter(Boolean).join(' · ');
+      var who=p.assigned_to?('<span class="sp" style="white-space:nowrap;font-weight:700;color:var(--acc-ink)">👤 '+esc(p.assigned_to)+'</span>'):'';
       return '<div class="vw-pt"><span class="ctag '+catCls(p.category)+'">'+esc((p.category||'—').slice(0,4))+'</span>'
-        +'<span class="t">'+esc(p.text)+(sp?('<div class="sp">'+esc(sp)+'</div>'):'')+'</span></div>';
+        +'<span class="t">'+esc(p.text)+(sp?('<div class="sp">'+esc(sp)+'</div>'):'')+'</span>'+who+'</div>';
     }).join('')||'<div class="empty">No checkpoints.</div>';
     return '<div class="vw-cl"><h4>'+esc(d.checklist.name)+' · '+(d.checkpoints||[]).length+' point(s)</h4>'+pts+'</div>';
   }).join('');
@@ -173,12 +215,14 @@ function addRow(p){p=p||{};var wrap=document.createElement('div');wrap.className
    +'<select class="cp-type">'+['check','radio','value','text'].map(function(t){return opt(t,{check:'OK / Not OK',radio:'Options',value:'Reading',text:'Note'}[t],p.input_type||'check');}).join('')+'</select>'
    +'<input class="cp-unit" placeholder="bar / °C" value="'+esc(p.unit||'')+'">'
    +'<input class="cp-spec" placeholder="e.g. 120–140" value="'+esc(p.spec||'')+'">'
+   +'<input class="cp-user" list="emp_dl" placeholder="Assign to…" value="'+esc(p.assigned_to||'')+'">'
    +'<div class="del" title="Remove" onclick="this.parentNode.remove()">×</div>';
   document.getElementById('c_points').appendChild(wrap);}
 function collect(){return [].map.call(document.querySelectorAll('#c_points .cp'),function(row){
   return {text:row.querySelector('.cp-text').value.trim(),category:row.querySelector('.cp-cat').value,
     input_type:row.querySelector('.cp-type').value,unit:row.querySelector('.cp-unit').value.trim(),
-    spec:row.querySelector('.cp-spec').value.trim()};}).filter(function(p){return p.text;});}
+    spec:row.querySelector('.cp-spec').value.trim(),
+    assigned_to:(row.querySelector('.cp-user')?row.querySelector('.cp-user').value.trim():'')};}).filter(function(p){return p.text;});}
 async function saveChecklist(){
   var p={id:v('c_id')||null,asset_id:v('c_asset')||null,name:v('c_name').trim(),checkpoints:collect()};
   if(!p.asset_id){toast('err','Choose a machine');return;}if(!p.name){toast('err','Enter a checklist name');return;}

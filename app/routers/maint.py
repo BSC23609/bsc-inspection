@@ -41,7 +41,7 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-10-16a"
+SCHEMA_VER = "2026-10-17a"
 
 # Equipment master list (MASTER LIST OF EQUIPMENTS, Rev 0, 01-Jun-2024).
 # Seeded once into maint_assets when the table is empty. Edit/add assets in the
@@ -621,6 +621,17 @@ async def ensure_tables():
         print("[maint] breakdown schema step skipped:", e)
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp ON maint_checkpoints (checklist_id, seq)")
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_log ON maint_logs (asset_id, done_at DESC)")
+    # per-checkpoint user assignment + completion log (My Checklist)
+    try:
+        for col, typ in (("assigned_to", "TEXT"), ("assigned_emp_id", "INT")):
+            await db.execute(f"ALTER TABLE maint_checkpoints ADD COLUMN IF NOT EXISTS {col} {typ}")
+        await db.execute("""CREATE TABLE IF NOT EXISTS maint_checkpoint_done (
+            id SERIAL PRIMARY KEY, checkpoint_id INT, emp_id INT, period_key TEXT,
+            done_at TIMESTAMPTZ DEFAULT now(), note TEXT)""")
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_cpd ON maint_checkpoint_done (checkpoint_id, period_key)")
+        await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp_emp ON maint_checkpoints (assigned_emp_id)")
+    except Exception as e:
+        print("[maint] checkpoint-assignment schema step skipped:", e)
     # seed the equipment master list once, only when no assets exist yet
     try:
         if not await db.fetchval("SELECT COUNT(*) FROM maint_assets"):
@@ -1045,6 +1056,57 @@ async def checklist_get(id: int = Query(...), emp: dict = Depends(require_employ
     return _json({"checklist": dict(c), "checkpoints": [dict(p) for p in pts]})
 
 
+async def _employees_all():
+    """[{id, emp_no, name}] of active employees — for assignment & name matching."""
+    try:
+        rows = await db.fetch(
+            "SELECT id, emp_no, name FROM employees WHERE COALESCE(active,true)=true "
+            "ORDER BY lower(name) NULLS LAST, emp_no")
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def _resolve_emp(name, emps):
+    """Map an assignment name (as typed in the workbook) to an employee id, or None."""
+    n = (name or "").strip().lower()
+    if not n:
+        return None
+    for e in emps:                       # exact full name
+        if (e.get("name") or "").strip().lower() == n:
+            return e["id"]
+    for e in emps:                       # exact employee code
+        if (e.get("emp_no") or "").strip().lower() == n:
+            return e["id"]
+    for e in emps:                       # first word of the employee's name
+        enm = (e.get("name") or "").strip().lower()
+        if enm and (enm.split() or [""])[0] == n:
+            return e["id"]
+    for e in emps:                       # name appears as a whole word
+        enm = (e.get("name") or "").strip().lower()
+        if enm and n in enm.split():
+            return e["id"]
+    return None
+
+
+def _period_key(checklist_name, d=None):
+    """Completion window: daily -> the date; quarterly -> YYYY-Qn."""
+    d = d or _today()
+    if "quarter" in (checklist_name or "").lower():
+        return f"{d.year}-Q{(d.month - 1) // 3 + 1}"
+    return d.isoformat()
+
+
+def _freq_label(checklist_name):
+    return "Quarterly" if "quarter" in (checklist_name or "").lower() else "Daily"
+
+
+@router.get("/emp-list")
+async def emp_list(emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    return _json(await _employees_all())
+
+
 @router.post("/checklist/save")
 async def checklist_save(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
@@ -1060,18 +1122,21 @@ async def checklist_save(body: dict, emp: dict = Depends(require_employee)):
     else:
         cid = await db.fetchval(
             "INSERT INTO maint_checklists (asset_id,name) VALUES ($1,$2) RETURNING id", asset_id, name)
+    emps = await _employees_all()
     # replace checkpoints
     await db.execute("DELETE FROM maint_checkpoints WHERE checklist_id=$1", cid)
     for i, p in enumerate(body.get("checkpoints") or []):
         txt = (p.get("text") or "").strip()
         if not txt:
             continue
+        who = (p.get("assigned_to") or "").strip()
+        eid = _resolve_emp(who, emps) if who else None
         await db.execute(
-            "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec) "
-            "VALUES ($1,$2,$3,$4,$5,$6,$7)",
+            "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec,"
+            "assigned_to,assigned_emp_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
             cid, i + 1, txt, (p.get("category") or "").strip(),
             (p.get("input_type") or "check").strip(), (p.get("unit") or "").strip(),
-            (p.get("spec") or "").strip())
+            (p.get("spec") or "").strip(), who or None, eid)
     return {"ok": True, "id": cid}
 
 
@@ -1138,8 +1203,19 @@ async def checklists_import(body: dict, emp: dict = Depends(require_employee)):
                 return aid
         return None
 
+    emps = await _employees_all()
     created = updated = cps = 0
     unmatched = []
+    matched_users, unmatched_users = set(), set()
+
+    def _cl_name(freq):
+        f = (freq or "").strip().lower()
+        if "quarter" in f:
+            return "Quarterly Checklist"
+        if "dail" in f or "day" in f:
+            return "Daily Checklist"
+        return (freq.strip().title() + " Checklist") if freq.strip() else "Daily Checklist"
+
     for sh in (body.get("sheets") or []):
         title = (sh.get("title") or "").strip()
         if not title:
@@ -1148,39 +1224,103 @@ async def checklists_import(body: dict, emp: dict = Depends(require_employee)):
         if not aid:
             unmatched.append(title[:50])
             continue
-        pts = []
-        for p in (sh.get("points") or []):
+        # group each machine's rows by frequency -> its Daily / Quarterly checklist
+        groups = {}
+        for p in (sh.get("rows") or sh.get("points") or []):
             txt = (str(p.get("text") or "")).strip()
             if not txt or txt.lower() in _CL_GENERIC:
                 continue
+            scope = (str(p.get("scope") or "")).strip() or _scope_cat(txt)
+            who = (str(p.get("user") or p.get("assigned_to") or "")).strip()
             mn = str(p.get("min") if p.get("min") is not None else "").strip()
             mx = str(p.get("max") if p.get("max") is not None else "").strip()
-            opts = str(p.get("options") or "").strip()
             if mn or mx:
                 it, spec = "value", (mn + "-" + mx).strip("-")
-            elif opts:
-                it, spec = "radio", ""
             else:
                 it, spec = "check", ""
-            pts.append((txt, _scope_cat(txt), it, spec))
-        if not pts:
-            continue
-        cid = await db.fetchval(
-            "SELECT id FROM maint_checklists WHERE asset_id=$1 AND lower(name)=lower($2)", aid, title)
-        if cid:
-            await db.execute("DELETE FROM maint_checkpoints WHERE checklist_id=$1", cid)
-            updated += 1
-        else:
+            groups.setdefault(_cl_name(p.get("freq")), []).append((txt, scope, it, spec, who))
+        for cl_name, items in groups.items():
             cid = await db.fetchval(
-                "INSERT INTO maint_checklists (asset_id,name) VALUES ($1,$2) RETURNING id", aid, title)
-            created += 1
-        for i, (txt, cat, it, spec) in enumerate(pts):
-            await db.execute(
-                "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7)", cid, i + 1, txt, cat, it, "", spec)
-            cps += 1
-    return {"ok": True, "created": created, "updated": updated,
-            "checkpoints": cps, "unmatched": unmatched}
+                "SELECT id FROM maint_checklists WHERE asset_id=$1 AND lower(name)=lower($2)", aid, cl_name)
+            if cid:
+                await db.execute("DELETE FROM maint_checkpoints WHERE checklist_id=$1", cid)
+                updated += 1
+            else:
+                cid = await db.fetchval(
+                    "INSERT INTO maint_checklists (asset_id,name) VALUES ($1,$2) RETURNING id", aid, cl_name)
+                created += 1
+            for i, (txt, cat, it, spec, who) in enumerate(items):
+                eid = _resolve_emp(who, emps) if who else None
+                if who:
+                    (matched_users if eid else unmatched_users).add(who)
+                await db.execute(
+                    "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec,"
+                    "assigned_to,assigned_emp_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
+                    cid, i + 1, txt, cat, it, "", spec, who or None, eid)
+                cps += 1
+    return {"ok": True, "created": created, "updated": updated, "checkpoints": cps,
+            "unmatched": unmatched, "matched_users": sorted(matched_users),
+            "unmatched_users": sorted(unmatched_users)}
+
+
+# =======================================================================
+#  MY CHECKLIST  (per-user assigned checkpoints + tick-to-complete)
+# =======================================================================
+@router.get("/my/list")
+async def my_checklist(emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    eid = emp["id"]
+    rows = await db.fetch(
+        "SELECT p.id, p.text, p.category, p.input_type, p.unit, p.spec, p.assigned_to, "
+        "c.name AS checklist_name, a.code AS asset_code, a.name AS asset_name "
+        "FROM maint_checkpoints p "
+        "JOIN maint_checklists c ON c.id=p.checklist_id "
+        "LEFT JOIN maint_assets a ON a.id=c.asset_id "
+        "WHERE p.assigned_emp_id=$1 "
+        "ORDER BY a.name NULLS LAST, c.name, p.seq, p.id", eid)
+    today = _today()
+    ids = [r["id"] for r in rows]
+    donemap = {}
+    if ids:
+        for d in await db.fetch(
+                "SELECT checkpoint_id, period_key FROM maint_checkpoint_done "
+                "WHERE checkpoint_id = ANY($1::int[])", ids):
+            donemap.setdefault(d["checkpoint_id"], set()).add(d["period_key"])
+    items = []
+    for r in rows:
+        pk = _period_key(r["checklist_name"], today)
+        d = dict(r)
+        d["freq"] = _freq_label(r["checklist_name"])
+        d["period_key"] = pk
+        d["done"] = pk in donemap.get(r["id"], set())
+        items.append(d)
+    return _json({"items": items, "today": today.isoformat(),
+                  "me": emp.get("name") or emp.get("emp_no")})
+
+
+@router.post("/my/done")
+async def my_checklist_done(body: dict, emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    cpid = body.get("checkpoint_id")
+    done = bool(body.get("done"))
+    p = await db.fetchrow(
+        "SELECT p.id, p.assigned_emp_id, c.name AS cn "
+        "FROM maint_checkpoints p JOIN maint_checklists c ON c.id=p.checklist_id "
+        "WHERE p.id=$1", cpid)
+    if not p:
+        raise HTTPException(404, "Checkpoint not found")
+    if p["assigned_emp_id"] != emp["id"] and not emp.get("is_admin"):
+        raise HTTPException(403, "This item isn't assigned to you")
+    pk = _period_key(p["cn"])
+    if done:
+        await db.execute(
+            "INSERT INTO maint_checkpoint_done (checkpoint_id,emp_id,period_key) VALUES ($1,$2,$3) "
+            "ON CONFLICT (checkpoint_id,period_key) DO UPDATE SET emp_id=$2, done_at=now()",
+            cpid, emp["id"], pk)
+    else:
+        await db.execute(
+            "DELETE FROM maint_checkpoint_done WHERE checkpoint_id=$1 AND period_key=$2", cpid, pk)
+    return {"ok": True, "done": done, "period_key": pk}
 
 
 # =======================================================================

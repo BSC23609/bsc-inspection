@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My Checklist · {{ app_name }}{% endblock %}
+{% block tb_title %}My Checklist{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.my-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.my-head .seg{display:flex;gap:6px}
+.my-head .sbtn{border:1px solid var(--line-2);background:#fff;border-radius:9px;padding:7px 14px;font-size:12.5px;font-weight:700;color:var(--ink-2);cursor:pointer}
+.my-head .sbtn.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.my-prog{margin-left:auto;font-size:12.5px;color:var(--muted);font-weight:600}
+.mac-grp{border-bottom:1px solid var(--line)}
+.mac-grp:last-child{border-bottom:none}
+.mac-h{display:flex;align-items:center;gap:8px;padding:11px 16px;background:var(--acc-soft);font-weight:700;color:var(--acc-ink);font-size:13px}
+.mac-h .code{background:#fff;border:1px solid var(--line-2);border-radius:7px;padding:1px 7px;font-size:11px;color:var(--ink-2)}
+.mac-h .mp{margin-left:auto;font-size:11.5px;color:var(--muted);font-weight:600}
+.ci{display:flex;align-items:flex-start;gap:12px;padding:11px 16px;border-top:1px solid var(--line)}
+.ci:first-child{border-top:none}
+.ci .cb{width:22px;height:22px;flex:none;margin-top:1px;cursor:pointer;accent-color:var(--acc)}
+.ci .ct{flex:1;font-size:13.5px;line-height:1.4}
+.ci.done .ct{color:var(--muted);text-decoration:line-through}
+.ci .meta{margin-top:3px;display:flex;gap:6px;flex-wrap:wrap}
+.ctag{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px;white-space:nowrap}
+.ctag.E{background:#ddebf7;color:#1f4e79}.ctag.M{background:#e2efda;color:#375623}.ctag.H{background:#fce4d6;color:#843c0b}
+.sp{font-size:11px;color:var(--muted)}
+.empty{color:var(--muted);text-align:center;padding:26px}
+</style>
+
+<div class="page-head"><h1>My Checklist</h1><p>The checkpoints assigned to you. Tick each one as you complete it — daily items reset each day, quarterly items each quarter.</p></div>
+
+<div class="panel">
+  <div class="my-head">
+    <div class="seg">
+      <button class="sbtn on" id="t_daily" onclick="setTab('Daily')">Daily</button>
+      <button class="sbtn" id="t_quarterly" onclick="setTab('Quarterly')">Quarterly</button>
+    </div>
+    <span class="my-prog" id="my_prog"></span>
+  </div>
+  <div id="my_body"><div class="empty">Loading…</div></div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var ITEMS=[],TAB='Daily';
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function catCls(c){c=(c||'').toLowerCase();return c[0]==='e'?'E':(c[0]==='h'?'H':'M');}
+function setTab(t){TAB=t;document.getElementById('t_daily').classList.toggle('on',t==='Daily');
+  document.getElementById('t_quarterly').classList.toggle('on',t==='Quarterly');render();}
+async function boot(){
+  var d;try{var r=await fetch('/maint/my/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}d=await r.json();}
+  catch(e){document.getElementById('my_body').innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  ITEMS=d.items||[];render();
+}
+function render(){
+  var box=document.getElementById('my_body');
+  var rows=ITEMS.filter(function(x){return x.freq===TAB;});
+  var done=rows.filter(function(x){return x.done;}).length;
+  document.getElementById('my_prog').textContent=rows.length?(done+' of '+rows.length+' done'):'';
+  if(!rows.length){box.innerHTML='<div class="empty">No '+TAB.toLowerCase()+' items assigned to you.</div>';return;}
+  var byM={},order=[];
+  rows.forEach(function(x){var k=(x.asset_code||'')+'|'+(x.asset_name||'');if(!byM[k]){byM[k]=[];order.push(k);}byM[k].push(x);});
+  box.innerHTML=order.map(function(k){
+    var list=byM[k],p=k.split('|'),dn=list.filter(function(x){return x.done;}).length;
+    var head='<div class="mac-h">'+(p[0]?'<span class="code">'+esc(p[0])+'</span>':'')+'<span>'+esc(p[1]||'—')+'</span>'
+      +'<span class="mp">'+dn+'/'+list.length+'</span></div>';
+    var body=list.map(function(x){
+      var sp=[x.unit,x.spec].filter(Boolean).join(' · ');
+      return '<div class="ci'+(x.done?' done':'')+'" data-id="'+x.id+'">'
+        +'<input type="checkbox" class="cb" '+(x.done?'checked':'')+' onchange="toggle('+x.id+',this)">'
+        +'<div class="ct">'+esc(x.text)
+        +'<div class="meta"><span class="ctag '+catCls(x.category)+'">'+esc((x.category||'—').slice(0,4))+'</span>'
+        +(sp?'<span class="sp">'+esc(sp)+'</span>':'')+'</div></div></div>';
+    }).join('');
+    return '<div class="mac-grp">'+head+body+'</div>';
+  }).join('');
+}
+async function toggle(id,el){
+  var want=el.checked;el.disabled=true;
+  try{var r=await fetch('/maint/my/done',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({checkpoint_id:id,done:want})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
+    var it=ITEMS.filter(function(x){return x.id==id;})[0];if(it)it.done=want;
+    var row=el.closest('.ci');if(row)row.classList.toggle('done',want);
+    // refresh counters
+    var rows=ITEMS.filter(function(x){return x.freq===TAB;}),done=rows.filter(function(x){return x.done;}).length;
+    document.getElementById('my_prog').textContent=done+' of '+rows.length+' done';
+    var grp=el.closest('.mac-grp');if(grp){var cis=grp.querySelectorAll('.ci'),dc=grp.querySelectorAll('.ci.done').length;
+      var mp=grp.querySelector('.mp');if(mp)mp.textContent=dc+'/'+cis.length;}
+  }catch(e){el.checked=!want;toast&&toast('err',(e&&e.message)||'Failed');}
+  finally{el.disabled=false;}
+}
+boot();
+</script>
+{% endblock %}

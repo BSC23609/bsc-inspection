@@ -35,6 +35,8 @@ NAV_GROUPS = [
     {"key": "maintenance", "title": "Maintenance", "accent": "teal", "icon": "wrench",
      "blurb": "Assets, PM schedules, checklists and machine history.",
      "items": [
+         {"name": "My Checklist", "icon": "clipboard", "desc": "The checkpoints assigned to you — tick them as you complete them.",
+          "href": "/maint/my-checklist", "active_key": "maint_my"},
          {"name": "Analytics", "icon": "gauge", "desc": "MTTR, MTBF, availability, downtime and PM compliance.",
           "href": "/maint/analytics", "active_key": "maint_analytics"},
          {"name": "Maintenance Board", "icon": "gauge", "desc": "Due today, overdue and upcoming PM at a glance.",
@@ -66,10 +68,32 @@ ADMIN_NAV = [
 
 router = APIRouter()
 
+# Maintenance sub-items a NON-admin may see. Admins see the whole group.
+MAINT_PUBLIC_KEYS = {"maint_my", "maint", "maint_breakdown"}
+
+
+def _is_admin(emp) -> bool:
+    return bool(emp and emp.get("is_admin"))
+
+
+def _nav_groups_for(emp):
+    """Hide admin-only maintenance items from non-admins (sidebar, dashboard
+    tiles and the module popup all render from this same list)."""
+    if _is_admin(emp):
+        return NAV_GROUPS
+    out = []
+    for g in NAV_GROUPS:
+        if g.get("key") == "maintenance":
+            g = dict(g)
+            g["items"] = [it for it in g["items"]
+                          if it.get("active_key") in MAINT_PUBLIC_KEYS]
+        out.append(g)
+    return out
+
 
 def _ctx(request, emp, active, **extra):
     base = {"request": request, "emp": emp, "app_name": APP_NAME,
-            "active": active, "groups": NAV_GROUPS, "admin_nav": ADMIN_NAV}
+            "active": active, "groups": _nav_groups_for(emp), "admin_nav": ADMIN_NAV}
     base.update(extra)
     return base
 
@@ -197,26 +221,31 @@ async def customers_page(request: Request):
 
 
 # ---- Maintenance module pages ----
+# Last flag = admin_only. Non-admins may open only the Maintenance Board and
+# Raise Breakdown; the rest redirect them back to the board even by direct URL.
 _MAINT_PAGES = [
-    ("/maint/analytics", "maint_analytics.html", "maint_analytics", "Maintenance Analytics"),
-    ("/maint", "maint_board.html", "maint", "Maintenance Board"),
-    ("/maint/assets", "maint_assets.html", "maint_assets", "Assets"),
-    ("/maint/checklists", "maint_checklists.html", "maint_checklists", "Checklists"),
-    ("/maint/schedules", "maint_schedules.html", "maint_schedules", "Schedules"),
-    ("/maint/breakdown", "maint_breakdown.html", "maint_breakdown", "Raise Breakdown"),
-    ("/maint/leave", "maint_leave.html", "maint_leave", "Leave"),
+    ("/maint/my-checklist", "maint_my.html", "maint_my", "My Checklist", False),
+    ("/maint/analytics", "maint_analytics.html", "maint_analytics", "Maintenance Analytics", True),
+    ("/maint", "maint_board.html", "maint", "Maintenance Board", False),
+    ("/maint/assets", "maint_assets.html", "maint_assets", "Assets", True),
+    ("/maint/checklists", "maint_checklists.html", "maint_checklists", "Checklists", True),
+    ("/maint/schedules", "maint_schedules.html", "maint_schedules", "Schedules", True),
+    ("/maint/breakdown", "maint_breakdown.html", "maint_breakdown", "Raise Breakdown", False),
+    ("/maint/leave", "maint_leave.html", "maint_leave", "Leave", True),
 ]
 
 
-def _mk_maint_route(tmpl, active, section):
+def _mk_maint_route(tmpl, active, section, admin_only=False):
     async def _page(request: Request):
         emp = await current_employee(request)
         if not emp:
             return RedirectResponse("/login", status_code=303)
+        if admin_only and not _is_admin(emp):
+            return RedirectResponse("/maint", status_code=303)
         return templates.TemplateResponse(tmpl, _ctx(request, emp, active, section=section))
     return _page
 
 
-for _path, _tmpl, _active, _section in _MAINT_PAGES:
-    router.add_api_route(_path, _mk_maint_route(_tmpl, _active, _section),
+for _path, _tmpl, _active, _section, _admin in _MAINT_PAGES:
+    router.add_api_route(_path, _mk_maint_route(_tmpl, _active, _section, _admin),
                          methods=["GET"], response_class=HTMLResponse)
