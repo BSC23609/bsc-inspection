@@ -1500,6 +1500,24 @@ async def _ensure_new_machine_quarterly():
             print("[maint] new-machine quarterly skipped:", code, e)
 
 
+async def _ensure_schedule_assignees():
+    """Give each schedule an overall assignee = the person who does the most checkpoints
+    on its linked checklist, so the board shows who's responsible and reminders can send."""
+    try:
+        rows = await db.fetch(
+            "SELECT s.id AS sid, "
+            "(SELECT cp.assigned_emp_id FROM maint_checkpoints cp "
+            " WHERE cp.checklist_id = s.checklist_id AND cp.assigned_emp_id IS NOT NULL "
+            " GROUP BY cp.assigned_emp_id ORDER BY COUNT(*) DESC, cp.assigned_emp_id LIMIT 1) AS eid "
+            "FROM maint_schedules s WHERE s.checklist_id IS NOT NULL")
+        for r in rows:
+            if r["eid"]:
+                await db.execute("UPDATE maint_schedules SET assignee_emp_id=$1 WHERE id=$2",
+                                 r["eid"], r["sid"])
+    except Exception as e:
+        print("[maint] schedule assignee skipped:", e)
+
+
 async def _ensure_quarterly_links():
     """Link every Quarterly PM plan to its machine's Quarterly checklist (only when
     the plan has no checklist yet), so completing a quarterly job shows its checkpoints."""
@@ -2894,6 +2912,7 @@ async def admin_reseed(token: str = Query(default="")):
     await _ensure_daily_plans()
     await _ensure_new_machine_quarterly()
     await _ensure_quarterly_links()
+    await _ensure_schedule_assignees()
     try:
         await db.execute(
             "INSERT INTO maint_meta (mkey,mval) VALUES ($1,'1') ON CONFLICT (mkey) DO UPDATE SET mval='1'",
