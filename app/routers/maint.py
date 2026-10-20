@@ -41,7 +41,7 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-10-20c"
+SCHEMA_VER = "2026-10-20d"
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -716,18 +716,9 @@ async def ensure_tables():
                 NEW_MACHINES_SEED_KEY)
     except Exception as e:
         print("[maint] new-machines seed skipped:", e)
-    # one-time: rebuild ALL machines' checklists + per-checkpoint assignees from the
-    # authoritative Oct-2026 checklist workbook (overwrites earlier assignments so the
-    # app matches the signed-off checklist exactly).
-    try:
-        done3 = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey=$1", FULL_RESEED_KEY)
-        if not done3:
-            await _seed_assignments()
-            await db.execute(
-                "INSERT INTO maint_meta (mkey,mval) VALUES ($1,'1') ON CONFLICT (mkey) DO NOTHING",
-                FULL_RESEED_KEY)
-    except Exception as e:
-        print("[maint] full reseed skipped:", e)
+    # NOTE: the full rebuild of all machines from the workbook is NOT done here on the
+    # request path (too slow for Vercel's 10s limit). It runs via the admin endpoint
+    # /maint/admin/reseed?token=... which uses one connection + batched inserts.
     # ensure every Daily checklist has an active daily plan (idempotent)
     await _ensure_daily_plans()
     # make sure the 5 new machines have a Quarterly PM plan (created only if missing)
@@ -1430,6 +1421,56 @@ async def _seed_new_machines():
         _, _, n, _, _ = await _rebuild_asset_checklists(aid, entry.get("rows") or [], emps)
         total += n
     print(f"[maint] new-machines seed loaded {total} checkpoints")
+
+
+async def _reseed_all_fast():
+    """Rebuild every machine's Daily/Quarterly checklists + per-checkpoint assignees
+    from the shipped seed, fast: one pooled connection + batched checkpoint inserts.
+    Safe to run repeatedly (deletes then re-inserts each checklist)."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "maint_assign_seed.json")
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    emps = await _employees_all()
+    p = await db.pool()
+    machines = cps = 0
+    unmatched = set()
+    async with p.acquire() as con:
+        rows = await con.fetch("SELECT id, lower(code) AS code FROM maint_assets")
+        by_code = {r["code"]: r["id"] for r in rows}
+        for entry in data:
+            code = (entry.get("code") or "").strip().lower()
+            aid = by_code.get(code)
+            if not aid:
+                continue
+            groups = {}
+            for row in (entry.get("rows") or []):
+                txt = (str(row.get("t") or "")).strip()
+                if not txt or txt.lower() in _CL_GENERIC:
+                    continue
+                cat = (str(row.get("s") or "")).strip() or _scope_cat(txt)
+                who = (str(row.get("u") or "")).strip()
+                groups.setdefault(_cl_name_for(row.get("f")), []).append((txt, cat, who))
+            for cl_name, items in groups.items():
+                cid = await con.fetchval(
+                    "SELECT id FROM maint_checklists WHERE asset_id=$1 AND lower(name)=lower($2)", aid, cl_name)
+                if cid:
+                    await con.execute("DELETE FROM maint_checkpoints WHERE checklist_id=$1", cid)
+                else:
+                    cid = await con.fetchval(
+                        "INSERT INTO maint_checklists (asset_id,name) VALUES ($1,$2) RETURNING id", aid, cl_name)
+                batch = []
+                for i, (txt, cat, who) in enumerate(items):
+                    eid = _resolve_emp(who, emps) if who else None
+                    if who and not eid:
+                        unmatched.add(who)
+                    batch.append((cid, i + 1, txt, cat, 'check', '', '', who or None, eid))
+                    cps += 1
+                if batch:
+                    await con.executemany(
+                        "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec,"
+                        "assigned_to,assigned_emp_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)", batch)
+            machines += 1
+    return {"machines": machines, "checkpoints": cps, "unmatched_users": sorted(unmatched)}
 
 
 async def _ensure_new_machine_quarterly():
@@ -2838,3 +2879,25 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
 async def reminders_preview(emp: dict = Depends(require_employee)):
     """Staff-only preview of what the reminder run would send right now."""
     return _json(await _run_reminders(dry=True))
+
+
+@router.get("/admin/reseed")
+async def admin_reseed(token: str = Query(default="")):
+    """Protected one-time rebuild of EVERY machine's checklists + per-checkpoint
+    assignees from the shipped workbook seed. Open once in a browser:
+       /maint/admin/reseed?token=<AGENT_TOKEN>
+    Fast (batched) so it finishes inside the request limit."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(401, "bad token")
+    await ensure_tables()
+    res = await _reseed_all_fast()
+    await _ensure_daily_plans()
+    await _ensure_new_machine_quarterly()
+    await _ensure_quarterly_links()
+    try:
+        await db.execute(
+            "INSERT INTO maint_meta (mkey,mval) VALUES ($1,'1') ON CONFLICT (mkey) DO UPDATE SET mval='1'",
+            FULL_RESEED_KEY)
+    except Exception:
+        pass
+    return _json({"ok": True, **res})
