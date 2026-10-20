@@ -1,0 +1,160 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My Checklist · {{ app_name }}{% endblock %}
+{% block tb_title %}My Checklist{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.my-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.my-head .seg{display:flex;gap:6px}
+.my-head .sbtn{border:1px solid var(--line-2);background:#fff;border-radius:9px;padding:7px 14px;font-size:12.5px;font-weight:700;color:var(--ink-2);cursor:pointer}
+.my-head .sbtn.on{background:var(--acc);color:#fff;border-color:var(--acc)}
+.my-prog{margin-left:auto;font-size:12.5px;color:var(--muted);font-weight:600}
+.mtbl{width:100%;border-collapse:collapse;font-size:13px}
+.mtbl th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);padding:9px 12px}
+.mtbl td{border-bottom:1px solid var(--line);padding:11px 12px;vertical-align:middle}
+.mtbl .mac{font-weight:700;color:var(--acc-ink)}
+.mtbl .code{font-size:11px;color:var(--muted);font-weight:600}
+.pill{display:inline-block;font-size:11px;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap}
+.pill.overdue{background:#fde0e1;color:#c0241c}.pill.due{background:#fff3d6;color:#8a5a00}
+.pill.done{background:#e2efda;color:#2f6b27}.pill.upcoming{background:#eef1f5;color:#5a6472}
+.openb{border:1px solid var(--acc);color:var(--acc);background:#fff;border-radius:8px;padding:6px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
+.openb.done{border-color:var(--line-2);color:var(--muted)}
+.empty{color:var(--muted);text-align:center;padding:26px}
+@media(max-width:620px){.hide-sm{display:none}.mtbl td,.mtbl th{padding:9px 8px}}
+/* popup */
+.scrim{position:fixed;inset:0;background:rgba(8,24,40,.5);display:none;align-items:flex-start;justify-content:center;z-index:70;padding:24px 14px;overflow:auto}
+.fmodal{background:#f7f9fb;border-radius:16px;max-width:720px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,.3)}
+.fmh{display:flex;align-items:flex-start;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line);background:#fff;border-radius:16px 16px 0 0}
+.fmh h3{margin:0;font-size:16px}.fmh p{margin:2px 0 0;font-size:12px;color:var(--muted)}
+.fmbody{padding:16px 18px;max-height:64vh;overflow:auto}
+.qcard{background:#fff;border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.qcard.ok{border-color:#cfe6c2}.qcard.notok{border-color:#f3c9cb}
+.qt{font-weight:700;font-size:13.5px;margin-bottom:10px}
+.qt .ctag{margin-left:6px;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px}
+.ctag.E{background:#ddebf7;color:#1f4e79}.ctag.M{background:#e2efda;color:#375623}.ctag.H{background:#fce4d6;color:#843c0b}
+.opts{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.opt{display:flex;align-items:center;gap:7px;border:1px solid var(--line-2);border-radius:9px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink-2)}
+.opt input{accent-color:var(--acc);width:16px;height:16px}
+.opt.sel-ok{background:#e9f6e2;border-color:#9fd089;color:#2f6b27}
+.opt.sel-no{background:#fdeceD;border-color:#e8a8ab;color:#c0241c}
+.qval input{width:160px;padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px}
+.qnote{width:100%;min-height:52px;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:12.5px;resize:vertical}
+.fmfoot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;background:#fff;border-radius:0 0 16px 16px}
+.spec{font-size:11px;color:var(--muted);font-weight:500}
+</style>
+
+<div class="page-head"><h1>My Checklist</h1><p>Your assigned machine checks. Open a card to fill it in — mark each point OK or Not OK and add a note. Daily checks reset each day, quarterly each quarter.</p></div>
+
+<div class="panel">
+  <div class="my-head">
+    <div class="seg">
+      <button class="sbtn on" id="t_daily" onclick="setTab('Daily')">Daily</button>
+      <button class="sbtn" id="t_quarterly" onclick="setTab('Quarterly')">Quarterly</button>
+    </div>
+    <span class="my-prog" id="my_prog"></span>
+  </div>
+  <div id="my_body"><div class="empty">Loading…</div></div>
+</div>
+</div>
+
+<!-- FILL popup -->
+<div class="scrim" id="f_scrim"><div class="fmodal">
+  <div class="fmh">{{ icon('clipboard',20) }}<div style="flex:1"><h3 id="f_title">Checklist</h3><p id="f_sub"></p></div>
+    <a href="#" onclick="closeForm();return false" style="color:var(--muted);font-size:22px;line-height:1">×</a></div>
+  <div class="fmbody" id="f_body"><div class="empty">Loading…</div></div>
+  <div class="fmfoot"><div style="flex:1"></div>
+    <button class="btn btn-ghost" onclick="closeForm()">Cancel</button>
+    <button class="btn btn-primary" id="f_save" onclick="submitForm()">Submit checklist</button></div>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+var ITEMS=[],TAB='Daily',CUR=null;
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function catCls(c){c=(c||'').toLowerCase();return c[0]==='e'?'E':(c[0]==='h'?'H':'M');}
+function fdate(s){if(!s)return'';var d=new Date(s);if(isNaN(d))return String(s).slice(0,10);return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear();}
+function setTab(t){TAB=t;document.getElementById('t_daily').classList.toggle('on',t==='Daily');
+  document.getElementById('t_quarterly').classList.toggle('on',t==='Quarterly');render();}
+async function boot(){
+  var d;try{var r=await fetch('/maint/my/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}d=await r.json();}
+  catch(e){document.getElementById('my_body').innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  ITEMS=d.items||[];render();
+}
+function render(){
+  var box=document.getElementById('my_body');
+  var rows=ITEMS.filter(function(x){return x.freq===TAB;});
+  var done=rows.filter(function(x){return x.status==='done';}).length;
+  var over=rows.filter(function(x){return x.status==='overdue';}).length;
+  document.getElementById('my_prog').textContent=rows.length?(done+' done · '+over+' overdue · '+rows.length+' total'):'';
+  if(!rows.length){box.innerHTML='<div class="empty">No '+TAB.toLowerCase()+' checks assigned to you.</div>';return;}
+  // order: overdue, due, upcoming, done
+  var rank={overdue:0,due:1,upcoming:2,done:3};
+  rows.sort(function(a,b){return (rank[a.status]-rank[b.status])||String(a.asset_name).localeCompare(b.asset_name);});
+  box.innerHTML='<table class="mtbl"><thead><tr><th>Machine</th><th class="hide-sm">Items</th><th class="hide-sm">Next due</th><th>Status</th><th></th></tr></thead><tbody>'
+    +rows.map(function(x){
+      var lbl={overdue:'Overdue',due:'Due',done:'Done',upcoming:'Upcoming'}[x.status]||x.status;
+      var btn=x.status==='done'
+        ? '<button class="openb done" onclick="openForm('+x.checklist_id+')">View / redo</button>'
+        : '<button class="openb" onclick="openForm('+x.checklist_id+')">Open</button>';
+      return '<tr><td><div class="mac">'+esc(x.asset_name||'—')+'</div>'+(x.asset_code?'<div class="code">'+esc(x.asset_code)+'</div>':'')+'</td>'
+        +'<td class="hide-sm">'+(x.done_n||0)+' / '+x.my_count+'</td>'
+        +'<td class="hide-sm">'+(x.next_due?fdate(x.next_due):'—')+'</td>'
+        +'<td><span class="pill '+x.status+'">'+lbl+'</span></td>'
+        +'<td style="text-align:right">'+btn+'</td></tr>';
+    }).join('')+'</tbody></table>';
+}
+async function openForm(cid){
+  document.getElementById('f_scrim').style.display='flex';
+  var body=document.getElementById('f_body');body.innerHTML='<div class="empty">Loading…</div>';
+  var d;try{d=await (await fetch('/maint/my/form?checklist='+cid,{cache:'no-store'})).json();}catch(e){body.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  CUR={checklist_id:cid,schedule_id:d.schedule_id};
+  document.getElementById('f_title').textContent=((d.checklist.asset_code?d.checklist.asset_code+' — ':'')+(d.checklist.asset_name||''));
+  document.getElementById('f_sub').textContent=(d.checklist.name||'')+' · '+(d.checkpoints||[]).length+' point(s) assigned to you';
+  var pts=d.checkpoints||[];
+  if(!pts.length){body.innerHTML='<div class="empty">No points assigned to you on this machine.</div>';return;}
+  body.innerHTML=pts.map(function(p){
+    var isVal=(p.input_type==='value');
+    var selOk=p.result==='OK',selNo=p.result==='Not OK';
+    var ctrl;
+    if(isVal){
+      ctrl='<div class="qval"><input type="text" class="q-val" data-id="'+p.id+'" placeholder="Enter reading'+(p.unit?(' ('+esc(p.unit)+')'):'')+'" value="'+esc(p.result||'')+'"></div>';
+    }else{
+      ctrl='<div class="opts">'
+        +'<label class="opt'+(selOk?' sel-ok':'')+'"><input type="radio" name="r'+p.id+'" value="OK"'+(selOk?' checked':'')+' onchange="mark(this,'+p.id+',1)">OK</label>'
+        +'<label class="opt'+(selNo?' sel-no':'')+'"><input type="radio" name="r'+p.id+'" value="Not OK"'+(selNo?' checked':'')+' onchange="mark(this,'+p.id+',0)">Not OK</label></div>';
+    }
+    var spec=p.spec?('<span class="spec"> · '+esc(p.spec)+'</span>'):'';
+    return '<div class="qcard'+(selOk?' ok':(selNo?' notok':''))+'" id="qc'+p.id+'" data-id="'+p.id+'" data-type="'+(isVal?'value':'check')+'">'
+      +'<div class="qt">'+esc(p.text)+'<span class="ctag '+catCls(p.category)+'">'+esc((p.category||'—').slice(0,4))+'</span>'+spec+'</div>'
+      +ctrl
+      +'<textarea class="qnote" data-id="'+p.id+'" placeholder="Add a note / remark (optional)">'+esc(p.note||'')+'</textarea></div>';
+  }).join('');
+}
+function mark(el,id,ok){var c=document.getElementById('qc'+id);if(!c)return;
+  c.classList.toggle('ok',!!ok);c.classList.toggle('notok',!ok);
+  var labs=c.querySelectorAll('.opt');labs.forEach(function(l){l.classList.remove('sel-ok','sel-no');});
+  var lab=el.closest('.opt');if(lab)lab.classList.add(ok?'sel-ok':'sel-no');}
+function closeForm(){document.getElementById('f_scrim').style.display='none';CUR=null;}
+async function submitForm(){
+  if(!CUR)return;
+  var results=[];
+  [].forEach.call(document.querySelectorAll('#f_body .qcard'),function(c){
+    var id=+c.getAttribute('data-id'),type=c.getAttribute('data-type');
+    if(type==='value'){var v=(c.querySelector('.q-val')||{}).value||'';var note=(c.querySelector('.qnote')||{}).value||'';
+      if(v||note)results.push({checkpoint_id:id,result:v.trim(),ok:true,note:note.trim()});}
+    else{var sel=c.querySelector('input[type=radio]:checked');var note=(c.querySelector('.qnote')||{}).value||'';
+      if(sel||note)results.push({checkpoint_id:id,result:sel?sel.value:'',ok:sel?sel.value==='OK':true,note:note.trim()});}
+  });
+  if(!results.length){toast&&toast('err','Mark at least one point');return;}
+  var b=document.getElementById('f_save');b.disabled=true;var l=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch('/maint/my/submit',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({checklist_id:CUR.checklist_id,schedule_id:CUR.schedule_id,results:results})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
+    toast&&toast('ok','Saved '+(d.saved||0)+' point(s)');closeForm();boot();
+  }catch(e){toast&&toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}
+}
+document.getElementById('f_scrim').addEventListener('click',function(e){if(e.target===this)closeForm();});
+boot();
+</script>
+{% endblock %}
