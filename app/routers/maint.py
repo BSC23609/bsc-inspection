@@ -1116,24 +1116,18 @@ async def assets_duplicates(emp: dict = Depends(require_employee)):
     assets = [dict(r) for r in rows]
 
     def ncode(c):
-        return re.sub(r"\s+", "", (c or "").upper())
+        # strip everything but letters/digits, then fold look-alike characters
+        # (O/0, I/1, S/5, B/8) so "E0T-009" and "EOT-009" count as the same code
+        s = re.sub(r"[^A-Z0-9]", "", (c or "").upper())
+        return s.translate(str.maketrans("OISB", "0158"))
 
-    def nname(n):
-        return re.sub(r"\s+", " ", (n or "").strip().lower())
-
-    by_code, by_name = {}, {}
+    by_code = {}
     for a in assets:
         by_code.setdefault(ncode(a["code"]), []).append(a)
-        by_name.setdefault(nname(a["name"]), []).append(a)
-    groups, seen = [], set()
-    for k, v in by_code.items():
+    groups = []
+    for k, v in sorted(by_code.items()):
         if k and len(v) > 1:
             groups.append({"reason": "Same code", "label": v[0]["code"], "assets": v})
-            for a in v:
-                seen.add(a["id"])
-    for k, v in by_name.items():
-        if k and len(v) > 1 and not all(a["id"] in seen for a in v):
-            groups.append({"reason": "Same name", "label": v[0]["name"], "assets": v})
     return _json({"groups": groups})
 
 
