@@ -1215,6 +1215,14 @@ def _resolve_emp(name, emps):
         enm = (e.get("name") or "").strip().lower()
         if enm and n in enm.split():
             return e["id"]
+    # last resort: letters/digits only, prefix match (handles "Dhinakaran K",
+    # "Dhinakaran.K", "Dhina Karan" etc. vs a seed value of "Dhinakaran")
+    na = re.sub(r"[^a-z0-9]", "", n)
+    if len(na) >= 4:
+        for e in emps:
+            ea = re.sub(r"[^a-z0-9]", "", (e.get("name") or "").strip().lower())
+            if ea and (ea.startswith(na) or na.startswith(ea)) and abs(len(ea) - len(na)) <= 3:
+                return e["id"]
     return None
 
 
