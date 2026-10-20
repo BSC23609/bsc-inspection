@@ -3,6 +3,8 @@
 app: PDF -> Inward/PDF/<batch>_(dd-mm-yyyy)_Inward.pdf, row -> Inward_Log.xlsx
 (table InwardLog), photos -> Inward/Photos/<file name>/."""
 import base64
+import json as _json
+import os as _os
 import re
 from datetime import date
 from decimal import Decimal
@@ -12,6 +14,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
+import httpx as _httpx
 
 from .. import db, graph, xlsxlog, odsync
 from ..auth import require_employee
@@ -359,3 +362,119 @@ async def coil_pdf_legacy(i: int = Query(...), emp: dict = Depends(require_emplo
     return Response(pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="Coil_Inward_{b}.pdf"',
                              "Cache-Control": "no-store"})
+
+
+# ---------------- Sticker scan (photo -> pre-filled form) ----------------
+# Reads a photo of the coil's identification sticker / tag with Claude vision and
+# returns the values it can see. NOTHING is saved here: the page fills the form and
+# the inspector checks / corrects it before pressing Save.
+SCAN_MODEL = _os.environ.get("COIL_SCAN_MODEL") or "claude-sonnet-5-5"
+
+
+class ScanIn(BaseModel):
+    image: str                      # data:image/jpeg;base64,...
+    makes: list = []                # the Make pills shown on the page
+    grades: list = []               # the Grade pills shown on the page
+    widths: list = []               # the Width pills shown on the page
+
+
+def _scan_prompt(b: ScanIn) -> str:
+    makes = ", ".join(str(m) for m in b.makes if m) or "SAIL, SAIL RSP, SAIL BSP, JSW, TATA, AMNS, NMDC, JSPL"
+    grades = ", ".join(str(g) for g in b.grades if g) or "E250, E350/ST52, HSFQ450/450/EQV, HSFQ550/550/EQV"
+    return (
+        "This is a photo taken at a steel service centre of a hot-rolled steel COIL's identification "
+        "sticker / tag (it may also show the coil itself or the truck). Read ONLY what is clearly "
+        "printed or written. Never guess or invent a value; leave out anything you cannot read.\n\n"
+        "Return one JSON object with any of these keys:\n"
+        '- "batch_number": the coil\'s own ID, labelled Coil No / Batch No / Coil ID No / Product ID / '
+        "Mother Coil No (NOT the Heat No, NOT an order or invoice number)\n"
+        '- "heat_number": the Heat No / Cast No, if printed\n'
+        f'- "make": the steel producer. Pick EXACTLY one of: {makes}. Use the plant when shown '
+        "(Bhilai -> SAIL BSP, Rourkela -> SAIL RSP, ArcelorMittal Nippon Steel -> AMNS, Jindal -> JSPL, "
+        "NMDC Steel -> NMDC). If it is none of these, give the producer name as printed.\n"
+        '- "grade_raw": the grade exactly as printed (e.g. "IS 2062 E250 BR")\n'
+        f'- "grade": the closest of: {grades}; omit if none clearly matches\n'
+        '- "thickness_mm": coil thickness in mm (from "3.15 x 1250" the thickness is 3.15)\n'
+        '- "width_mm": coil width in mm\n'
+        '- "weight": the NET coil weight as printed (number only) and "weight_unit": "kg", "t" or "MT"\n'
+        '- "coil_id_mm": the coil inner diameter (ID) in mm, only if labelled as ID / inner dia\n'
+        '- "vehicle_number": an Indian vehicle registration plate, only if one is visible in the photo\n\n'
+        "Numbers as plain numbers without units. Return ONLY the JSON object."
+    )
+
+
+def _f(v):
+    try:
+        return float(str(v).replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _clean_scan(raw: dict, b: ScanIn) -> dict:
+    """Normalise what the model returned into the form's own values."""
+    out = {}
+    s = lambda k: str(raw.get(k) or "").strip()
+    if s("batch_number"):
+        out["batch_number"] = re.sub(r"\s+", "", s("batch_number"))[:60]
+    if s("heat_number"):
+        out["heat_number"] = s("heat_number")[:40]
+    mk = s("make")
+    if mk:
+        hit = next((m for m in b.makes if str(m).strip().lower() == mk.lower()), None)
+        out["make_of_coil"] = hit or mk[:60]
+    gr, graw = s("grade"), s("grade_raw")
+    if gr or graw:
+        hit = next((g for g in b.grades if str(g).replace(" ", "").lower() == gr.replace(" ", "").lower()), None) if gr else None
+        out["grade"] = hit or (graw or gr)[:60]
+        if graw:
+            out["grade_raw"] = graw[:80]
+    t = _f(raw.get("thickness_mm"))
+    if t and 0.2 <= t <= 50:
+        out["thickness"] = round(t, 2)
+    w = _f(raw.get("width_mm"))
+    if w and 300 <= w <= 3000:
+        out["width"] = str(int(round(w)))
+    wt, unit = _f(raw.get("weight")), s("weight_unit").lower()
+    if wt and wt > 0:
+        tons = wt / 1000 if (unit == "kg" or (not unit and wt > 100)) else wt
+        if 0.1 <= tons <= 60:
+            out["coil_weight"] = round(tons, 3)
+    cid = _f(raw.get("coil_id_mm"))
+    if cid and 300 <= cid <= 1000:
+        out["coil_id"] = str(int(round(cid)))
+    vn = re.sub(r"[^A-Za-z0-9]", "", s("vehicle_number")).upper()
+    if re.fullmatch(r"[A-Z]{2}\d{1,2}[A-Z]{0,3}\d{3,4}", vn or ""):
+        out["vehicle_number"] = vn
+    return out
+
+
+@router.post("/scan")
+async def coil_scan(body: ScanIn, emp: dict = Depends(require_employee)):
+    key = _os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        raise HTTPException(400, "Scan isn't set up yet: add ANTHROPIC_API_KEY in the server settings.")
+    m = re.match(r"^data:(image/(?:png|jpe?g|webp));base64,(.+)$", body.image or "", re.I | re.S)
+    if not m:
+        raise HTTPException(400, "No photo received")
+    media = m.group(1).lower().replace("jpg", "jpeg")
+    req = {"model": SCAN_MODEL, "max_tokens": 600, "messages": [{"role": "user", "content": [
+        {"type": "image", "source": {"type": "base64", "media_type": media, "data": m.group(2)}},
+        {"type": "text", "text": _scan_prompt(body)}]}]}
+    try:
+        async with _httpx.AsyncClient(timeout=60) as c:
+            r = await c.post("https://api.anthropic.com/v1/messages", json=req,
+                             headers={"x-api-key": key, "anthropic-version": "2023-06-01",
+                                      "content-type": "application/json"})
+    except Exception as e:
+        raise HTTPException(502, f"Scan service couldn't be reached: {e}")
+    if r.status_code != 200:
+        print("[coil-scan]", r.status_code, r.text[:300])
+        raise HTTPException(502, f"Scan service error ({r.status_code}). Check ANTHROPIC_API_KEY / model name.")
+    text = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text")
+    jm = re.search(r"\{.*\}", text, re.S)
+    try:
+        raw = _json.loads(jm.group(0)) if jm else {}
+    except ValueError:
+        raw = {}
+    fields = _clean_scan(raw if isinstance(raw, dict) else {}, body)
+    return {"ok": True, "fields": fields}

@@ -18,8 +18,14 @@
 </div>
 
 <div class="panel">
-  <div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="c_form_title">New coil entry</span></div>
+  <div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span><span id="c_form_title">New coil entry</span>
+    <span class="scan-acts">
+      <label class="scan-a" title="Take a photo of the coil sticker — details fill in automatically">{{ icon('camera',15) }}<span>Add scan</span><input type="file" id="c_scan_cam" accept="image/*" capture="environment" hidden onchange="scanPick(this)"></label>
+      <label class="scan-a" title="Pick sticker / number-plate photos from the gallery">{{ icon('image',15) }}<span>Add photos</span><input type="file" id="c_scan_lib" accept="image/*" multiple hidden onchange="scanPick(this)"></label>
+    </span>
+  </div>
   <div class="panel-body">
+    <div class="scan-bar" id="c_scan_bar" style="display:none"></div>
     <input type="hidden" id="c_edit_id" value="">
 
     <div class="sec">
@@ -148,6 +154,18 @@
 </div>
 
 </div>
+<style>
+.scan-acts{margin-left:auto;display:flex;gap:16px;align-items:center}
+.scan-a{display:inline-flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--acc,#0069aa);cursor:pointer;white-space:nowrap}
+.scan-a:hover{color:var(--acc-ink,#005483);text-decoration:underline}
+.scan-bar{border-radius:10px;padding:10px 13px;margin-bottom:14px;font-size:13px;line-height:1.5;background:var(--blue-soft,#e4f1fb);color:var(--blue-ink,#00537f);border:1px solid #b9dcf3}
+.scan-bar.err{background:#fdecec;color:#a52a2e;border-color:#f3c2c4}
+.scan-bar.busy::before{content:"";display:inline-block;width:12px;height:12px;margin-right:8px;vertical-align:-1px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:scspin .8s linear infinite}
+@keyframes scspin{to{transform:rotate(360deg)}}
+.scan-fill{background:#fff8e1 !important;border-color:#f0c36d !important}
+.pills.scan-fill{background:transparent !important;border-radius:22px;box-shadow:0 0 0 2px #f0c36d;padding:3px}
+@media(max-width:560px){.scan-acts{gap:12px}.scan-a span{font-size:12.5px}}
+</style>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -209,7 +227,69 @@ function isYes(a){a=String(a).toLowerCase();return a==='yes'||a==='y';}
 function isNo(a){a=String(a).toLowerCase();return a==='no'||a==='n';}
 function flagged(x){return[x.edge_inner,x.edge_outer,x.scratch,x.rust].some(isYes)||isNo(x.id_sticker)||(x.other_damages&&String(x.other_damages).toLowerCase()!=='nil'&&String(x.other_damages).trim()!=='');}
 
+/* ---- sticker scan: photo -> pre-filled form (inspector checks before saving) ---- */
+function scanShrink(file){return new Promise(function(res,rej){
+  var img=new Image(),rd=new FileReader();rd.onerror=rej;
+  rd.onload=function(){img.onerror=rej;img.onload=function(){
+    var max=1600,w=img.width,h=img.height;if(w>max||h>max){if(w>h){h=Math.round(h*max/w);w=max;}else{w=Math.round(w*max/h);h=max;}}
+    var cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(img,0,0,w,h);
+    res(cv.toDataURL('image/jpeg',0.85));};img.src=rd.result;};rd.readAsDataURL(file);});}
+function pillOpts(target){var g=document.querySelector('.pills[data-target="'+target+'"]');if(!g)return[];
+  return[].map.call(g.querySelectorAll('.pill'),function(b){return b.getAttribute('data-v');}).filter(function(x){return x&&x!=='__other';});}
+function scanBar(kind,html){var b=document.getElementById('c_scan_bar');b.className='scan-bar'+(kind?' '+kind:'');b.innerHTML=html;b.style.display=html?'block':'none';}
+function scanMark(id){var e=document.getElementById(id);if(!e)return;e.classList.add('scan-fill');
+  var off=function(){e.classList.remove('scan-fill');e.removeEventListener('input',off);e.removeEventListener('click',off);};
+  e.addEventListener('input',off);e.addEventListener('click',off);}
+function scanClearMarks(){document.querySelectorAll('.scan-fill').forEach(function(e){e.classList.remove('scan-fill');});}
+var SCAN_LABEL={vehicle_number:'Vehicle',batch_number:'Batch',make_of_coil:'Make',grade:'Grade',width:'Width',thickness:'Thickness',coil_weight:'Weight',coil_id:'Coil ID'};
+function scanApply(f){
+  var done=[],kept=[];
+  var inp=function(key,id){if(f[key]==null||f[key]==='')return;var e=document.getElementById(id);
+    if(String(e.value).trim()){if(String(e.value).trim().toUpperCase()!==String(f[key]).toUpperCase())kept.push(SCAN_LABEL[key]);return;}
+    e.value=f[key];scanMark(id);done.push(SCAN_LABEL[key]);};
+  var pil=function(key,target){if(!f[key])return;
+    if(v(target)){if(v(target).toUpperCase()!==String(f[key]).toUpperCase())kept.push(SCAN_LABEL[key]);return;}
+    var g=document.querySelector('.pills[data-target="'+target+'"]');if(!g)return;setPill(g,String(f[key]));
+    var oth=g.getAttribute('data-other');g.classList.add('scan-fill');
+    var off=function(){g.classList.remove('scan-fill');g.removeEventListener('click',off);};g.addEventListener('click',off);
+    if(oth&&document.getElementById(oth).style.display!=='none')scanMark(oth);done.push(SCAN_LABEL[key]);};
+  inp('vehicle_number','c_vehicle');inp('batch_number','c_batch');
+  pil('make_of_coil','c_make');pil('grade','c_grade');pil('width','c_width');
+  inp('thickness','c_thick');inp('coil_weight','c_weight');inp('coil_id','c_coilid');
+  var notes=[];if(f.heat_number)notes.push('Heat No: '+f.heat_number);if(f.grade_raw&&f.grade_raw!==f.grade)notes.push('Grade on sticker: '+f.grade_raw);
+  var rm=document.getElementById('c_remarks');
+  notes.forEach(function(n){if(rm.value.indexOf(n)<0){rm.value=(rm.value?rm.value.replace(/\s+$/,'')+'\n':'')+n;scanMark('c_remarks');}});
+  return{done:done,kept:kept};
+}
+async function scanPick(inp){
+  var files=[].slice.call(inp.files||[]);inp.value='';if(!files.length)return;
+  scanBar('busy','Reading '+(files.length>1?files.length+' photos':'the photo')+'… this takes a few seconds.');
+  var done=[],kept=[],fail=0,read=0,lastErr='';
+  for(var i=0;i<files.length;i++){
+    try{
+      var url=await scanShrink(files[i]);
+      if(!v('c_sticker_photo')){document.getElementById('c_sticker_photo').value=url;var bx=document.getElementById('c_sticker_box');bx.classList.add('has');bx.style.backgroundImage='url('+url+')';}
+      var r=await fetch('/coil/scan',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({image:url,makes:pillOpts('c_make'),grades:pillOpts('c_grade'),widths:pillOpts('c_width')})});
+      if(r.status===401){location.href='/login';return;}
+      var d=await r.json().catch(function(){return{};});
+      if(!r.ok||!d.ok)throw new Error(typeof d.detail==='string'?d.detail:('server error '+r.status));
+      read++;var res=scanApply(d.fields||{});
+      res.done.forEach(function(x){if(done.indexOf(x)<0)done.push(x);});res.kept.forEach(function(x){if(kept.indexOf(x)<0&&done.indexOf(x)<0)kept.push(x);});
+    }catch(e){fail++;lastErr=(e&&e.message)||String(e);}
+  }
+  if(!read){scanBar('err','Couldn’t read the photo: '+esc(lastErr)+'. Please fill the details manually.');return;}
+  var msg=done.length
+    ? '<b>Filled from photo:</b> '+esc(done.join(', '))+'. Highlighted fields: please check them against the sticker before saving.'
+    : 'Nothing readable was found on the photo. Please fill the details manually, or try a closer, sharper photo of the sticker.';
+  if(kept.length)msg+='<br>Kept what you already entered for: '+esc(kept.join(', '))+' (the photo shows something different, so please check).';
+  if(fail)msg+='<br>'+fail+' photo(s) couldn’t be read.';
+  scanBar(done.length?'':'err',msg);
+  if(done.length)document.getElementById('c_scan_bar').scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+
 function coilReset(){
+  scanClearMarks();scanBar('','');
   document.getElementById('c_edit_id').value='';
   ['c_vehicle','c_batch','c_thick','c_weight','c_coilid','c_actthick','c_actwidth','c_remarks','c_make','c_grade','c_width','c_dmg','c_insp'].forEach(function(i){var e=document.getElementById(i);if(e)e.value='';});
   ['c_make_oth','c_grade_oth','c_width_oth','c_dmg_oth','c_insp_oth'].forEach(function(i){var e=document.getElementById(i);if(e){e.value='';e.style.display='none';}});
