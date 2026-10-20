@@ -48,7 +48,8 @@
   </div>
 </div></div></div>
 
-<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('cube',17) }}</span>Assets<span class="sub" id="a_cnt"></span></div>
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('cube',17) }}</span>Assets<span class="sub" id="a_cnt"></span>
+  {% if emp.is_admin %}<span style="flex:1"></span><a href="#" onclick="openDup();return false" style="color:var(--acc-ink);font-weight:600;font-size:12.5px">Find duplicates</a>{% endif %}</div>
 <div class="panel-body">
   <input id="a_search" oninput="aRender()" placeholder="Search code / name / type / location…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
   <div class="dgrid-wrap" id="a_rows"><div class="empty">Loading…</div></div>
@@ -65,10 +66,63 @@
   </div>
   <div class="mfoot"><button class="btn btn-primary" onclick="closeElec()">Done</button></div>
 </div></div>
+
+<!-- Duplicate machines -->
+<div class="scrim" id="dup_scrim"><div class="emodal" style="max-width:560px">
+  <div class="mh">{{ icon('cube',18) }}<b>DUPLICATE MACHINES</b><span style="flex:1"></span>
+    <a href="#" onclick="closeDup();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb">
+    <p class="enote">Machines that share the same code or name. Keep the correct one (usually the one with the right checklists) and delete the extra.</p>
+    <div id="dup_body" class="elist" style="border:none;padding:0"><div class="none">Loading…</div></div>
+  </div>
+  <div class="mfoot"><button class="btn btn-ghost" onclick="closeDup()">Close</button></div>
+</div></div>
+
+<!-- Confirm (mobile-safe) -->
+<div class="scrim" id="cf_scrim" style="z-index:80;align-items:center"><div class="emodal" style="max-width:420px">
+  <div class="mh"><b id="cf_title">Please confirm</b><span style="flex:1"></span>
+    <a href="#" onclick="cfClose();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb"><p id="cf_msg" style="margin:0;font-size:13.5px;line-height:1.5;color:var(--ink-2)"></p></div>
+  <div class="mfoot" style="justify-content:flex-end;gap:10px">
+    <button class="btn btn-ghost" onclick="cfClose()">Cancel</button>
+    <button class="btn btn-primary" id="cf_ok" style="background:#c23438;border-color:#c23438">Delete</button></div>
+</div></div>
 {% endblock %}
 {% block scripts %}
 <script>
 var ASSETS=[],MUSERS=[],ASSET_ELEC={},elecAsset=null;
+var IS_ADMIN={{ 'true' if emp.is_admin else 'false' }};
+var _cfCb=null;
+function askConfirm(msg,onYes,okLabel){document.getElementById('cf_msg').textContent=msg;
+  var ok=document.getElementById('cf_ok');ok.textContent=okLabel||'Delete';_cfCb=onYes;
+  document.getElementById('cf_scrim').style.display='flex';}
+function cfClose(){document.getElementById('cf_scrim').style.display='none';_cfCb=null;}
+function aDelete(id){if(!IS_ADMIN)return;var x=ASSETS.filter(function(r){return r.id===id;})[0]||{};
+  askConfirm('Permanently delete "'+((x.code||'')+' '+(x.name||'')).trim()+'"? This removes the machine and all its checklists, plans, breakdowns and history. This cannot be undone.',
+    function(){doADelete(id);},'Delete machine');}
+async function doADelete(id){
+  try{var r=await fetch('/maint/asset/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
+    toast('ok','Machine deleted');await aLoad();
+    if(document.getElementById('dup_scrim').style.display==='flex')openDup();}
+  catch(e){toast('err',(e&&e.message)||'Failed');}}
+async function openDup(){document.getElementById('dup_scrim').style.display='flex';
+  var box=document.getElementById('dup_body');box.innerHTML='<div class="none">Loading…</div>';
+  var d;try{d=await (await fetch('/maint/assets/duplicates',{cache:'no-store'})).json();}
+  catch(e){box.innerHTML='<div class="none" style="color:#c23438">Couldn’t load.</div>';return;}
+  var groups=d.groups||[];
+  if(!groups.length){box.innerHTML='<div class="none">No duplicate machines found. ✅</div>';return;}
+  box.innerHTML=groups.map(function(g){
+    return '<div style="margin-bottom:14px"><div style="font-weight:700;font-size:12px;color:var(--acc-ink);margin-bottom:4px">'+esc(g.reason)+': '+esc(g.label||'')+'</div>'
+      +g.assets.map(function(a){
+        return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--line)">'
+          +'<div style="flex:1"><b>'+esc(a.code||'')+'</b> — '+esc(a.name||'')
+          +'<div style="font-size:11px;color:var(--muted)">'+a.checklists+' checklist(s) · '+a.plans+' plan(s) · '+(a.active?'active':'inactive')+'</div></div>'
+          +'<a href="#" onclick="aDelete('+a.id+');return false" style="color:#c23438;font-weight:700;font-size:12px;white-space:nowrap">Delete</a></div>';
+      }).join('')+'</div>';
+  }).join('');
+}
+function closeDup(){document.getElementById('dup_scrim').style.display='none';}
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
@@ -91,7 +145,8 @@ function aRender(){var host=document.getElementById('a_rows'),q=(v('a_search')||
       +'<td class="c">'+(x.running_hours!=null?esc(x.running_hours):'—')+'</td><td class="c">'+st+'</td>'
       +'<td class="c"><a href="#" onclick="aEdit('+x.id+');return false" class="ic-edit">Edit</a> · '
       +'<a href="#" onclick="aHours('+x.id+');return false" class="ic-edit">Hours</a> · '
-      +'<a href="#" onclick="openElec('+x.id+');return false" class="ic-edit">Elec users</a> · '+tog+'</td></tr>';
+      +'<a href="#" onclick="openElec('+x.id+');return false" class="ic-edit">Elec users</a> · '+tog
+      +(IS_ADMIN?(' · <a href="#" onclick="aDelete('+x.id+');return false" class="ic-del" style="color:#c23438">Delete</a>'):'')+'</td></tr>';
   }).join('');
   host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
 }
@@ -136,6 +191,9 @@ async function elecSave(){var ids=[].map.call(document.querySelectorAll('#elec_r
   try{var r=await fetch('/maint/asset-elec/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({asset_id:elecAsset,emp_ids:ids})});
     var d=await r.json();if(!r.ok||!d.ok)throw 0;ASSET_ELEC[String(elecAsset)]=ids.map(function(x){return parseInt(x,10);});toast('ok','Saved');}catch(e){toast('err','Failed');}}
 document.getElementById('elec_scrim').addEventListener('click',function(e){if(e.target===this)closeElec();});
+document.getElementById('cf_ok').onclick=function(){var cb=_cfCb;cfClose();if(cb)cb();};
+document.getElementById('cf_scrim').addEventListener('click',function(e){if(e.target===this)cfClose();});
+document.getElementById('dup_scrim').addEventListener('click',function(e){if(e.target===this)closeDup();});
 
 aReset();aLoad();elecBoot();
 </script>

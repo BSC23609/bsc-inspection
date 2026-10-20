@@ -41,7 +41,7 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-10-17b"
+SCHEMA_VER = "2026-10-20a"
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 
 # Equipment master list (MASTER LIST OF EQUIPMENTS, Rev 0, 01-Jun-2024).
@@ -701,6 +701,8 @@ async def ensure_tables():
                 ASSIGN_SEED_KEY)
     except Exception as e:
         print("[maint] assignment seed skipped:", e)
+    # ensure every Daily checklist has an active daily plan (idempotent)
+    await _ensure_daily_plans()
     # stamp the schema version so later requests take the fast path above
     try:
         await db.execute(
@@ -803,6 +805,38 @@ async def _apply_annual_plan():
         except Exception as e:
             print("[maint] annual plan row skipped:", code, e)
     print(f"[maint] annual plan applied to {made} machines")
+
+
+async def _ensure_daily_plans():
+    """Give every machine that has a Daily checklist an active daily PM plan,
+    so daily maintenance shows on the board and feeds reminders."""
+    today = _today()
+    made = 0
+    try:
+        rows = await db.fetch(
+            "SELECT c.id AS cid, c.asset_id AS aid FROM maint_checklists c "
+            "WHERE lower(COALESCE(c.name,'')) LIKE '%daily%'")
+        for r in rows:
+            aid, cid = r["aid"], r["cid"]
+            if not aid:
+                continue
+            ex = await db.fetchval(
+                "SELECT id FROM maint_schedules WHERE asset_id=$1 "
+                "AND lower(COALESCE(freq_type,''))='daily' ORDER BY id LIMIT 1", aid)
+            if ex:
+                await db.execute(
+                    "UPDATE maint_schedules SET checklist_id=COALESCE(checklist_id,$2), "
+                    "freq_days=1, active=true WHERE id=$1", ex, cid)
+                continue
+            await db.execute(
+                "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_type,freq_days,"
+                "start_date,due_time,active) VALUES ($1,'Daily PM',$2,'daily',1,$3,'09:00',true)",
+                aid, cid, today)
+            made += 1
+        if made:
+            print(f"[maint] created {made} daily plans")
+    except Exception as e:
+        print("[maint] ensure daily plans skipped:", e)
 
 
 def _today() -> date:
@@ -1041,6 +1075,66 @@ async def assets_toggle(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
     await db.execute("UPDATE maint_assets SET active=$1 WHERE id=$2", bool(body.get("active")), body.get("id"))
     return {"ok": True}
+
+
+@router.post("/asset/delete")
+async def asset_delete(body: dict, emp: dict = Depends(require_employee)):
+    """Permanently delete a machine and everything attached to it (admin only)."""
+    await ensure_tables()
+    _require_admin(emp)
+    aid = body.get("id")
+    if not aid:
+        raise HTTPException(400, "id required")
+    # completion records for this machine's checkpoints
+    await db.execute(
+        "DELETE FROM maint_checkpoint_done WHERE checkpoint_id IN "
+        "(SELECT p.id FROM maint_checkpoints p JOIN maint_checklists c ON c.id=p.checklist_id "
+        "WHERE c.asset_id=$1)", aid)
+    await db.execute(
+        "DELETE FROM maint_checkpoints WHERE checklist_id IN "
+        "(SELECT id FROM maint_checklists WHERE asset_id=$1)", aid)
+    await db.execute("DELETE FROM maint_checklists WHERE asset_id=$1", aid)
+    for t in ("maint_schedules", "maint_logs", "maint_breakdowns", "maint_readings", "maint_asset_elec"):
+        try:
+            await db.execute(f"DELETE FROM {t} WHERE asset_id=$1", aid)
+        except Exception as e:
+            print("[maint] asset delete step skipped:", t, e)
+    await db.execute("DELETE FROM maint_assets WHERE id=$1", aid)
+    return {"ok": True}
+
+
+@router.get("/assets/duplicates")
+async def assets_duplicates(emp: dict = Depends(require_employee)):
+    """Group machines that share the same code or the same name, so duplicates
+    can be spotted and removed. Each asset carries its checklist / plan counts."""
+    await ensure_tables()
+    rows = await db.fetch(
+        "SELECT a.id, a.code, a.name, a.active, "
+        "(SELECT COUNT(*) FROM maint_checklists c WHERE c.asset_id=a.id) AS checklists, "
+        "(SELECT COUNT(*) FROM maint_schedules s WHERE s.asset_id=a.id) AS plans "
+        "FROM maint_assets a ORDER BY a.id")
+    assets = [dict(r) for r in rows]
+
+    def ncode(c):
+        return re.sub(r"\s+", "", (c or "").upper())
+
+    def nname(n):
+        return re.sub(r"\s+", " ", (n or "").strip().lower())
+
+    by_code, by_name = {}, {}
+    for a in assets:
+        by_code.setdefault(ncode(a["code"]), []).append(a)
+        by_name.setdefault(nname(a["name"]), []).append(a)
+    groups, seen = [], set()
+    for k, v in by_code.items():
+        if k and len(v) > 1:
+            groups.append({"reason": "Same code", "label": v[0]["code"], "assets": v})
+            for a in v:
+                seen.add(a["id"])
+    for k, v in by_name.items():
+        if k and len(v) > 1 and not all(a["id"] in seen for a in v):
+            groups.append({"reason": "Same name", "label": v[0]["name"], "assets": v})
+    return _json({"groups": groups})
 
 
 # =======================================================================
@@ -2414,26 +2508,43 @@ async def board(emp: dict = Depends(require_employee)):
     await ensure_tables()
     await _refresh_holidays()
     today = _today()
-    due, overdue, upcoming = [], [], []
+    # two independent boards: Daily and Periodic (quarterly/interval)
+    daily = {"overdue": [], "due": [], "upcoming": []}
+    periodic = {"overdue": [], "due": [], "upcoming": []}
     for s in await _schedule_rows():
         if not s.get("active"):
             continue
+        ft = (s.get("freq_type") or "").lower()
+        is_daily = ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
         info = compute_due(s, s.get("asset_hours"), today)
         s.update(info)
+        bucket = daily if is_daily else periodic
         if info["overdue"]:
-            overdue.append(s)
+            bucket["overdue"].append(s)
         elif info["due"]:
-            due.append(s)
+            bucket["due"].append(s)
         elif info["next_due"]:
             nd = _d(info["next_due"])
             if nd and nd <= today + timedelta(days=7):
-                upcoming.append(s)
-    recent = await db.fetch(
-        "SELECT l.*, a.name AS asset_name, a.code AS asset_code, s.title AS sched_title "
+                bucket["upcoming"].append(s)
+    # recent activity, split by the schedule's frequency
+    rows = await db.fetch(
+        "SELECT l.*, a.name AS asset_name, a.code AS asset_code, s.title AS sched_title, "
+        "lower(COALESCE(s.freq_type,'')) AS freq_type, s.freq_days AS sfreq_days "
         "FROM maint_logs l LEFT JOIN maint_assets a ON a.id=l.asset_id "
-        "LEFT JOIN maint_schedules s ON s.id=l.schedule_id ORDER BY l.done_at DESC LIMIT 12")
-    return _json({"today": today.isoformat(), "overdue": overdue, "due": due,
-                  "upcoming": upcoming, "recent": [dict(r) for r in recent]})
+        "LEFT JOIN maint_schedules s ON s.id=l.schedule_id ORDER BY l.done_at DESC LIMIT 24")
+    d_recent, p_recent = [], []
+    for r in rows:
+        r = dict(r)
+        rf = (r.get("freq_type") or "")
+        is_d = rf == "daily" or (not rf and r.get("sfreq_days") and int(r["sfreq_days"]) == 1)
+        (d_recent if is_d else p_recent).append(r)
+    daily["recent"] = d_recent[:12]
+    periodic["recent"] = p_recent[:12]
+    return _json({"today": today.isoformat(), "daily": daily, "periodic": periodic,
+                  # kept for backward compatibility with any older client
+                  "overdue": periodic["overdue"], "due": periodic["due"],
+                  "upcoming": periodic["upcoming"], "recent": p_recent[:12]})
 
 
 # =======================================================================
