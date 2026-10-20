@@ -41,7 +41,8 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-10-16a"
+SCHEMA_VER = "2026-10-20a"
+ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 
 # Equipment master list (MASTER LIST OF EQUIPMENTS, Rev 0, 01-Jun-2024).
 # Seeded once into maint_assets when the table is empty. Edit/add assets in the
@@ -621,6 +622,18 @@ async def ensure_tables():
         print("[maint] breakdown schema step skipped:", e)
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp ON maint_checkpoints (checklist_id, seq)")
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_log ON maint_logs (asset_id, done_at DESC)")
+    # per-checkpoint user assignment + completion log (My Checklist)
+    try:
+        for col, typ in (("assigned_to", "TEXT"), ("assigned_emp_id", "INT")):
+            await db.execute(f"ALTER TABLE maint_checkpoints ADD COLUMN IF NOT EXISTS {col} {typ}")
+        await db.execute("""CREATE TABLE IF NOT EXISTS maint_checkpoint_done (
+            id SERIAL PRIMARY KEY, checkpoint_id INT, emp_id INT, period_key TEXT,
+            done_at TIMESTAMPTZ DEFAULT now(), note TEXT, result TEXT)""")
+        await db.execute("ALTER TABLE maint_checkpoint_done ADD COLUMN IF NOT EXISTS result TEXT")
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_cpd ON maint_checkpoint_done (checkpoint_id, period_key)")
+        await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp_emp ON maint_checkpoints (assigned_emp_id)")
+    except Exception as e:
+        print("[maint] checkpoint-assignment schema step skipped:", e)
     # seed the equipment master list once, only when no assets exist yet
     try:
         if not await db.fetchval("SELECT COUNT(*) FROM maint_assets"):
@@ -674,6 +687,22 @@ async def ensure_tables():
                 ANNUAL_PLAN_KEY)
     except Exception as e:
         print("[maint] annual plan apply skipped:", e)
+    # one-time: load the per-checkpoint user assignments from the shipped seed,
+    # but only if no assignment exists yet (never overwrites a manual/Excel import)
+    try:
+        done = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey=$1", ASSIGN_SEED_KEY)
+        if not done:
+            have = await db.fetchval(
+                "SELECT 1 FROM maint_checkpoints WHERE assigned_emp_id IS NOT NULL LIMIT 1")
+            if not have:
+                await _seed_assignments()
+            await db.execute(
+                "INSERT INTO maint_meta (mkey,mval) VALUES ($1,'1') ON CONFLICT (mkey) DO NOTHING",
+                ASSIGN_SEED_KEY)
+    except Exception as e:
+        print("[maint] assignment seed skipped:", e)
+    # ensure every Daily checklist has an active daily plan (idempotent)
+    await _ensure_daily_plans()
     # stamp the schema version so later requests take the fast path above
     try:
         await db.execute(
@@ -776,6 +805,38 @@ async def _apply_annual_plan():
         except Exception as e:
             print("[maint] annual plan row skipped:", code, e)
     print(f"[maint] annual plan applied to {made} machines")
+
+
+async def _ensure_daily_plans():
+    """Give every machine that has a Daily checklist an active daily PM plan,
+    so daily maintenance shows on the board and feeds reminders."""
+    today = _today()
+    made = 0
+    try:
+        rows = await db.fetch(
+            "SELECT c.id AS cid, c.asset_id AS aid FROM maint_checklists c "
+            "WHERE lower(COALESCE(c.name,'')) LIKE '%daily%'")
+        for r in rows:
+            aid, cid = r["aid"], r["cid"]
+            if not aid:
+                continue
+            ex = await db.fetchval(
+                "SELECT id FROM maint_schedules WHERE asset_id=$1 "
+                "AND lower(COALESCE(freq_type,''))='daily' ORDER BY id LIMIT 1", aid)
+            if ex:
+                await db.execute(
+                    "UPDATE maint_schedules SET checklist_id=COALESCE(checklist_id,$2), "
+                    "freq_days=1, active=true WHERE id=$1", ex, cid)
+                continue
+            await db.execute(
+                "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_type,freq_days,"
+                "start_date,due_time,active) VALUES ($1,'Daily PM',$2,'daily',1,$3,'09:00',true)",
+                aid, cid, today)
+            made += 1
+        if made:
+            print(f"[maint] created {made} daily plans")
+    except Exception as e:
+        print("[maint] ensure daily plans skipped:", e)
 
 
 def _today() -> date:
@@ -1016,6 +1077,60 @@ async def assets_toggle(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True}
 
 
+@router.post("/asset/delete")
+async def asset_delete(body: dict, emp: dict = Depends(require_employee)):
+    """Permanently delete a machine and everything attached to it (admin only)."""
+    await ensure_tables()
+    _require_admin(emp)
+    aid = body.get("id")
+    if not aid:
+        raise HTTPException(400, "id required")
+    # completion records for this machine's checkpoints
+    await db.execute(
+        "DELETE FROM maint_checkpoint_done WHERE checkpoint_id IN "
+        "(SELECT p.id FROM maint_checkpoints p JOIN maint_checklists c ON c.id=p.checklist_id "
+        "WHERE c.asset_id=$1)", aid)
+    await db.execute(
+        "DELETE FROM maint_checkpoints WHERE checklist_id IN "
+        "(SELECT id FROM maint_checklists WHERE asset_id=$1)", aid)
+    await db.execute("DELETE FROM maint_checklists WHERE asset_id=$1", aid)
+    for t in ("maint_schedules", "maint_logs", "maint_breakdowns", "maint_readings", "maint_asset_elec"):
+        try:
+            await db.execute(f"DELETE FROM {t} WHERE asset_id=$1", aid)
+        except Exception as e:
+            print("[maint] asset delete step skipped:", t, e)
+    await db.execute("DELETE FROM maint_assets WHERE id=$1", aid)
+    return {"ok": True}
+
+
+@router.get("/assets/duplicates")
+async def assets_duplicates(emp: dict = Depends(require_employee)):
+    """Group machines that share the same code or the same name, so duplicates
+    can be spotted and removed. Each asset carries its checklist / plan counts."""
+    await ensure_tables()
+    rows = await db.fetch(
+        "SELECT a.id, a.code, a.name, a.active, "
+        "(SELECT COUNT(*) FROM maint_checklists c WHERE c.asset_id=a.id) AS checklists, "
+        "(SELECT COUNT(*) FROM maint_schedules s WHERE s.asset_id=a.id) AS plans "
+        "FROM maint_assets a ORDER BY a.id")
+    assets = [dict(r) for r in rows]
+
+    def ncode(c):
+        # strip everything but letters/digits, then fold look-alike characters
+        # (O/0, I/1, S/5, B/8) so "E0T-009" and "EOT-009" count as the same code
+        s = re.sub(r"[^A-Z0-9]", "", (c or "").upper())
+        return s.translate(str.maketrans("OISB", "0158"))
+
+    by_code = {}
+    for a in assets:
+        by_code.setdefault(ncode(a["code"]), []).append(a)
+    groups = []
+    for k, v in sorted(by_code.items()):
+        if k and len(v) > 1:
+            groups.append({"reason": "Same code", "label": v[0]["code"], "assets": v})
+    return _json({"groups": groups})
+
+
 # =======================================================================
 #  CHECKLISTS + CHECKPOINTS
 # =======================================================================
@@ -1045,6 +1160,57 @@ async def checklist_get(id: int = Query(...), emp: dict = Depends(require_employ
     return _json({"checklist": dict(c), "checkpoints": [dict(p) for p in pts]})
 
 
+async def _employees_all():
+    """[{id, emp_no, name}] of active employees — for assignment & name matching."""
+    try:
+        rows = await db.fetch(
+            "SELECT id, emp_no, name FROM employees WHERE COALESCE(active,true)=true "
+            "ORDER BY lower(name) NULLS LAST, emp_no")
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def _resolve_emp(name, emps):
+    """Map an assignment name (as typed in the workbook) to an employee id, or None."""
+    n = (name or "").strip().lower()
+    if not n:
+        return None
+    for e in emps:                       # exact full name
+        if (e.get("name") or "").strip().lower() == n:
+            return e["id"]
+    for e in emps:                       # exact employee code
+        if (e.get("emp_no") or "").strip().lower() == n:
+            return e["id"]
+    for e in emps:                       # first word of the employee's name
+        enm = (e.get("name") or "").strip().lower()
+        if enm and (enm.split() or [""])[0] == n:
+            return e["id"]
+    for e in emps:                       # name appears as a whole word
+        enm = (e.get("name") or "").strip().lower()
+        if enm and n in enm.split():
+            return e["id"]
+    return None
+
+
+def _period_key(checklist_name, d=None):
+    """Completion window: daily -> the date; quarterly -> YYYY-Qn."""
+    d = d or _today()
+    if "quarter" in (checklist_name or "").lower():
+        return f"{d.year}-Q{(d.month - 1) // 3 + 1}"
+    return d.isoformat()
+
+
+def _freq_label(checklist_name):
+    return "Quarterly" if "quarter" in (checklist_name or "").lower() else "Daily"
+
+
+@router.get("/emp-list")
+async def emp_list(emp: dict = Depends(require_employee)):
+    await ensure_tables()
+    return _json(await _employees_all())
+
+
 @router.post("/checklist/save")
 async def checklist_save(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
@@ -1060,18 +1226,21 @@ async def checklist_save(body: dict, emp: dict = Depends(require_employee)):
     else:
         cid = await db.fetchval(
             "INSERT INTO maint_checklists (asset_id,name) VALUES ($1,$2) RETURNING id", asset_id, name)
+    emps = await _employees_all()
     # replace checkpoints
     await db.execute("DELETE FROM maint_checkpoints WHERE checklist_id=$1", cid)
     for i, p in enumerate(body.get("checkpoints") or []):
         txt = (p.get("text") or "").strip()
         if not txt:
             continue
+        who = (p.get("assigned_to") or "").strip()
+        eid = _resolve_emp(who, emps) if who else None
         await db.execute(
-            "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec) "
-            "VALUES ($1,$2,$3,$4,$5,$6,$7)",
+            "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec,"
+            "assigned_to,assigned_emp_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)",
             cid, i + 1, txt, (p.get("category") or "").strip(),
             (p.get("input_type") or "check").strip(), (p.get("unit") or "").strip(),
-            (p.get("spec") or "").strip())
+            (p.get("spec") or "").strip(), who or None, eid)
     return {"ok": True, "id": cid}
 
 
@@ -1138,8 +1307,10 @@ async def checklists_import(body: dict, emp: dict = Depends(require_employee)):
                 return aid
         return None
 
+    emps = await _employees_all()
     created = updated = cps = 0
     unmatched = []
+    matched_users, unmatched_users = set(), set()
     for sh in (body.get("sheets") or []):
         title = (sh.get("title") or "").strip()
         if not title:
@@ -1148,39 +1319,220 @@ async def checklists_import(body: dict, emp: dict = Depends(require_employee)):
         if not aid:
             unmatched.append(title[:50])
             continue
-        pts = []
-        for p in (sh.get("points") or []):
-            txt = (str(p.get("text") or "")).strip()
-            if not txt or txt.lower() in _CL_GENERIC:
-                continue
-            mn = str(p.get("min") if p.get("min") is not None else "").strip()
-            mx = str(p.get("max") if p.get("max") is not None else "").strip()
-            opts = str(p.get("options") or "").strip()
-            if mn or mx:
-                it, spec = "value", (mn + "-" + mx).strip("-")
-            elif opts:
-                it, spec = "radio", ""
-            else:
-                it, spec = "check", ""
-            pts.append((txt, _scope_cat(txt), it, spec))
-        if not pts:
+        c, u, n, mu, uu = await _rebuild_asset_checklists(aid, sh.get("rows") or sh.get("points") or [], emps)
+        created += c; updated += u; cps += n
+        matched_users |= mu; unmatched_users |= uu
+    return {"ok": True, "created": created, "updated": updated, "checkpoints": cps,
+            "unmatched": unmatched, "matched_users": sorted(matched_users),
+            "unmatched_users": sorted(unmatched_users)}
+
+
+def _cl_name_for(freq):
+    f = (freq or "").strip().lower()
+    if "quarter" in f:
+        return "Quarterly Checklist"
+    if "dail" in f or "day" in f:
+        return "Daily Checklist"
+    return (freq.strip().title() + " Checklist") if freq.strip() else "Daily Checklist"
+
+
+async def _rebuild_asset_checklists(aid, rows, emps):
+    """Rebuild one asset's Daily/Quarterly checklists from rows, carrying the
+    per-checkpoint user assignment. rows use short keys (f/t/s/u) or long
+    (freq/text/scope/user). Returns (created, updated, checkpoints, matched, unmatched)."""
+    groups = {}
+    for p in (rows or []):
+        txt = (str(p.get("t") if p.get("t") is not None else p.get("text") or "")).strip()
+        if not txt or txt.lower() in _CL_GENERIC:
             continue
+        scope = (str(p.get("s") if p.get("s") is not None else p.get("scope") or "")).strip() or _scope_cat(txt)
+        who = (str(p.get("u") if p.get("u") is not None else p.get("user") or p.get("assigned_to") or "")).strip()
+        freq = p.get("f") if p.get("f") is not None else p.get("freq")
+        groups.setdefault(_cl_name_for(freq), []).append((txt, scope, who))
+    created = updated = cps = 0
+    matched_users, unmatched_users = set(), set()
+    for cl_name, items in groups.items():
         cid = await db.fetchval(
-            "SELECT id FROM maint_checklists WHERE asset_id=$1 AND lower(name)=lower($2)", aid, title)
+            "SELECT id FROM maint_checklists WHERE asset_id=$1 AND lower(name)=lower($2)", aid, cl_name)
         if cid:
             await db.execute("DELETE FROM maint_checkpoints WHERE checklist_id=$1", cid)
             updated += 1
         else:
             cid = await db.fetchval(
-                "INSERT INTO maint_checklists (asset_id,name) VALUES ($1,$2) RETURNING id", aid, title)
+                "INSERT INTO maint_checklists (asset_id,name) VALUES ($1,$2) RETURNING id", aid, cl_name)
             created += 1
-        for i, (txt, cat, it, spec) in enumerate(pts):
+        for i, (txt, cat, who) in enumerate(items):
+            eid = _resolve_emp(who, emps) if who else None
+            if who:
+                (matched_users if eid else unmatched_users).add(who)
             await db.execute(
-                "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec) "
-                "VALUES ($1,$2,$3,$4,$5,$6,$7)", cid, i + 1, txt, cat, it, "", spec)
+                "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec,"
+                "assigned_to,assigned_emp_id) VALUES ($1,$2,$3,$4,'check','','',$5,$6)",
+                cid, i + 1, txt, cat, who or None, eid)
             cps += 1
-    return {"ok": True, "created": created, "updated": updated,
-            "checkpoints": cps, "unmatched": unmatched}
+    return created, updated, cps, matched_users, unmatched_users
+
+
+async def _seed_assignments():
+    """Load the shipped per-checkpoint assignment seed (one machine per entry,
+    keyed by asset code) and rebuild those machines' Daily/Quarterly checklists."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "maint_assign_seed.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print("[maint] assignment seed file not read:", e)
+        return
+    emps = await _employees_all()
+    total = 0
+    for entry in data:
+        code = (entry.get("code") or "").strip()
+        if not code:
+            continue
+        aid = await db.fetchval("SELECT id FROM maint_assets WHERE lower(code)=lower($1)", code)
+        if not aid:
+            continue
+        _, _, n, _, _ = await _rebuild_asset_checklists(aid, entry.get("rows") or [], emps)
+        total += n
+    print(f"[maint] assignment seed loaded: {total} checkpoints")
+
+
+# =======================================================================
+#  MY CHECKLIST  (per-user assigned checkpoints + tick-to-complete)
+# =======================================================================
+@router.get("/my/list")
+async def my_checklist(emp: dict = Depends(require_employee)):
+    """The logged-in person's assigned work, grouped by machine + Daily/Quarterly,
+    each with a due / overdue / done status taken from that checklist's PM schedule."""
+    await ensure_tables()
+    eid = emp["id"]
+    today = _today()
+    groups = await db.fetch(
+        "SELECT p.checklist_id, COUNT(*) AS my_count, c.name AS checklist_name, "
+        "a.id AS asset_id, a.code AS asset_code, a.name AS asset_name, "
+        "a.running_hours AS asset_hours, "
+        "s.id AS schedule_id, s.freq_type, s.day_of_month, s.freq_days, s.start_date, "
+        "s.last_done, s.end_date, s.hours_interval, s.last_done_hours "
+        "FROM maint_checkpoints p "
+        "JOIN maint_checklists c ON c.id=p.checklist_id "
+        "LEFT JOIN maint_assets a ON a.id=c.asset_id "
+        "LEFT JOIN maint_schedules s ON s.checklist_id=c.id AND COALESCE(s.active,true)=true "
+        "WHERE p.assigned_emp_id=$1 "
+        "GROUP BY p.checklist_id, c.name, a.id, a.code, a.name, a.running_hours, "
+        "s.id, s.freq_type, s.day_of_month, s.freq_days, s.start_date, s.last_done, "
+        "s.end_date, s.hours_interval, s.last_done_hours "
+        "ORDER BY a.name NULLS LAST, c.name", eid)
+    # how many of my checkpoints are already done, per checklist + period
+    donemap = {}
+    for r in await db.fetch(
+            "SELECT p.checklist_id AS cid, d.period_key AS pk, COUNT(*) AS n "
+            "FROM maint_checkpoint_done d JOIN maint_checkpoints p ON p.id=d.checkpoint_id "
+            "WHERE p.assigned_emp_id=$1 GROUP BY p.checklist_id, d.period_key", eid):
+        donemap[(r["cid"], r["pk"])] = r["n"]
+    items = []
+    for g in groups:
+        g = dict(g)
+        pk = _period_key(g["checklist_name"], today)
+        freq = _freq_label(g["checklist_name"])
+        done_n = donemap.get((g["checklist_id"], pk), 0)
+        done = done_n >= g["my_count"] and g["my_count"] > 0
+        next_due = None
+        overdue = due = False
+        if freq == "Daily":
+            # daily resets every day; due today unless it's Sunday
+            due = today.weekday() != 6
+            next_due = today.isoformat()
+        elif g.get("schedule_id"):
+            info = compute_due(g, g.get("asset_hours"), today)
+            overdue = bool(info.get("overdue"))
+            due = bool(info.get("due"))
+            nd = info.get("next_due")
+            next_due = nd.isoformat() if hasattr(nd, "isoformat") else (nd or None)
+        else:
+            due = True  # quarterly with no schedule -> due this period
+        status = "done" if done else ("overdue" if overdue else ("due" if due else "upcoming"))
+        items.append({"checklist_id": g["checklist_id"], "schedule_id": g.get("schedule_id"),
+                      "asset_id": g.get("asset_id"), "asset_code": g.get("asset_code"),
+                      "asset_name": g.get("asset_name"), "checklist_name": g["checklist_name"],
+                      "freq": _freq_label(g["checklist_name"]), "my_count": g["my_count"],
+                      "done_n": done_n, "status": status, "next_due": next_due,
+                      "period_key": pk})
+    return _json({"items": items, "today": today.isoformat(),
+                  "me": emp.get("name") or emp.get("emp_no")})
+
+
+@router.get("/my/form")
+async def my_checklist_form(checklist: int = Query(...), emp: dict = Depends(require_employee)):
+    """The logged-in person's checkpoints for one checklist, for the fill-in popup."""
+    await ensure_tables()
+    eid = emp["id"]
+    c = await db.fetchrow(
+        "SELECT c.id, c.name, a.code AS asset_code, a.name AS asset_name "
+        "FROM maint_checklists c LEFT JOIN maint_assets a ON a.id=c.asset_id WHERE c.id=$1", checklist)
+    if not c:
+        raise HTTPException(404, "Checklist not found")
+    rows = await db.fetch(
+        "SELECT id, seq, text, category, input_type, unit, spec FROM maint_checkpoints "
+        "WHERE checklist_id=$1 AND assigned_emp_id=$2 ORDER BY seq, id", checklist, eid)
+    pk = _period_key(c["name"])
+    ids = [r["id"] for r in rows]
+    prev = {}
+    if ids:
+        for d in await db.fetch(
+                "SELECT checkpoint_id, result, note FROM maint_checkpoint_done "
+                "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])", pk, ids):
+            prev[d["checkpoint_id"]] = {"result": d["result"], "note": d["note"]}
+    pts = []
+    for r in rows:
+        d = dict(r)
+        p = prev.get(r["id"]) or {}
+        d["result"] = p.get("result")
+        d["note"] = p.get("note")
+        d["done"] = r["id"] in prev
+        pts.append(d)
+    sch = await db.fetchval("SELECT id FROM maint_schedules WHERE checklist_id=$1 AND COALESCE(active,true)=true LIMIT 1", checklist)
+    return _json({"checklist": dict(c), "freq": _freq_label(c["name"]),
+                  "schedule_id": sch, "period_key": pk, "checkpoints": pts})
+
+
+@router.post("/my/submit")
+async def my_checklist_submit(body: dict, emp: dict = Depends(require_employee)):
+    """Record the person's results for their checkpoints in one checklist."""
+    await ensure_tables()
+    eid = emp["id"]
+    cid = body.get("checklist_id")
+    c = await db.fetchrow("SELECT id, name, asset_id FROM maint_checklists WHERE id=$1", cid)
+    if not c:
+        raise HTTPException(404, "Checklist not found")
+    pk = _period_key(c["name"])
+    mine = {r["id"] for r in await db.fetch(
+        "SELECT id FROM maint_checkpoints WHERE checklist_id=$1 AND assigned_emp_id=$2", cid, eid)}
+    results = body.get("results") or []
+    saved = 0
+    for r in results:
+        pid = r.get("checkpoint_id")
+        if pid not in mine:
+            continue
+        res = (r.get("result") or ("Not OK" if r.get("ok") is False else "OK")).strip()
+        note = (r.get("note") or "").strip()
+        await db.execute(
+            "INSERT INTO maint_checkpoint_done (checkpoint_id,emp_id,period_key,result,note) "
+            "VALUES ($1,$2,$3,$4,$5) ON CONFLICT (checkpoint_id,period_key) "
+            "DO UPDATE SET emp_id=$2, result=$4, note=$5, done_at=now()",
+            pid, eid, pk, res, note)
+        saved += 1
+    # audit entry in the maintenance log (does not advance the PM schedule)
+    status = "issues" if any((r.get("ok") is False or r.get("result") == "Not OK") for r in results) else "done"
+    sid = body.get("schedule_id")
+    try:
+        await db.execute(
+            "INSERT INTO maint_logs (asset_id,schedule_id,checklist_id,done_by,done_by_emp_id,"
+            "status,results,remarks) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
+            c["asset_id"], sid, cid, emp.get("name") or emp.get("emp_no"), eid,
+            status, json.dumps(results), (body.get("remarks") or "").strip())
+    except Exception as e:
+        print("[maint] my submit log skipped:", e)
+    return {"ok": True, "saved": saved, "status": status, "period_key": pk}
 
 
 # =======================================================================
@@ -1885,6 +2237,129 @@ async def dashboard_data(emp: dict = Depends(require_employee)):
     return _json(out)
 
 
+@router.get("/analytics/data")
+async def analytics_data(days: int = 90, asset: int = 0, frm: str = "", to: str = "",
+                         emp: dict = Depends(require_employee)):
+    """Reliability analytics (MTTR, MTBF, availability, downtime, PM compliance). Window is
+    the preset `days`, or an explicit date-time range (frm/to), and optionally one machine."""
+    await ensure_tables()
+
+    def _pdt(s):
+        try:
+            return datetime.fromisoformat(str(s)[:16]).replace(tzinfo=IST)
+        except Exception:
+            return None
+
+    now = datetime.now(IST)
+    to_dt = _pdt(to) or now
+    frm_dt = _pdt(frm)
+    if not frm_dt:
+        try:
+            days = max(1, min(int(days), 1460))
+        except Exception:
+            days = 90
+        frm_dt = to_dt - timedelta(days=days)
+    if frm_dt >= to_dt:
+        frm_dt = to_dt - timedelta(days=90)
+    hours = max((to_dt - frm_dt).total_seconds() / 3600.0, 1.0)
+    try:
+        aid = int(asset)
+    except Exception:
+        aid = 0
+
+    machines = 1 if aid else int(await _dash_val("SELECT COUNT(*) FROM maint_assets WHERE COALESCE(active,true)"))
+    failures = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_breakdowns WHERE raised_at>=$1 AND raised_at<=$2 "
+        "AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid))
+    closed = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
+        "AND closed_at>=$1 AND closed_at<=$2 AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid))
+    downtime = float(await _dash_val(
+        "SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (closed_at-raised_at))/3600.0),0) FROM maint_breakdowns "
+        "WHERE status='closed' AND closed_at IS NOT NULL AND closed_at>=$1 AND closed_at<=$2 "
+        "AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid) or 0)
+    open_now = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_breakdowns WHERE status='open' AND ($1=0 OR asset_id=$1)", aid))
+    pm_done = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_logs WHERE done_at>=$1 AND done_at<=$2 AND ($3=0 OR asset_id=$3)",
+        frm_dt, to_dt, aid))
+    pm_issues = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_logs WHERE status='issues' AND done_at>=$1 AND done_at<=$2 "
+        "AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid))
+    active_sched = int(await _dash_val(
+        "SELECT COUNT(*) FROM maint_schedules WHERE COALESCE(active,true) AND ($1=0 OR asset_id=$1)", aid))
+    base = machines * hours
+    uptime = max(base - downtime, 0.0)
+    out = {
+        "from": frm_dt.strftime("%d-%m-%Y %H:%M"), "to": to_dt.strftime("%d-%m-%Y %H:%M"),
+        "machines": machines, "failures": failures, "closed": closed,
+        "downtime_hours": round(downtime, 1), "open_now": open_now,
+        "mttr_hours": round(downtime / closed, 1) if closed else 0,
+        "mtbf_hours": round(uptime / failures, 1) if failures else 0,
+        "mtbf_days": round(uptime / failures / 24.0, 1) if failures else 0,
+        "availability_pct": round(uptime / base * 100, 1) if base else 100,
+        "pm_done": pm_done, "pm_issues": pm_issues,
+        "pm_ok_pct": round((pm_done - pm_issues) / pm_done * 100, 1) if pm_done else 100,
+        "active_schedules": active_sched,
+    }
+    bt = {"Electrical": 0, "Mechanical": 0, "Hydraulic": 0, "Other": 0}
+    try:
+        for r in await db.fetch(
+            "SELECT COALESCE(NULLIF(btype,''),'Other') t, COUNT(*) c FROM maint_breakdowns "
+            "WHERE raised_at>=$1 AND raised_at<=$2 AND ($3=0 OR asset_id=$3) GROUP BY 1",
+            frm_dt, to_dt, aid):
+            bt[r["t"] if r["t"] in bt else "Other"] = bt.get(r["t"], 0) + int(r["c"])
+    except Exception as e:
+        print("[maint-an bt]", e)
+    out["by_type"] = bt
+    months, fl, dt, mt = [], [], [], []
+    try:
+        for i in range(5, -1, -1):
+            lbl = await db.fetchval("SELECT to_char(date_trunc('month',now())-make_interval(months=>$1),'Mon')", i)
+            f = await _dash_val(
+                "SELECT COUNT(*) FROM maint_breakdowns WHERE date_trunc('month',raised_at)"
+                "=date_trunc('month',now())-make_interval(months=>$1) AND ($2=0 OR asset_id=$2)", i, aid)
+            d = await _dash_val(
+                "SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (closed_at-raised_at))/3600.0),0) FROM maint_breakdowns "
+                "WHERE status='closed' AND closed_at IS NOT NULL AND date_trunc('month',closed_at)"
+                "=date_trunc('month',now())-make_interval(months=>$1) AND ($2=0 OR asset_id=$2)", i, aid)
+            cc = await _dash_val(
+                "SELECT COUNT(*) FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
+                "AND date_trunc('month',closed_at)=date_trunc('month',now())-make_interval(months=>$1) "
+                "AND ($2=0 OR asset_id=$2)", i, aid)
+            months.append(lbl); fl.append(int(f)); dv = round(float(d or 0), 1)
+            dt.append(dv); mt.append(round(dv / int(cc), 1) if cc else 0)
+    except Exception as e:
+        print("[maint-an trend]", e)
+    out["trend"] = {"months": months, "failures": fl, "downtime": dt, "mttr": mt}
+    rows = []
+    try:
+        q = await db.fetch(
+            "SELECT a.code, a.name, COUNT(*) failures, "
+            "COALESCE(SUM(EXTRACT(EPOCH FROM (b.closed_at-b.raised_at))/3600.0) "
+            "  FILTER (WHERE b.status='closed' AND b.closed_at IS NOT NULL),0) downtime, "
+            "COUNT(*) FILTER (WHERE b.status='closed' AND b.closed_at IS NOT NULL) closedc, "
+            "MAX(b.raised_at) last_fail "
+            "FROM maint_breakdowns b JOIN maint_assets a ON a.id=b.asset_id "
+            "WHERE b.raised_at>=$1 AND b.raised_at<=$2 AND ($3=0 OR b.asset_id=$3) "
+            "GROUP BY a.code,a.name ORDER BY failures DESC, downtime DESC LIMIT 50",
+            frm_dt, to_dt, aid)
+        for r in q:
+            f = int(r["failures"]); dn = float(r["downtime"] or 0); cc = int(r["closedc"])
+            up = max(hours - dn, 0.0)
+            rows.append({
+                "machine": ((r["code"] or "") + " " + (r["name"] or "")).strip(),
+                "failures": f, "downtime": round(dn, 1),
+                "mttr": round(dn / cc, 1) if cc else 0,
+                "mtbf_days": round(up / f / 24.0, 1) if f else 0,
+                "avail": round(up / hours * 100, 1) if hours else 100,
+                "last_fail": r["last_fail"]})
+    except Exception as e:
+        print("[maint-an rows]", e)
+    out["machines_table"] = rows
+    return _json(out)
+
+
 # =======================================================================
 #  RUN-HOUR / METER READINGS  (daily per-machine capture)
 # =======================================================================
@@ -2027,26 +2502,43 @@ async def board(emp: dict = Depends(require_employee)):
     await ensure_tables()
     await _refresh_holidays()
     today = _today()
-    due, overdue, upcoming = [], [], []
+    # two independent boards: Daily and Periodic (quarterly/interval)
+    daily = {"overdue": [], "due": [], "upcoming": []}
+    periodic = {"overdue": [], "due": [], "upcoming": []}
     for s in await _schedule_rows():
         if not s.get("active"):
             continue
+        ft = (s.get("freq_type") or "").lower()
+        is_daily = ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
         info = compute_due(s, s.get("asset_hours"), today)
         s.update(info)
+        bucket = daily if is_daily else periodic
         if info["overdue"]:
-            overdue.append(s)
+            bucket["overdue"].append(s)
         elif info["due"]:
-            due.append(s)
+            bucket["due"].append(s)
         elif info["next_due"]:
             nd = _d(info["next_due"])
             if nd and nd <= today + timedelta(days=7):
-                upcoming.append(s)
-    recent = await db.fetch(
-        "SELECT l.*, a.name AS asset_name, a.code AS asset_code, s.title AS sched_title "
+                bucket["upcoming"].append(s)
+    # recent activity, split by the schedule's frequency
+    rows = await db.fetch(
+        "SELECT l.*, a.name AS asset_name, a.code AS asset_code, s.title AS sched_title, "
+        "lower(COALESCE(s.freq_type,'')) AS freq_type, s.freq_days AS sfreq_days "
         "FROM maint_logs l LEFT JOIN maint_assets a ON a.id=l.asset_id "
-        "LEFT JOIN maint_schedules s ON s.id=l.schedule_id ORDER BY l.done_at DESC LIMIT 12")
-    return _json({"today": today.isoformat(), "overdue": overdue, "due": due,
-                  "upcoming": upcoming, "recent": [dict(r) for r in recent]})
+        "LEFT JOIN maint_schedules s ON s.id=l.schedule_id ORDER BY l.done_at DESC LIMIT 24")
+    d_recent, p_recent = [], []
+    for r in rows:
+        r = dict(r)
+        rf = (r.get("freq_type") or "")
+        is_d = rf == "daily" or (not rf and r.get("sfreq_days") and int(r["sfreq_days"]) == 1)
+        (d_recent if is_d else p_recent).append(r)
+    daily["recent"] = d_recent[:12]
+    periodic["recent"] = p_recent[:12]
+    return _json({"today": today.isoformat(), "daily": daily, "periodic": periodic,
+                  # kept for backward compatibility with any older client
+                  "overdue": periodic["overdue"], "due": periodic["due"],
+                  "upcoming": periodic["upcoming"], "recent": p_recent[:12]})
 
 
 # =======================================================================
