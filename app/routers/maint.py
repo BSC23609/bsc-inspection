@@ -1215,13 +1215,21 @@ def _resolve_emp(name, emps):
         enm = (e.get("name") or "").strip().lower()
         if enm and n in enm.split():
             return e["id"]
-    # last resort: letters/digits only, prefix match (handles "Dhinakaran K",
-    # "Dhinakaran.K", "Dhina Karan" etc. vs a seed value of "Dhinakaran")
+    # last resort: letters/digits only; match on a shared leading run of >=6 chars
+    # (handles "Dhinakaran" vs "DHINAKRAN K" — a dropped/added letter or an initial).
     na = re.sub(r"[^a-z0-9]", "", n)
-    if len(na) >= 4:
+    if len(na) >= 6:
         for e in emps:
             ea = re.sub(r"[^a-z0-9]", "", (e.get("name") or "").strip().lower())
-            if ea and (ea.startswith(na) or na.startswith(ea)) and abs(len(ea) - len(na)) <= 3:
+            if not ea:
+                continue
+            common = 0
+            for ca, cb in zip(na, ea):
+                if ca == cb:
+                    common += 1
+                else:
+                    break
+            if common >= 6 and abs(len(ea) - len(na)) <= 4:
                 return e["id"]
     return None
 
