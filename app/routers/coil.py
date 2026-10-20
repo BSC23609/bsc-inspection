@@ -469,7 +469,13 @@ async def coil_scan(body: ScanIn, emp: dict = Depends(require_employee)):
         raise HTTPException(502, f"Scan service couldn't be reached: {e}")
     if r.status_code != 200:
         print("[coil-scan]", r.status_code, r.text[:300])
-        raise HTTPException(502, f"Scan service error ({r.status_code}). Check ANTHROPIC_API_KEY / model name.")
+        try:   # pass Anthropic's own reason through (e.g. "credit balance is too low")
+            why = (r.json().get("error") or {}).get("message") or ""
+        except ValueError:
+            why = r.text[:200]
+        hint = {401: "API key is wrong", 403: "API key not allowed", 404: f"model '{SCAN_MODEL}' not available",
+                429: "too many scans at once, try again in a minute"}.get(r.status_code, "")
+        raise HTTPException(502, f"Scan service error ({r.status_code}): {why or hint or 'see server log'}")
     text = "".join(b.get("text", "") for b in (r.json().get("content") or []) if b.get("type") == "text")
     jm = re.search(r"\{.*\}", text, re.S)
     try:
