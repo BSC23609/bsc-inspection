@@ -1116,10 +1116,13 @@ async def assets_duplicates(emp: dict = Depends(require_employee)):
     assets = [dict(r) for r in rows]
 
     def ncode(c):
-        # strip everything but letters/digits, then fold look-alike characters
-        # (O/0, I/1, S/5, B/8) so "E0T-009" and "EOT-009" count as the same code
-        s = re.sub(r"[^A-Z0-9]", "", (c or "").upper())
-        return s.translate(str.maketrans("OISB", "0158"))
+        # Compare codes conservatively: uppercase, drop spaces only, and fold
+        # the genuine data-entry typos letter-O->0 and letter-I->1 so
+        # "E0T-009" and "EOT-009" count as the same machine. Separators like
+        # "/" and "-" are KEPT, so "M/C-001" (a line) and "MC-001" (a crane)
+        # stay distinct and are never flagged as duplicates of each other.
+        s = re.sub(r"\s+", "", (c or "").upper())
+        return s.translate(str.maketrans("OI", "01"))
 
     by_code = {}
     for a in assets:
