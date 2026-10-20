@@ -41,9 +41,10 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-10-20b"
+SCHEMA_VER = "2026-10-20c"
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
+FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
 NEW_MACHINE_CODES = ["M/C-015", "M/C-017", "M/C-018", "M/C-019", "M/C-020"]
 
 # Equipment master list (MASTER LIST OF EQUIPMENTS, Rev 0, 01-Jun-2024).
@@ -715,6 +716,18 @@ async def ensure_tables():
                 NEW_MACHINES_SEED_KEY)
     except Exception as e:
         print("[maint] new-machines seed skipped:", e)
+    # one-time: rebuild ALL machines' checklists + per-checkpoint assignees from the
+    # authoritative Oct-2026 checklist workbook (overwrites earlier assignments so the
+    # app matches the signed-off checklist exactly).
+    try:
+        done3 = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey=$1", FULL_RESEED_KEY)
+        if not done3:
+            await _seed_assignments()
+            await db.execute(
+                "INSERT INTO maint_meta (mkey,mval) VALUES ($1,'1') ON CONFLICT (mkey) DO NOTHING",
+                FULL_RESEED_KEY)
+    except Exception as e:
+        print("[maint] full reseed skipped:", e)
     # ensure every Daily checklist has an active daily plan (idempotent)
     await _ensure_daily_plans()
     # make sure the 5 new machines have a Quarterly PM plan (created only if missing)

@@ -6,85 +6,85 @@
     "f": "Daily",
     "t": "Condition of universal joint coupling bolt tighness  in both leveller & oiling",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Coil car 4 wheels  fixing bolt tightness",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Check the stacker hydraulic cylinders bracket fixing bolt condition",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Fine leveller Automatic grease Lubrication checking",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Stacking Mounting bolt tightness",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Uncoiler slide area cleaning & oiling",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Coil  pressing cylinder roller bush oiling",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Check all the hydraulic lines for oil leakage",
     "s": "Mechanical",
-    "u": "suraj"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "check power pack oil temperature (Ideal Range: 45 - 55 C)",
     "s": "Mechanical",
-    "u": "suraj"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Rough Lveller Motor current (Ideal Range 280 - 401 Amps)",
     "s": "Electrical",
-    "u": "Ragupathi"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Fine leveller motor current (Ideal Range 301 - 430 Amps)",
     "s": "Electrical",
-    "u": "Ragupathi"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Conveyor sprocket checking & Greasing",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Shearing cylinders Mounting bolt tightness",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Encoder coupling unit checking",
     "s": "Electrical",
-    "u": "Ragupathi"
+    "u": "yuvaraj"
    },
    {
     "f": "Quarterly",
@@ -153,13 +153,13 @@
     "u": "Ragupathi"
    },
    {
-    "f": "",
+    "f": "Quarterly",
     "t": "Gearbox condition – Leveller 1 condition",
     "s": "Mechanical",
     "u": "Velu"
    },
    {
-    "f": "",
+    "f": "Quarterly",
     "t": "Gearbox condition – Leveller 2 condtion",
     "s": "Mechanical",
     "u": "Velu"
@@ -173,7 +173,7 @@
     "f": "Daily",
     "t": "Condition of universal joint coupling bolt tighness  in both leveller & oiling",
     "s": "Mechanical",
-    "u": "Velu"
+    "u": "kumar B"
    },
    {
     "f": "Daily",
@@ -314,13 +314,13 @@
     "u": "Velu"
    },
    {
-    "f": "",
+    "f": "Quarterly",
     "t": "Gearbox – Leveller 1 condition",
     "s": "Mechanical",
     "u": "Velu"
    },
    {
-    "f": "",
+    "f": "Quarterly",
     "t": "Gearbox – Leveller 2 condition",
     "s": "Mechanical",
     "u": "Velu"
@@ -800,59 +800,125 @@
   ]
  },
  {
-  "code": "EOT-009",
+  "code": "M/C-008",
   "rows": [
    {
-    "f": "Quarterly",
-    "t": "Check the LT Drive Wheel condition",
+    "f": "Daily",
+    "t": "Check the coil stand  Condition",
     "s": "Mechanical",
     "u": "Velu"
    },
    {
-    "f": "Quarterly",
-    "t": "Check the LT,CT &Up down Drive Gear box condition",
+    "f": "Daily",
+    "t": "Check the Motor Belt condtion",
     "s": "Mechanical",
     "u": "Velu"
    },
    {
-    "f": "Quarterly",
-    "t": "Check the LT drive plummer block condition and it's Bolt tightness",
+    "f": "Daily",
+    "t": "Check the Oil Level in Gear box and fill if required",
     "s": "Mechanical",
     "u": "Velu"
    },
    {
-    "f": "Quarterly",
-    "t": "Check the Up & down  Hoist Rope condition",
+    "f": "Daily",
+    "t": "Check the Drive Rollers condition",
     "s": "Mechanical",
     "u": "Velu"
    },
    {
-    "f": "Quarterly",
-    "t": "Check the Lifting hook assymbly condition",
+    "f": "Daily",
+    "t": "Check the Stand welding condition",
     "s": "Mechanical",
     "u": "Velu"
    },
    {
-    "f": "Quarterly",
-    "t": "Check all Electrical cable wire tightness",
+    "f": "Daily",
+    "t": "Check the Hydraulic Motor current (Ideal Range:  7 - 15 Amps)",
     "s": "Electrical",
     "u": "Mohan"
    },
    {
+    "f": "Daily",
+    "t": "Check the  Cover Plate provided on the Roler top",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Daily",
+    "t": "Check the Roller Bearing Condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Daily",
+    "t": "Check the Machine Base fixing Bolt condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Daily",
+    "t": "Check the Hydraulic oil lvel",
+    "s": "Mechanical",
+    "u": "suraj"
+   },
+   {
+    "f": "Daily",
+    "t": "check oil leakage in Poer pack Hydraulic valves",
+    "s": "Mechanical",
+    "u": "suraj"
+   },
+   {
+    "f": "Daily",
+    "t": "Check the Blade condition and cleaning",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
     "f": "Quarterly",
-    "t": "Check hydraulic thruster brake function",
+    "t": "Check the Motor Belt condtion",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the Oil Level in Gear box and fill if required",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the Drive Rollers condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the Stand welding condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Rod Guiding Stand condition checking",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the Machine Base fixing Bolt condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the Hydraulic oil lvel",
     "s": "Mechanical",
     "u": "suraj"
    },
    {
     "f": "Quarterly",
-    "t": "Check the Remote condition",
-    "s": "Electrical",
-    "u": "Mohan"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Check the Rope guide pulley condition",
+    "t": "Gear box Sprocket cleaning",
     "s": "Mechanical",
     "u": "Velu"
    }
@@ -890,6 +956,12 @@
     "t": "Wheel bearing greasing to be done",
     "s": "Mechanical",
     "u": "Velu"
+   },
+   {
+    "f": "Daily",
+    "t": "Monitor Noise level of Trolley in Function",
+    "s": "Mechanical",
+    "u": ""
    },
    {
     "f": "Quarterly",
@@ -1174,37 +1246,96 @@
   ]
  },
  {
+  "code": "EOT-009",
+  "rows": [
+   {
+    "f": "Quarterly",
+    "t": "Check the LT Drive Wheel condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the LT,CT &Up down Drive Gear box condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the LT drive plummer block condition and it's Bolt tightness",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the Up & down  Hoist Rope condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the Lifting hook assymbly condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check all Electrical cable wire tightness",
+    "s": "Electrical",
+    "u": "Mohan"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check hydraulic thruster brake function",
+    "s": "Mechanical",
+    "u": "suraj"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the Remote condition",
+    "s": "Electrical",
+    "u": "Mohan"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the Rope guide pulley condition",
+    "s": "Mechanical",
+    "u": "Velu"
+   }
+  ]
+ },
+ {
   "code": "M/C-007",
   "rows": [
    {
     "f": "Daily",
     "t": "Check the coil stand  Condition",
     "s": "Mechanical",
-    "u": ""
+    "u": "Velu"
    },
    {
     "f": "Daily",
     "t": "Check the Motor Belt condtion",
     "s": "Mechanical",
-    "u": ""
+    "u": "Velu"
    },
    {
     "f": "Daily",
     "t": "Check the Oil Level in Gear box and fill if required",
     "s": "Mechanical",
-    "u": ""
+    "u": "Velu"
    },
    {
     "f": "Daily",
     "t": "Check the Drive Rollers condition",
     "s": "Mechanical",
-    "u": ""
+    "u": "Velu"
    },
    {
     "f": "Daily",
     "t": "Check the Stand welding condition",
     "s": "Mechanical",
-    "u": ""
+    "u": "Velu"
    },
    {
     "f": "Daily",
@@ -1299,131 +1430,6 @@
   ]
  },
  {
-  "code": "M/C-008",
-  "rows": [
-   {
-    "f": "Daily",
-    "t": "Check the coil stand  Condition",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Motor Belt condtion",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Oil Level in Gear box and fill if required",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Drive Rollers condition",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Stand welding condition",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Hydraulic Motor current (Ideal Range:  7 - 15 Amps)",
-    "s": "Electrical",
-    "u": "Mohan"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the  Cover Plate provided on the Roler top",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Roller Bearing Condition",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Machine Base fixing Bolt condition",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Hydraulic oil lvel",
-    "s": "Mechanical",
-    "u": "suraj"
-   },
-   {
-    "f": "Daily",
-    "t": "check oil leakage in Poer pack Hydraulic valves",
-    "s": "Mechanical",
-    "u": "suraj"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Blade condition and cleaning",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Check the Motor Belt condtion",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Check the Oil Level in Gear box and fill if required",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Check the Drive Rollers condition",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Check the Stand welding condition",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Rod Guiding Stand condition checking",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Check the Machine Base fixing Bolt condition",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Check the Hydraulic oil lvel",
-    "s": "Mechanical",
-    "u": "suraj"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Gear box Sprocket cleaning",
-    "s": "Mechanical",
-    "u": "Velu"
-   }
-  ]
- },
- {
   "code": "DG-001",
   "rows": [
    {
@@ -1455,41 +1461,6 @@
     "t": "Oil filter,lub oil filter once in 6months or every 300hr of pending",
     "s": "Electrical",
     "u": "Mohan"
-   }
-  ]
- },
- {
-  "code": "DG-002",
-  "rows": [
-   {
-    "f": "Daily",
-    "t": "Check the Battery condition",
-    "s": "Electrical",
-    "u": "Mohan"
-   },
-   {
-    "f": "Daily",
-    "t": "Check the Alternator   function",
-    "s": "Electrical",
-    "u": "Mohan"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Check the fuel systemt prevent clogs and ensure proper fuel flow",
-    "s": "Mechanical",
-    "u": "Velu"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Check the battery conditions for corrosion and also check the wiring system condition",
-    "s": "Electrical",
-    "u": "Mohan"
-   },
-   {
-    "f": "Quarterly",
-    "t": "Oil filter,lub oil filter once in 6months or every 300hr of pending",
-    "s": "Mechanical",
-    "u": "Velu"
    }
   ]
  },
@@ -1559,7 +1530,7 @@
     "f": "Daily",
     "t": "Check the Invertor Battery condtion (Fill Distilled water if required)",
     "s": "Electrical",
-    "u": "RAGUPATHI"
+    "u": "Mohan"
    },
    {
     "f": "Quarterly",
@@ -1589,7 +1560,7 @@
     "f": "Quarterly",
     "t": "Ensure all connections are are tight including load cell instalation kits and indicator connections",
     "s": "Electrical",
-    "u": "RAGUPATHI"
+    "u": "Mohan"
    },
    {
     "f": "Quarterly",
@@ -1618,13 +1589,13 @@
     "f": "Daily",
     "t": "Check the Inverter fuction",
     "s": "Electrical",
-    "u": "Ragupathi"
+    "u": "yuvaraj"
    },
    {
     "f": "Daily",
     "t": "Check the Encoder Coupling Condition",
     "s": "MECHANICAL",
-    "u": "VELU"
+    "u": "yuvaraj"
    },
    {
     "f": "Quarterly",
@@ -1655,6 +1626,41 @@
     "t": "Check pneumatics lines for leaks or wear",
     "s": "Mechanical",
     "u": "Velu"
+   }
+  ]
+ },
+ {
+  "code": "DG-002",
+  "rows": [
+   {
+    "f": "Daily",
+    "t": "Check the Battery condition",
+    "s": "Electrical",
+    "u": "Mohan"
+   },
+   {
+    "f": "Daily",
+    "t": "Check the Alternator   function",
+    "s": "Electrical",
+    "u": "Mohan"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the fuel systemt prevent clogs and ensure proper fuel flow",
+    "s": "Electrical",
+    "u": "Mohan"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Check the battery conditions for corrosion and also check the wiring system condition",
+    "s": "Electrical",
+    "u": "Mohan"
+   },
+   {
+    "f": "Quarterly",
+    "t": "Oil filter,lub oil filter once in 6months or every 300hr of pending",
+    "s": "Electrical",
+    "u": "Mohan"
    }
   ]
  },
