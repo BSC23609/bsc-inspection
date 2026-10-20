@@ -83,9 +83,28 @@ function section(label,cls,items){if(!items.length)return '';
     var who=x.assignee_name?('· '+esc(x.assignee_name)):'· unassigned';
     return '<div class="mcard '+cls+'"><div><div class="ti">'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+' — '+esc(x.title||'')+'</div>'
       +'<div class="meta">'+esc(cad(x))+' '+(due?('· '+due):'')+' '+who+'</div></div><div class="sp" style="flex:1"></div>'
-      +'<button class="btn btn-primary" onclick="openComplete('+x.id+')">Complete</button></div>';
+      +'<button class="btn btn-primary" onclick="openComplete('+x.id+')">Complete</button>'
+      +'<button class="btn btn-ghost" style="margin-left:6px" onclick="remindOne('+x.id+',this)">Send reminder</button></div>';
   }).join('');
   return h;
+}
+function toast(msg,bad){
+  var t=document.createElement('div');t.textContent=msg;
+  t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:999;'
+    +'background:'+(bad?'#c23438':'#0a7d55')+';color:#fff;padding:11px 16px;border-radius:9px;'
+    +'font-size:13px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:90%;text-align:center';
+  document.body.appendChild(t);
+  setTimeout(function(){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove();},400);},3600);
+}
+async function remindOne(sid,btn){
+  var old=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='Sending…';}
+  try{
+    var r=await fetch('/maint/remind-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schedule_id:sid})});
+    var d=await r.json();
+    toast(d.msg||(d.ok?'Reminder sent.':'Could not send reminder.'), !d.ok);
+  }catch(e){toast('Could not send reminder: '+e, true);}
+  if(btn){btn.disabled=false;btn.textContent=old||'Send reminder';}
 }
 function recentHTML(rows){
   if(!rows.length)return '<div class="empty">No maintenance recorded yet.</div>';

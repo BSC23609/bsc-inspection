@@ -1116,10 +1116,13 @@ async def assets_duplicates(emp: dict = Depends(require_employee)):
     assets = [dict(r) for r in rows]
 
     def ncode(c):
-        # strip everything but letters/digits, then fold look-alike characters
-        # (O/0, I/1, S/5, B/8) so "E0T-009" and "EOT-009" count as the same code
-        s = re.sub(r"[^A-Z0-9]", "", (c or "").upper())
-        return s.translate(str.maketrans("OISB", "0158"))
+        # Compare codes conservatively: uppercase, drop spaces only, and fold
+        # the genuine data-entry typos letter-O->0 and letter-I->1 so
+        # "E0T-009" and "EOT-009" count as the same machine. Separators like
+        # "/" and "-" are KEPT, so "M/C-001" (a line) and "MC-001" (a crane)
+        # stay distinct and are never flagged as duplicates of each other.
+        s = re.sub(r"\s+", "", (c or "").upper())
+        return s.translate(str.maketrans("OI", "01"))
 
     by_code = {}
     for a in assets:
@@ -2473,6 +2476,44 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
         await db.execute("UPDATE maint_assets SET running_hours=$1, hours_updated_at=now() WHERE id=$2",
                          hrs, s["asset_id"])
     return {"ok": True, "status": status, "next_due": next_due.isoformat() if next_due else None}
+
+
+@router.post("/remind-one")
+async def remind_one(body: dict, emp: dict = Depends(require_employee)):
+    """Send a single WhatsApp reminder to the user assigned to one schedule
+    (the 'Send reminder' button next to Complete on the Maintenance Board)."""
+    await ensure_tables()
+    sid = body.get("schedule_id")
+    s = await db.fetchrow(
+        "SELECT s.id, s.title, s.assignee_emp_id, "
+        "a.code AS asset_code, a.name AS asset_name, "
+        "e.name AS assignee_name, COALESCE(e.mobile,'') AS assignee_mobile "
+        "FROM maint_schedules s "
+        "LEFT JOIN maint_assets a ON a.id=s.asset_id "
+        "LEFT JOIN employees e ON e.id=s.assignee_emp_id "
+        "WHERE s.id=$1", sid)
+    if not s:
+        raise HTTPException(404, "Schedule not found")
+    s = dict(s)
+    name = (s.get("assignee_name") or "").strip()
+    mobile = (s.get("assignee_mobile") or "").strip()
+    if not s.get("assignee_emp_id") or not name:
+        return _json({"ok": False, "msg": "No user is assigned to this task. Assign one on the Schedules page first."})
+    if not mobile:
+        return _json({"ok": False, "msg": name + " has no WhatsApp number saved. Add their mobile on the Users page."})
+    if not WATI_MAINT_DUE_TEMPLATE:
+        return _json({"ok": False, "msg": "The WhatsApp reminder template isn't set up yet. Once the WATI template is approved and WATI_MAINT_DUE_TEMPLATE is set, this button will send."})
+    today = _today()
+    tdisp = today.strftime("%d-%m-%Y")
+    label = ((s.get("asset_code") or "") + " " + (s.get("asset_name") or "")).strip()
+    item = (label + " - " + (s.get("title") or "maintenance")).strip(" -")
+    # same body vars as the due digest: 1 name, 2 date, 3 preventive list, 4 breakdown list, 5 button
+    params = [name, tdisp, item, "—", "maint"]
+    m = wati.normalize_number(mobile) or mobile
+    ok, detail = await wati.send_template(WATI_MAINT_DUE_TEMPLATE, m, params)
+    if ok:
+        return _json({"ok": True, "msg": "Reminder sent to " + name + " on WhatsApp (" + mobile + ")."})
+    return _json({"ok": False, "msg": "WhatsApp send failed: " + str(detail)})
 
 
 @router.get("/history/list")

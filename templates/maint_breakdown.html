@@ -81,6 +81,12 @@
         <div class="pill" data-t="Other" onclick="setType('Other')">Other</div>
       </div>
     </div>
+    <div style="margin-bottom:14px">
+      <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+        <input type="checkbox" id="b_self" onchange="toggleSelf()" style="width:auto">
+        <span>Self — assign this breakdown to me</span>
+      </label>
+    </div>
     <div class="row"><div><label>Maintenance user(s) <span class="req">*</span></label>
       <div class="chkbox" id="b_assignees"><div class="none">Pick a breakdown type above.</div></div>
       <div class="note" id="b_autonote" style="display:none">Auto-picked for this type — add or remove as needed.</div></div></div>
@@ -116,10 +122,21 @@
     <button class="btn btn-primary" id="cl_save" onclick="doClose()">Close breakdown</button></div>
 </div></div>
 
+<!-- Confirm modal (mobile-safe replacement for the browser confirm popup) -->
+<div class="scrim" id="cf_scrim"><div class="pmodal" style="max-width:420px">
+  <div class="mh"><b id="cf_title">Please confirm</b><span style="flex:1"></span>
+    <a href="#" onclick="cfClose();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb"><p id="cf_msg" style="margin:0;font-size:14px;line-height:1.5;color:var(--ink-2)"></p></div>
+  <div class="mfoot"><span style="flex:1"></span>
+    <button class="btn btn-ghost" onclick="cfClose()">Cancel</button>
+    <button class="btn btn-primary" id="cf_ok" style="background:#c23438;border-color:#c23438">Delete</button></div>
+</div></div>
+
 {% endblock %}
 {% block scripts %}
 <script>
 var ASSETS=[],EMPS=[],EMPBY={},TYPES=['Electrical','Mechanical','Hydraulic','Other'],TYPE_STAFF={},ASSET_ELEC={},PHOTOS=[];
+var ME={id:{{ emp.id|tojson }},name:{{ (emp.name or emp.emp_no)|tojson }}};
 var IS_ADMIN={{ 'true' if emp.is_admin else 'false' }};
 function maintUsers(){var m=EMPS.filter(function(e){return e.is_maint;});return m.length?m:EMPS;}
 function uname(id){var e=EMPBY[id]||{};return (e.name||('#'+id))+(e.mobile?(' · '+e.mobile):'');}
@@ -170,12 +187,22 @@ function highlightFromUrl(){
 /* ---- raise modal ---- */
 function openBD(){PHOTOS=[];document.getElementById('b_thumbs').innerHTML='';sv('b_type','');sv('b_asset','');
   sv('b_problem','');sv('b_remarks','');sv('b_files','');document.getElementById('b_autonote').style.display='none';
+  var _sf=document.getElementById('b_self');if(_sf)_sf.checked=false;
   document.getElementById('b_assignees').innerHTML='<div class="none">Pick a breakdown type above.</div>';
   [].forEach.call(document.querySelectorAll('#bd_scrim .pill'),function(p){p.classList.remove('on');});
   sv('b_when',nowLocal());document.getElementById('bd_scrim').style.display='flex';}
 function closeBD(){document.getElementById('bd_scrim').style.display='none';}
+function renderSelf(){document.getElementById('b_assignees').innerHTML=
+  '<label style="opacity:.95"><input type="checkbox" class="b_asg" value="'+esc(ME.id)+'" checked disabled>'+esc(ME.name||('#'+ME.id))+'</label>';}
+function toggleSelf(){var on=document.getElementById('b_self').checked;
+  if(on){if(ME.id==null){document.getElementById('b_self').checked=false;toast('err','Could not identify your login.');return;}
+    renderSelf();var nt=document.getElementById('b_autonote');nt.textContent='Assigned to you ('+(ME.name||'me')+').';nt.style.display='';}
+  else{var tt=v('b_type');if(tt)setType(tt);
+    else{document.getElementById('b_assignees').innerHTML='<div class="none">Pick a breakdown type above.</div>';document.getElementById('b_autonote').style.display='none';}}}
 function setType(t){sv('b_type',t);[].forEach.call(document.querySelectorAll('#bd_scrim .pill'),function(p){p.classList.toggle('on',p.getAttribute('data-t')===t);});
   var note=document.getElementById('b_autonote');
+  var _self=document.getElementById('b_self');
+  if(_self&&_self.checked){renderSelf();note.textContent='Assigned to you ('+(ME.name||'me')+').';note.style.display='';return;}
   if(t==='Mechanical'||t==='Hydraulic'){            // one fixed person, read-only
     var one=(TYPE_STAFF[t]||[])[0];
     if(one){renderFixed(one);note.textContent='Fixed '+t.toLowerCase()+' maintenance user.';note.style.display='';}
@@ -244,12 +271,24 @@ async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
     toast('ok','Breakdown closed');closeCloseModal();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
-async function bdDelete(id){if(!IS_ADMIN)return;if(!confirm('Delete this breakdown ticket permanently? This cannot be undone.'))return;
+// in-page confirm (works on mobile where window.confirm is blocked)
+var _cfCb=null;
+function askConfirm(msg,onYes,okLabel){document.getElementById('cf_msg').textContent=msg;
+  var ok=document.getElementById('cf_ok');ok.textContent=okLabel||'Delete';_cfCb=onYes;
+  document.getElementById('cf_scrim').style.display='flex';}
+function cfClose(){document.getElementById('cf_scrim').style.display='none';_cfCb=null;}
+document.getElementById('cf_ok').onclick=function(){var cb=_cfCb;cfClose();if(cb)cb();};
+document.getElementById('cf_scrim').addEventListener('click',function(e){if(e.target===this)cfClose();});
+
+function bdDelete(id){if(!IS_ADMIN)return;
+  askConfirm('Delete this breakdown ticket permanently? This cannot be undone.',function(){doBdDelete(id);});}
+async function doBdDelete(id){
   try{var r=await fetch('/maint/breakdown/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');toast('ok','Deleted');await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}}
-async function bdDeleteAll(){if(!IS_ADMIN)return;if(!confirm('Delete ALL breakdown tickets permanently? This cannot be undone.'))return;
-  if(!confirm('Are you sure? Every raised ticket will be removed.'))return;
+function bdDeleteAll(){if(!IS_ADMIN)return;
+  askConfirm('Delete ALL breakdown tickets permanently? This cannot be undone.',function(){doBdDeleteAll();},'Delete all');}
+async function doBdDeleteAll(){
   try{var r=await fetch('/maint/breakdowns/delete-all',{method:'POST',headers:{'Content-Type':'application/json'}});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
     toast('ok','Deleted '+(d.deleted||0)+' ticket(s)');await bdLoad();}
