@@ -41,8 +41,10 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-10-20a"
+SCHEMA_VER = "2026-10-20b"
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
+NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
+NEW_MACHINE_CODES = ["M/C-015", "M/C-017", "M/C-018", "M/C-019", "M/C-020"]
 
 # Equipment master list (MASTER LIST OF EQUIPMENTS, Rev 0, 01-Jun-2024).
 # Seeded once into maint_assets when the table is empty. Edit/add assets in the
@@ -701,8 +703,24 @@ async def ensure_tables():
                 ASSIGN_SEED_KEY)
     except Exception as e:
         print("[maint] assignment seed skipped:", e)
+    # one-time: load the 5 SHED-B machines added Oct 2026 (015,017,018,019,020)
+    # with their daily+quarterly checkpoints and per-checkpoint user assignments.
+    # Runs once regardless of other machines already having assignments.
+    try:
+        done2 = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey=$1", NEW_MACHINES_SEED_KEY)
+        if not done2:
+            await _seed_new_machines()
+            await db.execute(
+                "INSERT INTO maint_meta (mkey,mval) VALUES ($1,'1') ON CONFLICT (mkey) DO NOTHING",
+                NEW_MACHINES_SEED_KEY)
+    except Exception as e:
+        print("[maint] new-machines seed skipped:", e)
     # ensure every Daily checklist has an active daily plan (idempotent)
     await _ensure_daily_plans()
+    # make sure the 5 new machines have a Quarterly PM plan (created only if missing)
+    await _ensure_new_machine_quarterly()
+    # link each Quarterly PM plan to its machine's Quarterly checklist (idempotent)
+    await _ensure_quarterly_links()
     # stamp the schema version so later requests take the fast path above
     try:
         await db.execute(
@@ -1374,6 +1392,76 @@ async def _rebuild_asset_checklists(aid, rows, emps):
                 cid, i + 1, txt, cat, who or None, eid)
             cps += 1
     return created, updated, cps, matched_users, unmatched_users
+
+
+async def _seed_new_machines():
+    """One-time: rebuild ONLY the 5 SHED-B machines (015,017,018,019,020) from the
+    shipped seed, so their daily/quarterly checkpoints + user assignments load even
+    though other machines already have assignments. Idempotent per machine."""
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "maint_assign_seed.json")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception as e:
+        print("[maint] new-machines seed file not read:", e)
+        return
+    emps = await _employees_all()
+    total = 0
+    for entry in data:
+        code = (entry.get("code") or "").strip()
+        if code not in NEW_MACHINE_CODES:
+            continue
+        aid = await db.fetchval("SELECT id FROM maint_assets WHERE lower(code)=lower($1)", code)
+        if not aid:
+            continue
+        _, _, n, _, _ = await _rebuild_asset_checklists(aid, entry.get("rows") or [], emps)
+        total += n
+    print(f"[maint] new-machines seed loaded {total} checkpoints")
+
+
+async def _ensure_new_machine_quarterly():
+    """Make sure the 5 SHED-B machines each have a Quarterly PM plan, created from the
+    Annual Schedule only if one is missing (never disturbs an existing plan)."""
+    today = _today()
+    for code in NEW_MACHINE_CODES:
+        info = SCHEDULE_PLAN.get(code)
+        if not info:
+            continue
+        day, sm = info[0], info[1]
+        try:
+            aid = await db.fetchval("SELECT id FROM maint_assets WHERE lower(code)=lower($1)", code)
+            if not aid:
+                continue
+            sid = await db.fetchval(
+                "SELECT id FROM maint_schedules WHERE asset_id=$1 "
+                "AND lower(COALESCE(freq_type,''))='quarterly' ORDER BY id LIMIT 1", aid)
+            if sid:
+                continue
+            start = _next_plan_start(day, sm, today)
+            await db.execute(
+                "INSERT INTO maint_schedules (asset_id,title,freq_type,day_of_month,freq_days,"
+                "start_date,due_time,active) VALUES ($1,'Quarterly PM','quarterly',$2,90,$3,'09:00',true)",
+                aid, day, start)
+        except Exception as e:
+            print("[maint] new-machine quarterly skipped:", code, e)
+
+
+async def _ensure_quarterly_links():
+    """Link every Quarterly PM plan to its machine's Quarterly checklist (only when
+    the plan has no checklist yet), so completing a quarterly job shows its checkpoints."""
+    try:
+        rows = await db.fetch(
+            "SELECT c.id AS cid, c.asset_id AS aid FROM maint_checklists c "
+            "WHERE lower(COALESCE(c.name,'')) LIKE '%quarter%'")
+        for r in rows:
+            if not r["aid"]:
+                continue
+            await db.execute(
+                "UPDATE maint_schedules SET checklist_id=$2 "
+                "WHERE asset_id=$1 AND lower(COALESCE(freq_type,''))='quarterly' AND checklist_id IS NULL",
+                r["aid"], r["cid"])
+    except Exception as e:
+        print("[maint] quarterly link skipped:", e)
 
 
 async def _seed_assignments():
