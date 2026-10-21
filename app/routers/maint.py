@@ -2671,14 +2671,17 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
 
 
 def _url_token(s: str) -> str:
-    """Make a value safe to drop into a template's dynamic-URL button.
-    WATI fills the URL button's {{1}} from template parameter "1" (the same
-    slot as the body's first variable), so a name with a space becomes a
-    broken link like .../G YUVARAJ and WhatsApp silently drops the whole
-    message. Replace spaces with underscores and strip other unsafe chars."""
-    t = re.sub(r"\s+", "_", (s or "").strip())
-    t = re.sub(r"[^A-Za-z0-9_.-]", "", t)
-    return t or "user"
+    """A clean, single-word, URL-safe name for the reminder greeting.
+    The reminder template's dynamic URL button reuses the greeting's {{1}}
+    value inside its link, so it cannot contain a space (WhatsApp silently
+    drops the message) — and an underscore reads badly in the greeting. So
+    use the person's main name word instead, skipping single-letter initials:
+    'G YUVARAJ' -> 'YUVARAJ', 'Velu C' -> 'Velu', 'Kumar Balakrishnan' -> 'Kumar'.
+    The button link then points to /<word>, which the app redirects to the board."""
+    words = [w for w in re.split(r"\s+", (s or "").strip()) if w]
+    pick = next((w for w in words if len(re.sub(r"[^A-Za-z0-9]", "", w)) > 1),
+                words[0] if words else "")
+    return re.sub(r"[^A-Za-z0-9_.-]", "", pick) or "user"
 
 
 @router.post("/remind-one")
