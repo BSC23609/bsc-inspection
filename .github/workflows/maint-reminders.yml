@@ -1,0 +1,23 @@
+name: Maintenance WhatsApp reminders
+
+# Fires the app's reminder run on a schedule. GitHub cron is in UTC and may be
+# delayed a few minutes under load. The times below are every hour on the hour,
+# IST working hours 9 AM - 7 PM (03:30-13:30 UTC). To change the window, edit the
+# hour range (3-13). To run every hour, 24/7, use "30 * * * *". To send only user
+# due reminders (not the admin overdue list), change kind=all to kind=due.
+on:
+  schedule:
+    - cron: '30 3-13 * * *'
+  workflow_dispatch: {}   # lets you run it manually from the Actions tab
+
+jobs:
+  send-reminders:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger maintenance reminders
+        run: |
+          curl -fsS --max-time 60 \
+            "https://qms.bharatsteels.in/maint/run-reminders?token=BSC%40123&kind=all" \
+            -o response.txt -w "HTTP %{http_code}\n" || true
+          echo "---- response ----"
+          cat response.txt || true
