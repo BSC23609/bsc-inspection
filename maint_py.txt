@@ -2942,10 +2942,8 @@ async def overdue_recipients_get(emp: dict = Depends(require_employee)):
 
 @router.post("/overdue-recipients")
 async def overdue_recipients_set(body: dict, emp: dict = Depends(require_employee)):
-    """Save which employee(s) get the overdue digest (admin only)."""
+    """Save which employee(s) get the overdue digest."""
     await ensure_tables()
-    if not emp.get("is_admin"):
-        raise HTTPException(403, "admin only")
     ids = body.get("emp_ids") or []
     clean = ",".join(str(int(x)) for x in ids if str(x).strip().isdigit())
     await db.execute(
