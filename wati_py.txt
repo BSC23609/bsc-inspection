@@ -1,0 +1,186 @@
+"""WATI WhatsApp sender — used to deliver password-reset OTPs to staff mobiles.
+
+WATI declines (bad number, template not approved, out-of-window) return a JSON
+body with result=false rather than raising, so callers get (ok, detail) and
+log the detail instead of trusting an exception.
+"""
+import re
+import httpx
+
+from .config import (WATI_BASE_URL, WATI_TOKEN, WATI_OTP_TEMPLATE,
+                     WATI_OTP_BROADCAST, WATI_OTP_PARAM)
+
+
+def normalize_number(raw) -> str:
+    """Return a WhatsApp number as country-code + number, digits only (e.g. 9198...)."""
+    d = re.sub(r"\D", "", str(raw or ""))
+    if not d:
+        return ""
+    if len(d) == 10:                 # bare 10-digit Indian mobile
+        return "91" + d
+    if len(d) == 11 and d.startswith("0"):
+        return "91" + d[1:]
+    if len(d) == 12 and d.startswith("91"):
+        return d
+    if len(d) == 13 and d.startswith("091"):
+        return d[1:]
+    return d
+
+
+def _auth() -> str:
+    t = (WATI_TOKEN or "").strip()
+    if not t:
+        return ""
+    return t if t.lower().startswith("bearer ") else "Bearer " + t
+
+
+def configured() -> bool:
+    return bool(WATI_BASE_URL and WATI_TOKEN and WATI_OTP_TEMPLATE)
+
+
+def send_url() -> str:
+    """Build the sendTemplateMessage URL, tolerant of how WATI_API_ENDPOINT is stored
+    (bare host, host+/api/v1, or the full endpoint)."""
+    base = (WATI_BASE_URL or "").rstrip("/")
+    if not base:
+        return ""
+    low = base.lower()
+    if "sendtemplatemessage" in low:
+        return base
+    if low.endswith("/api/v1"):
+        return base + "/sendTemplateMessage"
+    return base + "/api/v1/sendTemplateMessage"
+
+
+def status() -> dict:
+    """Non-secret view of the WATI config, for diagnostics."""
+    host = ""
+    try:
+        from urllib.parse import urlsplit
+        host = urlsplit(WATI_BASE_URL).netloc or WATI_BASE_URL
+    except Exception:
+        host = WATI_BASE_URL
+    return {
+        "configured": configured(),
+        "endpoint_set": bool(WATI_BASE_URL),
+        "endpoint_host": host,
+        "token_set": bool(WATI_TOKEN),
+        "template": WATI_OTP_TEMPLATE,
+        "broadcast": WATI_OTP_BROADCAST,
+        "param": WATI_OTP_PARAM,
+        "send_url": send_url(),
+    }
+
+
+async def fetch_templates():
+    """GET every message template from WATI (diagnostics). Returns (json, detail)."""
+    if not (WATI_BASE_URL and WATI_TOKEN):
+        return None, "WATI not configured"
+    base = (WATI_BASE_URL or "").rstrip("/")
+    url = base + ("/getMessageTemplates" if base.lower().endswith("/api/v1")
+                  else "/api/v1/getMessageTemplates")
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.get(url, headers={"Authorization": _auth()},
+                            params={"pageSize": 500, "pageNumber": 0})
+            j = r.json() if r.content else {}
+    except Exception as e:
+        return None, f"fetch failed: {e}"
+    return j, "ok"
+
+
+_tmpl_map = {}   # lower(display name or elementName) -> sendable elementName
+
+
+async def _resolve_template(name: str) -> str:
+    """Map a template's display name to the sendable `elementName` WATI expects
+    (they can differ, e.g. a typo kept in the registered name). Cached; falls back
+    to the given name if the lookup can't be done."""
+    global _tmpl_map
+    key = (name or "").strip().lower()
+    if not key:
+        return name
+    if key in _tmpl_map:
+        return _tmpl_map[key]
+    try:
+        j, _ = await fetch_templates()
+        items = []
+        if isinstance(j, dict):
+            items = (j.get("messageTemplates") or j.get("templates")
+                     or j.get("data") or j.get("result") or [])
+        elif isinstance(j, list):
+            items = j
+        for t in (items or []):
+            if not isinstance(t, dict):
+                continue
+            en = t.get("elementName") or t.get("templateName") or t.get("name")
+            if not en:
+                continue
+            for alias in (t.get("name"), t.get("elementName"), t.get("templateName")):
+                if alias:
+                    _tmpl_map[str(alias).strip().lower()] = en
+    except Exception:
+        pass
+    return _tmpl_map.get(key, name)
+
+
+async def send_template(template: str, number: str, params, broadcast: str = ""):
+    """Send any approved WATI template. `params` is an ordered list of values,
+    mapped to WATI's positional parameter names ("1","2",...). Returns (ok, detail)."""
+    if not (WATI_BASE_URL and WATI_TOKEN):
+        return False, "WATI is not configured (need endpoint and token)."
+    if not template:
+        return False, "No WATI template name set."
+    template = await _resolve_template(template) or template
+    num = normalize_number(number)
+    if not num:
+        return False, "No valid mobile number."
+    vals = params if isinstance(params, (list, tuple)) else [params]
+    body = {
+        "template_name": template,
+        "broadcast_name": broadcast or template,
+        "parameters": [{"name": str(i + 1), "value": str(v)} for i, v in enumerate(vals)],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(send_url(), params={"whatsappNumber": num},
+                             headers={"Authorization": _auth(),
+                                      "Content-Type": "application/json"},
+                             json=body)
+            j = r.json() if r.content else {}
+    except Exception as e:
+        return False, f"send error: {e}"
+    if isinstance(j, dict) and j.get("result") is True:
+        return True, "sent"
+    if r.status_code < 300 and isinstance(j, dict) and j.get("result") is None and not j.get("errors"):
+        return True, "sent"
+    return False, (str(j)[:300] or f"HTTP {r.status_code}")
+
+
+async def send_otp(number: str, code: str):
+    """Send the password-reset OTP via the OTP template. Returns (ok, detail)."""
+    if not configured():
+        return False, "WATI is not configured (need endpoint, token and a template name)."
+    # OTP template may use a custom first-parameter name, so honour WATI_OTP_PARAM.
+    num = normalize_number(number)
+    if not num:
+        return False, "No valid mobile number."
+    body = {
+        "template_name": WATI_OTP_TEMPLATE,
+        "broadcast_name": WATI_OTP_BROADCAST or WATI_OTP_TEMPLATE,
+        "parameters": [{"name": WATI_OTP_PARAM, "value": str(code)}],
+    }
+    try:
+        async with httpx.AsyncClient(timeout=20) as c:
+            r = await c.post(send_url(), params={"whatsappNumber": num},
+                             headers={"Authorization": _auth(),
+                                      "Content-Type": "application/json"},
+                             json=body)
+            j = r.json() if r.content else {}
+    except Exception as e:
+        return False, f"send error: {e}"
+    if isinstance(j, dict) and j.get("result") is True:
+        return True, "sent"
+    if r.status_code < 300 and isinstance(j, dict) and j.get("result") is None and not j.get("errors"):
+        return True, "sent"
+    return False, (str(j)[:300] or f"HTTP {r.status_code}")
