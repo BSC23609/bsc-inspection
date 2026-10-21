@@ -28,9 +28,9 @@ from ..auth import require_employee
 # newer maintenance vars) can never crash the whole app at import time.
 # WATI template names. Env/config still wins if set; otherwise use the approved
 # templates created in WATI (Oct 2026): reminder to user, overdue digest, breakdown.
-WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "") or "bsc_maint_remainder"
+WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "") or "bsc_maint_reminder"
 WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "bsc_pm_overdue"
-WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") or "bsc_breakdown_alert"
+WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") or "bsc_breakdown_alert2"
 MAINT_SUPERVISOR_MOBILE       = getattr(_cfg, "MAINT_SUPERVISOR_MOBILE", "")
 AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
 ONEDRIVE_BASE                 = getattr(_cfg, "ONEDRIVE_BASE", "BSC Inspections")
@@ -2670,6 +2670,20 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True, "status": status, "next_due": next_due.isoformat() if next_due else None}
 
 
+def _url_token(s: str) -> str:
+    """A clean, single-word, URL-safe name for the reminder greeting.
+    The reminder template's dynamic URL button reuses the greeting's {{1}}
+    value inside its link, so it cannot contain a space (WhatsApp silently
+    drops the message) — and an underscore reads badly in the greeting. So
+    use the person's main name word instead, skipping single-letter initials:
+    'G YUVARAJ' -> 'YUVARAJ', 'Velu C' -> 'Velu', 'Kumar Balakrishnan' -> 'Kumar'.
+    The button link then points to /<word>, which the app redirects to the board."""
+    words = [w for w in re.split(r"\s+", (s or "").strip()) if w]
+    pick = next((w for w in words if len(re.sub(r"[^A-Za-z0-9]", "", w)) > 1),
+                words[0] if words else "")
+    return re.sub(r"[^A-Za-z0-9_.-]", "", pick) or "user"
+
+
 @router.post("/remind-one")
 async def remind_one(body: dict, emp: dict = Depends(require_employee)):
     """Send a single WhatsApp reminder to the user assigned to one schedule
@@ -2700,7 +2714,8 @@ async def remind_one(body: dict, emp: dict = Depends(require_employee)):
     label = ((s.get("asset_code") or "") + " " + (s.get("asset_name") or "")).strip()
     item = (label + " - " + (s.get("title") or "maintenance")).strip(" -")
     # same body vars as the due digest: 1 name, 2 date, 3 preventive list, 4 breakdown list, 5 button
-    params = [name, tdisp, item, "—", "maint"]
+    # param "1" also feeds the URL button, so it must be URL-safe (no spaces)
+    params = [_url_token(name), tdisp, item, "—", "maint"]
     m = wati.normalize_number(mobile) or mobile
     ok, detail = await wati.send_template(WATI_MAINT_DUE_TEMPLATE, m, params)
     if ok:
@@ -2886,9 +2901,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
         for aid, g in due_by_assignee.items():
             pm_list = _join_items(g["pm"])
             bd_list = _join_items(g["bd"])
-            # body vars: 1 name, 2 date, 3 preventive list, 4 breakdown list,
-            # then the dynamic-URL button suffix (WATI param "5"): .../{{1}} -> "maint"
-            params = [g["name"], tdisp, pm_list, bd_list, "maint"]
+            # body vars: 1 name, 2 date, 3 preventive list, 4 breakdown list, 5 button.
+            # WATI feeds the URL button's {{1}} from param "1" (the name), so it must
+            # be URL-safe (spaces -> underscore) or WhatsApp drops the message.
+            params = [_url_token(g["name"]), tdisp, pm_list, bd_list, "maint"]
             await _dispatch(WATI_MAINT_DUE_TEMPLATE, g["mobile"], params,
                             {"kind": "due-digest", "assignee": g["name"],
                              "preventive": len(g["pm"]), "breakdown": len(g["bd"])})
@@ -2942,10 +2958,8 @@ async def overdue_recipients_get(emp: dict = Depends(require_employee)):
 
 @router.post("/overdue-recipients")
 async def overdue_recipients_set(body: dict, emp: dict = Depends(require_employee)):
-    """Save which employee(s) get the overdue digest (admin only)."""
+    """Save which employee(s) get the overdue digest."""
     await ensure_tables()
-    if not emp.get("is_admin"):
-        raise HTTPException(403, "admin only")
     ids = body.get("emp_ids") or []
     clean = ",".join(str(int(x)) for x in ids if str(x).strip().isdigit())
     await db.execute(
