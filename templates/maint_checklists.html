@@ -50,6 +50,8 @@
 
 <div class="panel">
   <div class="cl-head2"><b>Machines &amp; checklists</b><span style="flex:1"></span>
+    {% if emp.is_admin %}<input type="file" id="imp_file" accept=".xlsx,.xls" style="display:none" onchange="doImport(this)">
+    <button class="btn btn-ghost" id="imp_btn" onclick="document.getElementById('imp_file').click()">Import from Excel</button>{% endif %}
     <button class="btn btn-primary" onclick="openEdit(0)">+ New checklist</button></div>
   <div class="panel-body">
     <table class="cl-table">
@@ -98,7 +100,7 @@
 {% endblock %}
 {% block scripts %}
 <script>
-var ASSETS=[],CATS=['Hydraulic','Mechanical','Electrical'],CHECKLISTS=[],CUR_AID=0,EMPS=[];
+var ASSETS=[],CATS=['Hydraulic','Mechanical','Electrical'],CHECKLISTS=[],CUR_AID=0;
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function opt(val,txt,sel){return '<option value="'+esc(val)+'"'+(String(sel)==String(val)?' selected':'')+'>'+esc(txt)+'</option>';}
@@ -106,8 +108,6 @@ function catCls(c){c=(c||'').toLowerCase();return c[0]==='e'?'E':(c[0]==='h'?'H'
 async function boot(){
   try{var m=await (await fetch('/maint/meta',{cache:'no-store'})).json();if(m&&m.categories)CATS=m.categories;}catch(e){}
   try{var r=await fetch('/maint/assets/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}ASSETS=await r.json();}catch(e){ASSETS=[];}
-  try{EMPS=await (await fetch('/maint/emp-list',{cache:'no-store'})).json();}catch(e){EMPS=[];}
-  var dl=document.getElementById('emp_dl');if(dl)dl.innerHTML=EMPS.map(function(e){return '<option value="'+esc(e.name||e.emp_no||'')+'">';}).join('');
   document.getElementById('c_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
   loadAll();
 }

@@ -46,6 +46,7 @@
     <span style="flex:1"></span>
     <button class="btn btn-ghost" onclick="openLeave()">Leave</button>
     <button class="btn btn-ghost" onclick="openHol()">Holidays</button>
+    <button class="btn btn-ghost" onclick="openOverdue()">Overdue to…</button>
     <button class="btn btn-primary" onclick="openPlan()">+ Add plan</button>
   </div>
   <div class="dgrid-wrap" id="s_rows"><div class="empty">Loading…</div></div>
@@ -112,6 +113,17 @@
   </div>
 </div></div>
 
+<!-- Overdue recipients modal -->
+<div class="scrim" id="ov_scrim"><div class="hmodal" style="align-self:flex-start;max-width:480px">
+  <div class="hh" style="display:flex;align-items:flex-start">
+    <div style="flex:1"><h3>OVERDUE REMINDER — WHO GETS IT</h3><p>Pick the user(s) who should get the WhatsApp list of overdue jobs. Only users with a mobile number are shown.</p></div>
+    <a href="#" onclick="closeOverdue();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="hb">
+    <div id="ov_list" style="max-height:340px;overflow:auto"><div class="empty">Loading…</div></div>
+    <div style="margin-top:12px;text-align:right"><button class="btn btn-primary" onclick="ovSave()">Save</button></div>
+  </div>
+</div></div>
+
 <!-- Holidays modal -->
 <div class="scrim" id="hol_scrim"><div class="hmodal" style="align-self:flex-start">
   <div class="hh" style="display:flex;align-items:flex-start">
@@ -139,6 +151,26 @@ function fmtd(s){if(!s)return'—';var p=String(s).slice(0,10).split('-');return
 
 function openPlan(){sReset();document.getElementById('s_title').textContent='ADD PLAN';document.getElementById('plan_scrim').style.display='flex';}
 function closePlan(){document.getElementById('plan_scrim').style.display='none';}
+var OVREC=[];
+function openOverdue(){renderOv();document.getElementById('ov_scrim').style.display='flex';}
+function closeOverdue(){document.getElementById('ov_scrim').style.display='none';}
+function renderOv(){
+  var box=document.getElementById('ov_list');
+  var us=EMPS.filter(function(e){return e.mobile;});
+  if(!us.length){box.innerHTML='<div class="empty">No users have a WhatsApp number yet. Add mobiles on the Users page.</div>';return;}
+  box.innerHTML=us.map(function(e){
+    var ck=OVREC.indexOf(String(e.id))>=0?' checked':'';
+    return '<label style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line-1);cursor:pointer">'
+      +'<input type="checkbox" class="ov_ck" value="'+esc(e.id)+'"'+ck+' style="width:auto">'
+      +'<span>'+esc(e.name||e.emp_no)+' · '+esc(e.mobile)+'</span></label>';
+  }).join('');
+}
+async function ovSave(){
+  var ids=[].map.call(document.querySelectorAll('.ov_ck:checked'),function(c){return c.value;});
+  try{var r=await fetch('/maint/overdue-recipients',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emp_ids:ids})});
+    var d=await r.json();if(!r.ok||!d.ok)throw 0;OVREC=ids.map(String);toast('ok',ids.length?('Saved · '+ids.length+' recipient(s)'):'Saved · no recipients');closeOverdue();}
+  catch(e){toast('err','Could not save');}
+}
 function setFreq(f){document.getElementById('s_freq').value=f;
   [].forEach.call(document.querySelectorAll('.pill'),function(p){p.classList.toggle('on',p.getAttribute('data-f')===f);});
   document.getElementById('dom_wrap').style.display=(f==='monthly'||f==='quarterly')?'':'none';autoChecklist();}
@@ -155,6 +187,7 @@ async function boot(){
   try{var r=await fetch('/maint/assets/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}ASSETS=await r.json();}catch(e){}
   try{EMPS=await (await fetch('/admin/users',{cache:'no-store'})).json();}catch(e){EMPS=[];}
   try{ALLCL=await (await fetch('/maint/checklists/list',{cache:'no-store'})).json();}catch(e){ALLCL=[];}
+  try{var ov=await (await fetch('/maint/overdue-recipients',{cache:'no-store'})).json();OVREC=(ov.emp_ids||[]).map(String);}catch(e){OVREC=[];}
   document.getElementById('s_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
   document.getElementById('s_assignee').innerHTML='<option value="">— none —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''));}).join('');
   sLoad();

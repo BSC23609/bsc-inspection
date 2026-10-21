@@ -1,0 +1,298 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Preventive maintenance · {{ app_name }}{% endblock %}
+{% block tb_title %}Preventive maintenance{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.toolbar{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-bottom:1px solid var(--line)}
+.cnt-badge{background:#fff7e0;border:1px solid #f0dcae;color:#9a6508;font-weight:700;font-size:12.5px;border-radius:8px;padding:5px 11px}
+.cnt-badge.zero{background:#eef2f7;border-color:var(--line-2);color:#5d6879}
+.due-only{display:flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-2)}.due-only input{width:auto}
+.scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:flex-start;justify-content:center;z-index:60;padding:28px 16px;overflow:auto}
+.pmodal{background:#fff;border-radius:16px;max-width:560px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.pmodal .mh{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--line)}
+.pmodal .mh b{font-size:16px;letter-spacing:.3px}
+.pmodal .mb{padding:18px 20px}.pmodal .mfoot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;justify-content:flex-end}
+.mf label{display:block;font-size:11.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
+.mf input,.mf select{width:100%;padding:10px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none}
+.mf input:focus,.mf select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.mf .row{display:grid;gap:14px;margin-bottom:14px}.mf .r2{grid-template-columns:1fr 1fr}.mf .r3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:560px){.mf .r2,.mf .r3{grid-template-columns:1fr}}
+.req{color:#e5484d}.opt{text-transform:none;color:var(--muted);font-weight:400}
+.pills{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.pill{padding:10px;border:1px solid var(--line-2);background:#fff;border-radius:9px;font-weight:600;font-size:13px;color:var(--ink-2);cursor:pointer;text-align:center}
+.pill.on{background:#0f1b2d;color:#fff;border-color:#0f1b2d}
+.note{font-size:11.5px;color:var(--muted);margin-top:5px}
+.chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}.chk input{width:auto}
+.badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
+.b-ok{background:#e3f6ee;color:#0a7d55}.b-due{background:#fff4e0;color:#9a6508}.b-over{background:#fdecec;color:#c23438}.b-off{background:#eef2f7;color:#5d6879}
+/* holidays modal */
+.hmodal{background:#fff;border-radius:14px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.hmodal .hh{padding:16px 18px;border-bottom:1px solid var(--line)}
+.hmodal .hh h3{margin:0;font-size:15px;font-weight:700;letter-spacing:.3px}.hmodal .hh p{margin:4px 0 0;font-size:12px;color:var(--muted)}
+.hmodal .hb{padding:16px 18px}
+.hrow{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end;margin-bottom:14px}
+.hrow label{display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase}
+.hrow input{width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px;font-family:inherit}
+.hitem{display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--line);font-size:13px}
+.hitem .d{font-weight:700;color:var(--acc-ink)}.hitem .sp{flex:1}
+</style>
+
+<div class="panel">
+  <div class="toolbar">
+    <span class="cnt-badge zero" id="s_cnt">Due / overdue: 0</span>
+    <label class="due-only"><input type="checkbox" id="s_dueonly" onchange="sRender()"> Due only</label>
+    <span style="flex:1"></span>
+    <button class="btn btn-ghost" onclick="openLeave()">Leave</button>
+    <button class="btn btn-ghost" onclick="openHol()">Holidays</button>
+    <button class="btn btn-ghost" onclick="openOverdue()">Overdue to…</button>
+    <button class="btn btn-primary" onclick="openPlan()">+ Add plan</button>
+  </div>
+  <div class="dgrid-wrap" id="s_rows"><div class="empty">Loading…</div></div>
+</div>
+</div>
+
+<!-- Add / edit plan modal -->
+<div class="scrim" id="plan_scrim"><div class="pmodal">
+  <div class="mh">{{ icon('calendar',18) }}<b id="s_title">ADD PLAN</b><span style="flex:1"></span>
+    <a href="#" onclick="closePlan();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb"><div class="mf"><input type="hidden" id="s_id"><input type="hidden" id="s_freq" value="daily">
+    <div class="row r2">
+      <div><label>Asset <span class="req">*</span></label><select id="s_asset" onchange="onAsset()"></select></div>
+      <div><label>Task <span class="req">*</span></label><input id="s_name" placeholder="e.g. Oil + filter change"></div>
+    </div>
+    <div class="row"><div><label>Checklist</label><select id="s_checklist"></select></div></div>
+    <div style="margin-bottom:14px"><label>Frequency <span class="req">*</span></label>
+      <div class="pills">
+        <div class="pill" data-f="daily" onclick="setFreq('daily')">Daily</div>
+        <div class="pill" data-f="weekly" onclick="setFreq('weekly')">Weekly</div>
+        <div class="pill" data-f="monthly" onclick="setFreq('monthly')">Monthly</div>
+        <div class="pill" data-f="quarterly" onclick="setFreq('quarterly')">Quarterly</div>
+      </div>
+    </div>
+    <div id="dom_wrap" style="margin-bottom:14px;display:none"><label>Day of month <span class="req">*</span></label>
+      <input id="s_dom" type="number" min="1" max="31" placeholder="15">
+      <div class="note">If it lands on a Sunday or holiday, it rolls to the next working day.</div>
+    </div>
+    <div class="row r3">
+      <div><label>Start date <span class="req">*</span></label><input id="s_start" type="date"></div>
+      <div><label>Time <span class="opt">(optional)</span></label><input id="s_time" type="time"></div>
+      <div><label>End date <span class="opt">(optional)</span></label><input id="s_end" type="date"></div>
+    </div>
+    <div class="row r2">
+      <div><label>Also due at meter <span class="opt">+ (optional)</span></label><input id="s_hours" type="number" step="0.1" placeholder="e.g. 500 hrs"></div>
+      <div><label>Assignee <span class="opt">(WhatsApp)</span></label><select id="s_assignee"></select></div>
+    </div>
+    <div class="chk"><input type="checkbox" id="s_active" checked><label for="s_active" style="margin:0;text-transform:none;letter-spacing:0;font-weight:400;color:var(--ink-2)">Active</label></div>
+  </div></div>
+  <div class="mfoot"><button class="btn btn-ghost" onclick="closePlan()">Cancel</button>
+    <button class="btn btn-primary" id="s_save" onclick="sSave()">Save</button></div>
+</div></div>
+
+<!-- Leave modal -->
+<div class="scrim" id="leave_scrim"><div class="hmodal" style="align-self:flex-start;max-width:520px">
+  <div class="hh" style="display:flex;align-items:flex-start">
+    <div style="flex:1"><h3>STAFF ON LEAVE</h3><p>While on leave, a person gets no reminders; their due tasks go to the supervisor as "arrange cover".</p></div>
+    <a href="#" onclick="closeLeave();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="hb">
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;align-items:end;margin-bottom:10px">
+      <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase">Staff</label>
+        <select id="lv_emp" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px"></select></div>
+      <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase">From</label>
+        <input id="lv_from" type="date" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px"></div>
+      <div><label style="display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase">To</label>
+        <input id="lv_to" type="date" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px"></div>
+    </div>
+    <div style="display:flex;gap:10px;align-items:end;margin-bottom:14px">
+      <div style="flex:1"><label style="display:block;font-size:11px;font-weight:600;color:var(--ink-2);margin-bottom:5px;text-transform:uppercase">Reason</label>
+        <input id="lv_reason" placeholder="optional" style="width:100%;padding:9px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px"></div>
+      <button class="btn btn-primary" onclick="lvAdd()">Add</button>
+    </div>
+    <div id="leave_list"><div class="empty">No leave added yet.</div></div>
+  </div>
+</div></div>
+
+<!-- Overdue recipients modal -->
+<div class="scrim" id="ov_scrim"><div class="hmodal" style="align-self:flex-start;max-width:480px">
+  <div class="hh" style="display:flex;align-items:flex-start">
+    <div style="flex:1"><h3>OVERDUE REMINDER — WHO GETS IT</h3><p>Pick the user(s) who should get the WhatsApp list of overdue jobs. Only users with a mobile number are shown.</p></div>
+    <a href="#" onclick="closeOverdue();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="hb">
+    <div id="ov_list" style="max-height:340px;overflow:auto"><div class="empty">Loading…</div></div>
+    <div style="margin-top:12px;text-align:right"><button class="btn btn-primary" onclick="ovSave()">Save</button></div>
+  </div>
+</div></div>
+
+<!-- Holidays modal -->
+<div class="scrim" id="hol_scrim"><div class="hmodal" style="align-self:flex-start">
+  <div class="hh" style="display:flex;align-items:flex-start">
+    <div style="flex:1"><h3>HOLIDAYS</h3><p>PM dates landing on a Sunday or these dates roll to the next working day.</p></div>
+    <a href="#" onclick="closeHol();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="hb">
+    <div class="hrow">
+      <div><label>Date</label><input id="h_date" type="date"></div>
+      <div><label>Name</label><input id="h_name" placeholder="e.g. Diwali"></div>
+      <div><button class="btn btn-primary" onclick="holAdd()">Add</button></div>
+    </div>
+    <div id="hol_list"><div class="empty">No holidays added yet.</div></div>
+  </div>
+</div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+var ASSETS=[],EMPS=[],ALLCL=[],SCHED=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function opt(val,txt,sel){return '<option value="'+esc(val)+'"'+(String(sel)===String(val)?' selected':'')+'>'+esc(txt)+'</option>';}
+function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function fmtd(s){if(!s)return'—';var p=String(s).slice(0,10).split('-');return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s;}
+
+function openPlan(){sReset();document.getElementById('s_title').textContent='ADD PLAN';document.getElementById('plan_scrim').style.display='flex';}
+function closePlan(){document.getElementById('plan_scrim').style.display='none';}
+var OVREC=[];
+function openOverdue(){renderOv();document.getElementById('ov_scrim').style.display='flex';}
+function closeOverdue(){document.getElementById('ov_scrim').style.display='none';}
+function renderOv(){
+  var box=document.getElementById('ov_list');
+  var us=EMPS.filter(function(e){return e.mobile;});
+  if(!us.length){box.innerHTML='<div class="empty">No users have a WhatsApp number yet. Add mobiles on the Users page.</div>';return;}
+  box.innerHTML=us.map(function(e){
+    var ck=OVREC.indexOf(String(e.id))>=0?' checked':'';
+    return '<label style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--line-1);cursor:pointer">'
+      +'<input type="checkbox" class="ov_ck" value="'+esc(e.id)+'"'+ck+' style="width:auto">'
+      +'<span>'+esc(e.name||e.emp_no)+' · '+esc(e.mobile)+'</span></label>';
+  }).join('');
+}
+async function ovSave(){
+  var ids=[].map.call(document.querySelectorAll('.ov_ck:checked'),function(c){return c.value;});
+  try{var r=await fetch('/maint/overdue-recipients',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emp_ids:ids})});
+    var d=await r.json();if(!r.ok||!d.ok)throw 0;OVREC=ids.map(String);toast('ok',ids.length?('Saved · '+ids.length+' recipient(s)'):'Saved · no recipients');closeOverdue();}
+  catch(e){toast('err','Could not save');}
+}
+function setFreq(f){document.getElementById('s_freq').value=f;
+  [].forEach.call(document.querySelectorAll('.pill'),function(p){p.classList.toggle('on',p.getAttribute('data-f')===f);});
+  document.getElementById('dom_wrap').style.display=(f==='monthly'||f==='quarterly')?'':'none';autoChecklist();}
+function autoChecklist(){var f=v('s_freq'),aid=v('s_asset');if(!aid)return;
+  var want=f==='daily'?'daily checklist':(f==='quarterly'?'quarterly checklist':null);if(!want)return;
+  var m=ALLCL.filter(function(c){return String(c.asset_id)===String(aid)&&(c.name||'').toLowerCase()===want;})[0];
+  if(m&&!v('s_checklist'))document.getElementById('s_checklist').value=m.id;}
+function onAsset(){loadChecklists();autoChecklist();}
+function loadChecklists(){var aid=v('s_asset'),cur=v('s_checklist');
+  var list=ALLCL.filter(function(c){return String(c.asset_id)===String(aid);});
+  document.getElementById('s_checklist').innerHTML='<option value="">— none —</option>'+list.map(function(c){return opt(c.id,c.name,cur);}).join('');}
+
+async function boot(){
+  try{var r=await fetch('/maint/assets/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}ASSETS=await r.json();}catch(e){}
+  try{EMPS=await (await fetch('/admin/users',{cache:'no-store'})).json();}catch(e){EMPS=[];}
+  try{ALLCL=await (await fetch('/maint/checklists/list',{cache:'no-store'})).json();}catch(e){ALLCL=[];}
+  try{var ov=await (await fetch('/maint/overdue-recipients',{cache:'no-store'})).json();OVREC=(ov.emp_ids||[]).map(String);}catch(e){OVREC=[];}
+  document.getElementById('s_asset').innerHTML='<option value="">Select machine…</option>'+ASSETS.filter(function(a){return a.active;}).map(function(a){return opt(a.id,(a.code?a.code+' — ':'')+a.name);}).join('');
+  document.getElementById('s_assignee').innerHTML='<option value="">— none —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''));}).join('');
+  sLoad();
+}
+async function sLoad(){var h=document.getElementById('s_rows');h.innerHTML='<div class="empty">Loading…</div>';
+  try{SCHED=await (await fetch('/maint/schedules/list',{cache:'no-store'})).json();}catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}sRender();}
+function freqText(x){var f=(x.freq_type||'').toLowerCase();var map={daily:'Daily',weekly:'Weekly',monthly:'Monthly',quarterly:'Quarterly'};
+  var base=map[f]||(x.freq_days?('every '+x.freq_days+'d'):'—');
+  if((f==='monthly'||f==='quarterly')&&x.day_of_month)base+=' · day '+x.day_of_month;return base;}
+function meterText(x){if(x.hours_interval){var tgt=Number(x.last_done_hours||0)+Number(x.hours_interval);
+    return esc(x.asset_hours!=null?x.asset_hours:0)+' / '+tgt+' hrs';}
+  return x.asset_hours!=null?esc(x.asset_hours)+' hrs':'—';}
+function dueBadge(x){if(!x.active)return '<span class="badge b-off">Paused</span>';
+  if(x.overdue)return '<span class="badge b-over">Overdue</span>';if(x.due)return '<span class="badge b-due">Due</span>';return '<span class="badge b-ok">OK</span>';}
+function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.getElementById('s_dueonly').checked;
+  var dueCnt=SCHED.filter(function(x){return x.active&&(x.due||x.overdue);}).length;
+  var badge=document.getElementById('s_cnt');badge.textContent='Due / overdue: '+dueCnt;badge.classList.toggle('zero',dueCnt===0);
+  var rows=dueOnly?SCHED.filter(function(x){return x.active&&(x.due||x.overdue);}):SCHED;
+  if(!rows.length){host.innerHTML='<div class="empty">'+(SCHED.length?'No plans match the filter.':'No plans yet. Add one to start scheduling preventive maintenance.')+'</div>';return;}
+  var cols=[['Asset','15%'],['Task','16%'],['Schedule','13%'],['Last done','9%'],['Next due','10%'],['Meter now','11%'],['Status','9%'],['Actions','17%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var anyActive=SCHED.some(function(x){return x.active;});
+  var allBtn='<a href="#" class="'+(anyActive?'ic-del':'ic-edit')+'" style="font-weight:700;margin-left:6px" onclick="toggleAll('+(!anyActive)+');return false">'+(anyActive?'Pause all':'Resume all')+'</a>'
+    +' · <a href="#" class="ic-del" style="font-weight:700" onclick="deleteAll();return false">Delete all</a>';
+  var hd='<tr>'+cols.map(function(c,i){return'<th>'+(i===cols.length-1?('Actions '+allBtn):c[0])+'</th>';}).join('')+'</tr>';
+  var body=rows.map(function(x){
+    var nd=x.next_due?esc(fmtd(x.next_due)):(x.hours_due?'by hours':'—');
+    if(x.due_time&&x.next_due)nd+=' '+esc(String(x.due_time).slice(0,5));
+    var tog=x.active?'<a href="#" onclick="sToggle('+x.id+',false);return false" class="ic-del">Pause</a>'
+                    :'<a href="#" onclick="sToggle('+x.id+',true);return false" class="ic-edit">Resume</a>';
+    return '<tr><td>'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+'</td><td>'+esc(x.title||'')+'</td>'
+      +'<td>'+esc(freqText(x))+'</td><td class="c">'+fmtd(x.last_done)+'</td><td class="c">'+nd+'</td>'
+      +'<td class="c">'+meterText(x)+'</td><td class="c">'+dueBadge(x)+'</td>'
+      +'<td class="c"><a href="#" onclick="sEdit('+x.id+');return false" class="ic-edit">Edit</a> · '+tog+' · '
+      +'<a href="#" onclick="sDel('+x.id+');return false" class="ic-del">Delete</a></td></tr>';
+  }).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+function sReset(){sv('s_id','');sv('s_asset','');sv('s_name','');sv('s_checklist','');sv('s_dom','');sv('s_end','');sv('s_hours','');sv('s_assignee','');sv('s_time','09:00');
+  sv('s_start',today());document.getElementById('s_active').checked=true;setFreq('daily');
+  document.getElementById('s_save').textContent='Save';}
+function sEdit(id){var x=SCHED.filter(function(r){return r.id===id;})[0];if(!x)return;sReset();
+  sv('s_id',x.id);sv('s_asset',x.asset_id);loadChecklists();sv('s_checklist',x.checklist_id||'');sv('s_name',x.title);
+  setFreq((x.freq_type||'daily').toLowerCase());sv('s_dom',x.day_of_month||'');
+  sv('s_start',(x.start_date||'').slice(0,10));sv('s_time',(x.due_time||'09:00').slice(0,5));sv('s_end',(x.end_date||'').slice(0,10));sv('s_hours',x.hours_interval||'');sv('s_assignee',x.assignee_emp_id||'');
+  document.getElementById('s_active').checked=!!x.active;
+  document.getElementById('s_title').textContent='EDIT PLAN';document.getElementById('s_save').textContent='Update';
+  document.getElementById('plan_scrim').style.display='flex';}
+async function sSave(){var f=v('s_freq');
+  var p={id:v('s_id')||null,asset_id:v('s_asset')||null,title:v('s_name').trim(),checklist_id:v('s_checklist')||null,
+    freq_type:f,day_of_month:v('s_dom'),hours_interval:v('s_hours'),assignee_emp_id:v('s_assignee')||null,
+    start_date:v('s_start'),due_time:v('s_time'),end_date:v('s_end'),active:document.getElementById('s_active').checked};
+  if(!p.asset_id){toast('err','Select a machine');return;}if(!p.title){toast('err','Enter a task');return;}
+  if((f==='monthly'||f==='quarterly')&&!p.day_of_month){toast('err','Enter a day of month');return;}
+  if(!p.start_date){toast('err','Pick a start date');return;}
+  var b=document.getElementById('s_save');b.disabled=true;var l=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch('/maint/schedule/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');toast('ok',p.id?'Plan updated':'Plan added');closePlan();await sLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
+async function sToggle(id,on){try{var r=await fetch('/maint/schedule/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,active:on})});var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok',on?'Resumed':'Paused');await sLoad();}catch(e){toast('err','Failed');}}
+async function toggleAll(on){if(!confirm((on?'Resume':'Pause')+' ALL plans?'))return;
+  try{var r=await fetch('/maint/schedules/toggle-all',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({active:on})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw 0;toast('ok',on?'All plans resumed':'All plans paused');await sLoad();}catch(e){toast('err','Failed');}}
+async function deleteAll(){if(!SCHED.length){toast('err','No plans to delete');return;}
+  if(!confirm('Delete ALL '+SCHED.length+' plans? This cannot be undone. (Assets and checklists are kept.)'))return;
+  try{var r=await fetch('/maint/schedules/delete-all',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw 0;toast('ok','All plans deleted');await sLoad();}catch(e){toast('err','Failed');}}
+async function sDel(id){if(!confirm('Delete this plan?'))return;try{var r=await fetch('/maint/schedule/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});var d=await r.json();if(!r.ok||!d.ok)throw 0;toast('ok','Deleted');await sLoad();}catch(e){toast('err','Failed');}}
+document.getElementById('plan_scrim').addEventListener('click',function(e){if(e.target===this)closePlan();});
+
+/* ---------- holidays ---------- */
+function openHol(){document.getElementById('hol_scrim').style.display='flex';holLoad();}
+function closeHol(){document.getElementById('hol_scrim').style.display='none';}
+async function holLoad(){var box=document.getElementById('hol_list');box.innerHTML='<div class="empty">Loading…</div>';
+  try{var hs=await (await fetch('/maint/holidays/list',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  if(!hs.length){box.innerHTML='<div class="empty">No holidays added yet.</div>';return;}
+  box.innerHTML=hs.map(function(h){return '<div class="hitem"><span class="d">'+esc(fmtd(h.hday))+'</span><span>'+esc(h.name||'')+'</span>'
+    +'<span class="sp"></span><a href="#" class="ic-del" onclick="holDel('+h.id+');return false">Remove</a></div>';}).join('');}
+async function holAdd(){var d=v('h_date'),n=v('h_name').trim();if(!d){toast('err','Pick a date');return;}
+  try{var r=await fetch('/maint/holidays/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:d,name:n})});
+    var o=await r.json().catch(function(){return{};});if(!r.ok||!o.ok)throw new Error(o.detail||'Failed');
+    sv('h_date','');sv('h_name','');toast('ok','Holiday added');await holLoad();await sLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+async function holDel(id){try{var r=await fetch('/maint/holidays/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+  var o=await r.json();if(!r.ok||!o.ok)throw 0;toast('ok','Removed');await holLoad();await sLoad();}catch(e){toast('err','Failed');}}
+document.getElementById('hol_scrim').addEventListener('click',function(e){if(e.target===this)closeHol();});
+
+/* ---------- leave ---------- */
+function openLeave(){
+  document.getElementById('lv_emp').innerHTML='<option value="">— staff —</option>'+EMPS.map(function(e){return opt(e.id,(e.name||e.emp_no));}).join('');
+  sv('lv_from',today());sv('lv_to',today());document.getElementById('leave_scrim').style.display='flex';lvLoad();}
+function closeLeave(){document.getElementById('leave_scrim').style.display='none';}
+async function lvLoad(){var box=document.getElementById('leave_list');box.innerHTML='<div class="empty">Loading…</div>';
+  try{var ls=await (await fetch('/maint/leave/list',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  if(!ls.length){box.innerHTML='<div class="empty">No leave added yet.</div>';return;}
+  box.innerHTML=ls.map(function(l){var range=fmtd(l.from_date)+(l.to_date&&l.to_date!==l.from_date?(' → '+fmtd(l.to_date)):'');
+    return '<div class="hitem"><span class="d">'+esc(l.emp_name||('#'+l.emp_id))+'</span><span>'+esc(range)+(l.reason?(' · '+esc(l.reason)):'')+'</span>'
+      +'<span class="sp"></span><a href="#" class="ic-del" onclick="lvDel('+l.id+');return false">Remove</a></div>';}).join('');}
+async function lvAdd(){var eid=v('lv_emp'),f=v('lv_from'),t=v('lv_to'),rs=v('lv_reason').trim();
+  if(!eid){toast('err','Pick a staff member');return;}if(!f){toast('err','Pick a from-date');return;}
+  try{var r=await fetch('/maint/leave/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({emp_id:eid,from_date:f,to_date:t,reason:rs})});
+    var o=await r.json().catch(function(){return{};});if(!r.ok||!o.ok)throw new Error(o.detail||'Failed');
+    sv('lv_reason','');toast('ok','Leave added');await lvLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+async function lvDel(id){try{var r=await fetch('/maint/leave/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+  var o=await r.json();if(!r.ok||!o.ok)throw 0;toast('ok','Removed');await lvLoad();}catch(e){toast('err','Failed');}}
+document.getElementById('leave_scrim').addEventListener('click',function(e){if(e.target===this)closeLeave();});
+
+boot();
+</script>
+{% endblock %}
