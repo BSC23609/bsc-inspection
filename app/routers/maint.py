@@ -26,10 +26,10 @@ from ..auth import require_employee
 
 # Read config defensively so a slightly older app/config.py (missing one of the
 # newer maintenance vars) can never crash the whole app at import time.
-WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "")
-WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "")
-# New template (5 vars + ref-based dynamic button) is bsc_breakdown_alert2.
-# Env var still wins if ever set; otherwise use the new approved template directly.
+# WATI template names. Env/config still wins if set; otherwise use the approved
+# templates created in WATI (Oct 2026): reminder to user, overdue digest, breakdown.
+WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "") or "bsc_maint_reminder"
+WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "bsc_pm_overdue"
 WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") or "bsc_breakdown_alert2"
 MAINT_SUPERVISOR_MOBILE       = getattr(_cfg, "MAINT_SUPERVISOR_MOBILE", "")
 AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
@@ -931,6 +931,22 @@ def _supervisor_mobiles() -> list:
     """MAINT_SUPERVISOR_MOBILE may be a comma/space separated list of numbers."""
     raw = MAINT_SUPERVISOR_MOBILE or ""
     return [p.strip() for p in raw.replace(";", ",").split(",") if p.strip()]
+
+
+async def _overdue_recipient_mobiles() -> list:
+    """Mobiles of the user(s) chosen on the Schedules page to receive the overdue
+    digest. Falls back to the legacy MAINT_SUPERVISOR_MOBILE if none are chosen."""
+    try:
+        raw = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey='overdue_recipients'")
+        ids = [int(x) for x in (raw or "").split(",") if x.strip().isdigit()]
+        if not ids:
+            return _supervisor_mobiles()
+        rows = await db.fetch(
+            "SELECT COALESCE(mobile,'') AS mobile FROM employees WHERE id = ANY($1::int[])", ids)
+        mobs = [r["mobile"].strip() for r in rows if (r["mobile"] or "").strip()]
+        return mobs or _supervisor_mobiles()
+    except Exception:
+        return _supervisor_mobiles()
 
 
 def _is_offday(d):
@@ -2883,15 +2899,15 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
         bd_num = _numbered(sup_bd)
         # body vars: 1 date, 2 preventive list, 3 breakdown list
         params = [tdisp, pm_num, bd_num]
-        sups = _supervisor_mobiles()
+        sups = await _overdue_recipient_mobiles()
         for sup in sups:
-            await _dispatch(WATI_MAINT_OVERDUE_TEMPLATE, sup, params,
+            await _dispatch(WATI_MAINT_OVERDUE_TEMPLATE, wati.normalize_number(sup) or sup, params,
                             {"kind": "overdue-digest", "preventive": len(sup_pm),
                              "breakdown": len(sup_bd)})
         if not sups:
             skipped.append({"kind": "overdue-digest",
                             "preventive": len(sup_pm), "breakdown": len(sup_bd),
-                            "result": "skipped: no supervisor number (set MAINT_SUPERVISOR_MOBILE)"})
+                            "result": "skipped: no overdue recipient chosen (pick users on the Schedules page)"})
     return {"today": today.isoformat(), "sent": sent, "skipped": skipped,
             "counts": {"sent": len(sent), "skipped": len(skipped)}}
 
@@ -2913,6 +2929,27 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
 async def reminders_preview(emp: dict = Depends(require_employee)):
     """Staff-only preview of what the reminder run would send right now."""
     return _json(await _run_reminders(dry=True))
+
+
+@router.get("/overdue-recipients")
+async def overdue_recipients_get(emp: dict = Depends(require_employee)):
+    """The employee ids chosen to receive the overdue WhatsApp digest."""
+    await ensure_tables()
+    raw = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey='overdue_recipients'")
+    ids = [x for x in (raw or "").split(",") if x.strip()]
+    return _json({"emp_ids": ids})
+
+
+@router.post("/overdue-recipients")
+async def overdue_recipients_set(body: dict, emp: dict = Depends(require_employee)):
+    """Save which employee(s) get the overdue digest."""
+    await ensure_tables()
+    ids = body.get("emp_ids") or []
+    clean = ",".join(str(int(x)) for x in ids if str(x).strip().isdigit())
+    await db.execute(
+        "INSERT INTO maint_meta (mkey,mval) VALUES ('overdue_recipients',$1) "
+        "ON CONFLICT (mkey) DO UPDATE SET mval=$1", clean)
+    return {"ok": True, "emp_ids": [x for x in clean.split(",") if x]}
 
 
 @router.get("/admin/reseed")
