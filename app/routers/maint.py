@@ -2670,6 +2670,17 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True, "status": status, "next_due": next_due.isoformat() if next_due else None}
 
 
+def _url_token(s: str) -> str:
+    """Make a value safe to drop into a template's dynamic-URL button.
+    WATI fills the URL button's {{1}} from template parameter "1" (the same
+    slot as the body's first variable), so a name with a space becomes a
+    broken link like .../G YUVARAJ and WhatsApp silently drops the whole
+    message. Replace spaces with underscores and strip other unsafe chars."""
+    t = re.sub(r"\s+", "_", (s or "").strip())
+    t = re.sub(r"[^A-Za-z0-9_.-]", "", t)
+    return t or "user"
+
+
 @router.post("/remind-one")
 async def remind_one(body: dict, emp: dict = Depends(require_employee)):
     """Send a single WhatsApp reminder to the user assigned to one schedule
@@ -2700,7 +2711,8 @@ async def remind_one(body: dict, emp: dict = Depends(require_employee)):
     label = ((s.get("asset_code") or "") + " " + (s.get("asset_name") or "")).strip()
     item = (label + " - " + (s.get("title") or "maintenance")).strip(" -")
     # same body vars as the due digest: 1 name, 2 date, 3 preventive list, 4 breakdown list, 5 button
-    params = [name, tdisp, item, "—", "maint"]
+    # param "1" also feeds the URL button, so it must be URL-safe (no spaces)
+    params = [_url_token(name), tdisp, item, "—", "maint"]
     m = wati.normalize_number(mobile) or mobile
     ok, detail = await wati.send_template(WATI_MAINT_DUE_TEMPLATE, m, params)
     if ok:
@@ -2886,9 +2898,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
         for aid, g in due_by_assignee.items():
             pm_list = _join_items(g["pm"])
             bd_list = _join_items(g["bd"])
-            # body vars: 1 name, 2 date, 3 preventive list, 4 breakdown list,
-            # then the dynamic-URL button suffix (WATI param "5"): .../{{1}} -> "maint"
-            params = [g["name"], tdisp, pm_list, bd_list, "maint"]
+            # body vars: 1 name, 2 date, 3 preventive list, 4 breakdown list, 5 button.
+            # WATI feeds the URL button's {{1}} from param "1" (the name), so it must
+            # be URL-safe (spaces -> underscore) or WhatsApp drops the message.
+            params = [_url_token(g["name"]), tdisp, pm_list, bd_list, "maint"]
             await _dispatch(WATI_MAINT_DUE_TEMPLATE, g["mobile"], params,
                             {"kind": "due-digest", "assignee": g["name"],
                              "preventive": len(g["pm"]), "breakdown": len(g["bd"])})
