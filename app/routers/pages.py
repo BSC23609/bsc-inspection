@@ -47,8 +47,6 @@ NAV_GROUPS = [
           "href": "/maint/checklists", "active_key": "maint_checklists"},
          {"name": "Schedules", "icon": "calendar", "desc": "PM cycles by date interval and running hours.",
           "href": "/maint/schedules", "active_key": "maint_schedules"},
-         {"name": "Raise Breakdown", "icon": "warn", "desc": "Raise an unplanned stoppage and alert the team.",
-          "href": "/maint/breakdown", "active_key": "maint_breakdown"},
          {"name": "Leave", "icon": "users", "desc": "Mark staff on leave so they skip reminders.",
           "href": "/maint/leave", "active_key": "maint_leave"},
      ]},
