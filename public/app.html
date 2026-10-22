@@ -110,12 +110,7 @@
     </section>
 
     <!-- MINE / ASSIGNED share a list renderer -->
-    <section id="tab-mine" class="hidden">
-      <div id="mineList" class="space-y-3"></div>
-      <div id="mineReminderWrap" class="hidden mt-5 flex justify-center">
-        <button id="mineReminderBtn" onclick="sendMineReminders(this)" class="btn">Send reminder to handlers</button>
-      </div>
-    </section>
+    <section id="tab-mine" class="hidden"><div id="mineList" class="space-y-3"></div></section>
     <section id="tab-assigned" class="hidden"><div id="assignedList" class="space-y-3"></div></section>
     <section id="tab-dash" class="hidden">
       <div class="card p-5">
@@ -299,25 +294,8 @@
       const el = document.getElementById(elId);
       el.innerHTML = '<div class="text-sm text-slate-400 py-8 text-center">Loading…</div>';
       const rows = await api(`/tickets?scope=${scope}`);
-      if (scope === 'mine') {
-        const anyOpen = rows.some(t => ['open','in_progress','reopened'].includes(t.status));
-        const wrap = document.getElementById('mineReminderWrap');
-        if (wrap) wrap.classList.toggle('hidden', !anyOpen);
-      }
       if (!rows.length) { el.innerHTML = '<div class="text-sm text-slate-400 py-12 text-center">No tickets.</div>'; return; }
       el.innerHTML = rows.map(t => card(t, scope)).join('');
-    }
-
-    // Nudge the assigned handler of each of my open tickets (one WhatsApp per ticket).
-    async function sendMineReminders(btn) {
-      const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Sending…';
-      try {
-        const r = await api('/tickets/remind-mine', { method: 'POST' });
-        if (r.sent) toast(`Reminder sent to ${r.handlers.join(', ')}`, 'success');
-        else if (r.tickets) toast('Your open tickets have no assigned handler yet', 'info');
-        else toast('No open tickets to remind', 'info');
-      } catch (e) { toast(e.message, 'error'); }
-      finally { btn.disabled = false; btn.textContent = orig; }
     }
 
     const istToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });

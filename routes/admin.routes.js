@@ -2,7 +2,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { q } = require('../lib/db');
 const auth = require('../lib/auth');
-const { downtimeMins } = require('../lib/util');
+const { downtimeMins, elapsedLabel } = require('../lib/util');
 const excel = require('../lib/excel');
 const wati = require('../lib/wati');
 const { background } = require('../lib/bg');
@@ -321,6 +321,38 @@ router.post('/tickets/:id/reminders', async (req, res) => {
   const r = await q('UPDATE tickets SET reminders_off=$2 WHERE id=$1 RETURNING ref_no, reminders_off', [id, off]);
   if (!r.rows.length) return res.status(404).json({ error: 'Ticket not found' });
   res.json({ ok: true, ref_no: r.rows[0].ref_no, reminders_off: r.rows[0].reminders_off });
+});
+
+// Manual "nudge now" from the dashboard ticket list: WhatsApp the assigned handler of every OPEN
+// ticket (skips unassigned/gated/muted). Sends run in the background so a slow WATI run can't
+// time out the request; the response reports how many will be reminded and the handler names.
+router.post('/tickets/remind-open', async (req, res) => {
+  const rows = (await q(
+    `SELECT t.id, t.ref_no, t.subject, t.raised_at, c.name AS category_name,
+            r.name AS requester_name, e.name AS handler_name, e.phone AS handler_phone
+     FROM tickets t
+     JOIN categories c ON c.id = t.category_id
+     JOIN employees r ON r.id = t.requester_id
+     JOIN employees e ON e.id = t.l1_emp_id AND e.active = TRUE
+     WHERE t.status IN ('open','in_progress','reopened') AND t.closed_at IS NULL
+       AND NOT COALESCE(t.reminders_off, false) AND t.maint_gate IS DISTINCT FROM 'pending'
+     ORDER BY t.raised_at`)).rows;
+  const toSend = rows.filter(t => t.handler_phone);
+  const handlers = [...new Set(toSend.map(t => t.handler_name))];
+  res.json({ ok: true, tickets: rows.length, reminded: toSend.length, handlers });
+  background((async () => {
+    for (const t of toSend) {
+      const mins = Math.max(1, Math.round((Date.now() - new Date(t.raised_at).getTime()) / 60000));
+      try {
+        await wati.notify.reminder({ name: t.handler_name, phone: t.handler_phone },
+          { id: t.id, ref_no: t.ref_no, requester_name: t.requester_name, category_name: t.category_name, subject: t.subject },
+          elapsedLabel(mins));
+        await q(`UPDATE tickets SET last_reminder_at = now() WHERE id = $1`, [t.id]);
+        await q(`INSERT INTO ticket_events(ticket_id,event,note) VALUES($1,'reminder',$2)`,
+          [t.id, `Manual reminder to ${t.handler_name} (admin)`]);
+      } catch (e) { console.error('[remind-open]', t.id, e.message); }
+    }
+  })());
 });
 
 // Admin force-resolve: mark a ticket resolved directly from the cleanup list. Mirrors the normal
@@ -1033,7 +1065,7 @@ router.get('/db-info', async (req, res) => {
   const raw = process.env.DATABASE_URL || '';
   let host = null, dbname = null, user = null;
   try { const u = new URL(raw); host = u.host; dbname = u.pathname.replace(/^\//, ''); user = u.username; } catch {}
-  const out = { build: 'FIXED219', env_host: host, env_dbname: dbname, env_user: user };
+  const out = { build: 'FIXED221', env_host: host, env_dbname: dbname, env_user: user };
   try {
     const r = (await q(`SELECT current_database() AS db, current_user AS usr,
       inet_server_addr()::text AS server_ip, now() AS now`)).rows[0];
