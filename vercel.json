@@ -1,11 +1,14 @@
 {
-  "version": 2,
-  "builds": [
-    { "src": "api/index.py", "use": "@vercel/python" },
-    { "src": "static/**", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "src": "/static/(.*)", "dest": "/static/$1" },
-    { "src": "/(.*)", "dest": "api/index.py" }
+  "functions": {
+    "api/index.js": { "includeFiles": "api/fonts/**" }
+  },
+  "rewrites": [
+    { "source": "/wheels.pdf", "destination": "/api/index?route=wheels&fmt=pdf" },
+    { "source": "/wheels.xlsx", "destination": "/api/index?route=wheels&fmt=xlsx" },
+    { "source": "/wheels.png", "destination": "/api/index?route=wheels&fmt=stockpng" },
+    { "source": "/wheels-production.pdf", "destination": "/api/index?route=wheels&fmt=prodpdf" },
+    { "source": "/wheels-production.png", "destination": "/api/index?route=wheels&fmt=prodpng" },
+    { "source": "/daily-stock.png", "destination": "/api/index?route=wheels&fmt=dailypng" },
+    { "source": "/api/:route", "destination": "/api/index?route=:route" }
   ]
 }

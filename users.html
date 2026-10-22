@@ -1,0 +1,95 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Users — Bharat Steel MIS</title><link rel="icon" type="image/png" href="/stock/BSC.png"/>
+<script>window.PORTAL={module:'users',screen:''}</script>
+<style>
+  .fld{margin-bottom:12px}
+  .fld label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--gray);margin-bottom:5px}
+  .fld input[type=text],.fld input[type=email],.fld input[type=password]{width:100%;max-width:360px;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit}
+  .mods{display:flex;gap:14px;flex-wrap:wrap}
+  .mods label{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
+  .toggle{display:flex;align-items:center;gap:8px;font-size:14px}
+  .urow td{vertical-align:middle}
+  .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 7px;border-radius:5px;background:#eef3f7;color:var(--blue-dark)}
+  .badge.adm{background:#fde9c9;color:#8a5200}
+  .act{color:var(--blue);font-weight:600;cursor:pointer;margin-right:12px;font-size:13px}
+  .act.del{color:var(--red)}
+  .saved{color:var(--good);font-size:13px;font-weight:600;margin-left:10px}
+</style>
+</head><body>
+<div class="pw">
+  <div id="errbox"></div>
+
+  <div class="card">
+    <h3>Portal users <span class="r" id="uCount"></span></h3>
+    <div class="tblwrap"><table id="uTbl"><thead><tr><th>Email</th><th>Role</th><th>Modules</th><th>Added</th><th></th></tr></thead><tbody id="uBody"></tbody></table></div>
+  </div>
+
+  <div class="card">
+    <h3 id="formTitle">Add user</h3>
+    <input type="hidden" id="uid"/>
+    <div class="fld"><label>Email</label><input type="email" id="email" placeholder="name@bharatsteels.in"/></div>
+    <div class="fld"><label id="pwLabel">Password</label><input type="password" id="password" autocomplete="new-password" placeholder="at least 6 characters"/></div>
+    <div class="fld"><label>Role</label><div class="toggle"><input type="checkbox" id="isAdmin" onchange="onAdmin()"/> <span>Admin (manage users + all modules)</span></div></div>
+    <div class="fld" id="modWrap"><label>Module access (for non-admins)</label><div class="mods" id="mods"></div></div>
+    <div style="margin-top:8px">
+      <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" onclick="save()">Save user</button>
+      <button class="pbtn" style="background:#64748b;border-color:#64748b" onclick="resetForm()">Clear</button>
+      <span class="saved" id="savedMsg" style="display:none">✓ Saved</span>
+    </div>
+  </div>
+  <footer id="foot"></footer>
+</div>
+<script src="/_portal.js"></script>
+<script>
+  let ALLMODS=[];
+  function err(m){ $('errbox').innerHTML='<div class="err">'+esc(m)+'</div>'; }
+  function onAdmin(){ $('modWrap').style.display=$('isAdmin').checked?'none':''; }
+  function resetForm(){ $('uid').value=''; $('email').value=''; $('password').value=''; $('isAdmin').checked=false;
+    document.querySelectorAll('#mods input').forEach(c=>c.checked=false); onAdmin();
+    $('formTitle').textContent='Add user'; $('pwLabel').textContent='Password'; }
+  function drawMods(sel){ $('mods').innerHTML=ALLMODS.map(m=>`<label><input type="checkbox" value="${m}" ${sel&&sel.includes(m)?'checked':''}/> ${m}</label>`).join(''); }
+  async function load(){
+    try{
+      const r=await fetch('/api/auth?action=users_list',{credentials:'same-origin'});
+      const d=await r.json();
+      if(!r.ok){ err(d.error||'Could not load users'); return; }
+      ALLMODS=d.all_modules||[]; if(!$('mods').innerHTML) drawMods([]);
+      const rows=d.users||[]; $('uCount').textContent=rows.length+' users';
+      $('uBody').innerHTML=rows.map(u=>`<tr class="urow">
+        <td><b>${esc(u.email)}</b></td>
+        <td>${u.is_admin?'<span class="badge adm">Admin</span>':'<span class="badge">User</span>'}</td>
+        <td>${u.is_admin?'all':((u.modules||[]).map(esc).join(', ')||'<span class="muted">none</span>')}</td>
+        <td class="muted">${u.created_at?new Date(u.created_at).toLocaleDateString('en-IN'):''}</td>
+        <td style="text-align:right;white-space:nowrap"><span class="act" onclick='edit(${JSON.stringify(u).replace(/'/g,"&#39;")})'>Edit</span><span class="act del" onclick="del(${u.id},'${esc(u.email)}')">Delete</span></td>
+      </tr>`).join('') || '<tr><td colspan="5" class="empty">No users yet.</td></tr>';
+      $('foot').textContent='Admin · manage who can sign in and which modules they see';
+    }catch(e){ err('Network error loading users'); }
+  }
+  function edit(u){ resetForm(); $('uid').value=u.id; $('email').value=u.email; $('isAdmin').checked=!!u.is_admin;
+    drawMods(u.modules||[]); onAdmin(); $('formTitle').textContent='Edit user'; $('pwLabel').textContent='Password (leave blank to keep current)';
+    window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'}); }
+  async function save(){
+    const mods=[...document.querySelectorAll('#mods input:checked')].map(c=>c.value);
+    const body={action:'user_save', id:$('uid').value||undefined, email:$('email').value.trim(), admin:$('isAdmin').checked, modules:mods};
+    const pw=$('password').value; if(pw) body.password=pw;
+    try{
+      const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify(body)});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){ err(d.error||'Save failed'); return; }
+      $('errbox').innerHTML=''; const s=$('savedMsg'); s.style.display='inline'; setTimeout(()=>s.style.display='none',2000);
+      resetForm(); load();
+    }catch(e){ err('Network error saving'); }
+  }
+  async function del(id,email){
+    if(!confirm('Delete user '+email+'?')) return;
+    try{
+      const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({action:'user_delete',id})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){ err(d.error||'Delete failed'); return; }
+      $('errbox').innerHTML=''; load();
+    }catch(e){ err('Network error deleting'); }
+  }
+  load();
+</script>
+</body></html>

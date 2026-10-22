@@ -1,0 +1,120 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Wheels India — Send Log — Bharat Steel MIS</title><link rel="icon" type="image/png" href="BSC.png"/>
+<script>window.PORTAL={module:'wheels',screen:'sendlog'}</script>
+<style>
+  .toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0}
+  .toolbar .sp{margin-left:auto;display:flex;gap:8px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+  .mx{border:1px solid var(--line);border-radius:10px;padding:12px 14px;background:#fff}
+  .mx h4{margin:0 0 10px;font-size:13px;color:var(--ink,#0e2a47)}
+  .mxrow{display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-top:1px solid #eef2f5;font-size:13px}
+  .mxrow:first-of-type{border-top:0}
+  .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.02em}
+  .b-ok{background:#e7f6ec;color:#1a7f4b;border:1px solid #b7e2c7}
+  .b-partial{background:#fff6e0;color:#8a5b00;border:1px solid #f0dc9a}
+  .b-fail{background:#fdecea;color:#a3271b;border:1px solid #f5c6c0}
+  .b-skipped{background:#eef1f4;color:#5b6b78;border:1px solid #d7dee4}
+  .b-none{background:#f4f6f8;color:#90a0ac;border:1px solid #e3e8ec}
+  table.lg{width:100%;border-collapse:collapse;font-size:13px;background:#fff}
+  table.lg th{background:#0e2a47;color:#fff;text-align:left;padding:8px 10px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;position:sticky;top:0}
+  table.lg td{padding:7px 10px;border-top:1px solid #eef2f5;vertical-align:top}
+  table.lg tr:nth-child(even) td{background:#fafcfe}
+  td.det{color:#5b6b78;font-size:12px;max-width:380px;word-break:break-word}
+  .daterow td{background:#eef3f8 !important;font-weight:700;color:#0e2a47;font-size:12px}
+  .muted{color:var(--gray);font-size:12px}
+</style>
+</head><body>
+<div class="pw">
+  <div id="errbox"></div>
+
+  <div class="toolbar">
+    <div>
+      <div style="font-weight:700;font-size:16px;color:#0e2a47">Reminder Send Log</div>
+      <div class="muted">Did the 10:00 AM email / WhatsApp reminders go out? Status of each send, newest first.</div>
+    </div>
+    <div class="sp">
+      <span class="muted" id="lastupd"></span>
+      <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" onclick="load()">Refresh</button>
+    </div>
+  </div>
+
+  <!-- today's matrix -->
+  <div class="card">
+    <h3>Today's reminders <span class="r" id="todayDate"></span></h3>
+    <div class="grid" id="matrix"></div>
+    <div class="muted" style="margin-top:10px">A <b>skipped</b> badge means there were no recipients (or that audience is switched off in Settings) — not a failure. <b>Partial</b> means some numbers failed; open the detail below.</div>
+  </div>
+
+  <!-- full log -->
+  <div class="card">
+    <h3>Full log <span class="r">last 300 sends</span></h3>
+    <div class="tblwrap" style="max-height:62vh;overflow:auto">
+      <table class="lg"><thead><tr>
+        <th>Time</th><th>Report</th><th>Channel</th><th>Status</th><th>Sent</th><th>Detail</th>
+      </tr></thead><tbody id="rows"></tbody></table>
+    </div>
+  </div>
+
+  <div class="sfoot" id="foot" style="padding:12px 2px;font-size:11px;color:#667"></div>
+</div>
+
+<script src="../_portal.js"></script>
+<script>
+  const $=id=>document.getElementById(id);
+  const REPORTS=[['wheels_stock','Wheels India Stock'],['production','Daily Production'],['daily_stock','Daily Stock']];
+  const RLABEL=Object.fromEntries(REPORTS);
+  const CH=[['whatsapp','WhatsApp'],['email','Email']];
+  const CLABEL=Object.fromEntries(CH);
+  const istToday=()=>new Date(Date.now()+ (330+new Date().getTimezoneOffset())*60000).toISOString().slice(0,10);
+  function badge(st){ const c={ok:'b-ok',partial:'b-partial',fail:'b-fail',skipped:'b-skipped'}[st]||'b-none'; return `<span class="badge ${c}">${st||'—'}</span>`; }
+  function fmtTime(ts){ try{ return new Date(ts).toLocaleString('en-IN',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit',hour12:true}); }catch(e){ return ts; } }
+  function fmtDay(d){ try{ return new Date(d+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'2-digit',month:'short',year:'numeric'}); }catch(e){ return d; } }
+
+  async function load(){
+    try{
+      const r=await fetch('/api/wheels?fmt=sendlog',{credentials:'same-origin'});
+      const d=await r.json(); const rows=(d.rows)||[];
+      renderMatrix(rows); renderTable(rows);
+      $('lastupd').textContent='Updated '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+      $('foot').textContent=rows.length+' log entries';
+    }catch(e){ $('errbox').innerHTML='<div class="err">Couldn\'t load the send log.</div>'; }
+  }
+
+  function renderMatrix(rows){
+    const today=istToday(); $('todayDate').textContent=fmtDay(today);
+    // latest entry today per report+channel
+    const latest={};
+    for(const x of rows){ if(String(x.run_date).slice(0,10)!==today) continue; const k=x.report+'|'+x.channel; if(!latest[k]) latest[k]=x; }
+    $('matrix').innerHTML=REPORTS.map(([rid,rlab])=>{
+      const cells=CH.map(([cid,clab])=>{
+        const x=latest[rid+'|'+cid];
+        const st=x?x.status:null;
+        const extra=x? (st==='skipped'?'': (st==='ok'?` <span class="muted">${x.ok_count}/${x.total}</span>`:` <span class="muted">${x.ok_count}/${x.total}</span>`)) : '';
+        return `<div class="mxrow"><span>${clab}</span><span>${x?badge(st):'<span class="badge b-none">not yet</span>'}${extra}</span></div>`;
+      }).join('');
+      return `<div class="mx"><h4>${rlab}</h4>${cells}</div>`;
+    }).join('');
+  }
+
+  function renderTable(rows){
+    let html='', day='';
+    for(const x of rows){
+      const d=String(x.run_date).slice(0,10);
+      if(d!==day){ day=d; html+=`<tr class="daterow"><td colspan="6">${fmtDay(d)}</td></tr>`; }
+      const sent = x.status==='skipped' ? '—' : (x.ok_count+'/'+x.total);
+      html+=`<tr>
+        <td>${fmtTime(x.ts)}</td>
+        <td>${RLABEL[x.report]||x.report}</td>
+        <td>${CLABEL[x.channel]||x.channel}</td>
+        <td>${badge(x.status)}</td>
+        <td>${sent}</td>
+        <td class="det">${(x.detail||'').replace(/[<>&]/g,s=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[s]))}</td>
+      </tr>`;
+    }
+    $('rows').innerHTML=html||'<tr><td colspan="6" class="muted" style="padding:16px">No sends logged yet. They\'ll appear here after the next 10:00 AM run (or a test send).</td></tr>';
+  }
+
+  load();
+</script>
+</body></html>

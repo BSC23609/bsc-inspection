@@ -1,0 +1,75 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Sign in — Bharat Steel MIS</title><link rel="icon" type="image/png" href="/stock/BSC.png"/>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0e2a47,#1367a6);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#14202b;padding:16px}
+  .box{background:#fff;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);width:100%;max-width:380px;padding:30px 28px}
+  .box img{height:40px;display:block;margin:0 auto 10px}
+  h1{font-size:18px;text-align:center;margin:0 0 4px;color:#0e2a47}
+  .sub{text-align:center;color:#5b6b78;font-size:12px;margin:0 0 20px}
+  label{display:block;font-size:12px;font-weight:700;color:#5b6b78;margin:14px 0 5px;text-transform:uppercase;letter-spacing:.05em}
+  input{width:100%;border:1px solid #d0d7dd;border-radius:9px;padding:11px 12px;font-size:15px;font-family:inherit}
+  input:focus{outline:none;border-color:#1367a6;box-shadow:0 0 0 3px rgba(19,103,166,.15)}
+  button{width:100%;margin-top:20px;background:#1367a6;color:#fff;border:0;border-radius:9px;padding:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+  button:hover{background:#0e4d7d} button:disabled{opacity:.6;cursor:default}
+  a.link{display:block;text-align:center;margin-top:16px;color:#1367a6;font-size:13px;text-decoration:none;cursor:pointer}
+  a.link:hover{text-decoration:underline}
+  .err{background:#fdecea;border:1px solid #f5c6c0;color:#a3271b;padding:10px 12px;border-radius:9px;font-size:13px;margin-bottom:8px}
+  .msg{color:#1a7f4b;font-size:13px;margin-top:14px;text-align:center}
+</style>
+</head><body>
+<div class="box">
+  <img src="/stock/BSC.png" alt="BSC" onerror="this.style.display='none'"/>
+  <h1>Bharat Steel MIS</h1>
+  <div class="sub">Sign in to continue</div>
+  <div class="err" id="err" style="display:none"></div>
+
+  <form id="loginForm">
+    <label for="email">Email</label>
+    <input type="email" id="email" autocomplete="username" required/>
+    <label for="password">Password</label>
+    <input type="password" id="password" autocomplete="current-password" required/>
+    <button type="submit" id="loginBtn">Sign in</button>
+    <a class="link" id="toForgot">Forgot password?</a>
+  </form>
+
+  <form id="forgotForm" style="display:none">
+    <div class="sub" style="margin:0 0 6px">Enter your email and we'll send a reset link.</div>
+    <label for="fEmail">Email</label>
+    <input type="email" id="fEmail" autocomplete="username" required/>
+    <button type="submit" id="forgotBtn">Send reset link</button>
+    <a class="link" id="toLogin">Back to sign in</a>
+    <div class="msg" id="fMsg"></div>
+  </form>
+</div>
+<script>
+  const $=id=>document.getElementById(id);
+  const qs=new URLSearchParams(location.search);
+  function showErr(m){ $('err').textContent=m; $('err').style.display=''; }
+  const MOD_HREF={stock:'/stock/daily.html',wheels:'/wheels/index.html',dispatch:'/dispatch/index.html',nmdc:'/nmdc/index.html'};
+  function landingFor(u){
+    const next=qs.get('next');
+    if(u.admin) return next||'/';
+    const modOf=p=>{ for(const k in MOD_HREF){ if(p&&(p.indexOf('/'+k+'/')>=0||p.endsWith('/'+k))) return k; } return null; };
+    if(next){ const m=modOf(next); if(!m || (u.modules||[]).includes(m)) return next; }
+    const first=(u.modules||[]).find(m=>MOD_HREF[m]); return first?MOD_HREF[first]:'/';
+  }
+  if(qs.get('denied')) showErr("You don't have access to that section ("+qs.get('denied')+"). Sign in with an account that does.");
+  $('toForgot').onclick=()=>{ $('loginForm').style.display='none'; $('forgotForm').style.display=''; $('err').style.display='none'; };
+  $('toLogin').onclick=()=>{ $('forgotForm').style.display='none'; $('loginForm').style.display=''; };
+  $('loginForm').onsubmit=async e=>{ e.preventDefault(); const b=$('loginBtn'); b.disabled=true; b.textContent='Signing in…'; $('err').style.display='none';
+    try{
+      const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},credentials:'same-origin',body:JSON.stringify({action:'login',email:$('email').value.trim(),password:$('password').value})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){ showErr(d.error||'Login failed'); b.disabled=false; b.textContent='Sign in'; return; }
+      location.href=landingFor(d.user||{});
+    }catch(err){ showErr('Network error - try again'); b.disabled=false; b.textContent='Sign in'; }
+  };
+  $('forgotForm').onsubmit=async e=>{ e.preventDefault(); const b=$('forgotBtn'); b.disabled=true; b.textContent='Sending…';
+    try{ await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'forgot',email:$('fEmail').value.trim()})}); }catch(e){}
+    $('fMsg').textContent='If that email is registered, a reset link has been sent. Please check your inbox.';
+    b.disabled=false; b.textContent='Send reset link';
+  };
+</script>
+</body></html>

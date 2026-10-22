@@ -1,0 +1,51 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Reset password — Bharat Steel MIS</title><link rel="icon" type="image/png" href="/stock/BSC.png"/>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0e2a47,#1367a6);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#14202b;padding:16px}
+  .box{background:#fff;border-radius:14px;box-shadow:0 12px 40px rgba(0,0,0,.25);width:100%;max-width:380px;padding:30px 28px}
+  .box img{height:40px;display:block;margin:0 auto 10px}
+  h1{font-size:18px;text-align:center;margin:0 0 16px;color:#0e2a47}
+  label{display:block;font-size:12px;font-weight:700;color:#5b6b78;margin:14px 0 5px;text-transform:uppercase;letter-spacing:.05em}
+  input{width:100%;border:1px solid #d0d7dd;border-radius:9px;padding:11px 12px;font-size:15px;font-family:inherit}
+  input:focus{outline:none;border-color:#1367a6;box-shadow:0 0 0 3px rgba(19,103,166,.15)}
+  button{width:100%;margin-top:20px;background:#1367a6;color:#fff;border:0;border-radius:9px;padding:12px;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit}
+  button:hover{background:#0e4d7d} button:disabled{opacity:.6;cursor:default}
+  a.link{display:block;text-align:center;margin-top:16px;color:#1367a6;font-size:13px;text-decoration:none}
+  .err{background:#fdecea;border:1px solid #f5c6c0;color:#a3271b;padding:10px 12px;border-radius:9px;font-size:13px;margin-bottom:8px}
+  .msg{color:#1a7f4b;font-size:14px;margin-top:14px;text-align:center}
+</style>
+</head><body>
+<div class="box">
+  <img src="/stock/BSC.png" alt="BSC" onerror="this.style.display='none'"/>
+  <h1>Set a new password</h1>
+  <div class="err" id="err" style="display:none"></div>
+  <form id="f">
+    <label for="p1">New password</label>
+    <input type="password" id="p1" autocomplete="new-password" required/>
+    <label for="p2">Confirm password</label>
+    <input type="password" id="p2" autocomplete="new-password" required/>
+    <button type="submit" id="btn">Update password</button>
+  </form>
+  <div class="msg" id="done" style="display:none">Password updated. <a class="link" href="/login.html">Sign in</a></div>
+</div>
+<script>
+  const $=id=>document.getElementById(id);
+  const token=new URLSearchParams(location.search).get('token')||'';
+  function showErr(m){ $('err').textContent=m; $('err').style.display=''; }
+  if(!token) showErr('This reset link is missing its token. Request a new one from the sign-in page.');
+  $('f').onsubmit=async e=>{ e.preventDefault(); $('err').style.display='none';
+    const a=$('p1').value, b=$('p2').value;
+    if(a.length<6){ showErr('Password must be at least 6 characters'); return; }
+    if(a!==b){ showErr('The two passwords do not match'); return; }
+    const btn=$('btn'); btn.disabled=true; btn.textContent='Updating…';
+    try{
+      const r=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reset',token,password:a})});
+      const d=await r.json().catch(()=>({}));
+      if(!r.ok){ showErr(d.error||'Could not reset password'); btn.disabled=false; btn.textContent='Update password'; return; }
+      $('f').style.display='none'; $('done').style.display='';
+    }catch(err){ showErr('Network error - try again'); btn.disabled=false; btn.textContent='Update password'; }
+  };
+</script>
+</body></html>

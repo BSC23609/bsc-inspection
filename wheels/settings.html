@@ -1,0 +1,307 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Wheels India — Settings — Bharat Steel MIS</title><link rel="icon" type="image/png" href="BSC.png"/>
+<script>window.PORTAL={module:'wheels',screen:'settings'}</script>
+<style>
+  .fld{margin-bottom:14px}
+  .fld label{display:block;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;color:var(--gray);margin-bottom:5px}
+  .fld input[type=text],.fld input[type=time],.fld textarea{width:100%;border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;font-family:inherit}
+  .fld .hint{font-size:11px;color:var(--gray);margin-top:4px}
+  .saverow{display:flex;align-items:center;gap:12px;margin-top:8px}
+  .saved{color:var(--good);font-size:13px;font-weight:600;display:none}
+  .toggle{display:flex;align-items:center;gap:8px;font-size:14px}
+</style>
+</head><body>
+<div class="pw">
+  <div id="errbox"></div>
+
+  <div class="card">
+    <h3>Daily email — Wheels India stock statement</h3>
+    <div class="fld">
+      <label>Send to (customer)</label>
+      <textarea id="mailTo" rows="2" placeholder="one address per line or comma-separated"></textarea>
+      <div class="hint">The customer recipients. Comma or newline separated.</div>
+    </div>
+    <div class="fld">
+      <label>CC (Bharat Steel)</label>
+      <textarea id="mailCc" rows="2" placeholder="internal addresses to keep in copy"></textarea>
+    </div>
+    <div class="fld">
+      <label>Email subject <span style="font-weight:400;text-transform:none;color:var(--gray)">(optional — a default is used if blank)</span></label>
+      <input type="text" id="mailSubject" placeholder="BSC — Wheels India Job Work Stock Statement"/>
+    </div>
+    <div class="fld">
+      <label>Message body <span style="font-weight:400;text-transform:none;color:var(--gray)">(appears above the stock table)</span></label>
+      <textarea id="mailBody" rows="5" placeholder="Dear Sir/Madam,&#10;&#10;Please find below the current status of your material held at BSC as on date.&#10;&#10;Regards,&#10;Bharat Steel (Chennai) Pvt. Ltd."></textarea>
+      <div class="hint">Plain text. Line breaks are preserved. The branded stock table is added automatically below this message.</div>
+    </div>
+    <div style="display:flex;gap:24px;flex-wrap:wrap">
+      <div class="fld"><label>Send time (IST)</label><input type="time" id="sendTime" value="10:00"/></div>
+      <div class="fld"><label>Daily email</label>
+        <div class="toggle"><input type="checkbox" id="enabled"/> <span>enabled</span></div>
+        <div class="hint">Turn off to pause the 10 AM mail without removing recipients.</div>
+      </div>
+    </div>
+    <div class="saverow">
+      <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" onclick="saveSettings()">Save settings</button>
+      <span class="saved" id="savedS">✓ Saved</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>WhatsApp — daily stock statement (PDF)</h3>
+    <div class="hint" style="margin-bottom:10px">The same statement is sent on WhatsApp as a PDF, right after the daily email, via WATI. Enter the recipient numbers below. (WATI credentials and the approved template are configured on the server.)</div>
+    <div class="fld">
+      <label>WhatsApp numbers</label>
+      <textarea id="waTo" rows="2" placeholder="919500680093, 9144xxxxxxx"></textarea>
+      <div class="hint">One number per line or comma-separated. Indian 10-digit numbers get 91 added automatically.</div>
+    </div>
+    <div class="fld"><label>Daily WhatsApp</label>
+      <div class="toggle"><input type="checkbox" id="waEnabled"/> <span>enabled</span></div>
+      <div class="hint">Turn off to pause the WhatsApp send without removing numbers. The email is unaffected.</div>
+    </div>
+    <div class="saverow">
+      <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" onclick="saveSettings()">Save settings</button>
+      <span class="saved" id="savedW">✓ Saved</span>
+    </div>
+    <div style="border-top:1px solid #e3e8ec;margin-top:14px;padding-top:14px">
+      <div class="hint" style="margin-bottom:10px">Send a test WhatsApp with the current statement PDF to one number (leave blank to use the first saved number). Needs the WATI template approved and the portal deployed.</div>
+      <div class="fld" style="max-width:420px"><label>Test WhatsApp number</label><input type="text" id="waTestTo" placeholder="919500680093"/></div>
+      <div class="saverow">
+        <button class="pbtn" style="background:#128c7e;border-color:#128c7e" id="waTestBtn" onclick="sendWaTest()">Send test WhatsApp now</button>
+        <span class="saved" id="savedWT"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Management group (mail + WhatsApp)</h3>
+    <div class="hint" style="margin-bottom:10px">Management receives <b>all three</b>: the Wheels India Stock statement, the Production Report, and the company-wide Daily Stock report — on both email and WhatsApp.</div>
+    <div class="fld">
+      <label>Email recipients (management)</label>
+      <textarea id="mgmtMailTo" rows="2" placeholder="one address per line or comma-separated"></textarea>
+    </div>
+    <div class="fld">
+      <label>WhatsApp numbers (management)</label>
+      <textarea id="mgmtWaTo" rows="2" placeholder="919500680093, 9144xxxxxxx"></textarea>
+      <div class="hint">One per line or comma-separated. 10-digit numbers get 91 added automatically.</div>
+    </div>
+    <div class="fld"><label>Daily send</label>
+      <div class="toggle"><input type="checkbox" id="mgmtEnabled"/> <span>enabled</span></div>
+      <div class="hint">Turn off to pause all of management's sends (stock + production + daily stock) without removing recipients.</div>
+    </div>
+    <div class="saverow">
+      <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" onclick="saveSettings()">Save settings</button>
+      <span class="saved" id="savedM">✓ Saved</span>
+    </div>
+    <div style="border-top:1px solid #e3e8ec;margin-top:14px;padding-top:14px">
+      <div class="hint" style="margin-bottom:10px">Test the company-wide <b>Daily Stock report</b> (management-only) as a PNG. Leave the box blank to use the first saved management recipient.</div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap">
+        <div style="flex:1;min-width:260px">
+          <div class="fld"><label>Test: Daily Stock email to</label><input type="text" id="dailyTestTo" placeholder="you@bharatsteels.in"/></div>
+          <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" id="dailyMailBtn" onclick="sendDailyMailTest()">Send test email</button>
+          <span class="saved" id="savedDM"></span>
+        </div>
+        <div style="flex:1;min-width:260px">
+          <div class="fld"><label>Test: Daily Stock WhatsApp to</label><input type="text" id="dailyWaTestTo" placeholder="919500680093"/></div>
+          <button class="pbtn" style="background:#128c7e;border-color:#128c7e" id="dailyWaBtn" onclick="sendDailyWaTest()">Send test WhatsApp</button>
+          <span class="saved" id="savedDW"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Production group (mail + WhatsApp)</h3>
+    <div class="hint" style="margin-bottom:10px">The Production group receives the <b>Wheels India Stock statement</b> and the <b>Production Report</b> (not the company-wide Daily Stock) — on both email and WhatsApp. The format below (PDF / image) applies to the production report for both this group and management.</div>
+    <div class="fld">
+      <label>Format</label>
+      <select id="prodFormat" style="max-width:220px"><option value="image">Image (PNG)</option><option value="pdf">PDF</option></select>
+      <div class="hint">Image shows inline for quick viewing; PDF is a document. WhatsApp needs a matching approved template.</div>
+    </div>
+    <div class="fld">
+      <label>Email recipients (internal)</label>
+      <textarea id="prodMailTo" rows="2" placeholder="one address per line or comma-separated"></textarea>
+    </div>
+    <div class="fld">
+      <label>WhatsApp numbers (internal)</label>
+      <textarea id="prodWaTo" rows="2" placeholder="919500680093, 9144xxxxxxx"></textarea>
+      <div class="hint">One per line or comma-separated. 10-digit numbers get 91 added automatically.</div>
+    </div>
+    <div class="fld"><label>Daily send</label>
+      <div class="toggle"><input type="checkbox" id="prodEnabled"/> <span>enabled</span></div>
+      <div class="hint">Turn off to pause the production report (mail + WhatsApp) without removing recipients.</div>
+    </div>
+    <div class="saverow">
+      <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" onclick="saveSettings()">Save settings</button>
+      <span class="saved" id="savedP">✓ Saved</span>
+    </div>
+    <div style="border-top:1px solid #e3e8ec;margin-top:14px;padding-top:14px;display:flex;gap:24px;flex-wrap:wrap">
+      <div style="flex:1;min-width:260px">
+        <div class="fld"><label>Test email to</label><input type="text" id="prodTestTo" placeholder="you@bharatsteels.in"/></div>
+        <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" id="prodMailBtn" onclick="sendProdMailTest()">Send test email</button>
+        <span class="saved" id="savedPM"></span>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <div class="fld"><label>Test WhatsApp to</label><input type="text" id="prodWaTestTo" placeholder="919500680093"/></div>
+        <button class="pbtn" style="background:#128c7e;border-color:#128c7e" id="prodWaBtn" onclick="sendProdWaTest()">Send test WhatsApp</button>
+        <span class="saved" id="savedPW"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Holidays — skip days for reports</h3>
+    <div class="hint" style="margin-bottom:10px">Dates on which no report is sent (email + WhatsApp, both stock and production). The reports also never fire on Sundays. On the next working day, the "Production on" figures carry forward from the last working day before the skipped day(s).</div>
+    <div class="fld">
+      <label>Holiday dates</label>
+      <textarea id="holidays" rows="4" placeholder="2026-01-26&#10;2026-08-15&#10;2026-10-20"></textarea>
+      <div class="hint">One date per line, format <b>YYYY-MM-DD</b> (e.g. 2026-10-20). Comma-separated also works.</div>
+    </div>
+    <div class="saverow">
+      <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" onclick="saveSettings()">Save settings</button>
+      <span class="saved" id="savedH">✓ Saved</span>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Send a test email</h3>
+    <div class="hint" style="margin-bottom:10px">Sends the current statement (from the latest stock refresh) to one address so you can check branding and delivery. Uses the configured sender. Does not affect the daily schedule.</div>
+    <div class="fld" style="max-width:420px"><label>Test recipient</label><input type="text" id="testTo" placeholder="you@bharatsteels.in"/></div>
+    <div class="saverow">
+      <button class="pbtn" style="background:var(--blue);border-color:var(--blue)" id="testBtn" onclick="sendTest()">Send test now</button>
+      <span class="saved" id="savedT"></span>
+    </div>
+  </div>
+
+  <footer id="foot"></footer>
+</div>
+<script src="../_portal.js"></script>
+<script>
+let SET={};
+
+async function load(){
+  try{
+    const b='?t='+Date.now();
+    const set=await fetch(BASE+'/api/wheels?route=settings'+b).then(r=>r.ok?r.json():{}).catch(()=>({}));
+    SET=set||{};
+    $('mailTo').value=(SET.mail_to||[]).join('\n');
+    $('mailCc').value=(SET.mail_cc||[]).join('\n');
+    if(SET.send_time) $('sendTime').value=SET.send_time;
+    $('enabled').checked=SET.enabled!==false;
+    $('mailSubject').value=SET.mail_subject||'';
+    $('mailBody').value=SET.mail_body||'';
+    $('waTo').value=(SET.wa_to||[]).join('\n');
+    $('waEnabled').checked=SET.wa_enabled!==false;
+    $('prodMailTo').value=(SET.prod_mail_to||[]).join('\n');
+    $('prodWaTo').value=(SET.prod_wa_to||[]).join('\n');
+    $('prodEnabled').checked=SET.prod_enabled!==false;
+    $('prodFormat').value=(SET.prod_format==='pdf')?'pdf':'image';
+    $('mgmtMailTo').value=(SET.mgmt_mail_to||[]).join('\n');
+    $('mgmtWaTo').value=(SET.mgmt_wa_to||[]).join('\n');
+    $('mgmtEnabled').checked=SET.mgmt_enabled!==false;
+    $('holidays').value=(SET.holidays||[]).join('\n');
+    $('foot').textContent='Settings loaded';
+  }catch(e){ $('errbox').innerHTML='<div class="err">Couldn\'t load settings.</div>'; }
+}
+
+async function post(body){
+  const r=await fetch(BASE+'/api/wheels?route=settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok) throw new Error('save failed ('+r.status+')');
+  return r.json().catch(()=>({}));
+}
+function flash(id){const e=$(id);e.style.display='inline';setTimeout(()=>e.style.display='none',2500);}
+async function saveSettings(){
+  try{
+    const split=v=>v.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+    await post({mail_to:split($('mailTo').value),mail_cc:split($('mailCc').value),send_time:$('sendTime').value,enabled:$('enabled').checked,mail_subject:$('mailSubject').value,mail_body:$('mailBody').value,wa_to:split($('waTo').value),wa_enabled:$('waEnabled').checked,prod_mail_to:split($('prodMailTo').value),prod_wa_to:split($('prodWaTo').value),prod_enabled:$('prodEnabled').checked,prod_format:$('prodFormat').value,holidays:split($('holidays').value),mgmt_mail_to:split($('mgmtMailTo').value),mgmt_wa_to:split($('mgmtWaTo').value),mgmt_enabled:$('mgmtEnabled').checked});
+    flash('savedS'); flash('savedW'); flash('savedP'); flash('savedH'); flash('savedM');
+  }catch(e){ alert(e.message); }
+}
+async function sendTest(){
+  const to=$('testTo').value.trim();
+  if(!to){ alert('Enter a test recipient address'); return; }
+  const b=$('testBtn'); b.disabled=true; b.textContent='Sending…';
+  const msg=$('savedT'); msg.style.display='inline'; msg.style.color='var(--gray)'; msg.textContent='sending…';
+  try{
+    // save current settings first so the test reflects what's on screen
+    const split=v=>v.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+    await post({mail_to:split($('mailTo').value),mail_cc:split($('mailCc').value),send_time:$('sendTime').value,enabled:$('enabled').checked,mail_subject:$('mailSubject').value,mail_body:$('mailBody').value});
+    const r=await post({send:true,test_to:to,mail_body:$('mailBody').value,mail_subject:$('mailSubject').value});
+    msg.style.color='var(--good)'; msg.textContent=`✓ Sent to ${to} · ${r.items} items · ${r.mt} MT`;
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
+  finally{ b.disabled=false; b.textContent='Send test now'; }
+}
+async function sendWaTest(){
+  const to=$('waTestTo').value.trim();
+  const b=$('waTestBtn'); b.disabled=true; b.textContent='Sending…';
+  const msg=$('savedWT'); msg.style.display='inline'; msg.style.color='var(--gray)'; msg.textContent='sending…';
+  try{
+    // save current numbers first so a blank test uses the latest saved list
+    const split=v=>v.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+    await post({wa_to:split($('waTo').value),wa_enabled:$('waEnabled').checked});
+    const r=await post({whatsapp_test:true, wa_test_to:to});
+    if(r.skipped){ msg.style.color='var(--gray)'; msg.textContent='• '+r.skipped; }
+    else{
+      const s=(r.sent||[])[0]||{};
+      if(s.error){ msg.style.color='var(--red)'; msg.textContent='✗ '+s.error; }
+      else{ msg.style.color='var(--good)'; msg.textContent='✓ Sent to '+(s.num||to); }
+    }
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
+  finally{ b.disabled=false; b.textContent='Send test WhatsApp now'; }
+}
+async function sendProdMailTest(){
+  const to=$('prodTestTo').value.trim();
+  const b=$('prodMailBtn'); b.disabled=true; b.textContent='Sending…';
+  const msg=$('savedPM'); msg.style.display='inline'; msg.style.color='var(--gray)'; msg.textContent='sending…';
+  try{
+    const split=v=>v.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+    await post({prod_mail_to:split($('prodMailTo').value),prod_format:$('prodFormat').value,prod_enabled:$('prodEnabled').checked});
+    const r=await post({prod_mail_test:true, test_to:to});
+    if(r.error){ msg.style.color='var(--red)'; msg.textContent='✗ '+r.error; }
+    else{ msg.style.color='var(--good)'; msg.textContent='✓ Sent ('+r.format+') to '+(r.sent_to||[]).join(', '); }
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
+  finally{ b.disabled=false; b.textContent='Send test email'; }
+}
+async function sendProdWaTest(){
+  const to=$('prodWaTestTo').value.trim();
+  const b=$('prodWaBtn'); b.disabled=true; b.textContent='Sending…';
+  const msg=$('savedPW'); msg.style.display='inline'; msg.style.color='var(--gray)'; msg.textContent='sending…';
+  try{
+    const split=v=>v.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+    await post({prod_wa_to:split($('prodWaTo').value),prod_format:$('prodFormat').value,prod_enabled:$('prodEnabled').checked});
+    const r=await post({prod_whatsapp_test:true, prod_wa_test_to:to});
+    if(r.skipped){ msg.style.color='var(--gray)'; msg.textContent='• '+r.skipped; }
+    else{ const s=(r.sent||[])[0]||{}; if(s.error){ msg.style.color='var(--red)'; msg.textContent='✗ '+s.error; } else { msg.style.color='var(--good)'; msg.textContent='✓ Sent to '+(s.num||to); } }
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
+  finally{ b.disabled=false; b.textContent='Send test WhatsApp'; }
+}
+async function sendDailyMailTest(){
+  const to=$('dailyTestTo').value.trim();
+  const b=$('dailyMailBtn'); b.disabled=true; b.textContent='Sending…';
+  const msg=$('savedDM'); msg.style.display='inline'; msg.style.color='var(--gray)'; msg.textContent='sending…';
+  try{
+    const split=v=>v.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+    await post({mgmt_mail_to:split($('mgmtMailTo').value),mgmt_wa_to:split($('mgmtWaTo').value),mgmt_enabled:$('mgmtEnabled').checked});
+    const r=await post({daily_mail_test:true, test_to:to});
+    if(r.error){ msg.style.color='var(--red)'; msg.textContent='✗ '+r.error; }
+    else{ msg.style.color='var(--good)'; msg.textContent='✓ Sent to '+(r.sent_to||[]).join(', '); }
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
+  finally{ b.disabled=false; b.textContent='Send test email'; }
+}
+async function sendDailyWaTest(){
+  const to=$('dailyWaTestTo').value.trim();
+  const b=$('dailyWaBtn'); b.disabled=true; b.textContent='Sending…';
+  const msg=$('savedDW'); msg.style.display='inline'; msg.style.color='var(--gray)'; msg.textContent='sending…';
+  try{
+    const split=v=>v.split(/[\n,;]+/).map(s=>s.trim()).filter(Boolean);
+    await post({mgmt_wa_to:split($('mgmtWaTo').value),mgmt_enabled:$('mgmtEnabled').checked});
+    const r=await post({daily_whatsapp_test:true, daily_wa_test_to:to});
+    if(r.skipped){ msg.style.color='var(--gray)'; msg.textContent='• '+r.skipped; }
+    else{ const s=(r.sent||[])[0]||{}; if(s.error){ msg.style.color='var(--red)'; msg.textContent='✗ '+s.error; } else { msg.style.color='var(--good)'; msg.textContent='✓ Sent to '+(s.num||to); } }
+  }catch(e){ msg.style.color='var(--red)'; msg.textContent='✗ '+e.message; }
+  finally{ b.disabled=false; b.textContent='Send test WhatsApp'; }
+}
+load();
+</script>
+</body></html>
