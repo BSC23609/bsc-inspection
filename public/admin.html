@@ -1,0 +1,1867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BSC Tickets — Admin</title>
+  <link rel="stylesheet" href="/css/bsc.css">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/favicon-32.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0A4566">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="BSC Portal">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/theme.css?v=5">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>body{font-family:'Inter',ui-sans-serif,system-ui,sans-serif}
+    .lbl{display:block;font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--ink-mute);margin-bottom:.25rem}
+    .inp{width:100%;border-radius:11px;border:1px solid var(--line);font-size:.85rem;padding:.5rem .7rem;color:var(--ink)}
+    .inp:focus{outline:none;border-color:var(--steel);box-shadow:0 0 0 3px rgba(27,123,192,.16)}</style>
+</head>
+<body class="min-h-screen text-ink">
+  <header class="deckbar">
+    <div class="max-w-6xl mx-auto px-4 deckbar-in">
+      <span class="deck-plate"><img src="/img/group-logo.png" alt="The Bharat Steel Group" /></span>
+      <span class="deck-sp"></span>
+      <a href="/home.html" class="deck-link">Home</a>
+      <a href="/app.html" class="deck-accent">Raise / my tickets</a>
+      <span id="who" class="hidden sm:inline deck-who"></span>
+      <button onclick="logout()" class="deck-out">Sign out</button>
+    </div>
+    <div class="seam"></div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-4 py-6">
+    <div class="flex gap-6 border-b border-line mb-6 flex-wrap">
+      <button data-tab="dash" data-active="true" class="tabBtn tab">Dashboard</button>
+      <button data-tab="health" data-active="false" class="tabBtn tab">Health</button>
+      <button data-tab="emp" data-active="false" class="tabBtn tab">Employees</button>
+      <button data-tab="cat" data-active="false" class="tabBtn tab">Categories &amp; routing</button>
+      <button data-tab="loc" data-active="false" class="tabBtn tab">Locations</button>
+      <button data-tab="ogappr" data-active="false" class="tabBtn tab">Outpass approvers</button>
+      <button data-tab="trips" data-active="false" class="tabBtn tab">Conveyance trips</button>
+      <button data-tab="gate" data-active="false" class="tabBtn tab">Gate monitor</button>
+      <button data-tab="exp" data-active="false" class="tabBtn tab">Expense policy</button>
+    </div>
+
+    <!-- DASHBOARD -->
+    <section id="tab-dash">
+      <div class="flex gap-1 border-b border-line mb-5">
+        <button data-sub="tickets" data-active="true" class="subBtn tab">Tickets</button>
+        <button data-sub="gatepass" data-active="false" class="subBtn tab">Gatepass</button>
+        <button data-sub="expense" data-active="false" class="subBtn tab">Expense</button>
+        <button data-sub="ot" data-active="false" class="subBtn tab">OT entries</button>
+      </div>
+      <div id="sub-tickets">
+      <div class="flex items-end gap-2 mb-4">
+        <div><label class="lbl">From</label><input id="d_from" type="date" class="inp" /></div>
+        <div><label class="lbl">To</label><input id="d_to" type="date" class="inp" /></div>
+        <button onclick="loadDash()" class="btn-ghost text-sm">Apply</button>
+        <a href="/api/admin/export.xlsx"
+           class="ml-auto inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">
+          ⬇ Download full log (.xlsx)
+        </a>
+      </div>
+      <div id="kpis" class="grid grid-cols-2 sm:grid-cols-6 gap-3 mb-5"></div>
+
+      <div class="card p-4 mb-5">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 class="font-bold text-sm">Ticket reminders</h3>
+            <p class="text-xs text-slate-500 mt-0.5">WhatsApp escalation nudges to L1 / L2 / L3 and confirm-close nudges to requesters. Turn off to pause all ticket reminders at once.</p>
+            <p id="remState" class="text-xs mt-1 font-semibold"></p>
+          </div>
+          <button id="remToggle" onclick="toggleTicketReminders()" class="btn text-sm">…</button>
+        </div>
+      </div>
+      <div class="card p-4 mb-5">
+        <div class="flex items-center justify-between flex-wrap gap-3">
+          <div>
+            <h3 class="font-bold text-sm">Daily ticket report</h3>
+            <p class="text-xs text-slate-500 mt-0.5">Auto-sent on WhatsApp every day at 6:30 pm. The full report goes to everyone listed below.</p>
+          </div>
+          <a id="dlReport" href="/api/admin/report-daily.pdf" target="_blank"
+             class="inline-flex items-center gap-1.5 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-lg">⬇ Today's PDF</a>
+        </div>
+        <div class="mt-3">
+          <label class="lbl">Overall report recipients — one WhatsApp number per line (with country code)</label>
+          <textarea id="drPhones" rows="3" class="inp w-full text-sm" placeholder="919812345678&#10;919876543210"></textarea>
+          <div class="flex gap-2 mt-2">
+            <button onclick="saveDrPhones()" class="btn text-sm">Save</button>
+            <button onclick="sendDrNow()" class="btn-ghost text-sm">Send now</button>
+          </div>
+        </div>
+        <div class="mt-4 border-t border-line pt-3">
+          <div class="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h4 class="font-bold text-sm">Per-person reports</h4>
+              <p class="text-xs text-slate-500 mt-0.5">Send each person only the tickets in their categories/trades. Nothing in their scope that day = nothing sent.</p>
+            </div>
+            <button onclick="openSubModal()" class="btn-ghost text-sm shrink-0">+ Add person</button>
+          </div>
+          <div id="subList" class="mt-3"></div>
+        </div>
+      </div>
+      <div class="grid lg:grid-cols-2 gap-4 mb-5">
+        <div class="card p-4"><h3 class="font-bold text-sm mb-3">Tickets by Category</h3><canvas id="catChart" height="170"></canvas></div>
+        <div class="card p-4"><h3 class="font-bold text-sm mb-3">By Priority</h3><canvas id="priChart" height="170"></canvas></div>
+      </div>
+      <div class="card p-4 mb-5">
+        <h3 class="font-bold text-sm mb-3">Avg Resolution Time by Category</h3>
+        <div id="catTable" class="overflow-x-auto"></div>
+      </div>
+      <div class="card p-4 mb-5">
+        <h3 class="font-bold text-sm mb-3">By Handler (L1) — performance</h3>
+        <div id="handlerTable" class="overflow-x-auto"></div>
+      </div>
+      <!-- ===== Data & cleanup: own short window, independent of the KPI range above ===== -->
+      <div class="card p-4 mt-5">
+        <div class="flex items-center justify-between flex-wrap gap-3 mb-3">
+          <h3 class="font-bold text-sm">Data &amp; cleanup <span class="font-normal text-slate-400">— review &amp; remove test entries</span></h3>
+          <div class="flex items-center gap-2 flex-wrap text-sm">
+            <span class="eyebrow" style="color:var(--ink-mute)">Window</span>
+            <button data-scope="tickets" data-d="3"  onclick="setCleanupRange('tickets',3)"  class="cl-range px-2.5 py-1 rounded-md border border-slate-200">3d</button>
+            <button data-scope="tickets" data-d="7"  onclick="setCleanupRange('tickets',7)"  class="cl-range px-2.5 py-1 rounded-md border border-slate-200">7d</button>
+            <button data-scope="tickets" data-d="30" onclick="setCleanupRange('tickets',30)" class="cl-range px-2.5 py-1 rounded-md border border-slate-200">30d</button>
+            <button data-scope="tickets" data-d="0"  onclick="setCleanupRange('tickets',0)"  class="cl-range px-2.5 py-1 rounded-md border border-slate-200">Custom</button>
+            <span id="clCustom_tickets" class="hidden items-center gap-1.5">
+              <input type="date" id="cl_tickets_from" class="inp !py-1 !text-xs" onchange="loadCleanupTickets()">
+              <span class="text-slate-400">→</span>
+              <input type="date" id="cl_tickets_to" class="inp !py-1 !text-xs" onchange="loadCleanupTickets()">
+            </span>
+          </div>
+        </div>
+
+        <!-- Tickets -->
+        <div class="mt-2">
+          <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <h4 class="font-semibold text-xs uppercase tracking-wider text-slate-500">Tickets</h4>
+            <div class="flex items-center gap-2">
+              <select id="cl_t_status" class="inp !py-1 !text-xs" onchange="loadCleanupTickets()">
+                <option value="">All statuses</option>
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="reopened">Reopened</option>
+                <option value="external">Escalated externally</option>
+                <option value="resolved">Resolved</option>
+                <option value="closed">Closed</option>
+              </select>
+              <input id="cl_t_q" placeholder="Search ref / subject" class="inp !py-1 !text-xs" oninput="debouncedTickets()">
+            </div>
+          </div>
+          <div id="recentTable" class="overflow-x-auto"></div>
+        </div>
+
+      </div>
+    </div>  <!-- /#sub-tickets -->
+
+      <div id="sub-gatepass" class="hidden">
+        <div class="card p-4"><div class="font-semibold text-sm mb-2">Gatepasses &amp; overstays by month</div><canvas id="chGate" height="140"></canvas></div>
+        <div class="card p-4 mt-3">
+          <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <h4 class="font-semibold text-xs uppercase tracking-wider text-slate-500">Outpass / Gatepass entries</h4>
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <span class="eyebrow" style="color:var(--ink-mute)">Window</span>
+              <button data-scope="gatepass" data-d="3"  onclick="setCleanupRange('gatepass',3)"  class="cl-range px-2 py-0.5 rounded-md border border-slate-200">3d</button>
+              <button data-scope="gatepass" data-d="7"  onclick="setCleanupRange('gatepass',7)"  class="cl-range px-2 py-0.5 rounded-md border border-slate-200">7d</button>
+              <button data-scope="gatepass" data-d="30" onclick="setCleanupRange('gatepass',30)" class="cl-range px-2 py-0.5 rounded-md border border-slate-200">30d</button>
+              <button data-scope="gatepass" data-d="0"  onclick="setCleanupRange('gatepass',0)"  class="cl-range px-2 py-0.5 rounded-md border border-slate-200">Custom</button>
+              <span id="clCustom_gatepass" class="hidden items-center gap-1">
+                <input type="date" id="cl_gatepass_from" class="inp !py-0.5 !text-xs" onchange="loadCleanupOutpass()">
+                <span class="text-slate-400">→</span>
+                <input type="date" id="cl_gatepass_to" class="inp !py-0.5 !text-xs" onchange="loadCleanupOutpass()">
+              </span>
+            </div>
+              <select id="cl_o_type" class="inp !py-1 !text-xs" onchange="loadCleanupOutpass()">
+                <option value="">All types</option><option value="outpass">Outpass</option><option value="gatepass">Gatepass</option>
+              </select>
+              <select id="cl_o_status" class="inp !py-1 !text-xs" onchange="loadCleanupOutpass()">
+                <option value="">All statuses</option><option value="pending">Pending</option><option value="approved">Approved</option><option value="rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+          <div id="outpassTable" class="overflow-x-auto"></div>
+        </div>
+      </div>
+      <div id="sub-expense" class="hidden">
+        <div class="grid md:grid-cols-2 gap-3">
+          <div class="card p-4"><div class="font-semibold text-sm mb-2">Expense (approved) by month</div><canvas id="chExpMonth" height="160"></canvas></div>
+          <div class="card p-4"><div class="font-semibold text-sm mb-2">Expense by type</div><canvas id="chExpType" height="160"></canvas></div>
+        </div>
+        <div class="card p-4 mt-3">
+          <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <h4 class="font-semibold text-xs uppercase tracking-wider text-slate-500">Expense entries</h4>
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <span class="eyebrow" style="color:var(--ink-mute)">Window</span>
+              <button data-scope="expense" data-d="3"  onclick="setCleanupRange('expense',3)"  class="cl-range px-2 py-0.5 rounded-md border border-slate-200">3d</button>
+              <button data-scope="expense" data-d="7"  onclick="setCleanupRange('expense',7)"  class="cl-range px-2 py-0.5 rounded-md border border-slate-200">7d</button>
+              <button data-scope="expense" data-d="30" onclick="setCleanupRange('expense',30)" class="cl-range px-2 py-0.5 rounded-md border border-slate-200">30d</button>
+              <button data-scope="expense" data-d="0"  onclick="setCleanupRange('expense',0)"  class="cl-range px-2 py-0.5 rounded-md border border-slate-200">Custom</button>
+              <span id="clCustom_expense" class="hidden items-center gap-1">
+                <input type="date" id="cl_expense_from" class="inp !py-0.5 !text-xs" onchange="loadCleanupExpense()">
+                <span class="text-slate-400">→</span>
+                <input type="date" id="cl_expense_to" class="inp !py-0.5 !text-xs" onchange="loadCleanupExpense()">
+              </span>
+            </div>
+              <select id="cl_e_type" class="inp !py-1 !text-xs" onchange="loadCleanupExpense()">
+                <option value="">All types</option><option value="conveyance">Local Conveyance</option><option value="outstation">Outstation</option><option value="misc">Miscellaneous</option>
+              </select>
+              <select id="cl_e_status" class="inp !py-1 !text-xs" onchange="loadCleanupExpense()">
+                <option value="">All statuses</option><option value="pending_hr">Pending HR</option><option value="pending_final">Pending final</option><option value="approved">Approved</option><option value="rejected">Rejected</option>
+              </select>
+            </div>
+          </div>
+          <div id="expenseTable" class="overflow-x-auto"></div>
+        </div>
+      </div>
+      <div id="sub-ot" class="hidden">
+        <div class="grid md:grid-cols-2 gap-3">
+          <div class="card p-4"><div class="font-semibold text-sm mb-2">Overtime spend by month</div><canvas id="chOtMonth" height="160"></canvas></div>
+          <div class="card p-4"><div class="font-semibold text-sm mb-2">Overtime spend by department</div><canvas id="chOtDept" height="160"></canvas></div>
+        </div>
+        <div class="card p-4 mt-3">
+          <div class="flex items-center justify-between flex-wrap gap-2 mb-2">
+            <h4 class="font-semibold text-xs uppercase tracking-wider text-slate-500">OT entries</h4>
+            <div class="flex items-center gap-2 flex-wrap">
+              <div class="flex items-center gap-1.5 flex-wrap text-xs">
+              <span class="eyebrow" style="color:var(--ink-mute)">Window</span>
+              <button data-scope="ot" data-d="3"  onclick="setCleanupRange('ot',3)"  class="cl-range px-2 py-0.5 rounded-md border border-slate-200">3d</button>
+              <button data-scope="ot" data-d="7"  onclick="setCleanupRange('ot',7)"  class="cl-range px-2 py-0.5 rounded-md border border-slate-200">7d</button>
+              <button data-scope="ot" data-d="30" onclick="setCleanupRange('ot',30)" class="cl-range px-2 py-0.5 rounded-md border border-slate-200">30d</button>
+              <button data-scope="ot" data-d="0"  onclick="setCleanupRange('ot',0)"  class="cl-range px-2 py-0.5 rounded-md border border-slate-200">Custom</button>
+              <span id="clCustom_ot" class="hidden items-center gap-1">
+                <input type="date" id="cl_ot_from" class="inp !py-0.5 !text-xs" onchange="loadCleanupOT()">
+                <span class="text-slate-400">→</span>
+                <input type="date" id="cl_ot_to" class="inp !py-0.5 !text-xs" onchange="loadCleanupOT()">
+              </span>
+            </div>
+            <select id="cl_ot_status" class="inp !py-1 !text-xs" onchange="loadCleanupOT()">
+              <option value="">All statuses</option>
+              <option value="draft">Draft</option><option value="pending">Pending</option><option value="approved">Approved</option>
+              <option value="rejected">Rejected</option><option value="hr_verified">HR verified</option><option value="mgmt_approved">Mgmt approved</option><option value="paid">Paid</option>
+            </select>
+            </div>
+          </div>
+          <div id="otTable" class="overflow-x-auto"></div>
+        </div>
+      </div>
+    </section>
+
+
+    <section id="tab-health" class="hidden">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <div><div class="eyebrow">System health</div>
+          <p class="text-xs text-slate-500 mt-1">What's configured and what's silently broken. Green = OK, red = needs attention.</p></div>
+        <button onclick="loadHealth()" class="btn-ghost text-sm">↻ Refresh</button>
+      </div>
+      <div id="healthBody" class="grid md:grid-cols-2 gap-3"></div>
+
+      <div class="card p-4 mt-3">
+        <div class="flex items-center justify-between gap-2">
+          <div class="font-semibold text-sm">Employees needing a valid WhatsApp number</div>
+          <button onclick="loadPhoneAudit()" class="btn-ghost text-xs">↻ Refresh</button>
+        </div>
+        <p class="text-xs text-slate-500 mt-1 mb-2">These active employees won't receive any WhatsApp alerts until a valid number is set.</p>
+        <div id="phoneAuditBody" class="text-sm"></div>
+      </div>
+
+      <div class="card p-4 mt-3">
+        <div class="font-semibold text-sm mb-1">Alert email for stopped jobs</div>
+        <p class="text-xs text-slate-500 mb-2">If a background job stops running, we'll email this address once. Leave blank to disable.</p>
+        <div class="flex gap-2 items-end flex-wrap">
+          <input id="opsEmail" class="inp" placeholder="ops@bharatsteels.in" style="max-width:320px">
+          <button onclick="saveOpsEmail()" class="btn text-sm">Save</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-emp" class="hidden">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <div class="eyebrow">Directory</div>
+          <p class="text-xs text-slate-500 mt-1">Add a new joiner with their full profile, or edit anyone below.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <label class="flex items-center gap-1.5 text-xs text-slate-600 cursor-pointer select-none">
+            <input type="checkbox" id="empShowInactive" onchange="renderEmployees()" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500">
+            Show inactive (left) staff <span id="empInactiveCount" class="text-slate-400"></span>
+          </label>
+          <button onclick="addEmp()" class="btn text-sm">+ Add employee</button>
+        </div>
+      </div>
+      <div class="card p-4"><div id="empTable" class="overflow-x-auto"></div></div>
+    </section>
+
+    <!-- CATEGORIES -->
+    <section id="tab-cat" class="hidden">
+      <div class="card p-4 mb-4">
+        <h3 class="font-bold text-sm mb-1">Working-calendar holidays</h3>
+        <p class="text-[11px] text-slate-400 mb-3">Escalation timers pause on these dates (same as Sundays). Working hours are Mon–Sat 9:30–18:00.</p>
+        <div id="holList" class="flex flex-wrap gap-2 mb-3"></div>
+        <div class="flex flex-wrap gap-2 items-end">
+          <div><label class="lbl">Date</label><input id="hol_d" type="date" class="inp" /></div>
+          <div><label class="lbl">Label (optional)</label><input id="hol_label" class="inp" placeholder="e.g. Diwali" /></div>
+          <button onclick="addHoliday()" class="btn text-sm shrink-0">Add holiday</button>
+        </div>
+      </div>
+      <div class="card p-4 mb-4">
+        <h3 class="font-bold text-sm mb-3">Add category</h3>
+        <div class="grid sm:grid-cols-3 gap-3 items-end">
+          <input id="c_name" class="inp" placeholder="Category name *" />
+          <div><label class="lbl">Routing pattern</label><select id="c_pattern" class="inp">
+            <option value="assign">L2 assigns (L2 receives → picks an L1)</option>
+            <option value="direct">Direct to L1 (no L2)</option></select></div>
+          <button onclick="addCat()" class="btn text-sm">Add category</button>
+        </div>
+        <p class="text-[11px] text-slate-400 mt-2">After adding, set the handlers, L1 pool, and wait-times below.</p>
+      </div>
+      <div id="catList" class="space-y-4"></div>
+    </section>
+
+    <!-- LOCATIONS -->
+    <section id="tab-loc" class="hidden">
+      <div class="card p-4 mb-4 flex gap-2">
+        <input id="l_name" class="inp" placeholder="New location name" />
+        <button onclick="addLoc()" class="btn text-sm shrink-0">Add</button>
+      </div>
+      <div class="card p-4"><div id="locTable"></div></div>
+      <div class="card p-4 mt-4">
+        <h3 class="font-bold text-sm">Self-ticket "Requested by" options</h3>
+        <p class="text-xs text-slate-500 mt-0.5 mb-2">Companies/sites that appear in the "Requested by" list when someone raises a task for themselves — one per line (e.g. Crayon, Metfraa Office, Metfraa Factory, G2). Employee names are listed automatically.</p>
+        <textarea id="rgText" rows="5" class="inp w-full text-sm" placeholder="Crayon&#10;Metfraa Office&#10;Metfraa Factory&#10;G2"></textarea>
+        <div class="mt-2"><button onclick="saveReqGroups()" class="btn text-sm">Save</button></div>
+      </div>
+    </section>
+
+    <!-- OUTPASS APPROVERS -->
+    <section id="tab-ogappr" class="hidden">
+      <div class="card p-4 mb-4">
+        <div class="text-xs text-slate-500 mb-3">Outpass/Gatepass requests route automatically to the requester's <b>department head</b>. Set each department's head below. The <b>fallback approver</b> handles departments with no head set. Department <b>heads'</b> own passes route to the <b>heads' outpass approver</b> (e.g. Shivam Shroff). When a requester ticks <b>"manager on leave"</b>, the request goes to that department's <b>leave cover</b> (or the default leave cover if none is set).</div>
+        <div class="flex flex-wrap gap-4 items-end">
+          <div><label class="lbl">Fallback approver (e.g. HR)</label><select id="oa_fallback" class="inp min-w-[16rem]"></select></div>
+          <button onclick="saveFallback()" class="btn text-sm shrink-0">Save fallback</button>
+          <div><label class="lbl">Heads' outpass approver (e.g. Shivam Shroff)</label><select id="oa_heads" class="inp min-w-[16rem]"></select></div>
+          <button onclick="saveHeads()" class="btn text-sm shrink-0">Save heads' approver</button>
+          <div><label class="lbl">Default leave-cover (e.g. Bakthavachalam)</label><select id="oa_leavecover" class="inp min-w-[16rem]"></select></div>
+          <button onclick="saveLeaveCover()" class="btn text-sm shrink-0">Save leave-cover</button>
+        </div>
+        <div id="oa_heads_list" class="text-xs text-slate-600 mt-3"></div>
+      </div>
+      <div class="card p-4"><div id="ogApprTable"></div></div>
+    </section>
+
+    <!-- EXPENSE POLICY -->
+    <!-- GATE MONITOR (outpass return tracking) -->
+    <section id="tab-gate" class="hidden">
+      <div class="card p-5 mb-5">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div class="eyebrow">Currently out</div>
+            <p class="text-xs text-slate-500 mt-1">Approved gatepasses with no return recorded yet. Rows turn red once past the expected return time. Mark a return manually if someone came back but didn't scan.</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span id="gateAuto" class="text-[11px] text-slate-400"></span>
+            <button onclick="loadCurrentlyOut()" class="btn-ghost text-sm">Refresh</button>
+          </div>
+        </div>
+        <div id="outBoard" class="mt-4 overflow-x-auto"></div>
+      </div>
+
+      <div class="card p-5 mb-5">
+        <div class="eyebrow">Overstay report</div>
+        <div class="flex items-center gap-2 mt-2 mb-3">
+          <input type="month" id="osMonth" class="inp !py-1 !text-sm" onchange="loadOverstay()">
+          <button onclick="loadOverstay()" class="btn-ghost text-sm">Load</button>
+        </div>
+        <div id="osTable" class="overflow-x-auto"></div>
+      </div>
+
+      <div class="card p-5">
+        <div class="eyebrow">Gate location &amp; rules</div>
+        <p class="text-xs text-slate-500 mt-1 mb-3">The self-return QR only accepts a scan within the radius below. Stand at the gate and tap <b>Capture my location</b> from a phone to set the centre.</p>
+        <div class="grid sm:grid-cols-2 gap-3 max-w-2xl">
+          <div><label class="lbl">Gate latitude</label><input id="gsLat" class="inp" placeholder="e.g. 13.1143"></div>
+          <div><label class="lbl">Gate longitude</label><input id="gsLng" class="inp" placeholder="e.g. 80.1548"></div>
+          <div><label class="lbl">Radius (metres)</label><input id="gsRadius" type="number" class="inp" placeholder="150"></div>
+          <div><label class="lbl">Overdue after (minutes)</label><input id="gsOverdue" type="number" class="inp" placeholder="5"></div>
+          <div><label class="lbl">Treat as multi-day after (hours)</label><input id="gsMultiday" type="number" class="inp" placeholder="16"></div>
+          <div class="sm:col-span-2"><label class="lbl">HR (also receives overdue alerts)</label><select id="gsHr" class="inp"></select></div>
+          <p class="sm:col-span-2 text-[11px] text-slate-500 -mt-1">Passes overdue beyond this many hours are treated as multi-day / vehicle trips — flagged separately and <b>not</b> sent to HR as overdue.</p>
+        </div>
+        <div class="flex gap-2 mt-4">
+          <button onclick="captureGate()" class="btn-ghost text-sm">📍 Capture my location</button>
+          <button onclick="saveGateLocation()" class="btn text-sm">Save gate settings</button>
+          <button onclick="showDbInfo()" class="btn-ghost text-sm">🔍 DB diagnostics</button>
+        </div>
+        <div id="gsStatus" class="text-xs mt-2"></div>
+        <pre id="dbInfo" class="hidden text-[11px] bg-slate-900 text-emerald-300 rounded-lg p-3 mt-3 overflow-x-auto whitespace-pre-wrap"></pre>
+      </div>
+
+      <div class="card p-5">
+        <div class="eyebrow">Overtime approvers</div>
+        <p class="text-xs text-slate-500 mt-1 mb-3">Who approves OT for each department. Production → Kannan, Dispatch → Kumar N. (If Kumar logs his own OT, it auto-skips to HR.)</p>
+        <div class="grid sm:grid-cols-2 gap-3 max-w-xl">
+          <div><label class="lbl">Production approver</label><select id="otProd" class="inp"></select></div>
+          <div><label class="lbl">Dispatch approver</label><select id="otDisp" class="inp"></select></div>
+          <div><label class="lbl">HR verifier (Rajasekar)</label><select id="otHr" class="inp"></select></div>
+        </div>
+        <div class="mt-3">
+          <label class="lbl">Management approvers — final approval for OT &amp; Labour (any can approve — Goverdhan / Gourav / Shivam / Jeeva)</label>
+          <select id="otMgmt" class="inp" multiple size="4"></select>
+          <div class="text-[11px] text-slate-400 mt-1">Ctrl/Cmd-click to select multiple.</div>
+        </div>
+        <div class="grid sm:grid-cols-2 gap-3 max-w-xl mt-3">
+          <div><label class="lbl">BSC — accounts email</label><input id="accEmailBsc" class="inp" placeholder="accounts@bharatsteels.in"></div>
+          <div><label class="lbl">BSC — accounts contact (WhatsApp)</label><select id="accEmpBsc" class="inp"><option value="">— none —</option></select></div>
+          <div><label class="lbl">G2 — accounts email</label><input id="accEmailG2" class="inp" placeholder="g2@bharatsteels.in"></div>
+          <div><label class="lbl">G2 — accounts contact (WhatsApp)</label><select id="accEmpG2" class="inp"><option value="">— none —</option></select></div>
+          <div><label class="lbl">Labour accounts contact (WhatsApp — Lakshmi)</label><select id="labAcc" class="inp"><option value="">— none —</option></select></div>
+          <div class="sm:col-span-2"><label class="lbl">Simplified home — Final Approvals only (e.g. CMD)</label><select id="simpleHome" class="inp" multiple size="4"></select><div class="text-[11px] text-slate-400 mt-1">Ctrl/Cmd-click to pick. These users see just Final Approvals on their home; everything else collapses under a toggle.</div></div>
+        </div>
+        <button onclick="saveOtApprovers()" class="btn text-sm mt-3">Save OT approvers</button>
+        <span id="otApprMsg" class="text-xs ml-2"></span>
+      </div>
+
+      <div class="card p-5">
+        <div class="eyebrow">Maintenance approval gate</div>
+        <p class="text-xs text-slate-500 mt-1 mb-3">Tickets in the chosen category go to this person first for a one-tap approve/reject before reaching the maintenance team. Leave the category blank to disable.</p>
+        <div class="flex gap-2 items-end flex-wrap">
+          <div><label class="lbl">Gated category</label><select id="mgCat" class="inp"><option value="">— none (disabled) —</option></select></div>
+          <div><label class="lbl">Approver</label><select id="mgAppr" class="inp"><option value="">— pick —</option></select></div>
+          <button onclick="saveMaintGate()" class="btn text-sm">Save</button>
+        </div>
+      </div>
+
+      <div class="card p-5">
+        <div class="eyebrow">WhatsApp template test</div>
+        <p class="text-xs text-slate-500 mt-1 mb-3">Sends a real template to a number and shows WATI's raw reply — use this to see why a notification isn't arriving.</p>
+        <div class="flex gap-2 items-end flex-wrap max-w-xl">
+          <div><label class="lbl">Template</label>
+            <select id="wtWhich" class="inp">
+              <option value="conveyance">conveyance_request (trip approval)</option>
+              <option value="overdue">outpass_overdue (gatepass overdue → HR)</option>
+              <option value="return_reminder">gatepass_return_reminder2 (→ requester, I'm Back button)</option>
+              <option value="ot_approval">ot_approval (OT → Kannan/Kumar)</option>
+              <option value="ot_hr">ot_hr_verify (OT → HR)</option>
+              <option value="ot_mgmt">ot_mgmt_approval (OT → Management)</option>
+              <option value="ot_accounts">ot_accounts_pay (OT → Accounts)</option>
+              <option value="ot_rejected">ot_rejected (OT → Employee)</option>
+              <option value="maint_gate">maint_gate_approval (→ Gatekeeper)</option>
+              <option value="maint_rejected">maint_gate_rejected (→ Requester)</option>
+            </select>
+          </div>
+          <div class="flex-1 min-w-[160px]"><label class="lbl">Phone (with country code)</label><input id="wtPhone" class="inp" placeholder="9198xxxxxxxx"></div>
+          <button onclick="testWati()" class="btn text-sm">Send test</button>
+        </div>
+        <pre id="wtOut" class="hidden text-[11px] bg-slate-900 text-emerald-300 rounded-lg p-3 mt-3 overflow-x-auto whitespace-pre-wrap"></pre>
+      </div>
+
+      <div class="card p-5">
+        <div class="flex items-center justify-between gap-2 flex-wrap">
+          <div><div class="eyebrow">WhatsApp delivery log</div>
+            <p class="text-xs text-slate-500 mt-1">Every WATI send and its outcome — so a silent failure is visible here.</p></div>
+          <button onclick="loadWaLog()" class="btn-ghost text-sm">↻ Refresh</button>
+        </div>
+        <div id="waSummary" class="flex gap-2 flex-wrap mt-3 text-xs"></div>
+        <div class="flex gap-2 items-end flex-wrap mt-3">
+          <div><label class="lbl">Result</label>
+            <select id="waResult" class="inp" onchange="loadWaLog()">
+              <option value="">All</option><option value="sent">sent</option><option value="declined">declined</option>
+              <option value="no_phone">no_phone</option><option value="http_error">http_error</option>
+              <option value="error">error</option><option value="skipped">skipped</option>
+            </select></div>
+          <div><label class="lbl">Template</label><input id="waTpl" class="inp" placeholder="e.g. outpass_overdue" oninput="debWaLog()"></div>
+          <div><label class="lbl">Phone</label><input id="waPhone" class="inp" placeholder="digits" oninput="debWaLog()"></div>
+        </div>
+        <div class="overflow-x-auto mt-3">
+          <table class="w-full text-xs">
+            <thead class="text-slate-500 uppercase text-[10px]"><tr>
+              <th class="text-left py-1 pr-3">When</th><th class="text-left py-1 pr-3">Template</th>
+              <th class="text-left py-1 pr-3">Phone</th><th class="text-left py-1 pr-3">Result</th><th class="text-left py-1">Detail</th></tr></thead>
+            <tbody id="waRows"></tbody>
+          </table>
+        </div>
+        <div id="waEmpty" class="hidden text-center text-slate-400 text-sm py-6">No sends logged yet.</div>
+      </div>
+    </section>
+
+    <!-- CONVEYANCE TRIPS (admin override) -->
+    <section id="tab-trips" class="hidden">
+      <div class="card p-5">
+        <div class="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div class="eyebrow">Pending manager approval</div>
+            <p class="text-xs text-slate-500 mt-1">Trips stuck awaiting a reporting manager. Approve on their behalf (stamped as an admin action), or re-send the WhatsApp approve links. Employees can't submit their claim until these clear.</p>
+          </div>
+          <div class="flex gap-2">
+            <button onclick="nudgeAllManagers()" class="btn-ghost text-sm">Resend all links</button>
+            <button onclick="adminTripBulk()" class="btn text-sm">Approve selected (<span id="atSel">0</span>)</button>
+          </div>
+        </div>
+        <div class="flex items-center gap-2 mt-4 pb-2 border-b border-line">
+          <input type="checkbox" id="atAll" onchange="atToggleAll(this.checked)" class="rounded border-slate-300">
+          <span class="text-sm text-slate-600">Select all</span>
+          <span id="atCount" class="pill bg-rose-100 text-rose-700 ml-auto"></span>
+        </div>
+        <div id="atList" class="mt-3 space-y-4"></div>
+      </div>
+    </section>
+
+    <section id="tab-exp" class="hidden">
+      <div class="card p-5 max-w-2xl">
+        <div class="eyebrow">Conveyance rates</div>
+        <div class="grid grid-cols-2 gap-4 mt-2 mb-5">
+          <div><label class="lbl">Bike ₹/km</label><input id="p_bike" type="number" step="0.5" class="inp"></div>
+          <div><label class="lbl">Car ₹/km</label><input id="p_car" type="number" step="0.5" class="inp"></div>
+        </div>
+        <div class="eyebrow">Category 1 daily limits</div>
+        <div class="grid grid-cols-2 gap-4 mt-2 mb-5">
+          <div><label class="lbl">Food / day</label><input id="p_c1food" type="number" class="inp"></div>
+          <div><label class="lbl">Accommodation / day</label><input id="p_c1accom" type="number" class="inp"></div>
+        </div>
+        <div class="eyebrow">Category 2 daily limits</div>
+        <div class="grid grid-cols-2 gap-4 mt-2 mb-5">
+          <div><label class="lbl">Food / day</label><input id="p_c2food" type="number" class="inp"></div>
+          <div><label class="lbl">Accommodation / day</label><input id="p_c2accom" type="number" class="inp"></div>
+        </div>
+        <div class="eyebrow">Local Conveyance logging window</div>
+        <div class="grid grid-cols-2 gap-4 mt-2 mb-5">
+          <div><label class="lbl">Log within (hours)</label><input id="p_loghrs" type="number" min="1" step="1" class="inp"></div>
+          <div class="flex items-end pb-1"><p class="text-xs text-slate-400">Conveyance entries logged later than this after the trip date are flagged <b>LATE / not approved</b> on the report. Never blocks submission.</p></div>
+        </div>
+        <div class="flex justify-end"><button onclick="savePolicy()" class="btn text-sm">Save policy</button></div>
+        <p class="text-xs text-slate-400 mt-3">Set each employee's Category (1 / 2) in the Employees tab.</p>
+      </div>
+
+      <div class="card p-5 max-w-2xl mt-5">
+        <div class="eyebrow">Approval chain</div>
+        <p class="text-xs text-slate-500 mt-1 mb-4">Applies to Local Conveyance, Outstation and Misc. Employee submits → HR reviews → HR routes to a final approver → on final approval the report is emailed to accounts and a WhatsApp goes to the accounts contact.</p>
+        <div class="mb-4"><label class="lbl">HR approver(s) — receive new submissions</label>
+          <div id="ch_hr" class="grid grid-cols-2 gap-1 mt-1 max-h-40 overflow-y-auto border border-line rounded-lg p-2"></div></div>
+        <div class="mb-4"><label class="lbl">Final approvers — HR can route to any of these</label>
+          <div id="ch_final" class="grid grid-cols-2 gap-1 mt-1 max-h-40 overflow-y-auto border border-line rounded-lg p-2"></div></div>
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div><label class="lbl">Accounts email (approved report)</label><input id="ch_email" class="inp" placeholder="accounts@bharatsteels.in"></div>
+          <div><label class="lbl">Accounts WhatsApp contact</label><select id="ch_notify" class="inp"></select></div>
+          <div><label class="lbl">CMD WhatsApp contact (approved claim + verification)</label><select id="ch_cmd" class="inp"></select></div>
+        </div>
+        <div class="mb-4"><label class="lbl">Entity accounts emails (by code prefix)</label>
+          <textarea id="ch_prefix_emails" rows="3" class="inp font-mono text-xs" placeholder="G2 = g2@bharatsteels.in"></textarea>
+          <div class="text-[11px] text-slate-400 mt-1">One per line: <code>PREFIX = email</code>. On approval, a claim's accounts email is chosen by the employee's code prefix (e.g. G2/119 &rarr; G2). Everyone else uses the default above.</div>
+        </div>
+        <div class="flex justify-end"><button onclick="saveChain()" class="btn text-sm">Save chain</button></div>
+      </div>
+
+      <div class="card p-5 max-w-2xl mt-5">
+        <div class="eyebrow">Monthly CMD report</div>
+        <p class="text-xs text-slate-500 mt-1 mb-4">Consolidated Excel of all <b>approved reimbursements still pending payment</b> for a cycle (conveyance + outstation + misc). Once accounts marks a claim paid, it drops off. Email the .xlsx to the CMD with a WhatsApp download link, or download it here.</p>
+        <div class="flex items-end gap-3 flex-wrap">
+          <div><label class="lbl">Cycle</label><input id="rep_month" type="month" min="2026-06" class="inp" onchange="loadReportPreview()"></div>
+          <div id="rep_cycle" class="text-xs text-brand-700 font-semibold pb-2"></div>
+        </div>
+        <div id="rep_preview" class="text-sm text-slate-600 mt-3"></div>
+        <div class="flex justify-end gap-2 mt-3">
+          <button onclick="downloadReport()" class="btn-ghost text-sm">Download Excel</button>
+          <button onclick="sendReport()" class="btn text-sm">Generate &amp; send to CMD</button>
+        </div>
+        <div id="rep_msg" class="text-xs text-slate-500 mt-2"></div>
+      </div>
+
+      <div class="card p-5 max-w-2xl mt-5">
+        <div class="eyebrow">Month-end submit lock</div>
+        <p class="text-xs text-slate-500 mt-1 mb-4">Normally a month can only be submitted from the 1st of the next month. Turn a form's lock off to allow submitting the current month right away (useful for testing).</p>
+        <label class="flex items-center gap-3 py-2 cursor-pointer">
+          <input type="checkbox" id="gate_conv" class="w-4 h-4">
+          <span class="text-sm">Local Conveyance — allow submitting any time</span>
+        </label>
+        <label class="flex items-center gap-3 py-2 cursor-pointer">
+          <input type="checkbox" id="gate_out" class="w-4 h-4">
+          <span class="text-sm">Travel Reimbursement (Outstation) — allow submitting any time</span>
+        </label>
+        <div class="mt-4 pt-4 border-t border-line">
+          <label class="lbl">Earliest selectable cycle</label>
+          <input id="gate_min" type="month" class="inp max-w-[12rem]">
+          <div class="text-[11px] text-slate-400 mt-1">Employees can pick claim cycles from this month onward. Set it earlier (e.g. 2026-06) to unlock a previous cycle; set back to 2026-07 to close it. Pre-July cycles are treated as full calendar months.</div>
+        </div>
+        <div class="flex justify-end mt-3"><button onclick="saveGate()" class="btn text-sm">Save lock settings</button></div>
+      </div>
+    </section>
+  </main>
+
+  <script src="/js/common.js?v=88"></script>
+  <script>
+    let employees = [], charts = {};
+
+    async function init() {
+      const me = await api('/me');
+      if (!me.is_admin) { location.href = '/app.html'; return; }
+      document.getElementById('who').textContent = `${me.name} · ${me.emp_no}`;
+      const today = new Date(), first = new Date(today.getFullYear(), today.getMonth(), 1);
+      document.getElementById('d_from').value = first.toISOString().slice(0,10);
+      document.getElementById('d_to').value = today.toISOString().slice(0,10);
+      document.querySelectorAll('.tabBtn').forEach(b => b.addEventListener('click', () => switchTab(b.dataset.tab)));
+      document.querySelectorAll('.subBtn').forEach(b => b.addEventListener('click', () => switchDashSub(b.dataset.sub)));
+      employees = await api('/admin/employees');
+      loadDash();
+      ['tickets','gatepass','expense','ot'].forEach(sc=>setCleanupRange(sc,3));
+    }
+
+    // ===================== GATE MONITOR (outpass return tracking) =====================
+    let gateTimer = null;
+    function openGateTab() {
+      if (!document.getElementById('osMonth').value)
+        document.getElementById('osMonth').value = new Date().toISOString().slice(0,7);
+      loadGateSettings(); loadCurrentlyOut(); loadOverstay(); loadOtApprovers(); loadWaLog(); loadMaintGate();
+      clearInterval(gateTimer);
+      gateTimer = setInterval(() => { if (!document.getElementById('tab-gate').classList.contains('hidden')) loadCurrentlyOut(); }, 60000);
+    }
+    const mins = (n) => { n = Math.max(0, n|0); const h = Math.floor(n/60), m = n%60; return h ? h+'h '+m+'m' : m+'m'; };
+    // "18 Aug" from a YYYY-MM-DD date or an ISO timestamp (IST). Empty for null.
+    function shortDate(d){
+      if(!d) return '';
+      const dt = new Date(String(d).length<=10 ? d+'T00:00:00' : d);
+      if(isNaN(dt)) return '';
+      return dt.toLocaleDateString('en-GB',{timeZone:'Asia/Kolkata',day:'2-digit',month:'short'});
+    }
+    async function loadCurrentlyOut() {
+      const el = document.getElementById('outBoard');
+      let d; try { d = await api('/outpass/currently-out'); } catch (e) { el.innerHTML = '<div class="text-sm text-red-600">'+e.message+'</div>'; return; }
+      document.getElementById('gateAuto').textContent = `${d.total} out · ${d.overdue} overdue · ${d.multiday||0} multi-day · auto-refresh 60s`;
+      if (!d.out.length) { el.innerHTML = '<div class="text-sm text-slate-400 py-8 text-center">Nobody is currently out on a gatepass. ✅</div>'; return; }
+      el.innerHTML = `<table class="w-full text-sm"><thead><tr class="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-line">
+        <th class="py-2">Employee</th><th>Out</th><th>Expected back</th><th>Status</th><th>Approver</th><th></th></tr></thead><tbody>` +
+        d.out.map(o => `<tr class="border-b border-line/50 ${o.likely_multiday?'bg-slate-50':(o.overdue?'bg-red-50':'')}">
+          <td class="py-2"><div class="font-semibold text-ink">${o.requester} ${o.on_duty?'<span class="pill bg-emerald-100 text-emerald-700 text-[10px]">On duty</span>':''}</div><div class="text-[11px] text-slate-400">${o.emp_no||''} · ${o.purpose||''}</div></td>
+          <td><div class="text-[11px] text-slate-400">${shortDate(o.req_date)}</div>${o.out_time||'—'}</td>
+          <td><div class="text-[11px] text-slate-400">${shortDate(o.expected_back_at)}</div>${o.expected_in||'—'}</td>
+          <td>${o.likely_multiday ? '<span class="pill bg-slate-200 text-slate-600 text-[10px]">Multi-day · '+mins(o.overdue_min)+'</span>' : (o.overdue ? '<span class="text-red-600 font-semibold">Overdue '+mins(o.overdue_min)+'</span>' : '<span class="text-emerald-600">On time</span>')}</td>
+          <td class="text-slate-500">${o.approver||'—'}</td>
+          <td class="text-right whitespace-nowrap"><button onclick="sendOverdue(${o.id})" class="pill bg-amber-100 text-amber-700 hover:bg-amber-200 mr-1">Send alert</button><button onclick="markReturned(${o.id},'${(o.requester||'').replace(/'/g,"\\'")}')" class="pill bg-blue-100 text-blue-700 hover:bg-blue-200">Mark returned</button></td>
+        </tr>`).join('') + '</tbody></table>';
+    }
+    async function sendOverdue(id){
+      if(!confirm('Send the overdue WhatsApp now to HR and the approver for this pass?')) return;
+      try{
+        const r=await api('/admin/outpass/'+id+'/send-overdue',{method:'POST'});
+        const parts=[];
+        if(r.results.hr===true) parts.push('HR ✓'); else if(r.results.hr===false) parts.push('HR failed — check WhatsApp log'); else if(r.results.hr_note) parts.push(r.results.hr_note);
+        if(r.results.approver===true) parts.push('approver ✓'); else if(r.results.approver===false) parts.push('approver failed'); else if(r.results.approver_note) parts.push(r.results.approver_note);
+        if(r.results.requester===true) parts.push('requester ✓'); else if(r.results.requester===false) parts.push('requester failed'); else if(r.results.requester_note) parts.push(r.results.requester_note);
+        toast('Alert: '+parts.join(' · '), (r.results.hr===true?'success':'info'));
+      }catch(e){ toast(e.message,'error'); }
+    }
+    async function markReturned(id, name) {
+      if (!confirm('Mark '+name+' as returned now? Use this only if they physically came back but didn\'t scan.')) return;
+      try { await api('/outpass/'+id+'/return-manual', { method:'POST' }); toast('Return recorded', 'success'); loadCurrentlyOut(); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+    async function loadOverstay() {
+      const el = document.getElementById('osTable');
+      const month = document.getElementById('osMonth').value || new Date().toISOString().slice(0,7);
+      let d; try { d = await api('/outpass/overstay-report?month='+month); } catch (e) { el.innerHTML = '<div class="text-sm text-red-600">'+e.message+'</div>'; return; }
+      if (!d.rows.length) { el.innerHTML = '<div class="text-sm text-slate-400 py-6 text-center">No overstays or unrecorded returns this month. ✅</div>'; return; }
+      el.innerHTML = `<table class="w-full text-sm"><thead><tr class="text-left text-xs uppercase tracking-wider text-slate-500 border-b border-line">
+        <th class="py-2">Employee</th><th class="text-right">Gatepasses</th><th class="text-right">Late</th><th class="text-right">Not recorded</th><th class="text-right">Total overstay</th><th class="text-right">Worst</th></tr></thead><tbody>` +
+        d.rows.map(r => `<tr class="border-b border-line/50">
+          <td class="py-2"><div class="font-semibold text-ink">${r.requester}</div><div class="text-[11px] text-slate-400">${r.emp_no||''} · ${r.department||''}</div></td>
+          <td class="text-right mono">${r.gatepasses}</td>
+          <td class="text-right mono ${r.late_returns?'text-amber-600 font-semibold':''}">${r.late_returns}</td>
+          <td class="text-right mono ${r.not_recorded?'text-red-600 font-semibold':''}">${r.not_recorded}</td>
+          <td class="text-right mono">${mins(r.overstay_min)}</td>
+          <td class="text-right mono">${mins(r.worst_min)}</td>
+        </tr>`).join('') + '</tbody></table>';
+    }
+    async function loadGateSettings() {
+      const st = document.getElementById('gsStatus');
+      let d;
+      try { d = await api('/admin/gate-settings'); }
+      catch (e) {
+        // Don't blank the fields on a failed read — that made it look like the setting was lost.
+        st.textContent = '⚠ Could not load gate settings (server may be waking up). Tap Refresh to retry — your saved location is not lost.';
+        st.className = 'text-xs mt-2 text-amber-600';
+        return;
+      }
+      document.getElementById('gsLat').value = d.lat ?? '';
+      document.getElementById('gsLng').value = d.lng ?? '';
+      document.getElementById('gsRadius').value = d.radius_m ?? 150;
+      document.getElementById('gsOverdue').value = d.overdue_min ?? 5;
+      document.getElementById('gsMultiday').value = d.multiday_hours ?? 16;
+      const sel = document.getElementById('gsHr');
+      sel.innerHTML = '<option value="">— none —</option>' + d.employees.filter(e=>e.active!==false || e.id===d.hr_emp_id).map(e => `<option value="${e.id}" ${e.id===d.hr_emp_id?'selected':''}>${e.name} (${e.emp_no||''})${e.active===false?' — relieved':''}</option>`).join('');
+      const st2 = document.getElementById('gsStatus');
+      st2.textContent = (d.lat!=null && d.lng!=null) ? '✓ Gate location is set.' : '⚠ Gate location not set — self-return QR will reject all scans until configured.';
+      st2.className = 'text-xs mt-2 ' + ((d.lat!=null && d.lng!=null) ? 'text-emerald-600' : 'text-amber-600');
+    }
+    function captureGate() {
+      const st = document.getElementById('gsStatus');
+      st.textContent = 'Getting your location…'; st.className = 'text-xs mt-2 text-slate-500';
+      if (!navigator.geolocation) { st.textContent = 'Location not supported on this device.'; st.className='text-xs mt-2 text-red-600'; return; }
+      navigator.geolocation.getCurrentPosition(
+        (p) => { document.getElementById('gsLat').value = p.coords.latitude.toFixed(6);
+                 document.getElementById('gsLng').value = p.coords.longitude.toFixed(6);
+                 st.textContent = `Captured (±${Math.round(p.coords.accuracy)} m). Review and Save.`; st.className='text-xs mt-2 text-emerald-600'; },
+        (e) => { st.textContent = 'Could not get location: ' + e.message; st.className='text-xs mt-2 text-red-600'; },
+        { enableHighAccuracy: true, timeout: 12000 });
+    }
+    async function showDbInfo() {
+      const el = document.getElementById('dbInfo');
+      el.classList.remove('hidden');
+      el.textContent = 'Loading…';
+      try {
+        const d = await api('/admin/db-info');
+        el.textContent =
+          'BUILD: ' + (d.build || 'unknown') + '   (if this is not FIXED218, the new code is NOT deployed yet)\n\n' +
+          'App is connected to:\n' +
+          '  host: ' + (d.env_host || '?') + '\n' +
+          '  database: ' + (d.db || d.env_dbname || '?') + '\n' +
+          '  server IP: ' + (d.server_ip || 'n/a') + '\n' +
+          '  app_settings rows: ' + (d.app_settings_count != null ? d.app_settings_count : '?') + '\n\n' +
+          'Gate / outpass keys the APP sees right now:\n' +
+          ((d.gate_keys && d.gate_keys.length)
+            ? d.gate_keys.map(r => '  ' + r.key + ' = ' + r.value).join('\n')
+            : '  (none)') +
+          '\n\n===== CROSS-REQUEST PERSISTENCE TEST =====\n' +
+          'Marker left by the PREVIOUS click: ' + (d.previous_probe_found ? ('FOUND ✓  ' + d.previous_probe) : 'NOT FOUND ✗') + '\n' +
+          'New marker written for the NEXT click: ' + (d.new_probe || '?') + '\n\n' +
+          '>> Tap this button a SECOND time.\n' +
+          '   • If "Marker left by the PREVIOUS click" then shows FOUND ✓ → writes persist. Fixed.\n' +
+          '   • If it still says NOT FOUND ✗ → writes are still rolling back.' +
+          (d.error ? ('\n\nERROR: ' + d.error) : '');
+      } catch (e) { el.textContent = 'Failed: ' + e.message; }
+    }
+
+    async function saveGateLocation() {
+      const body = {
+        lat: parseFloat(document.getElementById('gsLat').value) || null,
+        lng: parseFloat(document.getElementById('gsLng').value) || null,
+        radius_m: parseInt(document.getElementById('gsRadius').value) || 150,
+        overdue_min: parseInt(document.getElementById('gsOverdue').value) || 5,
+        multiday_hours: parseInt(document.getElementById('gsMultiday').value) || 16,
+        hr_emp_id: document.getElementById('gsHr').value || null,
+      };
+      const st = document.getElementById('gsStatus');
+      try {
+        // The endpoint writes then reads back from the DB, returning the stored values.
+        const r = await api('/admin/gate-settings', { method:'PUT', body });
+        const s = r.saved || {};
+        if (r.ok && s.lat != null && s.lng != null) {
+          document.getElementById('gsLat').value = s.lat;
+          document.getElementById('gsLng').value = s.lng;
+          document.getElementById('gsRadius').value = s.radius_m;
+          document.getElementById('gsOverdue').value = s.overdue_min;
+          const dbtag = r.db ? ` [wrote to ${r.db.host || '?'} / ${r.db.name || '?'}]` : '';
+          st.textContent = `✓ Saved & confirmed: ${s.lat}, ${s.lng} (radius ${s.radius_m} m).${dbtag}`;
+          st.className = 'text-xs mt-2 text-emerald-600';
+          toast('Gate location saved & confirmed', 'success');
+        } else {
+          st.textContent = '⚠ Server accepted the request but coordinates are NOT in the database afterwards. Screenshot this and send to IT.';
+          st.className = 'text-xs mt-2 text-red-600';
+          toast('Save could not be confirmed', 'error');
+        }
+      } catch (e) {
+        st.textContent = '⚠ Save failed: ' + e.message;
+        st.className = 'text-xs mt-2 text-red-600';
+        toast(e.message, 'error');
+      }
+    }
+
+    // ===================== CONVEYANCE TRIPS (admin override) =====================
+    let atRows = [];
+    const atMoney = (n) => '\u20b9' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    async function loadAdminTrips() {
+      const el = document.getElementById('atList');
+      atRows = await api('/expense/admin/pending-trips');
+      document.getElementById('atAll').checked = false;
+      const cnt = document.getElementById('atCount');
+      cnt.textContent = atRows.length + ' pending';
+      cnt.classList.toggle('hidden', atRows.length === 0);
+      if (!atRows.length) { el.innerHTML = '<div class="text-sm text-slate-400 py-10 text-center">No trips are waiting on a manager. \u2705</div>'; atSelCount(); return; }
+      // Group by the manager they're stuck on — that's the bottleneck you want to see.
+      const by = {};
+      atRows.forEach(t => { const k = t.mgr_name || 'No manager assigned'; (by[k] ||= []).push(t); });
+      el.innerHTML = Object.entries(by).map(([mgr, trips]) => {
+        const total = trips.reduce((a, t) => a + Number(t.amount || 0), 0);
+        const mid = trips[0].approver_emp_id;
+        return `<div class="border border-line rounded-xl p-4">
+          <div class="flex items-center justify-between gap-3 flex-wrap border-b border-line pb-2 mb-2">
+            <div>
+              <div class="font-semibold text-ink">Waiting on: ${mgr}</div>
+              <div class="text-xs text-slate-500">${trips.length} trip(s) \u00b7 ${atMoney(total)}${trips[0].mgr_phone ? '' : ' \u00b7 <span class="text-red-600">no phone on file</span>'}</div>
+            </div>
+            <div class="flex gap-2">
+              ${mid ? `<button onclick="nudgeManager(${mid})" class="btn-ghost text-xs">Resend links</button>` : ''}
+              <button onclick="atApproveGroup('${String(mgr).replace(/'/g, "\\'")}')" class="btn-ghost text-xs">Approve all ${trips.length}</button>
+            </div>
+          </div>
+          ${trips.map(t => `<div class="flex items-center gap-3 py-2 border-b border-line/50 last:border-0">
+            <input type="checkbox" class="atChk rounded border-slate-300" value="${t.id}" onchange="atSelCount()">
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-semibold text-ink">${t.emp_name} <span class="mono text-[11px] text-slate-400">${t.emp_no || ''}</span></div>
+              <div class="text-xs text-slate-500 mt-0.5">${t.date_label} \u00b7 ${t.route} \u00b7 ${t.km} km \u00b7 <span class="mono">${t.period_label || ''}</span>${t.has_link ? '' : ' \u00b7 <span class="text-amber-600">link expired</span>'}</div>
+            </div>
+            <div class="text-sm font-semibold mono text-ink whitespace-nowrap">${atMoney(t.amount)}</div>
+            <div class="flex gap-1">
+              <button onclick="atApprove(${t.id})" class="pill bg-emerald-100 text-emerald-700 hover:bg-emerald-200">Approve</button>
+              <button onclick="atReject(${t.id})" class="pill bg-red-100 text-red-700 hover:bg-red-200">Reject</button>
+            </div>
+          </div>`).join('')}
+        </div>`;
+      }).join('');
+      atSelCount();
+    }
+    function atChks() { return [...document.querySelectorAll('.atChk')]; }
+    function atToggleAll(on) { atChks().forEach(c => c.checked = on); atSelCount(); }
+    function atSelCount() { const n = atChks().filter(c => c.checked).length; const el = document.getElementById('atSel'); if (el) el.textContent = n; }
+    async function atApprove(id) {
+      try { await api('/expense/trip/' + id + '/approve', { method: 'POST' }); toast('Trip approved', 'success'); loadAdminTrips(); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+    async function atReject(id) {
+      const reason = prompt('Why are you rejecting this trip? The employee will see this.');
+      if (reason === null) return;
+      if (!reason.trim()) { toast('A reason is required', 'error'); return; }
+      try { await api('/expense/trip/' + id + '/reject', { method: 'POST', body: { reason: reason.trim() } }); toast('Trip rejected', 'success'); loadAdminTrips(); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+    async function atBulk(ids) {
+      if (!ids.length) { toast('Select at least one trip', 'error'); return; }
+      if (!confirm(`Approve ${ids.length} trip(s) on the manager's behalf?`)) return;
+      try {
+        const r = await api('/expense/trips/bulk-approve', { method: 'POST', body: { ids } });
+        toast(`Approved ${r.approved} trip(s)` + (r.skipped ? ` \u00b7 ${r.skipped} skipped` : ''), 'success');
+        loadAdminTrips();
+      } catch (e) { toast(e.message, 'error'); }
+    }
+    function adminTripBulk() { atBulk(atChks().filter(c => c.checked).map(c => +c.value)); }
+    function atApproveGroup(mgr) { atBulk(atRows.filter(t => (t.mgr_name || 'No manager assigned') === mgr).map(t => t.id)); }
+    async function nudgeManager(id) {
+      try { const r = await api('/expense/trips/nudge', { method: 'POST', body: { manager_id: id } });
+        toast(r.sent ? `WhatsApp sent (${r.sent})` : 'Nothing sent \u2014 check the phone number', r.sent ? 'success' : 'error'); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+    async function nudgeAllManagers() {
+      try { const r = await api('/expense/trips/nudge', { method: 'POST', body: {} });
+        toast(`Nudged ${r.managers} manager(s) \u00b7 ${r.sent} message(s)`, 'success'); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tabBtn').forEach(b =>
+        b.setAttribute('data-active', b.dataset.tab === tab));
+      ['dash','health','emp','cat','loc','ogappr','trips','gate','exp'].forEach(t => document.getElementById('tab-'+t).classList.toggle('hidden', t !== tab));
+      if (tab === 'trips') loadAdminTrips();
+      if (tab === 'health') loadHealth();
+      if (tab === 'gate') openGateTab();
+      if (tab === 'emp') { renderEmployees(); api('/admin/departments').then(d => departments = d).catch(()=>{}); }
+      if (tab === 'cat') renderCategories();
+      if (tab === 'loc') renderLocations();
+      if (tab === 'ogappr') renderApprovers();
+      if (tab === 'exp') { loadPolicy(); loadChain(); loadGate(); }
+    }
+
+    // ---------- DASHBOARD ----------
+    let _remOn = true;
+    // Dashboard sub-tabs: Tickets (default) + Gatepass / Expense / OT charts.
+    // Un-hide the target BEFORE rendering so Chart.js sizes canvases correctly.
+    function switchDashSub(sub){
+      document.querySelectorAll('.subBtn').forEach(b => b.setAttribute('data-active', b.dataset.sub === sub));
+      ['tickets','gatepass','expense','ot'].forEach(s => document.getElementById('sub-'+s).classList.toggle('hidden', s !== sub));
+      if (sub !== 'tickets') loadDashboards();
+      if (sub === 'gatepass') loadCleanupOutpass();
+      else if (sub === 'expense') loadCleanupExpense();
+      else if (sub === 'ot') loadCleanupOT();
+    }
+
+    let dashCharts = {};
+    function mkChart(id, cfg){ if(dashCharts[id]) dashCharts[id].destroy(); const el=document.getElementById(id); if(el) dashCharts[id]=new Chart(el, cfg); }
+    const BLUE='#1B7BC0', DARK='#0A4566', AMBER='#F59E0B', RED='#dc2626', GREENS=['#0A4566','#1B7BC0','#38bdf8','#7dd3fc','#a855f7','#f59e0b'];
+    const rupee0=v=>'₹'+Math.round(v||0).toLocaleString('en-IN');
+    async function loadDashboards(){
+      let d; try{ d=await api('/admin/dashboards'); }catch(e){ return; }
+      const money={ y:{ ticks:{ callback:v=>'₹'+v } } };
+      // OT by month
+      mkChart('chOtMonth', { type:'bar', data:{ labels:d.ot.monthly.map(r=>r.ym), datasets:[{ label:'OT spend', data:d.ot.monthly.map(r=>r.total), backgroundColor:BLUE }] },
+        options:{ plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>rupee0(c.raw)}} }, scales:money } });
+      // OT by dept
+      mkChart('chOtDept', { type:'bar', data:{ labels:d.ot.by_dept.map(r=>r.dept), datasets:[{ data:d.ot.by_dept.map(r=>r.total), backgroundColor:DARK }] },
+        options:{ indexAxis:'y', plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>rupee0(c.raw)}} }, scales:{ x:{ ticks:{ callback:v=>'₹'+v } } } } });
+      // Expense by month
+      mkChart('chExpMonth', { type:'line', data:{ labels:d.expense.monthly.map(r=>r.ym), datasets:[{ label:'Expense', data:d.expense.monthly.map(r=>r.total), borderColor:BLUE, backgroundColor:'rgba(27,123,192,.12)', fill:true, tension:.3 }] },
+        options:{ plugins:{ legend:{display:false}, tooltip:{callbacks:{label:c=>rupee0(c.raw)}} }, scales:money } });
+      // Expense by type
+      mkChart('chExpType', { type:'doughnut', data:{ labels:d.expense.by_type.map(r=>r.form_type), datasets:[{ data:d.expense.by_type.map(r=>r.total), backgroundColor:GREENS }] },
+        options:{ plugins:{ tooltip:{callbacks:{label:c=>c.label+': '+rupee0(c.raw)}} } } });
+      // Gatepass + overstays
+      mkChart('chGate', { type:'bar', data:{ labels:d.gatepass.monthly.map(r=>r.ym), datasets:[
+        { label:'Gatepasses', data:d.gatepass.monthly.map(r=>r.total), backgroundColor:BLUE },
+        { label:'Overstays', data:d.gatepass.monthly.map(r=>r.overstays), backgroundColor:RED } ] },
+        options:{ plugins:{ legend:{position:'bottom'} }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } } });
+    }
+
+    async function loadHealth(){
+      let d; try{ d=await api('/admin/health'); }catch(e){ document.getElementById('healthBody').innerHTML='<div class="text-red-600 text-sm">Failed to load: '+e.message+'</div>'; return; }
+      const dot=ok=>ok?'<span style="color:#059669">●</span>':'<span style="color:#dc2626">●</span>';
+      const row=(label,ok,note)=>`<div class="flex items-center justify-between py-1 text-sm"><span>${dot(ok)} ${label}</span><span class="text-xs ${ok?'text-emerald-700':'text-red-600'}">${note!=null?note:(ok?'OK':'missing')}</span></div>`;
+      const card=(title,inner)=>`<div class="card p-4"><div class="font-semibold text-sm mb-2">${title}</div>${inner}</div>`;
+      const C=[];
+      C.push(card('Integrations', row('WhatsApp (WATI)',d.integrations.wati)+row('Email / OneDrive (Graph)',d.integrations.graph)));
+      const wa=d.whatsapp_24h||{}; const fail=(wa.declined||0)+(wa.http_error||0)+(wa.error||0)+(wa.no_phone||0);
+      C.push(card('WhatsApp — last 24h',
+        `<div class="text-xs text-slate-600 mb-1">${['sent','declined','no_phone','http_error','error','skipped'].map(k=>`${k}: <b>${wa[k]||0}</b>`).join(' · ')}</div>`+
+        row('Failures',fail===0,fail===0?'none':fail+' failed — see WhatsApp log')));
+      C.push(card('Employee phones', row(`${d.phones.missing_or_bad} of ${d.phones.active} active missing/invalid`, d.phones.missing_or_bad===0, d.phones.missing_or_bad===0?'all good':'fix in Employees')));
+      const ot=d.ot; C.push(card('Overtime config',
+        row('Production approver',ot.production)+row('Dispatch approver',ot.dispatch)+row('HR verifier',ot.hr)+row('Management',ot.management)+row('Accounts contact',ot.accounts_contact)+row('Accounts email',ot.accounts_email)));
+      C.push(card('Gatepass / gate', row('Gate location set',d.gate.location)+row('Overdue HR recipient',d.gate.overdue_hr,d.gate.overdue_hr?'set':"HR won't get overdue alerts")));
+      const ex=d.expense||{}; C.push(card('Expense chain',
+        row('HR approvers',(ex.hr_approvers||0)>0,(ex.hr_approvers||0)+' set')+row('Final approvers',(ex.final_approvers||0)>0,(ex.final_approvers||0)+' set')+row('Accounts email',!!ex.accounts_email)+row('Entity prefix emails',(ex.entity_prefixes||[]).length>0,(ex.entity_prefixes||[]).join(', ')||'none set')));
+      const now=new Date(d.now); const CR=['auto-close','trip-nudge','escalate','outpass-overdue','daily-report'];
+      const CRON_LIMIT={ 'escalate':180,'outpass-overdue':120,'auto-close':1560,'daily-report':1560,'trip-nudge':3000 };
+      const cronRows=CR.map(name=>{ const iso=(d.crons||{})[name];
+        if(!iso) return row(name,false,'never run');
+        const mins=Math.round((now-new Date(iso))/60000); const stale=mins>(CRON_LIMIT[name]||180);
+        return row(name,!stale, mins<60?mins+'m ago':Math.round(mins/60)+'h ago'); }).join('');
+      C.push(card('Background jobs (crons)', cronRows+`<div class="text-[11px] text-slate-400 mt-1">Daily jobs (auto-close, daily-report, trip-nudge) are meant to run once a day.</div>`));
+      document.getElementById('healthBody').innerHTML=C.join('');
+      document.getElementById('opsEmail').value = d.ops_alert_email || '';
+      loadPhoneAudit();
+    }
+    async function loadPhoneAudit(){
+      let d; try{ d=await api('/admin/phone-audit'); }catch(e){ return; }
+      const box=document.getElementById('phoneAuditBody');
+      if(!d.rows.length){ box.innerHTML='<div class="text-emerald-700 text-sm">✓ Everyone has a valid number.</div>'; return; }
+      box.innerHTML=d.rows.map(r=>`<div class="flex items-center gap-2 py-1.5 border-t border-line flex-wrap">
+        <div class="flex-1 min-w-[180px]"><span class="font-semibold">${r.name}</span> <span class="text-xs text-slate-400 mono">${r.emp_no||''}</span> <span class="text-xs text-slate-400">${r.department||''}</span></div>
+        <input id="pa_${r.id}" class="inp !py-1 text-sm" style="max-width:170px" placeholder="10-digit or 91…" value="${r.phone||''}">
+        <button onclick="savePhone(${r.id})" class="btn text-xs">Save</button>
+      </div>`).join('');
+    }
+    async function savePhone(id){
+      const v=document.getElementById('pa_'+id).value.trim();
+      if(!v) return toast('Enter a number','error');
+      try{ const r=await api('/admin/employees/'+id+'/phone',{method:'POST',body:{phone:v}});
+        toast('Saved '+r.phone,'success'); loadPhoneAudit(); loadHealth(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function saveOpsEmail(){
+      try{ const r=await api('/admin/ops-alert-email',{method:'POST',body:{email:document.getElementById('opsEmail').value.trim()}});
+        toast(r.email?'Alert email saved':'Alerts disabled','success'); }
+      catch(e){ toast(e.message,'error'); }
+    }
+
+    let waDeb;
+    function debWaLog(){ clearTimeout(waDeb); waDeb=setTimeout(loadWaLog,350); }
+    async function loadMaintGate(){
+      try{
+        if(!employees || !employees.length) employees = await api('/admin/employees');
+        const cats = await api('/admin/categories');
+        const cfg = await api('/admin/maint-gate');
+        const catSel=document.getElementById('mgCat'), apprSel=document.getElementById('mgAppr');
+        catSel.innerHTML='<option value="">— none (disabled) —</option>'+cats.map(c=>`<option value="${c.id}">${c.name}</option>`).join('');
+        apprSel.innerHTML='<option value="">— pick —</option>'+employees.filter(e=>e.active!==false).map(e=>`<option value="${e.id}">${e.name} (${e.emp_no||''})</option>`).join('');
+        if(cfg.category_id) catSel.value=cfg.category_id;
+        if(cfg.approver_id) apprSel.value=cfg.approver_id;
+      }catch(e){}
+    }
+    async function saveMaintGate(){
+      const category_id=document.getElementById('mgCat').value||null;
+      const approver_id=document.getElementById('mgAppr').value||null;
+      if(category_id && !approver_id) return toast('Pick an approver for the gated category','error');
+      try{ await api('/admin/maint-gate',{method:'POST',body:{category_id,approver_id}}); toast(category_id?'Maintenance gate saved':'Maintenance gate disabled','success'); }
+      catch(e){ toast(e.message,'error'); }
+    }
+
+    async function loadWaLog(){
+      const qs=new URLSearchParams();
+      const res=document.getElementById('waResult').value; if(res) qs.set('result',res);
+      const tpl=document.getElementById('waTpl').value.trim(); if(tpl) qs.set('template',tpl);
+      const ph=document.getElementById('waPhone').value.trim(); if(ph) qs.set('phone',ph);
+      let d; try{ d=await api('/admin/wa-log?'+qs.toString()); }catch(e){ return; }
+      const RC={sent:'bg-emerald-100 text-emerald-700',declined:'bg-red-100 text-red-700',no_phone:'bg-amber-100 text-amber-700',http_error:'bg-red-100 text-red-700',error:'bg-red-100 text-red-700',skipped:'bg-slate-100 text-slate-600'};
+      document.getElementById('waSummary').innerHTML='<span class="text-slate-400 mr-1">Last 24h:</span>'+
+        (['sent','declined','no_phone','http_error','error','skipped'].map(k=>d.summary[k]?`<span class="px-2 py-0.5 rounded ${RC[k]}">${k}: ${d.summary[k]}</span>`:'').filter(Boolean).join(' ')||'<span class="text-slate-400">nothing yet</span>');
+      const tb=document.getElementById('waRows'); tb.innerHTML=(d.rows||[]).map(r=>
+        `<tr class="border-t border-line"><td class="py-1 pr-3 whitespace-nowrap text-slate-500">${r.at}</td>
+         <td class="py-1 pr-3 mono">${r.template||''}</td><td class="py-1 pr-3 mono">${r.phone||''}</td>
+         <td class="py-1 pr-3"><span class="px-1.5 py-0.5 rounded ${RC[r.result]||'bg-slate-100'}">${r.result}</span></td>
+         <td class="py-1 text-slate-500">${(r.detail||'').replace(/</g,'&lt;')}</td></tr>`).join('');
+      document.getElementById('waEmpty').classList.toggle('hidden',(d.rows||[]).length>0);
+    }
+
+    async function loadOtApprovers(){
+      let d; try{ d=await api('/admin/ot-approvers'); }catch(e){ return; }
+      const opts=(sel)=>['<option value="">— none —</option>'].concat((d.people||[]).map(p=>`<option value="${p.id}" ${sel===p.id?'selected':''}>${p.name}${p.department?' · '+p.department:''}</option>`)).join('');
+      document.getElementById('otProd').innerHTML=opts(d.production);
+      document.getElementById('otDisp').innerHTML=opts(d.dispatch);
+      document.getElementById('otHr').innerHTML=opts(d.hr);
+      const peopleOpts=(sel)=>'<option value="">— none —</option>'+(d.people||[]).map(p=>`<option value="${p.id}" ${sel===p.id?'selected':''}>${p.name}${p.department?' · '+p.department:''}</option>`).join('');
+      document.getElementById('accEmailBsc').value=d.accounts_email_bsc||'';
+      document.getElementById('accEmailG2').value=d.accounts_email_g2||'';
+      document.getElementById('accEmpBsc').innerHTML=peopleOpts(d.accounts_emp_bsc);
+      document.getElementById('accEmpG2').innerHTML=peopleOpts(d.accounts_emp_g2);
+      document.getElementById('labAcc').innerHTML='<option value="">— none —</option>'+(d.people||[]).map(p=>`<option value="${p.id}" ${d.labour_accounts===p.id?'selected':''}>${p.name}${p.department?' · '+p.department:''}</option>`).join('');
+      document.getElementById('simpleHome').innerHTML=(d.people||[]).map(p=>`<option value="${p.id}" ${(d.simple_home||[]).includes(p.id)?'selected':''}>${p.name}${p.department?' · '+p.department:''}</option>`).join('');
+      // multi-select for management
+      const mg=new Set((d.mgmt||[]).map(Number));
+      document.getElementById('otMgmt').innerHTML=(d.people||[]).map(p=>`<option value="${p.id}" ${mg.has(p.id)?'selected':''}>${p.name}${p.department?' · '+p.department:''}</option>`).join('');
+    }
+    async function saveOtApprovers(){
+      const val=id=>+document.getElementById(id).value||null;
+      const mgmt=Array.from(document.getElementById('otMgmt').selectedOptions).map(o=>+o.value);
+      const msg=document.getElementById('otApprMsg');
+      try{ await api('/admin/ot-approvers',{method:'POST',body:{
+        production:val('otProd'), dispatch:val('otDisp'), hr:val('otHr'),
+        mgmt, labour_accounts:val('labAcc'), simple_home:[...document.getElementById('simpleHome').selectedOptions].map(o=>+o.value), accounts_email_bsc:document.getElementById('accEmailBsc').value, accounts_email_g2:document.getElementById('accEmailG2').value, accounts_emp_bsc:val('accEmpBsc'), accounts_emp_g2:val('accEmpG2') }});
+        msg.textContent='Saved ✓'; msg.className='text-xs ml-2 text-emerald-600'; }
+      catch(e){ msg.textContent=e.message; msg.className='text-xs ml-2 text-red-600'; }
+    }
+
+    async function testWati() {
+      const phone = (document.getElementById('wtPhone').value || '').trim();
+      const which = document.getElementById('wtWhich').value;
+      const out = document.getElementById('wtOut');
+      out.classList.remove('hidden');
+      out.textContent = 'Sending…';
+      try {
+        const r = await api('/admin/wati-test', { method: 'POST', body: { phone, which } });
+        out.textContent = JSON.stringify(r, null, 2);
+      } catch (e) { out.textContent = 'Error: ' + e.message; }
+    }
+    async function loadTicketReminders() {
+      try {
+        const r = await api('/admin/ticket-reminders');
+        _remOn = !!r.enabled;
+      } catch (e) { return; }
+      paintRemToggle();
+    }
+    function paintRemToggle() {
+      const st = document.getElementById('remState');
+      const btn = document.getElementById('remToggle');
+      if (!st || !btn) return;
+      if (_remOn) {
+        st.textContent = '🔔 Reminders are ON';
+        st.className = 'text-xs mt-1 font-semibold text-emerald-600';
+        btn.textContent = 'Turn OFF reminders';
+        btn.className = 'btn text-sm bg-red-600 hover:bg-red-700';
+      } else {
+        st.textContent = '🔕 Reminders are OFF — no L1/L2/L3 or resolved nudges will be sent';
+        st.className = 'text-xs mt-1 font-semibold text-red-600';
+        btn.textContent = 'Turn ON reminders';
+        btn.className = 'btn text-sm bg-emerald-600 hover:bg-emerald-700';
+      }
+    }
+    async function toggleTicketReminders() {
+      const next = !_remOn;
+      if (!next && !confirm('Turn OFF all ticket reminders? L1/L2/L3 escalation and resolved-ticket nudges will stop until you turn this back on.')) return;
+      const btn = document.getElementById('remToggle');
+      if (btn) { btn.disabled = true; btn.textContent = 'Saving…'; }
+      try {
+        const r = await api('/admin/ticket-reminders', { method: 'POST', body: { enabled: next } });
+        _remOn = !!r.enabled;
+        paintRemToggle();
+      } catch (e) { alert('Could not update: ' + e.message); paintRemToggle(); }
+      finally { if (btn) btn.disabled = false; }
+    }
+
+    async function loadDash() {
+      loadDailyReportCfg();
+      loadTicketReminders();
+      const from = document.getElementById('d_from').value, to = document.getElementById('d_to').value;
+      const d = await api(`/admin/dashboard?from=${from}&to=${to}`);
+      const k = d.totals;
+      const kpi = (n,l,c='text-ink') => `<div class="card p-4 text-center"><div class="kpi ${c}">${n}</div><div class="eyebrow mt-1.5" style="color:var(--ink-mute)">${l}</div></div>`;
+      const a = d.activity || {};
+      document.getElementById('kpis').innerHTML =
+        kpi(k.total,'Total') + kpi(k.open,'Open','text-amber-600') + kpi(k.resolved,'Resolved','text-violet-600') +
+        kpi(k.closed,'Closed','text-emerald-600') + kpi(k.escalated,'Escalated','text-red-600') +
+        kpi(fmtDuration(d.avg_downtime_mins),'Avg Resolve') +
+        kpi(a.forwarded||0,'Forwarded','text-purple-600') + kpi(a.escalated_l3||0,'→ L3','text-red-600') +
+        kpi(a.reopened||0,'Reopened','text-orange-600') + kpi(a.self||0,'Self-tickets','text-indigo-600');
+
+      drawBar('catChart', d.byCategory.map(x=>x.category), d.byCategory.map(x=>x.count));
+      drawDoughnut('priChart', d.byPriority.map(x=>x.priority), d.byPriority.map(x=>x.count));
+
+      document.getElementById('catTable').innerHTML = table(
+        ['Category','Tickets','Avg Resolution'],
+        d.byCategory.map(x => [x.category, x.count, fmtDuration(x.avg_downtime_mins)]));
+
+      document.getElementById('handlerTable').innerHTML = (d.byHandler && d.byHandler.length)
+        ? table(['Handler','Resolved (period)','Forwarded (period)','Open now'],
+            d.byHandler.map(x => [x.handler, x.resolved, x.forwarded, x.open_now]))
+        : '<div class="text-sm text-slate-400 py-3">No handler activity in this range.</div>';
+
+      // The recent-tickets / outpass / expense lists now live in the
+      // "Data & cleanup" section below, with their own short window + filters
+      // (see loadCleanup). loadDash only renders the monthly KPIs/charts.
+    }
+    async function delTicket(id, ref){
+      if(!confirm(`Delete ticket ${ref}?\n\nThis permanently removes the ticket and its history. Use only for test entries.`)) return;
+      try{ await api(`/admin/tickets/${id}`,{method:'DELETE'}); toast('Deleted '+ref,'info'); loadCleanupTickets(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function loadDailyReportCfg(){
+      try{
+        const d = await api('/admin/daily-report');
+        document.getElementById('drPhones').value = d.value || '';
+        const today = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+        document.getElementById('dlReport').href = `/api/admin/report-daily.pdf?date=${today}`;
+        renderSubs();
+      }catch(e){}
+    }
+    async function saveDrPhones(){
+      const value = document.getElementById('drPhones').value;
+      try{ await api('/admin/daily-report',{method:'PUT',body:{value}}); toast('Recipients saved','success'); loadDailyReportCfg(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function sendDrNow(){
+      try{
+        const r = await api('/admin/daily-report/send',{method:'POST'});
+        const s = (r.scoped_sent||[]).length;
+        toast(`Sent: ${(r.overall_sent||[]).length} overall${s?`, ${s} per-person`:''} (${r.total} tickets today)`,'success');
+      } catch(e){ toast(e.message,'error'); }
+    }
+
+    let subscriptions = [];
+    async function renderSubs(){
+      const today = new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});
+      subscriptions = await api('/admin/report-subscriptions');
+      const cats = await api('/admin/categories');
+      const catName = id => (cats.find(c=>c.id===id)||{}).name || ('Cat '+id);
+      const tradeName = id => { for(const c of cats){ const t=(c.trades||[]).find(x=>x.id===id); if(t) return c.name+' › '+t.name; } return 'Trade '+id; };
+      const box = document.getElementById('subList');
+      if(!subscriptions.length){ box.innerHTML = '<div class="text-xs text-slate-400">No per-person reports yet.</div>'; return; }
+      box.innerHTML = `<table class="w-full text-sm"><tbody>${subscriptions.map(s=>{
+        const scope = [...(s.category_ids||[]).map(catName), ...(s.trade_ids||[]).map(tradeName)].join(', ') || '<span class="text-slate-400">no scope selected</span>';
+        return `<tr class="border-b border-slate-100">
+          <td class="py-2 pr-2"><div class="font-semibold">${esc(s.name)}</div><div class="text-[11px] text-slate-500">${esc(s.phone||'no phone')}</div></td>
+          <td class="py-2 pr-2 text-xs text-slate-600">${scope}</td>
+          <td class="py-2 pr-2"><span class="text-xs ${s.enabled?'text-emerald-600':'text-slate-400'}">${s.enabled?'On':'Off'}</span></td>
+          <td class="py-2 text-right whitespace-nowrap">
+            <a href="/api/admin/report-daily.pdf?date=${today}&emp=${s.employee_id}" target="_blank" class="text-xs text-slate-600 hover:underline mr-3">PDF</a>
+            <button onclick="openSubModal(${s.employee_id})" class="text-xs text-brand-600 hover:underline mr-3">Edit</button>
+            <button onclick="delSub(${s.employee_id}, ${jsArg(s.name)})" class="text-xs text-red-600 hover:underline">Remove</button>
+          </td></tr>`;
+      }).join('')}</tbody></table>`;
+    }
+    async function delSub(empId, name){
+      if(!confirm(`Stop sending a personal report to ${name}?`)) return;
+      try{ await api(`/admin/report-subscriptions/${empId}`,{method:'DELETE'}); toast('Removed','info'); renderSubs(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function openSubModal(empId){
+      const cats = await api('/admin/categories');
+      if(!employees || !employees.length) employees = await api('/admin/employees');
+      const existing = subscriptions.find(s=>s.employee_id===empId);
+      const selCats = new Set(existing ? existing.category_ids : []);
+      const selTrades = new Set(existing ? existing.trade_ids : []);
+      // employee picker only when adding new
+      let empPicker;
+      if(existing){ empPicker = `<input type="hidden" id="sub_emp" value="${empId}"><div class="font-bold text-sm mb-2">${esc(existing.name)}</div>`; }
+      else {
+        const taken = new Set(subscriptions.map(s=>s.employee_id));
+        empPicker = `<label class="lbl">Employee</label><select id="sub_emp" class="inp w-full mb-3">${
+          employees.filter(e=>!taken.has(e.id) && e.active!==false).map(e=>`<option value="${e.id}">${esc(e.name)} · ${esc(e.emp_no||'')}</option>`).join('')}</select>`;
+      }
+      const catBlocks = cats.map(c=>{
+        const trades = c.trades||[];
+        const tradeBoxes = trades.map(t=>`<label class="flex items-center gap-1.5 text-xs ml-5 py-0.5"><input type="checkbox" class="subTrade" value="${t.id}" ${selTrades.has(t.id)?'checked':''}> ${esc(t.name)}</label>`).join('');
+        return `<div class="border border-line rounded-lg p-2 mb-1.5">
+          <label class="flex items-center gap-1.5 text-sm font-semibold"><input type="checkbox" class="subCat" value="${c.id}" ${selCats.has(c.id)?'checked':''}> ${esc(c.name)} <span class="text-[11px] text-slate-400 font-normal">(all)</span></label>
+          ${trades.length?`<div class="mt-1">${tradeBoxes}</div>`:''}
+        </div>`;
+      }).join('');
+      const w = document.createElement('div');
+      w.id = 'subModal';
+      w.className = 'fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4';
+      w.innerHTML = `<div class="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[88vh] overflow-y-auto">
+        <div class="p-4 border-b border-line flex items-center justify-between">
+          <h3 class="font-bold text-sm">Per-person report</h3>
+          <button onclick="document.getElementById('subModal').remove()" class="text-slate-400 hover:text-ink text-xl leading-none">&times;</button>
+        </div>
+        <div class="p-4">
+          ${empPicker}
+          <label class="flex items-center gap-2 text-sm mb-3"><input type="checkbox" id="sub_enabled" ${(!existing||existing.enabled)?'checked':''}> Send this person a daily report</label>
+          <div class="text-[11px] text-slate-500 mb-1">Tick a whole category, or just the specific trades they handle:</div>
+          ${catBlocks}
+        </div>
+        <div class="p-4 border-t border-line flex justify-end gap-2">
+          <button onclick="document.getElementById('subModal').remove()" class="btn-ghost text-sm">Cancel</button>
+          <button onclick="saveSub()" class="btn text-sm">Save</button>
+        </div></div>`;
+      document.body.appendChild(w);
+    }
+    async function saveSub(){
+      const empId = +document.getElementById('sub_emp').value;
+      if(!empId) return toast('Pick an employee','error');
+      const category_ids = Array.from(document.querySelectorAll('.subCat:checked')).map(x=>+x.value);
+      const trade_ids = Array.from(document.querySelectorAll('.subTrade:checked')).map(x=>+x.value);
+      const enabled = document.getElementById('sub_enabled').checked;
+      try{
+        await api(`/admin/report-subscriptions/${empId}`,{method:'PUT',body:{enabled, category_ids, trade_ids}});
+        toast('Saved','success'); document.getElementById('subModal').remove(); renderSubs();
+      }catch(e){ toast(e.message,'error'); }
+    }
+    async function delOutpass(id, ref){
+      if(!confirm(`Delete pass ${ref}?\n\nThis permanently removes the entry. Use only for test entries.`)) return;
+      try{ await api(`/admin/outpass/${id}`,{method:'DELETE'}); toast('Deleted '+ref,'info'); loadCleanupOutpass(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function delExpense(id, ref, form){
+      const extra = form==='conveyance' ? '\n\nThis also clears that month\u2019s logged trips.' : '';
+      if(!confirm(`Delete expense entry ${ref}?\n\nThis permanently removes the submission.${extra} Use only for test entries.`)) return;
+      try{ await api(`/admin/expense/${id}`,{method:'DELETE'}); toast('Deleted '+ref,'info'); loadCleanupExpense(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    // ===== Data & cleanup: short window (default 3 days) + per-type filters =====
+    const clDays = { tickets:3, gatepass:3, expense:3, ot:3 };
+    const clLoader = { tickets:()=>loadCleanupTickets(), gatepass:()=>loadCleanupOutpass(), expense:()=>loadCleanupExpense(), ot:()=>loadCleanupOT() };
+    function istToday(){ return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'}); }
+    function isoDaysAgo(n){ const d=new Date(istToday()+'T00:00:00'); d.setDate(d.getDate()-n); return d.toISOString().slice(0,10); }
+    function cleanupRange(scope='tickets'){
+      const days=clDays[scope];
+      if (days === 0){
+        const f=document.getElementById('cl_'+scope+'_from')?.value||isoDaysAgo(2);
+        const t=document.getElementById('cl_'+scope+'_to')?.value||istToday();
+        return { from:f, to:t };
+      }
+      return { from: isoDaysAgo(days-1), to: istToday() };
+    }
+    function setCleanupRange(scope, days){
+      clDays[scope]=days;
+      document.querySelectorAll('.cl-range[data-scope="'+scope+'"]').forEach(b=>{
+        const on = Number(b.dataset.d)===days;
+        b.classList.toggle('bg-ink', on); b.classList.toggle('text-white', on); b.classList.toggle('border-ink', on);
+      });
+      const custom=document.getElementById('clCustom_'+scope);
+      if (custom){
+        if (days===0){
+          custom.classList.remove('hidden'); custom.classList.add('inline-flex');
+          const f=document.getElementById('cl_'+scope+'_from'), t=document.getElementById('cl_'+scope+'_to');
+          if(f && !f.value) f.value=isoDaysAgo(2);
+          if(t && !t.value) t.value=istToday();
+        } else { custom.classList.add('hidden'); custom.classList.remove('inline-flex'); }
+      }
+      (clLoader[scope]||(()=>{}))();
+    }
+
+    async function loadCleanupTickets(){
+      const {from,to}=cleanupRange('tickets');
+      const qs=new URLSearchParams({from,to});
+      const st=document.getElementById('cl_t_status').value; if(st) qs.set('status',st);
+      const qv=document.getElementById('cl_t_q').value.trim(); if(qv) qs.set('q',qv);
+      const rows=await api('/admin/ticket-list?'+qs.toString());
+      const canResolve = t => ['open','in_progress','reopened'].includes(t.status);
+      document.getElementById('recentTable').innerHTML = table(
+        ['Ref','Subject','Category','Requester','Assigned To','Status','Priority','Raised','Closed','Time to resolve','Downtime','Reminders',''],
+        rows.map(t => [t.ref_no, t.subject, t.category_name, t.requester_name,
+          (t.assigned_to ? t.assigned_to + (t.was_forwarded ? ' <span title="Forwarded/reassigned from another user" class="text-purple-600 font-bold">*</span>' : '') : '<span class="text-slate-400">—</span>'),
+          STATUS_STYLE[tStatusKey(t)]?.[1]||t.status, t.priority, fmtDateTime(t.raised_at),
+          t.closed_at?fmtDateTime(t.closed_at):'<span class="text-slate-400">—</span>',
+          (['resolved','closed'].includes(t.status))?fmtDuration(t.resolve_mins):'<span class="text-slate-400">—</span>',
+          t.status==='closed'?fmtDuration(t.downtime_mins):'—',
+          (t.reminders_off
+            ? `<button onclick="muteTicket(${t.id},false)" class="text-emerald-600 hover:underline text-xs font-semibold">🔕 Muted — turn on</button>`
+            : `<button onclick="muteTicket(${t.id},true)" class="text-slate-500 hover:underline text-xs">🔔 On — mute</button>`),
+          (canResolve(t)
+            ? `<button onclick="resolveTicket(${t.id}, ${jsArg(t.ref_no)})" class="text-emerald-700 hover:underline text-xs font-semibold mr-3">Mark resolved</button>`
+            : '')
+            + `<button onclick="delTicket(${t.id}, ${jsArg(t.ref_no)})" class="text-red-600 hover:underline text-xs font-semibold">Delete</button>`]));
+    }
+    async function resolveTicket(id, ref){
+      const note = prompt('Mark '+ref+' as resolved?\n\nOptional resolution note:', '');
+      if (note === null) return;   // cancelled
+      try { await api('/admin/tickets/'+id+'/resolve', { method:'POST', body:{ note: note || 'Resolved by admin' } });
+        toast(ref+' marked resolved','success'); loadCleanupTickets(); }
+      catch(e){ alert('Could not resolve: '+e.message); }
+    }
+    async function muteTicket(id, off){
+      try { await api('/admin/tickets/'+id+'/reminders', { method:'POST', body:{ off } });
+        toast(off?'Reminders muted for this ticket':'Reminders turned back on','success'); loadCleanupTickets(); }
+      catch(e){ alert('Could not update: '+e.message); }
+    }
+    async function loadCleanupOutpass(){
+      const {from,to}=cleanupRange('gatepass');
+      const qs=new URLSearchParams({from,to});
+      const ty=document.getElementById('cl_o_type').value;   if(ty) qs.set('type',ty);
+      const st=document.getElementById('cl_o_status').value; if(st) qs.set('status',st);
+      const ops=await api('/admin/outpass-list?'+qs.toString());
+      document.getElementById('outpassTable').innerHTML = table(
+        ['Ref','Type','Requester','Date','Out time','In time','Recorded in','Purpose','Status',''],
+        ops.map(o => [o.ref_no, (o.type||'outpass'), o.requester_name||'—', (o.req_date||'').slice(0,10),
+          o.out_time||'—', o.in_time||'—', (o.returned_at?fmtDateTime(o.returned_at):'—'),
+          o.purpose||'—', STATUS_STYLE[o.status]?.[1]||o.status,
+          `<button onclick="delOutpass(${o.id}, ${jsArg(o.ref_no)})" class="text-red-600 hover:underline text-xs font-semibold">Delete</button>`]));
+    }
+    const FORML = { conveyance:'Local Conveyance', outstation:'Outstation', misc:'Miscellaneous' };
+    async function loadCleanupExpense(){
+      const {from,to}=cleanupRange('expense');
+      const qs=new URLSearchParams({from,to});
+      const ty=document.getElementById('cl_e_type').value;   if(ty) qs.set('form_type',ty);
+      const st=document.getElementById('cl_e_status').value; if(st) qs.set('status',st);
+      const exps=await api('/admin/expense-list?'+qs.toString());
+      document.getElementById('expenseTable').innerHTML = table(
+        ['Ref','Type','Employee','Period','Amount','Status',''],
+        exps.map(e => [e.ref_no, FORML[e.form_type]||e.form_type, e.employee_name||'—', e.period||'—',
+          (e.total_amount!=null?'₹'+Number(e.total_amount).toLocaleString('en-IN'):'—'),
+          STATUS_STYLE[e.status]?.[1]||e.status,
+          (['pending_hr','pending_final','approved'].includes(e.status)
+            ? `<button onclick="cmdExpense(${e.id}, ${jsArg(e.ref_no)})" class="text-brand-700 hover:underline text-xs font-semibold mr-3">Send to CMD</button>` : '')
+          + (e.form_type==='misc' ? `<button onclick="setReportMonth(${e.id}, ${jsArg(e.ref_no)})" class="text-slate-600 hover:underline text-xs font-semibold mr-3">Set month</button>` : '')
+          + `<button onclick="delExpense(${e.id}, ${jsArg(e.ref_no)}, '${e.form_type}')" class="text-red-600 hover:underline text-xs font-semibold">Delete</button>`]));
+    }
+    function setReportMonth(id, ref){
+      const w=document.createElement('div'); w.id='rmModal';
+      w.className='fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4';
+      w.innerHTML=`<div class="bg-white rounded-xl shadow-2xl max-w-sm w-full">
+        <div class="p-4 border-b border-line flex items-center justify-between"><h3 class="font-bold text-sm">Report month · ${esc(ref)}</h3>
+          <button onclick="document.getElementById('rmModal').remove()" class="text-slate-400 hover:text-ink text-xl leading-none">&times;</button></div>
+        <div class="p-4">
+          <p class="text-xs text-slate-500 mb-2">Force this claim into a specific CMD-report month. Leave to auto — misc auto-places by its <b>submission date</b>.</p>
+          <input id="rm_month" type="month" min="2026-06" class="inp w-full">
+        </div>
+        <div class="p-4 border-t border-line flex justify-between gap-2">
+          <button onclick="saveReportMonth(${id}, '')" class="btn-ghost text-sm">Clear (auto)</button>
+          <div class="flex gap-2"><button onclick="document.getElementById('rmModal').remove()" class="btn-ghost text-sm">Cancel</button>
+          <button onclick="saveReportMonth(${id}, document.getElementById('rm_month').value)" class="btn text-sm">Save</button></div>
+        </div></div>`;
+      document.body.appendChild(w);
+    }
+    async function saveReportMonth(id, period){
+      try{ await api('/expense/'+id+'/report-month',{method:'POST',body:{period:period||null}});
+        toast(period?('Moved to '+period):'Set to auto','success');
+        const m=document.getElementById('rmModal'); if(m) m.remove(); loadCleanupExpense();
+      }catch(e){ toast(e.message,'error'); }
+    }
+    async function cmdExpense(id, ref){
+      if(!confirm('Send '+ref+' to the CMD on WhatsApp?')) return;
+      try{ const r=await api('/expense/'+id+'/send-cmd',{method:'POST'}); toast('Sent to '+(r.to||'CMD')+' on WhatsApp','success'); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function loadCleanupOT(){
+      const {from,to}=cleanupRange('ot');
+      const qs=new URLSearchParams({from,to});
+      const st=document.getElementById('cl_ot_status')?.value; if(st) qs.set('status',st);
+      const rows=await api('/admin/ot-list?'+qs.toString());
+      document.getElementById('otTable').innerHTML = table(
+        ['Employee','Dept','Date','End','Hours','Amount','Status',''],
+        rows.map(o => [
+          (o.employee_name||'—') + (o.emp_no?` <span class="text-slate-400 mono text-[11px]">${o.emp_no}</span>`:''),
+          o.department||'—', (o.ot_date||'').slice(0,10), o.end_time||'—',
+          Number(o.hours||0).toFixed(1),
+          '₹'+Number(o.amount||0).toLocaleString('en-IN'),
+          STATUS_STYLE[o.status]?.[1]||o.status,
+          `<button onclick="delOT(${o.id})" class="text-red-600 hover:underline text-xs font-semibold">Delete</button>`]));
+    }
+    async function delOT(id){
+      if(!confirm('Delete this OT entry?\n\nThis permanently removes the entry. Use only for test entries.')) return;
+      try{ await api(`/admin/ot/${id}`,{method:'DELETE'}); toast('OT entry deleted','info'); loadCleanupOT(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+
+    function loadCleanup(){ loadCleanupTickets(); loadCleanupOutpass(); loadCleanupExpense(); loadCleanupOT(); }
+    let _tkDeb; function debouncedTickets(){ clearTimeout(_tkDeb); _tkDeb=setTimeout(loadCleanupTickets, 350); }
+
+    function drawBar(id, labels, data) {
+      if (charts[id]) charts[id].destroy();
+      charts[id] = new Chart(document.getElementById(id), { type:'bar',
+        data:{ labels, datasets:[{ data, backgroundColor:'#0E6AA6', borderRadius:4 }] },
+        options:{ plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{precision:0} } } } });
+    }
+    function drawDoughnut(id, labels, data) {
+      if (charts[id]) charts[id].destroy();
+      charts[id] = new Chart(document.getElementById(id), { type:'doughnut',
+        data:{ labels, datasets:[{ data, backgroundColor:['#94a3b8','#0ea5e9','#f59e0b','#ef4444'] }] },
+        options:{ plugins:{legend:{position:'bottom'}} } });
+    }
+    function table(head, rows) {
+      if (!rows.length) return '<div class="text-sm text-slate-400 py-8 text-center">No data.</div>';
+      return `<div class="tablewrap"><table class="dtable"><thead><tr>${head.map(h=>`<th>${h}</th>`).join('')}</tr></thead>`
+        + `<tbody>${rows.map(r=>`<tr>${r.map(c=>`<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+    }
+
+    // ---------- EMPLOYEES ----------
+    function empOptions(sel) {
+      return '<option value="">— none —</option>' + employees.filter(e=>e.active)
+        .map(e => `<option value="${e.id}" ${e.id===sel?'selected':''}>${e.name} (${e.emp_no})</option>`).join('');
+    }
+    async function renderEmployees() {
+      employees = await api('/admin/employees');
+      const showInactive = document.getElementById('empShowInactive')?.checked;
+      const inactiveCount = employees.filter(e=>!e.active).length;
+      const cntEl = document.getElementById('empInactiveCount');
+      if (cntEl) cntEl.textContent = inactiveCount ? `(${inactiveCount} inactive)` : '';
+      const list = showInactive ? employees : employees.filter(e=>e.active);
+      document.getElementById('empTable').innerHTML = `<table class="w-full text-sm"><thead><tr class="text-left border-b border-slate-200">
+        ${['Emp No','Name','Designation','Dept','Mobile','Admin','Expense','Status','Actions'].map(h=>`<th class="py-2 pr-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">${h}</th>`).join('')}</tr></thead><tbody>
+        ${list.map(e=>`<tr class="border-b border-slate-100">
+          <td class="py-2 pr-3 font-mono text-xs">${esc(e.emp_no)}</td><td class="py-2 pr-3">${esc(e.name)}</td>
+          <td class="py-2 pr-3 text-slate-500">${esc(e.job_title)}</td>
+          <td class="py-2 pr-3 text-slate-500">${esc(e.department)}</td><td class="py-2 pr-3 text-slate-500">${esc(e.phone)}</td>
+          <td class="py-2 pr-3">${e.is_admin?'<span class="text-brand-600 font-semibold">Yes</span>':'—'}</td>
+          <td class="py-2 pr-3"><button onclick="setExpCat(${e.id},'${e.expense_category==='CAT1'?'CAT2':'CAT1'}')" class="pill ${e.expense_category==='CAT1'?'bg-brand-50 text-brand-700':'bg-slate-100 text-slate-600'} hover:opacity-80">${e.expense_category==='CAT1'?'Cat 1':'Cat 2'}</button></td>
+          <td class="py-2 pr-3">${e.active?'<span class="text-emerald-600">Active</span>':'<span class="text-slate-400">Inactive</span>'}</td>
+          <td class="py-2 pr-3 whitespace-nowrap">
+            <button onclick="editEmp(${e.id})" class="text-xs font-semibold text-brand-600 hover:underline mr-2">Edit</button>
+            <button onclick="resetPw(${e.id},'${esc(e.emp_no)}')" class="text-xs text-slate-600 hover:underline mr-2">Reset PW</button>
+            <button onclick="sendWelcome(${e.id}, ${jsArg(e.name)}, ${!!e.must_reset}, ${!!e.phone})" class="text-xs text-slate-600 hover:underline mr-2">Welcome</button>
+            <button onclick="toggleActive(${e.id},${!e.active})" class="text-xs ${e.active?'text-red-600':'text-emerald-600'} hover:underline">${e.active?'Deactivate':'Activate'}</button>
+          </td></tr>`).join('')}</tbody></table>`;
+    }
+    // Add + Edit share one popup form (empModal). Add opens it blank; Edit pre-fills it.
+    let departments = [];
+    async function addEmp() {
+      try { if (!departments.length) departments = await api('/admin/departments'); } catch (e) {}
+      empModal('add', {});
+    }
+    function editEmp(id) {
+      const e = employees.find(x => x.id === id); if (!e) return;
+      empModal('edit', e);
+    }
+    async function sendWelcome(id, name, mustReset, hasPhone){
+      if(!hasPhone){ toast('No WhatsApp number on file for '+name,'error'); return; }
+      if(!confirm(`Send the welcome WhatsApp to ${name}?`)) return;
+      try{ await api(`/admin/employees/${id}/welcome`,{method:'POST'}); toast('Welcome message sent to '+name,'success'); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function resetPw(id, no) {
+      if (!confirm(`Reset password for ${no} to default and force change on next login?`)) return;
+      const r = await api(`/admin/employees/${id}/reset-password`,{method:'POST'});
+      toast(`Password reset to ${r.default_password}`,'success');
+    }
+    async function toggleActive(id, makeActive) {
+      await api(`/admin/employees/${id}/${makeActive?'activate':'deactivate'}`,{method:'POST'});
+      toast(makeActive?'Activated':'Deactivated','success'); renderEmployees();
+    }
+    async function toggleAdmin(id, makeAdmin) {
+      await api(`/admin/employees/${id}`,{method:'PUT',body:{is_admin:makeAdmin}});
+      toast('Updated','success'); renderEmployees();
+    }
+
+    // ---------- CATEGORIES / ROUTING ----------
+    let holidays = [];
+    async function renderHolidays() {
+      holidays = await api('/admin/holidays');
+      document.getElementById('holList').innerHTML = holidays.length
+        ? holidays.map(h => `<span class="pill bg-slate-100 text-slate-700 inline-flex items-center gap-1.5">${h.d}${h.label?` · ${esc(h.label)}`:''}
+            <button onclick="delHoliday('${h.d}')" class="text-red-500 hover:text-red-700 font-bold">&times;</button></span>`).join('')
+        : '<span class="text-xs text-slate-400">No holidays set.</span>';
+    }
+    async function addHoliday() {
+      const d = val('hol_d'); if (!d) return toast('Pick a date', 'error');
+      try { await api('/admin/holidays', { method:'POST', body:{ d, label: val('hol_label') } });
+        document.getElementById('hol_d').value=''; document.getElementById('hol_label').value='';
+        renderHolidays(); toast('Holiday added', 'success'); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+    async function delHoliday(d) { await api('/admin/holidays/'+d, { method:'DELETE' }); renderHolidays(); }
+
+    async function renderCategories() {
+      employees = await api('/admin/employees');
+      const cats = await api('/admin/categories');
+      renderHolidays();
+      document.getElementById('catList').innerHTML = cats.map(c => {
+        const trades = c.trades || [];
+        const tradeRows = trades.map(t => `<div class="flex items-center gap-2 mb-1.5 flex-wrap">
+            <input class="inp flex-1 min-w-[8rem] text-xs" id="t${t.id}_name" value="${esc(t.name)}">
+            <select class="inp max-w-[170px] text-xs" id="t${t.id}_l1" title="Default L1 handler for this trade">${empOptions(t.l1_emp_id)}</select>
+            <label class="flex items-center gap-1 text-[11px] whitespace-nowrap" title="Assign handler per location"><input type="checkbox" id="t${t.id}_lb" ${t.location_based?'checked':''} onchange="toggleTradeLoc(${t.id})"> by location</label>
+            <button id="t${t.id}_setloc" onclick="openTradeLoc(${t.id}, ${jsArg(t.name)})" class="text-xs text-brand-600 hover:underline ${t.location_based?'':'hidden'}">Set handlers</button>
+            <button onclick="saveTrade(${t.id})" class="text-xs text-brand-600 hover:underline">Save</button>
+            <button onclick="delTrade(${t.id})" class="text-xs text-red-600 hover:underline">Delete</button>
+          </div>`).join('') || '<div class="text-xs text-slate-400 mb-1">No trades yet — add one below.</div>';
+        return `<div class="card p-4">
+          <div class="flex items-center justify-between mb-2 gap-2">
+            <div class="font-bold">${esc(c.name)} ${c.active?'':'<span class="text-xs text-slate-400">(inactive)</span>'}</div>
+          </div>
+          <label class="flex items-center gap-2 text-xs mb-3"><input type="checkbox" id="c${c.id}_ht" ${c.has_trades?'checked':''} onchange="toggleTrades(${c.id})"> Uses trades (sub-types, each with its own L1 handler)</label>
+
+          <div class="grid sm:grid-cols-3 gap-3 items-end mb-3">
+            <div id="l1Wrap_${c.id}" class="${c.has_trades?'hidden':''}"><label class="lbl">L1 — handler</label><select class="inp" id="c${c.id}_l1">${empOptions(c.l1_emp_id)}</select></div>
+            <div><label class="lbl">L2 — escalation</label><select class="inp" id="c${c.id}_l2">${empOptions(c.l2_emp_id)}</select></div>
+            <div><label class="lbl">L3 — escalation (optional)</label><select class="inp" id="c${c.id}_l3">${empOptions(c.l3_emp_id)}</select></div>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-3 items-end">
+            <div><label class="lbl">Remind L1 + L2 after (min)</label><input type="number" class="inp" id="c${c.id}_wc" value="${c.wait_cycle_mins}"></div>
+            <div><label class="lbl">Add L3 after (min)</label><input type="number" class="inp" id="c${c.id}_wl3" value="${c.wait_l3_mins}"></div>
+          </div>
+
+          <div id="tradesBox_${c.id}" class="${c.has_trades?'':'hidden'} mt-3 border-t border-slate-100 pt-3">
+            <label class="lbl">Trades (sub-types)</label>
+            <div class="mt-1">${tradeRows}</div>
+            <div class="flex items-center gap-2 mt-2">
+              <input class="inp flex-1 text-xs" id="c${c.id}_newtrade" placeholder="New trade name">
+              <select class="inp max-w-[190px] text-xs" id="c${c.id}_newtradel1" title="L1 handler">${empOptions(null)}</select>
+              <button onclick="addTrade(${c.id})" class="btn text-xs">Add trade</button>
+            </div>
+          </div>
+          <div class="flex gap-2 mt-3 items-center">
+            <button onclick="saveCat(${c.id})" class="bg-brand-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg">Save routing</button>
+            <button onclick="toggleCat(${c.id},${!c.active})" class="text-xs ${c.active?'text-red-600':'text-emerald-600'} hover:underline px-2">${c.active?'Deactivate':'Activate'}</button>
+            <button onclick="delCat(${c.id},${jsArg(c.name)})" class="text-xs text-red-600 hover:underline px-2 ml-auto">Delete category</button>
+          </div>
+        </div>`;
+      }).join('');
+    }
+    function toggleTradeLoc(id){
+      const cb = document.getElementById(`t${id}_lb`), btn = document.getElementById(`t${id}_setloc`);
+      if (btn) btn.classList.toggle('hidden', !cb.checked);
+    }
+    async function saveCat(id) {
+      const htEl = document.getElementById(`c${id}_ht`);
+      const body = {
+        has_trades: htEl ? htEl.checked : false,
+        l1_emp_id: +gv(`c${id}_l1`) || null,
+        l2_emp_id: +gv(`c${id}_l2`) || null,
+        l3_emp_id: +gv(`c${id}_l3`) || null,
+        wait_cycle_mins: +gv(`c${id}_wc`) || 120,
+        wait_l3_mins: +gv(`c${id}_wl3`) || 240,
+      };
+      try {
+        await api(`/admin/categories/${id}`, { method:'PUT', body });
+        toast('Routing saved', 'success'); renderCategories();
+      } catch (e) { toast(e.message, 'error'); }
+    }
+    function toggleTrades(id){
+      const on = document.getElementById(`c${id}_ht`).checked;
+      document.getElementById(`tradesBox_${id}`)?.classList.toggle('hidden', !on);
+      document.getElementById(`l1Wrap_${id}`)?.classList.toggle('hidden', on);
+    }
+    async function addTrade(catId){
+      const name = val(`c${catId}_newtrade`); if(!name) return toast('Trade name required','error');
+      const l1 = +gv(`c${catId}_newtradel1`) || null;
+      try{ await api('/admin/trades',{method:'POST',body:{ category_id:catId, name, l1_emp_id:l1 }});
+        toast('Trade added','success'); renderCategories(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function saveTrade(id){
+      const name = val(`t${id}_name`); const l1 = +gv(`t${id}_l1`) || null;
+      const lb = document.getElementById(`t${id}_lb`)?.checked || false;
+      try{ await api(`/admin/trades/${id}`,{method:'PUT',body:{ name, l1_emp_id:l1, location_based:lb }}); toast('Trade saved','success'); renderCategories(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    let tlTradeId=null;
+    async function openTradeLoc(id, name){
+      tlTradeId=id;
+      document.getElementById('tlTitle').textContent='Location handlers — '+name;
+      const d=await api(`/admin/trades/${id}/locations`);
+      document.getElementById('tlBody').innerHTML = d.locations.length ? d.locations.map(l=>`
+        <div class="flex items-center gap-2">
+          <div class="flex-1 text-sm">${esc(l.location_name)}</div>
+          <select class="inp max-w-[230px] text-sm" data-loc="${l.location_id}">${empOptions(l.l1_emp_id)}</select>
+        </div>`).join('') : '<div class="text-sm text-slate-400">No active locations yet — add some in the Locations section first.</div>';
+      const m=document.getElementById('tradeLocModal'); m.classList.remove('hidden'); m.classList.add('flex');
+    }
+    function closeTradeLoc(){ const m=document.getElementById('tradeLocModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+    async function saveTradeLoc(){
+      const sels=document.querySelectorAll('#tlBody select[data-loc]');
+      const mappings=Array.from(sels).map(s=>({location_id:+s.dataset.loc, l1_emp_id:+s.value||null}));
+      try{ await api(`/admin/trades/${tlTradeId}/locations`,{method:'PUT',body:{mappings}}); toast('Location handlers saved','success'); closeTradeLoc(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function delTrade(id){
+      if(!confirm('Delete this trade?')) return;
+      try{ await api(`/admin/trades/${id}`,{method:'DELETE'}); toast('Trade deleted','info'); renderCategories(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function delCat(id,name){
+      if(!confirm(`Delete category "${name}"? This removes its trades and routing.`)) return;
+      try{ await api(`/admin/categories/${id}`,{method:'DELETE'}); toast('Category deleted','info'); renderCategories(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function toggleCat(id, active){ await api(`/admin/categories/${id}`,{method:'PUT',body:{active}}); toast('Updated','success'); renderCategories(); }
+    async function addCat() {
+      const name = val('c_name'); if(!name) return toast('Name required','error');
+      await api('/admin/categories',{method:'POST',body:{ name, pattern: val('c_pattern') }});
+      toast('Category added','success'); document.getElementById('c_name').value=''; renderCategories();
+    }
+
+    // ---------- LOCATIONS ----------
+    async function renderLocations() {
+      loadReqGroups();
+      const locs = await api('/admin/locations');
+      document.getElementById('locTable').innerHTML = `<table class="w-full text-sm"><tbody>
+        ${locs.map(l=>`<tr class="border-b border-slate-100"><td class="py-2">${l.name}</td>
+          <td class="py-2 text-right"><span class="text-xs ${l.active?'text-emerald-600':'text-slate-400'} mr-3">${l.active?'Active':'Inactive'}</span>
+          <button onclick="toggleLoc(${l.id},${!l.active})" class="text-xs text-brand-600 hover:underline">${l.active?'Hide':'Show'}</button></td></tr>`).join('')}
+        </tbody></table>`;
+    }
+    async function addLoc(){ const name=val('l_name'); if(!name) return toast('Name required','error');
+      await api('/admin/locations',{method:'POST',body:{name}}); toast('Added','success'); document.getElementById('l_name').value=''; renderLocations(); }
+    async function toggleLoc(id, active){ await api(`/admin/locations/${id}`,{method:'PUT',body:{active}}); renderLocations(); }
+    async function loadReqGroups(){ try{ const d=await api('/admin/requester-groups'); document.getElementById('rgText').value=d.value||''; }catch(e){} }
+    async function saveReqGroups(){
+      try{ await api('/admin/requester-groups',{method:'PUT',body:{value:document.getElementById('rgText').value}}); toast('Requested-by options saved','success'); }
+      catch(e){ toast(e.message,'error'); }
+    }
+
+    const val = id => document.getElementById(id).value.trim();
+    const esc = s => (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+    // Safe single-quoted JS string for use inside double-quoted on* attributes.
+    const jsArg = s => "'" + String(s==null?'':s).replace(/\\/g,'\\\\').replace(/'/g,"\\'") + "'";
+
+    // Shared Add/Edit popup. mode='add' → blank + create; mode='edit' → pre-filled + update.
+    function empModal(mode, e){
+      const isEdit = mode === 'edit';
+      const others = employees.filter(x => x.id !== e.id);
+      const optList = (selId) => others.filter(x => x.active !== false || x.id===selId)
+        .map(x=>`<option value="${x.id}" ${selId===x.id?'selected':''}>${esc(x.name)} (${esc(x.emp_no)})${x.active===false?' — relieved':''}</option>`).join('');
+      // Department dropdown from the known set, plus the current value if it's somehow not listed,
+      // plus an "add new" escape hatch so HR isn't blocked when a genuinely new dept appears.
+      const deptSet = Array.from(new Set([...(departments||[]), e.department].filter(Boolean)));
+      const deptOpts = '<option value="">— select —</option>'
+        + deptSet.map(d=>`<option value="${esc(d)}" ${e.department===d?'selected':''}>${esc(d)}</option>`).join('')
+        + '<option value="__new__">+ Add new department…</option>';
+      const chk = (v) => v ? 'checked' : '';
+      const app = e.app_access || {};
+      const w = document.createElement('div');
+      w.id = 'empEditModal';
+      w.className = 'fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+      w.onclick = ev => { if(ev.target===w) w.remove(); };
+      w.innerHTML = `<div class="bg-white rounded-xl shadow-2xl w-full max-w-lg max-h-[92vh] overflow-y-auto">
+        <div class="p-4 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white">
+          <h3 class="font-bold">${isEdit ? 'Edit employee' : 'Add employee'}</h3>
+          <button onclick="document.getElementById('empEditModal').remove()" class="text-slate-400 text-2xl leading-none">&times;</button>
+        </div>
+        <div class="p-4 grid sm:grid-cols-2 gap-3">
+          <div><label class="lbl">Employee code *</label><input id="ed_no" class="inp" value="${esc(e.emp_no)}"></div>
+          <div><label class="lbl">Full name *</label><input id="ed_name" class="inp" value="${esc(e.name)}"></div>
+          <div><label class="lbl">Designation</label><input id="ed_title" class="inp" value="${esc(e.job_title)}"></div>
+          <div><label class="lbl">Department</label>
+            <select id="ed_dept" class="inp" onchange="if(this.value==='__new__'){const v=prompt('New department name');this.value='';if(v){const o=document.createElement('option');o.value=v;o.textContent=v;o.selected=true;this.insertBefore(o,this.options[this.options.length-1]);}}">${deptOpts}</select></div>
+          <div><label class="lbl">Mobile</label><input id="ed_phone" class="inp" value="${esc(e.phone)}" placeholder="9444085016"></div>
+          <div><label class="lbl">Email</label><input id="ed_email" class="inp" value="${esc(e.email)}"></div>
+          <div><label class="lbl">Expense category</label><select id="ed_cat" class="inp">
+            <option value="CAT2" ${e.expense_category!=='CAT1'?'selected':''}>Cat 2 (≤ ₹50k)</option>
+            <option value="CAT1" ${e.expense_category==='CAT1'?'selected':''}>Cat 1 (&gt; ₹50k)</option></select></div>
+          <div><label class="lbl">Reporting manager <span class="text-slate-400 normal-case font-normal">(conveyance approver)</span></label>
+            <select id="ed_rm" class="inp"><option value="">— none —</option>${optList(e.reporting_manager_emp_id)}</select></div>
+          <div><label class="lbl">Outpass approver <span class="text-slate-400 normal-case font-normal">(primary)</span></label>
+            <select id="ed_opappr" class="inp"><option value="">— use department routing —</option>${optList(e.outpass_approver_id)}</select></div>
+          <div><label class="lbl">Backup approver <span class="text-slate-400 normal-case font-normal">(when primary absent)</span></label>
+            <select id="ed_opbackup" class="inp"><option value="">— none —</option>${optList(e.outpass_backup_approver_id)}</select></div>
+          <div class="flex items-end gap-5 pb-1">
+            <label class="flex items-center gap-2 text-sm"><input id="ed_admin" type="checkbox" ${chk(e.is_admin)}> Admin access</label>
+            <label class="flex items-center gap-2 text-sm"><input id="ed_active" type="checkbox" ${isEdit?chk(e.active):'checked'}> Active</label>
+          </div>
+          <label class="sm:col-span-2 flex items-center gap-2 text-sm bg-mist/60 border border-line rounded-lg px-3 py-2">
+            <input id="ed_convmgr" type="checkbox" ${isEdit ? (e.conveyance_needs_manager!==false?'checked':'') : 'checked'}>
+            <span>Local Conveyance needs reporting-manager approval <span class="text-slate-400 normal-case font-normal">(uncheck to let this person's trips count without manager sign-off)</span></span>
+          </label>
+          <label class="sm:col-span-2 flex items-center gap-2 text-sm bg-mist/60 border border-line rounded-lg px-3 py-2">
+            <input id="ed_opvhr" type="checkbox" ${chk(e.outpass_via_hr)}>
+            <span>Head — own outpass goes to the Heads' approver <span class="text-slate-400 normal-case font-normal">(tick for department heads; their own passes route to the Heads' outpass approver, not to themselves)</span></span>
+          </label>
+          <label class="sm:col-span-2 flex items-center gap-2 text-sm bg-mist/60 border border-line rounded-lg px-3 py-2">
+            <input id="ed_selfraise" type="checkbox" ${chk(e.can_self_raise)}>
+            <span>Can raise self-tickets <span class="text-slate-400 normal-case font-normal">(shows the "Raise this for myself" option — for people who log their own tasks)</span></span>
+          </label>
+          <div class="sm:col-span-2 bg-mist/60 border border-line rounded-lg px-3 py-2">
+            <div class="text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">App access <span class="text-slate-400 normal-case font-normal">(restricted apps — hidden unless granted; admins always see all)</span></div>
+            <label class="flex items-center gap-2 text-sm py-0.5"><input id="ed_app_qms" type="checkbox" ${chk(app.qms)}> <span>Quality (QMS)</span></label>
+            <label class="flex items-center gap-2 text-sm py-0.5"><input id="ed_app_dispatch" type="checkbox" ${chk(app.dispatch)}> <span>Dispatch / Weighbridge</span></label>
+            <label class="flex items-center gap-2 text-sm py-0.5"><input id="ed_app_canteen" type="checkbox" ${chk(app.canteen)}> <span>Canteen Register</span></label>
+          </div>
+        </div>
+        <div class="p-4 border-t border-slate-200 flex justify-between items-center gap-2 sticky bottom-0 bg-white">
+          <span class="text-[11px] text-slate-400">${isEdit ? '' : 'Default password: Bsc@123 (they set their own on first login)'}</span>
+          <div class="flex gap-2">
+            <button onclick="document.getElementById('empEditModal').remove()" class="btn-ghost text-sm">Cancel</button>
+            <button onclick="saveEmp(${isEdit ? e.id : 'null'})" class="btn text-sm">${isEdit ? 'Save changes' : 'Add employee'}</button>
+          </div>
+        </div></div>`;
+      document.body.appendChild(w);
+    }
+
+    async function saveEmp(id){
+      const body = {
+        emp_no: val('ed_no'), name: val('ed_name'), job_title: val('ed_title'),
+        department: document.getElementById('ed_dept').value || null, phone: val('ed_phone'), email: val('ed_email'),
+        expense_category: document.getElementById('ed_cat').value,
+        reporting_manager_emp_id: document.getElementById('ed_rm').value || null,
+        outpass_approver_id: document.getElementById('ed_opappr').value || null,
+        outpass_backup_approver_id: document.getElementById('ed_opbackup').value || null,
+        is_admin: document.getElementById('ed_admin').checked,
+        active: document.getElementById('ed_active').checked,
+        conveyance_needs_manager: document.getElementById('ed_convmgr').checked,
+        outpass_via_hr: document.getElementById('ed_opvhr').checked,
+        can_self_raise: document.getElementById('ed_selfraise').checked,
+        app_access: {
+          qms: document.getElementById('ed_app_qms').checked,
+          dispatch: document.getElementById('ed_app_dispatch').checked,
+          canteen: document.getElementById('ed_app_canteen').checked,
+        },
+      };
+      if(!body.emp_no || !body.name) return toast('Employee code and name are required','error');
+      if(body.department==='__new__') return toast('Please finish adding the new department name','error');
+      try{
+        if (id == null) { await api('/admin/employees',{method:'POST',body}); toast('Employee added','success'); }
+        else { await api(`/admin/employees/${id}`,{method:'PUT',body}); toast('Employee updated','success'); }
+        const m = document.getElementById('empEditModal'); if(m) m.remove();
+        renderEmployees();
+      }catch(e){ toast(e.message,'error'); }
+    }    const gv = id => { const e = document.getElementById(id); return e ? e.value : ''; };
+    async function logout(){ await api('/logout',{method:'POST'}); location.href='/'; }
+    init().catch(e=>{ console.error(e); toast(e.message,'error'); });
+    // ---------- OUTPASS APPROVERS (department head + fallback) ----------
+    let apprData = { departments: [], employees: [], fallback_emp_id: null };
+    async function renderApprovers() {
+      apprData = await api('/admin/approvers');
+      const opts = (sel) => '<option value="">— none —</option>' +
+        apprData.employees.map(e => `<option value="${e.id}" ${e.id===sel?'selected':''}>${esc(e.name)}${e.department?` · ${esc(e.department)}`:''}</option>`).join('');
+      document.getElementById('oa_fallback').innerHTML = opts(apprData.fallback_emp_id);
+      document.getElementById('oa_leavecover').innerHTML = opts(apprData.leavecover_emp_id);
+      document.getElementById('oa_heads').innerHTML = opts(apprData.heads_emp_id);
+      const hs = apprData.heads || [];
+      document.getElementById('oa_heads_list').innerHTML = hs.length
+        ? `<b>Heads whose own pass routes here (${hs.length}):</b> ` + hs.map(h=>`${esc(h.name)}${h.department?` <span class="text-slate-400">(${esc(h.department)})</span>`:''}`).join(' · ')
+        : `<span class="text-slate-400">No employees are marked as heads yet — tick the "Head" box on a head's record in the Employees tab.</span>`;
+      const el = document.getElementById('ogApprTable');
+      el.innerHTML = apprData.departments.length ? `<table class="w-full text-sm"><thead><tr class="text-left border-b border-slate-200">
+          ${['Department','Department head','Leave cover','Routing'].map(h=>`<th class="py-2 pr-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">${h}</th>`).join('')}</tr></thead><tbody>
+          ${apprData.departments.map((d,i)=>`<tr class="border-b border-slate-100">
+            <td class="py-2 pr-3 font-semibold">${esc(d.department)}</td>
+            <td class="py-2 pr-3"><select id="dh_${i}" onchange="saveDeptHead(${i})" class="inp min-w-[14rem]">${opts(d.head_emp_id)}</select></td>
+            <td class="py-2 pr-3"><select id="lc_${i}" onchange="saveDeptHead(${i})" class="inp min-w-[14rem]">${opts(d.leave_cover_emp_id)}</select></td>
+            <td class="py-2 pr-3">${d.head_emp_id?'<span class="pill bg-emerald-100 text-emerald-700">Head set</span>':'<span class="pill bg-slate-100 text-slate-500">→ fallback</span>'}</td>
+          </tr>`).join('')}</tbody></table>`
+        : '<div class="text-sm text-slate-400 py-6 text-center">No departments found — set Department on employees first (Employees tab).</div>';
+    }
+    async function saveDeptHead(i) {
+      const d = apprData.departments[i];
+      const head_emp_id = +document.getElementById('dh_'+i).value || null;
+      const leave_cover_emp_id = +document.getElementById('lc_'+i).value || null;
+      try { await api('/admin/approvers/dept', { method:'PUT', body:{ department:d.department, head_emp_id, leave_cover_emp_id } });
+        toast('Saved · '+d.department, 'success'); renderApprovers(); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+    async function saveFallback() {
+      const emp_id = +document.getElementById('oa_fallback').value || null;
+      try { await api('/admin/approvers/fallback', { method:'PUT', body:{ emp_id } }); toast('Fallback approver saved', 'success'); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+    async function saveHeads() {
+      const emp_id = +document.getElementById('oa_heads').value || null;
+      try { await api('/admin/approvers/heads', { method:'PUT', body:{ emp_id } }); toast("Heads' approver saved", 'success'); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+    async function saveLeaveCover() {
+      const emp_id = +document.getElementById('oa_leavecover').value || null;
+      try { await api('/admin/approvers/leavecover', { method:'PUT', body:{ emp_id } }); toast('Default leave-cover saved', 'success'); }
+      catch (e) { toast(e.message, 'error'); }
+    }
+
+    // ---------- EXPENSE ----------
+    async function setExpCat(id, cat){
+      await api('/admin/employees/'+id+'/expense-category',{method:'PUT',body:{category:cat}});
+      toast('Set to '+(cat==='CAT1'?'Category 1':'Category 2'),'success'); renderEmployees();
+    }
+    function repCycleOf(d){ d=new Date(d); let y=d.getFullYear(), m=d.getMonth(); if(d.getDate()>=26){ m++; if(m>11){m=0;y++;} } return `${y}-${String(m+1).padStart(2,'0')}`; }
+    function repCycleLabel(p){ if(p<'2026-07'){ const [y,m]=p.split('-').map(Number); return new Date(y,m-1,1).toLocaleString('en-IN',{month:'long',year:'numeric'}); } const [y,m]=p.split('-').map(Number); const start=p==='2026-07'?new Date(2026,6,1):new Date(y,m-2,26); const end=new Date(y,m-1,25); const f=d=>d.toLocaleDateString('en-IN',{day:'numeric',month:'short'}); return `${f(start)} – ${f(end)} ${end.getFullYear()}`; }
+    async function loadReportPreview(){
+      const p=document.getElementById('rep_month').value; if(!p) return;
+      document.getElementById('rep_cycle').textContent=(p<'2026-07'?'':'Covers ')+repCycleLabel(p);
+      document.getElementById('rep_preview').textContent='Loading…';
+      try{ const r=await api('/expense/report/'+p+'/summary');
+        const cmdLine = r.cmd_name ? `CMD: ${esc(r.cmd_name)}${r.cmd_email?' · '+esc(r.cmd_email):' · (no email on file)'}${r.cmd_phone?' · WhatsApp ✓':''}` : 'No CMD contact set (Approval chain above).';
+        document.getElementById('rep_preview').innerHTML = `<b>${r.count}</b> approved reimbursement(s) pending payment, total <b>₹${(r.total||0).toLocaleString('en-IN')}</b>.<br><span class="text-xs text-slate-500">${cmdLine}</span>`;
+      }catch(e){ document.getElementById('rep_preview').textContent=e.message; }
+    }
+    function downloadReport(){ const p=document.getElementById('rep_month').value; if(!p) return; window.open('/api/expense/report/'+p+'/xlsx',''); }
+    async function sendReport(){
+      const p=document.getElementById('rep_month').value; if(!p) return;
+      if(!confirm('Generate and send the consolidated Excel for '+repCycleLabel(p)+' to the CMD?')) return;
+      document.getElementById('rep_msg').textContent='Sending…';
+      try{ const r=await api('/expense/report/'+p+'/send',{method:'POST'});
+        let m=`Done — ${r.count} claim(s), ₹${(r.total||0).toLocaleString('en-IN')}.`;
+        m += r.emailed ? ` Emailed${r.to?' to '+r.to:''}.` : (r.no_cmd?' No CMD set.':(r.no_email?' CMD has no email on file.':' Email not sent (mail not configured).'));
+        m += r.whatsapped ? ' WhatsApp link sent.' : '';
+        document.getElementById('rep_msg').textContent=m; toast('Report sent','success');
+      }catch(e){ document.getElementById('rep_msg').textContent=e.message; toast(e.message,'error'); }
+    }
+    async function loadChain(){
+      const rm=document.getElementById('rep_month'); if(rm && !rm.value){ rm.value=repCycleOf(new Date()); loadReportPreview(); }
+      const c = await api('/admin/expense-chain');
+      const act = employees.filter(e=>e.active);
+      const checks = (cid, sel) => act.map(e=>`<label class="flex items-center gap-1.5 text-xs"><input type="checkbox" value="${e.id}" ${sel.includes(e.id)?'checked':''}> ${esc(e.name)} <span class="text-slate-400">${esc(e.emp_no)}</span></label>`).join('');
+      document.getElementById('ch_hr').innerHTML = checks('ch_hr', c.hr_approver_ids||[]);
+      document.getElementById('ch_final').innerHTML = checks('ch_final', c.final_approver_ids||[]);
+      document.getElementById('ch_email').value = c.accounts_email || 'accounts@bharatsteels.in';
+      document.getElementById('ch_notify').innerHTML = '<option value="">— none —</option>' +
+        act.map(e=>`<option value="${e.id}" ${c.accounts_notify_id===e.id?'selected':''}>${esc(e.name)} (${esc(e.emp_no)})</option>`).join('');
+      document.getElementById('ch_cmd').innerHTML = '<option value="">— none —</option>' +
+        act.map(e=>`<option value="${e.id}" ${c.cmd_notify_id===e.id?'selected':''}>${esc(e.name)} (${esc(e.emp_no)})</option>`).join('');
+      document.getElementById('ch_prefix_emails').value = Object.entries(c.accounts_email_by_prefix||{}).map(([k,v])=>`${k} = ${v}`).join('\n');
+    }
+    function checkedVals(id){ return Array.from(document.querySelectorAll('#'+id+' input:checked')).map(i=>+i.value); }
+    async function saveChain(){
+      const body = {
+        hr_approver_ids: checkedVals('ch_hr'),
+        final_approver_ids: checkedVals('ch_final'),
+        accounts_email: document.getElementById('ch_email').value.trim(),
+        accounts_notify_id: document.getElementById('ch_notify').value || null,
+        cmd_notify_id: document.getElementById('ch_cmd').value || null,
+        accounts_email_by_prefix: (()=>{ const map={}; (document.getElementById('ch_prefix_emails').value||'').split(/\r?\n/).forEach(line=>{ const i=line.indexOf('='); if(i>0){ const k=line.slice(0,i).trim().toUpperCase(); const v=line.slice(i+1).trim(); if(k&&v) map[k]=v; } }); return map; })(),
+      };
+      if(!body.hr_approver_ids.length) return toast('Pick at least one HR approver','error');
+      if(!body.final_approver_ids.length) return toast('Pick at least one final approver','error');
+      try{ await api('/admin/expense-chain',{method:'PUT',body}); toast('Approval chain saved','success'); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function loadGate(){
+      try{ const g = await api('/admin/expense-gate');
+        document.getElementById('gate_conv').checked = !!g.conveyance_anytime;
+        document.getElementById('gate_out').checked = !!g.outstation_anytime;
+        document.getElementById('gate_min').value = g.min_cycle || '2026-07';
+      }catch(e){}
+    }
+    async function saveGate(){
+      const _min = document.getElementById('gate_min').value;
+      const body = { conveyance_anytime: document.getElementById('gate_conv').checked,
+        outstation_anytime: document.getElementById('gate_out').checked, min_cycle: _min };
+      try{ await api('/admin/expense-gate',{method:'PUT',body}); toast('Submit lock settings saved','success'); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function loadPolicy(){
+      const p=await api('/admin/expense-policy');
+      document.getElementById('p_bike').value=p.rate_bike ?? 3.5;
+      document.getElementById('p_car').value=p.rate_car ?? 5;
+      document.getElementById('p_c1food').value=p.cat1_food ?? 750;
+      document.getElementById('p_c1accom').value=p.cat1_accom ?? 1500;
+      document.getElementById('p_c2food').value=p.cat2_food ?? 500;
+      document.getElementById('p_c2accom').value=p.cat2_accom ?? 1000;
+      document.getElementById('p_loghrs').value=p.conveyance_log_hours ?? 48;
+    }
+    async function savePolicy(){
+      const body={ rate_bike:+v('p_bike'), rate_car:+v('p_car'),
+        cat1_food:+v('p_c1food'), cat1_accom:+v('p_c1accom'),
+        cat2_food:+v('p_c2food'), cat2_accom:+v('p_c2accom'),
+        conveyance_log_hours:+v('p_loghrs') };
+      function v(id){ return document.getElementById(id).value; }
+      try{ await api('/admin/expense-policy',{method:'PUT',body}); toast('Policy saved','success'); }
+      catch(e){ toast(e.message,'error'); }
+    }
+  </script>
+  <div id="tradeLocModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[85vh] overflow-y-auto">
+      <div class="p-4 border-b border-line flex items-center justify-between">
+        <h3 class="font-bold text-sm" id="tlTitle">Location handlers</h3>
+        <button onclick="closeTradeLoc()" class="text-slate-400 hover:text-ink text-xl leading-none">&times;</button>
+      </div>
+      <div class="px-4 pt-3 text-[11px] text-slate-500">Pick the L1 handler for each location. Leave blank to fall back to the trade's default handler.</div>
+      <div id="tlBody" class="p-4 space-y-2"></div>
+      <div class="p-4 border-t border-line flex justify-end gap-2">
+        <button onclick="closeTradeLoc()" class="text-sm px-3 py-1.5 rounded-lg border border-line">Cancel</button>
+        <button onclick="saveTradeLoc()" class="text-sm px-3 py-1.5 rounded-lg bg-brand-600 text-white font-semibold">Save handlers</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

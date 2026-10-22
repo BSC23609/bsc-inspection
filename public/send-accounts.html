@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Send to Accounts — BSC</title>
+  <link rel="stylesheet" href="/css/bsc.css">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0A4566">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/theme.css?v=5">
+  <style>body{font-family:'Inter',ui-sans-serif,system-ui,sans-serif}</style>
+</head>
+<body class="min-h-screen text-ink">
+  <header class="deckbar">
+    <div class="max-w-3xl mx-auto px-4 deckbar-in">
+      <span class="deck-plate"><img src="/img/group-logo.png" alt="The Bharat Steel Group" /></span>
+      <span class="deck-sp"></span>
+      <a href="/home.html" class="deck-link">Home</a>
+      <button onclick="logout()" class="deck-out">Sign out</button>
+    </div>
+    <div class="seam"></div>
+  </header>
+
+  <main class="max-w-3xl mx-auto px-4 py-7">
+    <div class="mb-4">
+      <div class="eyebrow">Accounts</div>
+      <h1 class="text-2xl font-bold" style="font-family:'Space Grotesk'">Send to Accounts</h1>
+      <p class="text-sm text-slate-500 mt-1">Approved payment reports, ready to email — routed strictly per company.</p>
+    </div>
+
+    <div id="denied" class="hidden card p-8 text-center text-slate-500">This module is for management and admins only.</div>
+
+    <div id="ui" class="hidden">
+      <div class="flex items-end gap-2 mb-4 flex-wrap">
+        <div><label class="fieldlabel">Month</label><input id="month" type="month" class="field !w-auto text-sm" onchange="load()"></div>
+        <button onclick="load()" class="btn-ghost text-sm">↻ Refresh</button>
+      </div>
+      <div id="companies"></div>
+    </div>
+  </main>
+
+  <div id="toast" class="fixed bottom-5 left-1/2 -translate-x-1/2 hidden px-4 py-2 rounded-lg text-white text-sm shadow-lg z-50"></div>
+
+  <script src="/js/common.js?v=89"></script>
+  <script>
+    const esc = s => String(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    const rupee = n => '\u20b9' + Number(n||0).toLocaleString('en-IN');
+    async function clickBusy(btn,label,fn){ if(!btn||btn.dataset.busy)return; btn.dataset.busy='1'; const o=btn.innerHTML; btn.disabled=true; btn.innerHTML=(label||'…'); try{ await fn(); }catch(e){ if(window.toast) toast(e.message||'Error','error'); } finally{ delete btn.dataset.busy; btn.disabled=false; btn.innerHTML=o; } }
+    let me=null, DATA=null;
+
+    (async function init(){
+      try{ me=await api('/me'); }catch(e){ location.href='/'; return; }
+      if(!(me.ot_mgmt||me.ot_hr||me.is_admin)){ document.getElementById('denied').classList.remove('hidden'); return; }
+      document.getElementById('ui').classList.remove('hidden');
+      const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()-1);
+      document.getElementById('month').value=d.toISOString().slice(0,7);
+      await load();
+    })();
+    async function logout(){ await api('/logout',{method:'POST'}); location.href='/'; }
+    const M=()=>document.getElementById('month').value||new Date().toISOString().slice(0,7);
+
+    async function load(){
+      try{ DATA=await api('/final/accounts-queue?month='+M()); render(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    function reportRow(label, total, count, sentAt, previewUrl, manage){
+      if(!Number(total)) return '';
+      return `<div class="flex items-center justify-between gap-3 py-2 border-b border-line/50 last:border-0">
+        <div class="text-sm"><b>${label}</b> <span class="text-slate-400 text-xs">${count?('· '+count+' '):''}</span> · ${rupee(total)}
+          ${sentAt?`<span class="pill bg-emerald-100 text-emerald-700 text-[10px] ml-1">Sent ${esc(sentAt)}</span>`:''}</div>
+        <div class="flex items-center gap-2">${manage?`<button onclick="manageEntries('${manage.kind}','${manage.company}')" class="text-[11px] text-slate-400 hover:text-red-600 hover:underline">Fix duplicates</button>`:''}${previewUrl?`<a href="${previewUrl}" target="_blank" class="btn-ghost text-xs">Preview</a>`:''}</div></div>`;
+    }
+    async function manageEntries(kind, company){
+      let d; try{ d=await api('/final/report-people/'+kind+'/'+company+'/'+M()); }catch(e){ return toast(e.message,'error'); }
+      const title=(kind==='ot'?'Overtime':'Shearing')+' — '+company+' — remove a duplicate';
+      const rows=(d.people||[]).map(p=>`<div class="flex items-center justify-between gap-2 py-2 border-b border-line/50" data-key="${esc(p.key)}">
+        <div class="text-sm"><b>${esc(p.name)}</b> <span class="text-xs text-slate-400 mono">${esc(p.code||'')}</span>
+          <span class="text-[10px] px-1.5 py-0.5 rounded ${p.kind==='staff'?'bg-blue-100 text-blue-700':'bg-emerald-100 text-emerald-700'}">${p.kind}</span>
+          · ${p.qty} ${d.unit} · ${rupee(p.total)}</div>
+        <button onclick="removePerson('${kind}','${company}','${esc(String(p.key)).replace(/'/g,"\\'")}',this)" class="text-xs font-semibold text-red-600 hover:underline">Delete</button></div>`).join('');
+      const w=document.createElement('div'); w.id='mgModal'; w.className='fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4';
+      w.innerHTML=`<div class="bg-white rounded-xl shadow-2xl max-w-lg w-full max-h-[80vh] overflow-y-auto">
+        <div class="p-4 border-b border-line flex items-center justify-between sticky top-0 bg-white"><h3 class="font-bold text-sm">${esc(title)}</h3>
+          <button onclick="document.getElementById('mgModal').remove()" class="text-slate-400 hover:text-ink text-xl leading-none">&times;</button></div>
+        <div class="p-4"><p class="text-xs text-slate-500 mb-2">Delete the wrongly-entered line. A staff person entered as <b>labour</b> (or vice-versa) shows twice — delete the wrong one. This removes their ${kind} entries; the report regenerates automatically.</p>
+          ${rows||'<div class="text-sm text-slate-400">No entries.</div>'}</div></div>`;
+      document.body.appendChild(w);
+    }
+    async function removePerson(kind, company, key, btn){
+      if(!confirm('Delete this person\'s '+kind+' entries for '+M()+'? This cannot be undone.')) return;
+      btn.disabled=true; btn.textContent='Deleting…';
+      try{ const r=await api('/final/report-remove',{method:'POST',body:{kind,company,key,month:M()}});
+        toast('Removed '+r.changed+' entr'+(r.changed===1?'y':'ies'),'success');
+        const row=btn.closest('[data-key]'); if(row) row.remove(); await load(); }
+      catch(e){ toast(e.message,'error'); btn.disabled=false; btn.textContent='Delete'; }
+    }
+    function render(){
+      const box=document.getElementById('companies'); box.innerHTML='';
+      (DATA.companies||[]).filter(c=>(c.expense.total||0)+(c.ot.total||0)+(c.shearing.total||0)>0).forEach(c=>{
+        const anything = c.expense.total || c.ot.total || c.shearing.total;
+        const allSent = (!c.expense.total || c.expense.sent_at) && (!c.ot.total || c.ot.sent_at) && (!c.shearing.total || c.shearing.sent_at);
+        const grand = c.expense.total + c.ot.total + c.shearing.total;
+        const empPreview = c.expense.employees.length ? `<div class="mt-1 mb-2 text-[11px] text-slate-500">${c.expense.employees.map(e=>`<a href="/api/final/employee-report/${e.id}/${M()}" target="_blank" class="hover:underline mr-2">${esc(e.name)} (${rupee(e.total)})</a>`).join(' · ')}</div>` : '';
+        const card=document.createElement('div'); card.className='card p-4 mb-4';
+        card.innerHTML=`
+          <div class="flex items-center justify-between gap-2 mb-2 pb-2 border-b border-line">
+            <div><div class="font-bold text-lg" style="font-family:'Space Grotesk'">${esc(c.label)}</div>
+              <div class="text-xs text-slate-500">→ ${esc(c.email)}</div></div>
+            <div class="text-right"><div class="text-xs text-slate-400">Total</div><div class="font-bold text-emerald-700">${rupee(grand)}</div></div>
+          </div>
+          ${reportRow('Employee expenses', c.expense.total, c.expense.employees.length+' emp', c.expense.sent_at, null)}
+          ${empPreview}
+          ${reportRow('Overtime (consolidated)', c.ot.total, c.ot.count+' ppl', c.ot.sent_at, '/api/final/report/ot/'+c.key+'/'+M(), {kind:'ot',company:c.key})}
+          ${reportRow('Shed-B Shearing (consolidated)', c.shearing.total, c.shearing.count+' ppl', c.shearing.sent_at, '/api/final/report/shearing/'+c.key+'/'+M(), {kind:'shearing',company:c.key})}
+          <div class="flex justify-end mt-3">
+            ${!anything ? '<span class="text-xs text-slate-400">Nothing approved &amp; unpaid this month</span>'
+              : `<button onclick="clickBusy(this,'Sending…',()=>send('${c.key}'))" class="text-white text-sm font-semibold px-4 py-2.5 rounded-lg" style="background:#0A4566">${allSent?'Re-send to Accounts':'Send to Accounts'} → ${esc(c.email)}</button>`}
+          </div>`;
+        box.appendChild(card);
+      });
+    }
+    async function send(companyKey){
+      const c=(DATA.companies||[]).find(x=>x.key===companyKey);
+      if(!confirm('Send '+c.label+' reports for '+M()+' to '+c.email+'?')) return;
+      const r=await api('/final/send-to-accounts',{method:'POST',body:{month:M(),company:companyKey}});
+      toast('Sent '+r.attachments+' report(s) → '+r.email,'success');
+      await load();
+    }
+  </script>
+</body>
+</html>
