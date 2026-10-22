@@ -1103,6 +1103,10 @@ async def assets_save(body: dict, emp: dict = Depends(require_employee)):
             (body.get("notes") or "").strip())
     aid = body.get("id")
     try:
+        aid = int(aid) if str(aid or "").strip() else None   # id comes in as a string; the column is INT
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid asset id")
+    try:
         if aid:
             await db.execute(
                 "UPDATE maint_assets SET code=$1,name=$2,atype=$3,location=$4,make=$5,model=$6,"
@@ -1128,6 +1132,10 @@ async def assets_hours(body: dict, emp: dict = Depends(require_employee)):
     hrs = _num(body.get("running_hours"))
     if not aid or hrs is None:
         raise HTTPException(400, "Asset and running hours required")
+    try:
+        aid = int(aid)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid asset id")
     await db.execute("UPDATE maint_assets SET running_hours=$1, hours_updated_at=now() WHERE id=$2", hrs, aid)
     return {"ok": True}
 
@@ -1135,7 +1143,11 @@ async def assets_hours(body: dict, emp: dict = Depends(require_employee)):
 @router.post("/assets/toggle")
 async def assets_toggle(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
-    await db.execute("UPDATE maint_assets SET active=$1 WHERE id=$2", bool(body.get("active")), body.get("id"))
+    try:
+        aid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid asset id")
+    await db.execute("UPDATE maint_assets SET active=$1 WHERE id=$2", bool(body.get("active")), aid)
     return {"ok": True}
 
 
@@ -1147,6 +1159,10 @@ async def asset_delete(body: dict, emp: dict = Depends(require_employee)):
     aid = body.get("id")
     if not aid:
         raise HTTPException(400, "id required")
+    try:
+        aid = int(aid)
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Invalid asset id")
     # completion records for this machine's checkpoints
     await db.execute(
         "DELETE FROM maint_checkpoint_done WHERE checkpoint_id IN "
