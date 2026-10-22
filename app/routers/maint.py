@@ -3102,6 +3102,31 @@ async def clear_overdue(token: str = Query(default=""), before: str = Query(defa
     return _json({"ok": True, "cleared": len(hit), "cutoff": cutoff.isoformat(), "dry_run": bool(dry)})
 
 
+@router.get("/admin/test-overdue")
+async def test_overdue(token: str = Query(default=""), to: str = Query(default=""),
+                       emp: dict = Depends(require_employee)):
+    """Send a SAMPLE overdue digest (dummy machine list) to one number so you can
+    preview the formatting/line-breaks. Admin or ?token=AGENT_TOKEN.
+    Open qms.bharatsteels.in/maint/admin/test-overdue?token=...&to=919XXXXXXXXX"""
+    await ensure_tables()
+    if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    num = wati.normalize_number(to) if to else ""
+    if not num:
+        subs = await _overdue_recipient_mobiles()
+        num = wati.normalize_number(subs[0]) if subs else ""
+    if not num:
+        return _json({"ok": False, "detail": "No number — add ?to=919XXXXXXXXX to the URL."})
+    sample = [
+        "DG-002 GEN-SET 125 KVA - Quarterly PM - Mohan K",
+        "M/C-018 IRON WORKER MACHINE - Daily PM - Surajit Sasanka Maity",
+        "M/C-005 TMT BENDING M/C 8 MM TO 32 MM - Daily PM - Velu C",
+    ]
+    params = [_today().strftime("%d-%m-%Y"), _numbered(sample), "—"]
+    ok, detail = await _wsend(WATI_MAINT_OVERDUE_TEMPLATE, num, params, name="(test)", kind="test")
+    return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_OVERDUE_TEMPLATE, "wati_reply": detail})
+
+
 @router.get("/reminders/preview")
 async def reminders_preview(emp: dict = Depends(require_employee)):
     """Staff-only preview of what the reminder run would send right now."""
