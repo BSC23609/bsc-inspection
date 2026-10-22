@@ -3073,6 +3073,33 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
     return _json(await _run_reminders(dry=bool(dry), kind=k))
 
 
+@router.get("/admin/clear-overdue")
+async def clear_overdue(token: str = Query(default=""), before: str = Query(default=""),
+                        dry: int = Query(default=0), emp: dict = Depends(require_employee)):
+    """Clear the overdue backlog: every schedule whose next due date is on or before
+    `before` (YYYY-MM-DD, default yesterday) is marked done on that date, so it stops
+    showing overdue while the schedule keeps running from its next cycle. The schedules
+    themselves are NOT deleted. Admin only (or ?token=AGENT_TOKEN). Add &dry=1 to preview."""
+    await ensure_tables()
+    if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    try:
+        cutoff = date.fromisoformat(before) if before else (_today() - timedelta(days=1))
+    except ValueError:
+        raise HTTPException(400, "bad date — use YYYY-MM-DD, e.g. 2026-10-21")
+    today = _today()
+    rows = await db.fetch("SELECT * FROM maint_schedules WHERE COALESCE(active, true)")
+    hit = []
+    for s in rows:
+        s = dict(s)
+        nd = next_due_date(s, today)
+        if nd and nd <= cutoff:
+            hit.append(s["id"])
+    if hit and not dry:
+        await db.execute("UPDATE maint_schedules SET last_done=$1 WHERE id = ANY($2::int[])", cutoff, hit)
+    return _json({"ok": True, "cleared": len(hit), "cutoff": cutoff.isoformat(), "dry_run": bool(dry)})
+
+
 @router.get("/reminders/preview")
 async def reminders_preview(emp: dict = Depends(require_employee)):
     """Staff-only preview of what the reminder run would send right now."""
