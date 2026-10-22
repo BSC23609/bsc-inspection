@@ -6,7 +6,7 @@ const graph = require('../lib/graph');
 const wati = require('../lib/wati');
 const excel = require('../lib/excel');
 const { background } = require('../lib/bg');
-const { nextRefNo, downtimeMins, businessMinutesBetween } = require('../lib/util');
+const { nextRefNo, downtimeMins, businessMinutesBetween, elapsedLabel } = require('../lib/util');
 const router = express.Router();
 
 router.use(auth.requireAuth);
@@ -195,6 +195,37 @@ router.get('/', async (req, res) => {
      ${where}
      ORDER BY t.raised_at DESC LIMIT 500`, params);
   res.json(rows.map((t) => ({ ...t, downtime_mins: downtimeMins(t) })));
+});
+
+// Manual nudge from the "My tickets" page: the requester reminds the assigned handler of each of
+// their still-open tickets (skips gated-pending and unassigned ones, and any with reminders muted).
+router.post('/remind-mine', async (req, res) => {
+  const me = req.user.id;
+  const rows = (await q(
+    `SELECT t.id, t.ref_no, t.subject, t.raised_at, c.name AS category_name,
+            e.name AS handler_name, e.phone AS handler_phone
+     FROM tickets t
+     JOIN categories c ON c.id = t.category_id
+     JOIN employees e ON e.id = t.l1_emp_id AND e.active = TRUE
+     WHERE t.requester_id = $1 AND t.status IN ('open','in_progress','reopened')
+       AND t.closed_at IS NULL AND NOT COALESCE(t.reminders_off, false)
+       AND t.maint_gate IS DISTINCT FROM 'pending'
+     ORDER BY t.raised_at`, [me])).rows;
+  const names = new Set(); let sent = 0;
+  for (const t of rows) {
+    if (!t.handler_phone) continue;
+    const mins = Math.max(1, Math.round((Date.now() - new Date(t.raised_at).getTime()) / 60000));
+    try {
+      await wati.notify.reminder({ name: t.handler_name, phone: t.handler_phone },
+        { id: t.id, ref_no: t.ref_no, requester_name: req.user.name, category_name: t.category_name, subject: t.subject },
+        elapsedLabel(mins));
+      sent++; names.add(t.handler_name);
+      await q(`UPDATE tickets SET last_reminder_at = now() WHERE id = $1`, [t.id]);
+      await q(`INSERT INTO ticket_events(ticket_id,event,by_emp_id,note) VALUES($1,'reminder',$2,$3)`,
+        [t.id, me, `Manual reminder to ${t.handler_name}`]);
+    } catch (e) { console.error('[remind-mine]', t.id, e.message); }
+  }
+  res.json({ ok: true, sent, tickets: rows.length, handlers: [...names] });
 });
 
 // ---- personal dashboard: my raised, my assigned, daily activity (IST) with date range ----

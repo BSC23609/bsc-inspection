@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BSC Tickets</title>
+  <link rel="stylesheet" href="/css/bsc.css">
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" href="/favicon-32.png">
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#0A4566">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="BSC Portal">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/theme.css?v=5">
+  <style>body{font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,sans-serif}[x-cloak]{display:none}</style>
+</head>
+<body class="min-h-screen text-ink">
+
+  <!-- Header -->
+  <header class="deckbar">
+    <div class="max-w-5xl mx-auto px-4 deckbar-in">
+      <span class="deck-plate"><img src="/img/group-logo.png" alt="The Bharat Steel Group" /></span>
+      <span class="deck-sp"></span>
+      <a href="/home.html" class="deck-link">Home</a>
+      <a id="adminLink" href="/admin.html" class="hidden deck-accent">Admin dashboard</a>
+      <span id="who" class="hidden sm:inline deck-who"></span>
+      <button onclick="logout()" class="deck-out">Sign out</button>
+    </div>
+    <div class="seam"></div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-4 py-7">
+    <!-- Tabs -->
+    <div class="flex gap-6 border-b border-line mb-6">
+      <button data-tab="raise" data-active="true" class="tabBtn tab">Raise a ticket</button>
+      <button data-tab="mine" data-active="false" class="tabBtn tab">My tickets</button>
+      <button data-tab="assigned" id="assignedTab" data-active="false" class="tabBtn tab hidden">Assigned to me</button>
+      <button data-tab="dash" data-active="false" class="tabBtn tab">My dashboard</button>
+    </div>
+
+    <!-- RAISE -->
+    <section id="tab-raise" class="in">
+      <div class="card p-6 max-w-2xl">
+        <div class="eyebrow">New request</div>
+        <h2 class="font-display text-xl font-bold text-ink mb-5">Raise a ticket</h2>
+        <div class="grid sm:grid-cols-2 gap-4">
+          <div>
+            <label class="fieldlabel">Category *</label>
+            <select id="f_category" class="field" onchange="onCategoryChange()"></select>
+          </div>
+          <div id="tradeWrap" class="hidden">
+            <label class="fieldlabel">Trade *</label>
+            <select id="f_trade" class="field" onchange="onTradeChange()"></select>
+          </div>
+          <div>
+            <label class="fieldlabel">Priority</label>
+            <select id="f_priority" class="field">
+              <option>Low</option><option selected>Medium</option><option>High</option><option>Critical</option>
+            </select>
+          </div>
+          <div>
+            <label class="fieldlabel" id="locLabel">Location</label>
+            <select id="f_location" class="field"><option value="">Select a location</option></select>
+          </div>
+          <div id="selfBlock" class="hidden sm:col-span-2 bg-indigo-50/60 border border-indigo-100 rounded-lg p-3">
+            <label class="flex items-center gap-2 text-sm font-medium text-ink">
+              <input type="checkbox" id="f_self" onchange="onSelfChange()"> Raise this for myself — a task I'll work on
+            </label>
+            <div id="selfWrap" class="hidden mt-2">
+              <label class="fieldlabel">Requested by <span class="text-slate-400 font-normal normal-case">— who asked for this (e.g. CMD / CEO), optional</span></label>
+              <select id="f_requestedby" class="field"><option value="">— nobody / N/A —</option></select>
+              <p class="text-[11px] text-slate-500 mt-1">You'll be the handler. The category's L2 and the person above are notified on raise and when you mark it done.</p>
+            </div>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="fieldlabel">Subject *</label>
+            <input id="f_subject" class="field" placeholder="A short summary of the issue" />
+          </div>
+          <div class="sm:col-span-2">
+            <label class="fieldlabel">Description</label>
+            <textarea id="f_description" rows="3" class="field" placeholder="What's happening? Add any detail that helps."></textarea>
+          </div>
+          <div class="sm:col-span-2">
+            <label class="fieldlabel">Photos <span class="text-slate-400 font-normal normal-case">— up to 5</span></label>
+            <div class="flex gap-2 flex-wrap items-center">
+              <button type="button" onclick="document.getElementById('f_camera').click()" class="btn-ghost text-sm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                Take photo
+              </button>
+              <button type="button" onclick="document.getElementById('f_gallery').click()" class="btn-ghost text-sm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+                Choose from gallery
+              </button>
+              <span id="photoCount" class="text-xs text-slate-400"></span>
+            </div>
+            <input id="f_camera" type="file" accept="image/*" capture="environment" class="hidden" />
+            <input id="f_gallery" type="file" accept="image/*" multiple class="hidden" />
+            <div id="photoPreview" class="flex gap-2 flex-wrap mt-3"></div>
+          </div>
+        </div>
+        <div class="mt-6 flex justify-end">
+          <button id="submitBtn" onclick="submitTicket()" class="btn">Submit ticket</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- MINE / ASSIGNED share a list renderer -->
+    <section id="tab-mine" class="hidden">
+      <div id="mineList" class="space-y-3"></div>
+      <div id="mineReminderWrap" class="hidden mt-5 flex justify-center">
+        <button id="mineReminderBtn" onclick="sendMineReminders(this)" class="btn">Send reminder to handlers</button>
+      </div>
+    </section>
+    <section id="tab-assigned" class="hidden"><div id="assignedList" class="space-y-3"></div></section>
+    <section id="tab-dash" class="hidden">
+      <div class="card p-5">
+        <div class="flex items-end justify-between flex-wrap gap-3 mb-4">
+          <div>
+            <div class="eyebrow">Activity report</div>
+            <h2 id="dashTitle" class="font-display text-xl font-bold text-ink">My dashboard</h2>
+          </div>
+          <div class="flex items-end gap-2 flex-wrap">
+            <div><label class="fieldlabel">From</label><input type="date" id="dashFrom" class="field"></div>
+            <div><label class="fieldlabel">To</label><input type="date" id="dashTo" class="field"></div>
+            <button onclick="loadDashboard()" class="btn text-sm">Apply</button>
+          </div>
+        </div>
+        <div class="flex gap-2 flex-wrap mb-4">
+          <button onclick="dashRange('today')" class="btn-ghost text-xs">Today</button>
+          <button onclick="dashRange('week')" class="btn-ghost text-xs">Last 7 days</button>
+          <button onclick="dashRange('month')" class="btn-ghost text-xs">This month</button>
+        </div>
+        <div id="dashCards" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5"></div>
+        <div id="dashAssigned" class="mb-5"></div>
+        <div id="dashTimesheet"></div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Detail modal -->
+  <div id="detail" class="hidden fixed inset-0 bg-ink/50 backdrop-blur-sm z-40 flex items-start justify-center p-4 overflow-y-auto" onclick="if(event.target===this)closeDetail()">
+    <div class="card modal-in max-w-2xl w-full my-8" id="detailInner"></div>
+  </div>
+
+  <script src="/js/common.js?v=88"></script>
+  <script>
+    let me = {}, meta = {}, selectedPhotos = [];
+
+    async function init() {
+      me = await api('/me');
+      document.getElementById('who').textContent = `${me.name} · ${me.emp_no}`;
+      if (me.is_admin) document.getElementById('adminLink').classList.remove('hidden');
+      if (me.can_self_raise) document.getElementById('selfBlock').classList.remove('hidden');
+      meta = await api('/tickets/meta');
+      fillForm();
+      // show "Assigned" tab only if the user handles any category/trade
+      const assigned = await api('/tickets?scope=assigned');
+      if (assigned.length) document.getElementById('assignedTab').classList.remove('hidden');
+      setupTabs();
+      // Deep link from a WhatsApp notification: open that ticket straight away.
+      const deep = new URLSearchParams(location.search).get('t');
+      if (deep) { switchTab('mine'); openDetail(deep); }
+    }
+
+    function fillForm() {
+      const c = document.getElementById('f_category');
+      c.innerHTML = '<option value="">Select a category</option>' +
+        meta.categories.map(x => `<option value="${x.id}" data-trades="${x.has_trades}">${x.name}</option>`).join('');
+      const l = document.getElementById('f_location');
+      l.innerHTML = '<option value="">Select a location</option>' +
+        meta.locations.map(x => `<option value="${x.id}">${x.name}</option>`).join('');
+      const rb = document.getElementById('f_requestedby');
+      const grps = meta.requester_groups || [];
+      rb.innerHTML = '<option value="">— nobody / N/A —</option>'
+        + '<optgroup label="People">'
+        + (meta.people || []).map(x => `<option value="${x.id}" data-kind="emp">${x.name}</option>`).join('')
+        + '</optgroup>'
+        + (grps.length ? '<optgroup label="Companies / Sites">'
+            + grps.map(g => `<option value="${g.replace(/"/g,'&quot;')}" data-kind="grp">${g}</option>`).join('')
+            + '</optgroup>' : '');
+      document.getElementById('f_camera').addEventListener('change', onPhotoInput);
+      document.getElementById('f_gallery').addEventListener('change', onPhotoInput);
+    }
+    function onSelfChange() {
+      document.getElementById('selfWrap').classList.toggle('hidden', !document.getElementById('f_self').checked);
+    }
+
+    function onCategoryChange() {
+      const sel = document.getElementById('f_category');
+      const hasTrades = sel.selectedOptions[0]?.dataset.trades === 'true';
+      const wrap = document.getElementById('tradeWrap');
+      const t = document.getElementById('f_trade');
+      if (hasTrades) {
+        const cid = +sel.value;
+        t.innerHTML = '<option value="">— select —</option>' +
+          meta.trades.filter(x => x.category_id === cid).map(x => `<option value="${x.id}" data-locbased="${!!x.location_based}">${x.name}</option>`).join('');
+        wrap.classList.remove('hidden');
+      } else { wrap.classList.add('hidden'); t.innerHTML = ''; }
+      onTradeChange();
+    }
+    // Location is mandatory when the chosen trade routes by location.
+    function locationRequired() {
+      const t = document.getElementById('f_trade');
+      return !document.getElementById('tradeWrap').classList.contains('hidden')
+        && t.selectedOptions[0]?.dataset.locbased === 'true';
+    }
+    function onTradeChange() {
+      document.getElementById('locLabel').innerHTML = locationRequired()
+        ? 'Location <span class="text-red-500">*</span>' : 'Location';
+    }
+
+    // Accumulate across taps (camera fires one at a time) instead of replacing.
+    function onPhotoInput(e) {
+      for (const f of Array.from(e.target.files)) {
+        if (selectedPhotos.length >= 5) { toast('Up to 5 photos', 'info'); break; }
+        selectedPhotos.push(f);
+      }
+      e.target.value = '';               // reset so the same file/next shot fires change again
+      renderPhotos();
+    }
+    function renderPhotos() {
+      const p = document.getElementById('photoPreview');
+      p.innerHTML = selectedPhotos.map((f, i) =>
+        `<div class="thumb"><img src="${URL.createObjectURL(f)}" alt="" />` +
+        `<button type="button" onclick="removePhoto(${i})" aria-label="Remove">&times;</button></div>`).join('');
+      document.getElementById('photoCount').textContent =
+        selectedPhotos.length ? `${selectedPhotos.length}/5 added` : '';
+    }
+    function removePhoto(i) { selectedPhotos.splice(i, 1); renderPhotos(); }
+
+    async function submitTicket() {
+      const category_id = +document.getElementById('f_category').value;
+      const subject = document.getElementById('f_subject').value.trim();
+      if (!category_id) return toast('Choose a category', 'error');
+      if (!subject) return toast('Enter a subject', 'error');
+      const hasTrades = document.getElementById('f_category').selectedOptions[0]?.dataset.trades === 'true';
+      const trade_id = +document.getElementById('f_trade').value || null;
+      if (hasTrades && !trade_id) return toast('Choose a trade', 'error');
+      if (locationRequired() && !(+document.getElementById('f_location').value))
+        return toast('Location is required for this trade', 'error');
+
+      const btn = document.getElementById('submitBtn');
+      btn.disabled = true; btn.textContent = 'Submitting…';
+      try {
+        const r = await api('/tickets', { method: 'POST', body: {
+          category_id, trade_id,
+          priority: document.getElementById('f_priority').value,
+          subject, description: document.getElementById('f_description').value.trim(),
+          location_id: +document.getElementById('f_location').value || null,
+          self: document.getElementById('f_self').checked,
+          requested_by_id: (function(){ const o=document.getElementById('f_requestedby').selectedOptions[0]; return o && o.dataset.kind==='emp' ? (+o.value||null) : null; })(),
+          requested_by_label: (function(){ const o=document.getElementById('f_requestedby').selectedOptions[0]; return o && o.dataset.kind==='grp' ? o.value : null; })(),
+        }});
+        // upload photos straight to OneDrive in parallel (fast) after the ticket exists
+        if (selectedPhotos.length) {
+          await Promise.all(selectedPhotos.map(f =>
+            uploadPhotoToOneDrive(r.id, f, 'issue').catch(e => toast('Photo: ' + e.message, 'error'))));
+        }
+        toast(`Ticket ${r.ref_no} created`, 'success');
+        resetForm();
+        switchTab('mine');
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = 'Submit ticket'; }
+    }
+
+    function resetForm() {
+      ['f_subject','f_description'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('f_category').value = '';
+      document.getElementById('f_location').value = '';
+      document.getElementById('tradeWrap').classList.add('hidden');
+      document.getElementById('f_self').checked = false;
+      document.getElementById('f_requestedby').value = '';
+      document.getElementById('selfWrap').classList.add('hidden');
+      selectedPhotos = [];
+      renderPhotos();
+    }
+
+    // ---- tabs ----
+    function setupTabs() {
+      document.querySelectorAll('.tabBtn').forEach(b =>
+        b.addEventListener('click', () => switchTab(b.dataset.tab)));
+    }
+    function switchTab(tab) {
+      document.querySelectorAll('.tabBtn').forEach(b =>
+        b.setAttribute('data-active', b.dataset.tab === tab));
+      ['raise','mine','assigned','dash'].forEach(t =>
+        document.getElementById('tab-' + t).classList.toggle('hidden', t !== tab));
+      if (tab === 'mine') loadList('mine', 'mineList');
+      if (tab === 'assigned') loadList('assigned', 'assignedList');
+      if (tab === 'dash') loadDashboard();
+    }
+
+    async function loadList(scope, elId) {
+      const el = document.getElementById(elId);
+      el.innerHTML = '<div class="text-sm text-slate-400 py-8 text-center">Loading…</div>';
+      const rows = await api(`/tickets?scope=${scope}`);
+      if (scope === 'mine') {
+        const anyOpen = rows.some(t => ['open','in_progress','reopened'].includes(t.status));
+        const wrap = document.getElementById('mineReminderWrap');
+        if (wrap) wrap.classList.toggle('hidden', !anyOpen);
+      }
+      if (!rows.length) { el.innerHTML = '<div class="text-sm text-slate-400 py-12 text-center">No tickets.</div>'; return; }
+      el.innerHTML = rows.map(t => card(t, scope)).join('');
+    }
+
+    // Nudge the assigned handler of each of my open tickets (one WhatsApp per ticket).
+    async function sendMineReminders(btn) {
+      const orig = btn.textContent; btn.disabled = true; btn.textContent = 'Sending…';
+      try {
+        const r = await api('/tickets/remind-mine', { method: 'POST' });
+        if (r.sent) toast(`Reminder sent to ${r.handlers.join(', ')}`, 'success');
+        else if (r.tickets) toast('Your open tickets have no assigned handler yet', 'info');
+        else toast('No open tickets to remind', 'info');
+      } catch (e) { toast(e.message, 'error'); }
+      finally { btn.disabled = false; btn.textContent = orig; }
+    }
+
+    const istToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+    function dashRange(kind){
+      const today = new Date(); const iso = d => d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' });
+      let from, to = istToday();
+      if (kind === 'today') from = to;
+      else if (kind === 'week') { const d = new Date(today); d.setDate(d.getDate() - 6); from = iso(d); }
+      else if (kind === 'month') { const d = new Date(today); d.setDate(1); from = iso(d); }
+      document.getElementById('dashFrom').value = from;
+      document.getElementById('dashTo').value = to;
+      loadDashboard();
+    }
+    const fmtDay = (iso) => { if (!iso) return ''; const [y,m,d]=iso.split('-'); return new Date(y,m-1,d).toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short',year:'numeric'}); };
+    const actClass = (e) => ({raised:'text-blue-700 bg-blue-50',assigned:'text-amber-700 bg-amber-50',in_progress:'text-indigo-700 bg-indigo-50',resolved:'text-emerald-700 bg-emerald-50',confirmed_closed:'text-slate-600 bg-slate-100',auto_closed:'text-slate-600 bg-slate-100',forwarded:'text-purple-700 bg-purple-50',escalated_l3:'text-red-700 bg-red-50',escalated_l2:'text-red-700 bg-red-50',reopened:'text-orange-700 bg-orange-50',reminder:'text-slate-600 bg-slate-100'}[e] || 'text-slate-600 bg-slate-100');
+    async function loadDashboard(){
+      const fromV = document.getElementById('dashFrom').value, toV = document.getElementById('dashTo').value;
+      const qs = [fromV && `from=${fromV}`, toV && `to=${toV}`].filter(Boolean).join('&');
+      const d = await api('/tickets/my-dashboard' + (qs ? `?${qs}` : ''));
+      document.getElementById('dashFrom').value = d.range.from;
+      document.getElementById('dashTo').value = d.range.to;
+      document.getElementById('dashTitle').textContent = `${d.me_name} · ${fmtDay(d.range.from)}${d.range.from!==d.range.to ? ' → ' + fmtDay(d.range.to) : ''}`;
+      const cardC = (label, val, cls) => `<div class="rounded-xl border border-line p-3 ${cls||''}"><div class="text-2xl font-bold text-ink">${val}</div><div class="eyebrow mt-0.5" style="font-size:.6rem">${label}</div></div>`;
+      document.getElementById('dashCards').innerHTML =
+        cardC('Raised', d.totals.raised) + cardC('Resolved', d.totals.resolved) +
+        cardC('Forwarded', d.totals.forwarded) + cardC('On my plate', d.totals.assigned_open, 'bg-amber-50 border-amber-200');
+      const a = d.assigned;
+      document.getElementById('dashAssigned').innerHTML =
+        `<div class="eyebrow mb-2">On my plate now (${a.length})</div>` +
+        (a.length ? `<div class="space-y-1.5">` + a.map(t => `
+           <div onclick="openDetail(${t.id})" class="flex items-center gap-2 text-sm border border-line rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-50">
+             <span class="mono text-[11px] text-slate-400">${t.ref_no}</span>
+             <span class="font-medium text-ink truncate flex-1">${t.subject}</span>
+             <span class="pill text-slate-600 bg-slate-100">${t.my_role||''}</span>
+             ${statusBadgeT(t)}
+           </div>`).join('') + `</div>` : `<div class="text-sm text-slate-400 py-3">Nothing open assigned to you.</div>`);
+      const hm = m => Math.floor(m/60) + ':' + String(m%60).padStart(2,'0');
+      const ts = d.timesheet || [];
+      document.getElementById('dashTimesheet').innerHTML = `
+        <div class="border border-slate-300 rounded-lg overflow-x-auto">
+          <table class="w-full text-sm border-collapse">
+            <caption class="text-base font-bold text-ink py-2 border-b border-slate-300">Time Sheet</caption>
+            <thead>
+              <tr class="bg-slate-50 text-left">
+                <th class="border border-slate-200 px-2 py-1.5 text-xs font-bold w-12">Sno</th>
+                <th class="border border-slate-200 px-2 py-1.5 text-xs font-bold">Date</th>
+                <th class="border border-slate-200 px-2 py-1.5 text-xs font-bold">Ticket Number</th>
+                <th class="border border-slate-200 px-2 py-1.5 text-xs font-bold">Task Name</th>
+                <th class="border border-slate-200 px-2 py-1.5 text-xs font-bold">Raised By</th>
+                <th class="border border-slate-200 px-2 py-1.5 text-xs font-bold">Completed By</th>
+                <th class="border border-slate-200 px-2 py-1.5 text-xs font-bold text-right">No of Hrs</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${ts.length ? ts.map((r,i)=>`
+                <tr>
+                  <td class="border border-slate-200 px-2 py-1.5 text-xs">${i+1}</td>
+                  <td class="border border-slate-200 px-2 py-1.5 text-xs whitespace-nowrap">${r.date}</td>
+                  <td class="border border-slate-200 px-2 py-1.5 text-xs mono">${r.ref_no}</td>
+                  <td class="border border-slate-200 px-2 py-1.5 text-xs">${esc(r.task)}</td>
+                  <td class="border border-slate-200 px-2 py-1.5 text-xs">${esc(r.raised_by||'')}</td>
+                  <td class="border border-slate-200 px-2 py-1.5 text-xs">${esc(r.completed_by||'')}</td>
+                  <td class="border border-slate-200 px-2 py-1.5 text-xs text-right mono">${hm(r.mins)}</td>
+                </tr>`).join('') : `<tr><td colspan="7" class="border border-slate-200 px-2 py-6 text-center text-slate-400 text-sm">No tickets completed in this range.</td></tr>`}
+              <tr class="bg-slate-50 font-bold">
+                <td class="border border-slate-200 px-2 py-1.5" colspan="6"><div class="text-right pr-2">Total</div></td>
+                <td class="border border-slate-200 px-2 py-1.5 text-xs text-right mono">${hm(d.timesheet_total_mins||0)}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>`;
+    }
+
+    function card(t, scope) {
+      const who = scope === 'assigned' ? `From ${t.requester_name}` : (t.l1_name ? `Handler: ${t.l1_name}` : '');
+      return `<div onclick="openDetail(${t.id})" class="card lift p-4">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="mono text-[11px] text-slate-400">${t.ref_no}</span>
+              ${statusBadgeT(t)} ${priorityBadge(t.priority)}
+              ${t.escalation_level ? `<span class="pill text-red-600 bg-red-50">↑ L${t.escalation_level}</span>` : ''}
+            </div>
+            <div class="font-semibold text-ink mt-1.5 truncate">${t.subject}</div>
+            <div class="text-xs text-slate-500 mt-1">${t.category_name}${t.trade_name ? ' · ' + t.trade_name : ''}${who ? ' · ' + who : ''}</div>
+          </div>
+          <div class="text-right text-[11px] text-slate-400 shrink-0 mono">
+            <div>${fmtDateTime(t.raised_at)}</div>
+            ${t.status==='closed' ? `<div class="text-emerald-600 font-semibold mt-1">${fmtDuration(t.downtime_mins)}</div>` : ''}
+          </div>
+        </div>
+      </div>`;
+    }
+
+    // ---- detail ----
+    async function openDetail(id) {
+      const t = await api('/tickets/' + id);
+      const p = t.perms;
+      const actions = [];
+
+      if (p.isL1 && ['open','reopened'].includes(t.status))
+        actions.push(btn(`startTicket(${id})`, 'Start working', 'brand'));
+      if (p.isL1 && ['open','in_progress','reopened'].includes(t.status))
+        actions.push(btn(`resolveTicket(${id})`, 'Mark resolved', 'violet'));
+      if (p.isHandler && ['open','in_progress','reopened'].includes(t.status))
+        actions.push(btn(`externalHold(${id})`, t.external_hold ? 'Update external ETA' : 'Requires external support', 'fuchsia'));
+      if (p.canEscalateL3)
+        actions.push(btn(`escalateL3(${id})`, 'Escalate to L3', 'red'));
+      if (p.isRequester && t.status === 'resolved') {
+        actions.push(btn(`confirmTicket(${id})`, 'Confirm & close', 'emerald'));
+        actions.push(btn(`reopenTicket(${id})`, 'Not resolved — reopen', 'orange'));
+      }
+
+      // L2 assigns / reassigns an L1 from the category pool (assign-pattern only)
+      const assignBox = p.canAssign ? `
+        <div class="bg-amber-50 border border-amber-200 rounded-lg p-3">
+          ${label(t.l1_name ? 'Reassign to another L1' : 'Assign to an L1 handler')}
+          <div class="flex gap-2 mt-1">
+            <select id="assignSel" class="inp flex-1">
+              <option value="">Select handler…</option>
+              ${t.pool.map(e=>`<option value="${e.id}" ${e.id===t.l1_emp_id?'selected':''}>${e.name}</option>`).join('')}
+            </select>
+            <button onclick="assignTicket(${id})" class="text-white text-sm font-semibold px-4 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 transition">Assign</button>
+          </div>
+          ${t.pool.length===0?'<div class="text-[11px] text-amber-700 mt-1">No L1 pool set for this category — add handlers in Admin → Categories &amp; routing.</div>':''}
+        </div>` : '';
+
+      // Any handler can forward "not my area" to another category/trade.
+      const fwdBox = p.canForward ? `
+        <div class="bg-slate-50 border border-slate-200 rounded-lg p-3">
+          ${label('Forward — not my area')}
+          <div class="grid sm:grid-cols-2 gap-2 mt-1">
+            <select id="fwdCat" class="inp" onchange="fwdTrades()">
+              <option value="">Select category…</option>
+              ${meta.categories.map(c=>`<option value="${c.id}" data-trades="${c.has_trades}">${c.name}</option>`).join('')}
+            </select>
+            <select id="fwdTrade" class="inp hidden"><option value="">Select trade…</option></select>
+          </div>
+          <input id="fwdNote" class="inp mt-2" placeholder="Note (optional) — why you're forwarding">
+          <button onclick="forwardTicket(${id})" class="mt-2 text-white text-sm font-semibold px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-800 transition">Forward ticket</button>
+
+          <div class="border-t border-slate-200 mt-3 pt-3">
+            ${label('Or hand to a specific person')}
+            <select id="asgEmp" class="inp mt-1">
+              <option value="">Select person…</option>
+              ${(meta.people||[]).map(pp=>`<option value="${pp.id}">${pp.name}${pp.emp_no?' ('+pp.emp_no+')':''}</option>`).join('')}
+            </select>
+            <button onclick="assignTicket(${id})" class="mt-2 text-white text-sm font-semibold px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 transition">Assign to person</button>
+          </div>
+        </div>` : '';
+
+      const photos = t.photos.filter(x => x.kind === 'issue');
+      const resPhotos = t.photos.filter(x => x.kind === 'resolution');
+
+      const extBanner = (t.external_hold && ['open','in_progress','reopened'].includes(t.status)) ? `
+        <div class="bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-3">
+          <div class="flex items-center gap-2 flex-wrap">
+            <span class="pill bg-fuchsia-100 text-fuchsia-800"><span class="dot"></span>Escalated externally</span>
+            <span class="text-xs text-fuchsia-700">ETA ${t.external_hours} working hrs${(t.external_count>1)?` · extended ${t.external_count}×`:''}</span>
+          </div>
+          <div class="text-sm text-slate-700 mt-1.5">${(t.external_reason||'').replace(/</g,'&lt;')}</div>
+          <div class="text-[11px] text-slate-400 mt-1">Reminders are paused until the ETA lapses, then they resume automatically.</div>
+        </div>` : '';
+
+      document.getElementById('detailInner').innerHTML = `
+        <div class="seam rounded-t-2xl"></div>
+        <div class="p-5 border-b border-line flex items-start justify-between">
+          <div>
+            <div class="mono text-[11px] text-slate-400">${t.ref_no}</div>
+            <h3 class="font-display font-bold text-lg text-ink mt-0.5">${t.subject}</h3>
+            <div class="flex items-center gap-2 mt-2">${statusBadgeT(t)} ${priorityBadge(t.priority)}
+              ${t.is_self ? '<span class="pill text-indigo-700 bg-indigo-50">Self-task</span>' : ''}
+              ${t.escalation_level ? `<span class="pill text-red-600 bg-red-50">Escalated → L${t.escalation_level}</span>` : ''}</div>
+          </div>
+          <button onclick="closeDetail()" class="text-slate-400 hover:text-ink text-2xl leading-none">&times;</button>
+        </div>
+        <div class="p-5 space-y-4 text-sm">
+          ${extBanner}
+          <div class="grid grid-cols-2 gap-3">
+            ${field('Category', t.category_name + (t.trade_name ? ' · ' + t.trade_name : ''))}
+            ${field('Location', t.location_text || '—')}
+            ${field('Requester', `${t.requester_name} (${t.requester_dept || ''})`)}
+            ${t.requested_by_name ? field('Requested by', t.requested_by_name) : ''}
+            ${field('Raised', fmtDateTime(t.raised_at))}
+            ${field('Handler L1', t.l1_name || (t.pattern==='assign' ? '<span class="text-amber-600">awaiting assignment</span>' : '—'))}
+            ${t.l2_name ? field('Handler L2', t.l2_name) : ''}
+            ${t.assigned_at ? field('Assigned', `${t.assigned_by_name ? t.assigned_by_name+' · ' : ''}${fmtDateTime(t.assigned_at)}`) : ''}
+            ${field('Downtime', t.status==='closed' ? fmtDuration(t.downtime_mins) : '—')}
+          </div>
+          ${t.description ? `<div>${label('Description')}<p class="text-slate-700 whitespace-pre-wrap">${t.description}</p></div>` : ''}
+          ${photos.length ? `<div>${label('Photos')}<div class="flex gap-2 flex-wrap">${photos.map(ph => `<a href="${ph.web_url}" target="_blank" class="text-xs bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded">${ph.file_name} ↗</a>`).join('')}</div></div>` : ''}
+          ${t.resolution_note ? `<div class="bg-violet-50 border border-violet-200 rounded-lg p-3">${label('Resolution note')}<p class="text-slate-700">${t.resolution_note}</p>${resPhotos.map(ph=>`<a href="${ph.web_url}" target="_blank" class="text-xs text-violet-700 underline mr-2">${ph.file_name} ↗</a>`).join('')}</div>` : ''}
+          <div>${label('Timeline')}
+            <ol class="space-y-1.5">${t.events.map(ev => `<li class="flex gap-2 text-xs"><span class="text-slate-400 w-28 shrink-0">${fmtDateTime(ev.at)}</span><span class="text-slate-700"><b>${evLabel(ev.event)}</b>${ev.by_name ? ' · ' + ev.by_name : ''}${ev.note ? ' — ' + ev.note : ''}</span></li>`).join('')}</ol>
+          </div>
+          ${assignBox}
+          ${fwdBox}
+          <div class="flex flex-wrap gap-2 pt-2">${actions.join('')}</div>
+        </div>`;
+      document.getElementById('detail').classList.remove('hidden');
+    }
+    const field = (k,v) => `<div>${label(k)}<div class="text-ink font-medium">${v}</div></div>`;
+    const label = (k) => `<div class="eyebrow mb-0.5" style="font-size:.6rem">${k}</div>`;
+    const btn = (fn, txt, color) => color==='brand'
+      ? `<button onclick="${fn}" class="btn text-sm" style="padding:.55rem 1.1rem">${txt}</button>`
+      : `<button onclick="${fn}" class="text-white text-sm font-semibold px-4 py-2.5 rounded-xl bg-${color}-600 hover:bg-${color}-700 transition">${txt}</button>`;
+    const evLabel = (e) => ({raised:'Raised',in_progress:'In progress',assigned:'Assigned to L1',reminder:'Reminder sent',escalated_l2:'Escalated to L2',escalated_l3:'Escalated to L3',forwarded:'Forwarded',resolved:'Resolved',confirmed_closed:'Closed (confirmed)',auto_closed:'Auto-closed',reopened:'Reopened',external_hold:'Sent to external/vendor support'}[e] || e);
+    function closeDetail(){ document.getElementById('detail').classList.add('hidden'); refreshCurrent(); }
+    function refreshCurrent(){ if(!document.getElementById('tab-dash').classList.contains('hidden')) return loadDashboard(); const open=['mine','assigned'].find(t=>!document.getElementById('tab-'+t).classList.contains('hidden')); if(open) loadList(open, open+'List'); }
+
+    async function startTicket(id){ await act(id,'in-progress','Marked in progress'); }
+    async function confirmTicket(id){ await act(id,'confirm','Ticket closed'); }
+    async function assignTicket(id){
+      const sel = document.getElementById('assignSel');
+      const l1 = sel && +sel.value;
+      if (!l1) return toast('Pick a handler first','error');
+      try { await api(`/tickets/${id}/assign`, {method:'POST', body:{l1_emp_id:l1}}); toast('Assigned — handler notified','success'); openDetail(id); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    let resolveId = null;
+    let resolveDocCount = 0, resolveUploading = 0;
+    function resolveTicket(id){
+      resolveId = id;
+      document.getElementById('resolveRemark').value = '';
+      document.getElementById('resolveDocs').value = '';
+      document.getElementById('resolveDocList').innerHTML = '';
+      resolveDocCount = 0; resolveUploading = 0;
+      const m = document.getElementById('remarkModal'); m.classList.remove('hidden'); m.classList.add('flex');
+      setTimeout(() => document.getElementById('resolveRemark').focus(), 50);
+    }
+    async function onResolveDocs(e){
+      const files = Array.from(e.target.files || []);
+      e.target.value = '';
+      const list = document.getElementById('resolveDocList');
+      const btn = document.getElementById('resolveGo');
+      for (const f of files){
+        if (resolveDocCount >= 5){ toast('Max 5 documents', 'error'); break; }
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2 text-xs bg-slate-50 border border-line rounded px-2 py-1';
+        row.innerHTML = `<span class="flex-1 truncate">${f.name}</span><span class="text-slate-400">uploading…</span>`;
+        list.appendChild(row);
+        resolveUploading++; btn.disabled = true;
+        try {
+          await uploadPhotoToOneDrive(resolveId, f, 'resolution');
+          resolveDocCount++;
+          row.querySelector('span:last-child').textContent = '✓';
+          row.querySelector('span:last-child').className = 'text-emerald-600';
+        } catch (err){
+          row.querySelector('span:last-child').textContent = 'failed';
+          row.querySelector('span:last-child').className = 'text-red-600';
+          toast('Upload: ' + err.message, 'error');
+        } finally { resolveUploading--; if (resolveUploading === 0) btn.disabled = false; }
+      }
+    }
+    function closeRemark(){ const m = document.getElementById('remarkModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+    async function submitResolve(){
+      if (resolveUploading > 0) return toast('Wait for the document upload to finish', 'error');
+      const note = document.getElementById('resolveRemark').value.trim();
+      const btn = document.getElementById('resolveGo'); btn.disabled = true;
+      try {
+        const r = await api(`/tickets/${resolveId}/resolve`, {method:'POST', body:{note}});
+        const docMsg = resolveDocCount ? ` with ${resolveDocCount} document${resolveDocCount>1?'s':''}` : '';
+        toast((r.self ? 'Done & closed — L2 and requester notified' : 'Resolved — requester and L2 notified') + docMsg,'success');
+        closeRemark(); openDetail(resolveId);
+      } catch(e){ toast(e.message,'error'); }
+      finally { btn.disabled = false; }
+    }
+    async function reopenTicket(id){
+      const reason = prompt('Why is this not resolved? (optional)') || '';
+      try { await api(`/tickets/${id}/reopen`, {method:'POST', body:{reason}}); toast('Reopened','success'); openDetail(id); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    function fwdTrades(){
+      const sel=document.getElementById('fwdCat'); const cid=+sel.value;
+      const opt=sel.options[sel.selectedIndex];
+      const ts=document.getElementById('fwdTrade');
+      const trades=meta.trades.filter(x=>x.category_id===cid);
+      if(opt && opt.dataset.trades==='true' && trades.length){
+        ts.innerHTML='<option value="">Select trade…</option>'+trades.map(x=>`<option value="${x.id}">${x.name}</option>`).join('');
+        ts.classList.remove('hidden');
+      } else { ts.classList.add('hidden'); ts.innerHTML='<option value="">Select trade…</option>'; }
+    }
+    async function assignTicket(id){
+      const emp=+document.getElementById('asgEmp').value;
+      if(!emp) return toast('Pick a person to assign to','error');
+      const note=document.getElementById('fwdNote').value||'';
+      try{ const r=await api(`/tickets/${id}/reassign`,{method:'POST',body:{emp_id:emp,note}});
+        toast('Assigned to '+(r.to||'the person')+' — they have been notified','success'); closeDetail(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function forwardTicket(id){
+      const cid=+document.getElementById('fwdCat').value;
+      if(!cid) return toast('Pick a category to forward to','error');
+      const tid=+document.getElementById('fwdTrade').value || null;
+      const note=document.getElementById('fwdNote').value||'';
+      try{ const r=await api(`/tickets/${id}/forward`,{method:'POST',body:{category_id:cid,trade_id:tid,note}});
+        toast('Forwarded to '+(r.to||'the new area')+' — handlers notified','success'); closeDetail(); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    let extId = null;
+    function externalHold(id){
+      extId = id;
+      document.getElementById('extReason').value = '';
+      document.getElementById('extHours').value = '';
+      document.querySelectorAll('.extPreset').forEach(b=>b.classList.remove('bg-fuchsia-100','border-fuchsia-400'));
+      const m=document.getElementById('extModal'); m.classList.remove('hidden'); m.classList.add('flex');
+    }
+    function closeExt(){ const m=document.getElementById('extModal'); m.classList.add('hidden'); m.classList.remove('flex'); }
+    document.addEventListener('click', (e)=>{
+      const b = e.target.closest && e.target.closest('.extPreset'); if(!b) return;
+      document.querySelectorAll('.extPreset').forEach(x=>x.classList.remove('bg-fuchsia-100','border-fuchsia-400'));
+      b.classList.add('bg-fuchsia-100','border-fuchsia-400');
+      document.getElementById('extHours').value = b.dataset.h;
+    });
+    async function submitExternal(){
+      const reason = document.getElementById('extReason').value.trim();
+      const hours = Number(document.getElementById('extHours').value);
+      if (reason.length < 3) return toast('Add a short reason','error');
+      if (!(hours > 0)) return toast('Enter the resolution hours','error');
+      const go = document.getElementById('extGo'); go.disabled = true;
+      try {
+        await api(`/tickets/${extId}/external-hold`, { method:'POST', body:{ reason, hours } });
+        toast('Marked external — reminders paused, requester & L2 notified','success');
+        closeExt(); openDetail(extId);
+      } catch(e){ toast(e.message,'error'); }
+      finally { go.disabled = false; }
+    }
+
+    async function escalateL3(id){
+      if(!confirm('Escalate this ticket to L3 now?')) return;
+      try{ await api(`/tickets/${id}/escalate-l3`,{method:'POST',body:{}}); toast('Escalated to L3','success'); openDetail(id); }
+      catch(e){ toast(e.message,'error'); }
+    }
+    async function act(id, path, msg){
+      try { await api(`/tickets/${id}/${path}`, {method:'POST'}); toast(msg,'success'); openDetail(id); }
+      catch(e){ toast(e.message,'error'); }
+    }
+
+    async function logout(){ await api('/logout',{method:'POST'}); location.href='/'; }
+    init().catch(e => { console.error(e); toast(e.message,'error'); });
+  </script>
+  <div id="remarkModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+      <div class="p-4 border-b border-line">
+        <h3 class="font-bold text-ink">Resolve ticket</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Add a remark — it's sent to the requester and the L2 on WhatsApp.</p>
+      </div>
+      <div class="p-4">
+        <label class="fieldlabel">Remark</label>
+        <textarea id="resolveRemark" rows="3" class="field" placeholder="What was done / root cause / any note…"></textarea>
+        <div class="mt-3">
+          <label class="fieldlabel">Attach document(s) <span class="text-slate-400 font-normal normal-case">— optional, up to 5</span></label>
+          <input id="resolveDocs" type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.csv,.txt" onchange="onResolveDocs(event)"
+                 class="block w-full text-sm text-slate-600 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-violet-50 file:text-violet-700 file:font-semibold" />
+          <div id="resolveDocList" class="mt-2 space-y-1"></div>
+          <p class="text-[11px] text-slate-400 mt-1">Attached files are sent to the requester and the L2 with a download button.</p>
+        </div>
+      </div>
+      <div class="p-4 border-t border-line flex justify-end gap-2">
+        <button onclick="closeRemark()" class="text-sm px-4 py-2 rounded-xl border border-line">Cancel</button>
+        <button id="resolveGo" onclick="submitResolve()" class="text-sm px-4 py-2 rounded-xl bg-violet-600 text-white font-semibold">Mark resolved</button>
+      </div>
+    </div>
+  </div>
+  <div id="extModal" class="fixed inset-0 bg-black/40 z-50 hidden items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full">
+      <div class="p-4 border-b border-line">
+        <h3 class="font-bold text-ink">Requires external / vendor support</h3>
+        <p class="text-xs text-slate-500 mt-0.5">Ticket stays open but reminders pause until your ETA. Requester &amp; L2 are notified.</p>
+      </div>
+      <div class="p-4">
+        <label class="fieldlabel">Reason / detail</label>
+        <textarea id="extReason" rows="3" class="field" placeholder="e.g. Awaiting OEM spare; vendor visit booked for Thursday"></textarea>
+        <label class="fieldlabel mt-3">Resolution time needed <span class="text-slate-400 font-normal normal-case">— working hours</span></label>
+        <div class="flex flex-wrap gap-2 mt-1">
+          <button type="button" data-h="12" class="extPreset px-3 py-1.5 rounded-lg border border-line text-sm hover:border-fuchsia-400">12h</button>
+          <button type="button" data-h="24" class="extPreset px-3 py-1.5 rounded-lg border border-line text-sm hover:border-fuchsia-400">24h</button>
+          <button type="button" data-h="48" class="extPreset px-3 py-1.5 rounded-lg border border-line text-sm hover:border-fuchsia-400">48h</button>
+          <button type="button" data-h="72" class="extPreset px-3 py-1.5 rounded-lg border border-line text-sm hover:border-fuchsia-400">72h</button>
+        </div>
+        <input id="extHours" type="number" min="1" max="720" step="1" class="field mono mt-2" placeholder="or type hours" />
+      </div>
+      <div class="p-4 border-t border-line flex justify-end gap-2">
+        <button onclick="closeExt()" class="text-sm px-4 py-2 rounded-xl border border-line">Cancel</button>
+        <button id="extGo" onclick="submitExternal()" class="text-sm px-4 py-2 rounded-xl bg-fuchsia-600 text-white font-semibold">Send &amp; pause reminders</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
