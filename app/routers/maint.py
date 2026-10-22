@@ -954,6 +954,25 @@ async def _overdue_recipient_mobiles() -> list:
         return _supervisor_mobiles()
 
 
+async def _overdue_recipients() -> list:
+    """The chosen overdue-digest recipients as {name, mobile}, so the delivery log
+    shows the actual person's name instead of a generic 'Supervisor' label."""
+    try:
+        raw = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey='overdue_recipients'")
+        ids = [int(x) for x in (raw or "").split(",") if x.strip().isdigit()]
+        if ids:
+            rows = await db.fetch(
+                "SELECT COALESCE(name,'') AS name, COALESCE(mobile,'') AS mobile "
+                "FROM employees WHERE id = ANY($1::int[])", ids)
+            out = [{"name": (r["name"] or "").strip(), "mobile": (r["mobile"] or "").strip()}
+                   for r in rows if (r["mobile"] or "").strip()]
+            if out:
+                return out
+    except Exception:
+        pass
+    return [{"name": "", "mobile": m} for m in _supervisor_mobiles()]
+
+
 def _is_offday(d):
     return d.weekday() == 6 or d.isoformat() in HOLIDAYS   # Sunday (6) or a holiday
 
@@ -2005,9 +2024,22 @@ async def _log_wati(template, phone, name, ok, detail, kind=""):
         print("[maint] wati-log skip:", e)
 
 
+def _safe_param(v):
+    """WhatsApp rejects a template parameter that contains a newline, a tab, or more
+    than 4 consecutive spaces (the WATI 'Sample Content param text...' error). Flatten
+    multi-line lists to a single ' / '-separated line so the send isn't dropped."""
+    s = str(v if v is not None else "")
+    s = re.sub(r"[\r\n]+", " / ", s)   # newlines -> " / "
+    s = s.replace("\t", " ")
+    s = re.sub(r" {4,}", " ", s)       # collapse 4+ spaces
+    return s.strip()
+
+
 async def _wsend(template, phone, params, name="", kind=""):
     """Send a WATI template AND log the outcome. Returns (ok, detail) like send_template."""
-    ok, detail = await wati.send_template(template, phone, params)
+    plist = params if isinstance(params, (list, tuple)) else [params]
+    plist = [_safe_param(p) for p in plist]
+    ok, detail = await wati.send_template(template, phone, plist)
     await _log_wati(template, phone, name, ok, detail, kind)
     return ok, detail
 
@@ -2997,11 +3029,13 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
         bd_num = _numbered(sup_bd)
         # body vars: 1 date, 2 preventive list, 3 breakdown list
         params = [tdisp, pm_num, bd_num]
-        sups = await _overdue_recipient_mobiles()
+        sups = await _overdue_recipients()
         for sup in sups:
-            await _dispatch(WATI_MAINT_OVERDUE_TEMPLATE, wati.normalize_number(sup) or sup, params,
-                            {"kind": "overdue-digest", "preventive": len(sup_pm),
-                             "breakdown": len(sup_bd)})
+            nm = sup.get("name") or "Overdue recipient"
+            mob = sup.get("mobile") or ""
+            await _dispatch(WATI_MAINT_OVERDUE_TEMPLATE, wati.normalize_number(mob) or mob, params,
+                            {"kind": "overdue-digest", "assignee": nm,
+                             "preventive": len(sup_pm), "breakdown": len(sup_bd)})
         if not sups:
             skipped.append({"kind": "overdue-digest",
                             "preventive": len(sup_pm), "breakdown": len(sup_bd),
