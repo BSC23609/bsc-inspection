@@ -2045,9 +2045,8 @@ def _safe_param(v):
     than 4 consecutive spaces (the WATI 'Sample Content param text...' error). Flatten
     multi-line lists to a single ' / '-separated line so the send isn't dropped."""
     s = str(v if v is not None else "")
-    s = re.sub(r"[\r\n]+", " / ", s)   # newlines -> " / "
-    s = s.replace("\t", " ")
-    s = re.sub(r" {4,}", " ", s)       # collapse 4+ spaces
+    s = re.sub(r"[\r\n\t]+", "    ", s)   # newlines/tabs -> 4-space gap (WhatsApp bans them in a variable)
+    s = re.sub(r" {5,}", "    ", s)       # never MORE than 4 consecutive spaces
     return s.strip()
 
 
@@ -2937,15 +2936,17 @@ def _join_items(items, cap=900):
 
 
 def _numbered(items, cap=1000):
-    """Numbered list, one per line (1  text / 2  text …). WhatsApp may strip the
-    line breaks depending on the provider; the numbers keep it readable either way."""
+    """Numbered single-line list. WhatsApp forbids newlines/tabs inside a template
+    variable (they get the send rejected), so items are spaced apart with a wide gap
+    and the number acts as the delimiter: '1. text    2. text    3. text …'."""
+    SEP = "    "   # 4 spaces — the max WhatsApp allows between words
     out, used = [], 0
     for i, it in enumerate(items):
-        line = f"{i + 1}  {it}"
-        if used + len(line) + 1 > cap:
+        line = f"{i + 1}. {it}"
+        if used + len(line) + len(SEP) > cap:
             out.append(f"…and {len(items) - i} more"); break
-        out.append(line); used += len(line) + 1
-    return "\n".join(out) if out else "—"
+        out.append(line); used += len(line) + len(SEP)
+    return SEP.join(out) if out else "—"
 
 
 async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
