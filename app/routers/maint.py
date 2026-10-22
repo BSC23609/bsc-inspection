@@ -2936,16 +2936,17 @@ def _join_items(items, cap=900):
 
 
 def _numbered(items, cap=1000):
-    """Numbered single-line list. WhatsApp forbids newlines/tabs inside a template
-    variable (they get the send rejected), so items are spaced apart with a wide gap
-    and the number acts as the delimiter: '1. text    2. text    3. text …'."""
-    SEP = "    "   # 4 spaces — the max WhatsApp allows between words
+    """Numbered list. A regular newline inside a template variable is rejected by
+    WhatsApp, but the Unicode LINE SEPARATOR (U+2028) is NOT a \\n/\\t, so WATI accepts
+    it and WhatsApp usually renders it as a line break — giving one machine per line
+    with the existing template, no template change needed."""
+    SEP = " "
     out, used = [], 0
     for i, it in enumerate(items):
         line = f"{i + 1}. {it}"
-        if used + len(line) + len(SEP) > cap:
+        if used + len(line) + 1 > cap:
             out.append(f"…and {len(items) - i} more"); break
-        out.append(line); used += len(line) + len(SEP)
+        out.append(line); used += len(line) + 1
     return SEP.join(out) if out else "—"
 
 
