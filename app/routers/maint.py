@@ -621,6 +621,11 @@ async def ensure_tables():
             reading NUMERIC, note TEXT, taken_by TEXT, taken_by_emp_id INT,
             created_at TIMESTAMPTZ DEFAULT now())""")
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_rd ON maint_readings (asset_id, read_date)")
+        # WhatsApp delivery log — every WATI send from the maintenance module + its outcome
+        await db.execute("""CREATE TABLE IF NOT EXISTS maint_wati_log (
+            id SERIAL PRIMARY KEY, sent_at TIMESTAMPTZ DEFAULT now(),
+            template TEXT, phone TEXT, name TEXT, kind TEXT, result TEXT, detail TEXT)""")
+        await db.execute("CREATE INDEX IF NOT EXISTS ix_m_wlog ON maint_wati_log (sent_at DESC)")
     except Exception as e:
         print("[maint] breakdown schema step skipped:", e)
     await db.execute("CREATE INDEX IF NOT EXISTS ix_m_cp ON maint_checkpoints (checklist_id, seq)")
@@ -1962,6 +1967,51 @@ async def _breakdown_photos(bid: int, photos: list) -> list:
     return out
 
 
+_WLOG_TABLE_READY = False
+
+
+async def _ensure_wati_log_table():
+    """Create the delivery-log table if the schema fast-path skipped it (idempotent,
+    runs once per process). Avoids a SCHEMA_VER bump re-running the heavy DDL/seeds."""
+    global _WLOG_TABLE_READY
+    if _WLOG_TABLE_READY:
+        return
+    try:
+        await db.execute("""CREATE TABLE IF NOT EXISTS maint_wati_log (
+            id SERIAL PRIMARY KEY, sent_at TIMESTAMPTZ DEFAULT now(),
+            template TEXT, phone TEXT, name TEXT, kind TEXT, result TEXT, detail TEXT)""")
+        await db.execute("CREATE INDEX IF NOT EXISTS ix_m_wlog ON maint_wati_log (sent_at DESC)")
+        _WLOG_TABLE_READY = True
+    except Exception as e:
+        print("[maint] wati-log table ensure skip:", e)
+
+
+async def _log_wati(template, phone, name, ok, detail, kind=""):
+    """Record one WATI send + its outcome to the maintenance delivery log."""
+    await _ensure_wati_log_table()
+    d = str(detail or "")
+    if ok:
+        res = "sent"
+    elif d.strip().startswith(("{", "[")) or any(k in d.lower() for k in ("http", "missing/wrong", "error")):
+        res = "http_error"
+    else:
+        res = "failed"
+    try:
+        await db.execute(
+            "INSERT INTO maint_wati_log (template, phone, name, kind, result, detail) "
+            "VALUES ($1,$2,$3,$4,$5,$6)",
+            str(template or ""), str(phone or ""), str(name or ""), str(kind or ""), res, d[:500])
+    except Exception as e:
+        print("[maint] wati-log skip:", e)
+
+
+async def _wsend(template, phone, params, name="", kind=""):
+    """Send a WATI template AND log the outcome. Returns (ok, detail) like send_template."""
+    ok, detail = await wati.send_template(template, phone, params)
+    await _log_wati(template, phone, name, ok, detail, kind)
+    return ok, detail
+
+
 async def _send_breakdown_alert(bd: dict):
     """Fire bsc_breakdown_alert to the assignee (if any) + every supervisor."""
     label = (str(bd.get("asset_code") or "") + " " + str(bd.get("asset_name") or "")).strip() or "—"
@@ -1980,17 +2030,18 @@ async def _send_breakdown_alert(bd: dict):
     aids = bd.get("assignees") or ([bd["assignee_emp_id"]] if bd.get("assignee_emp_id") else [])
     emap = await _emp_map()
     for aid in aids:
-        mob = (emap.get(aid) or {}).get("mobile") or (bd.get("assignee_mobile") if aid == bd.get("assignee_emp_id") else "")
+        info = emap.get(aid) or {}
+        mob = info.get("mobile") or (bd.get("assignee_mobile") if aid == bd.get("assignee_emp_id") else "")
         m = wati.normalize_number(mob)
         if m and m not in seen:
-            targets.append(m); seen.add(m)
+            targets.append((m, info.get("name") or "")); seen.add(m)
     for sup in _supervisor_mobiles():
         m = wati.normalize_number(sup)
         if m and m not in seen:
-            targets.append(m); seen.add(m)
+            targets.append((m, "Supervisor")); seen.add(m)
     results = []
-    for m in targets:
-        ok, detail = await wati.send_template(WATI_MAINT_BREAKDOWN_TEMPLATE, m, params)
+    for m, nm in targets:
+        ok, detail = await _wsend(WATI_MAINT_BREAKDOWN_TEMPLATE, m, params, name=nm, kind="breakdown")
         results.append({"to": m, "result": "sent" if ok else f"failed: {detail}"})
     return results
 
@@ -2041,7 +2092,7 @@ async def wati_test(to: str = "", emp: dict = Depends(require_employee)):
                       "detail": "No number. Add ?to=919XXXXXXXXX to the URL, or set MAINT_SUPERVISOR_MOBILE."})
     params = ["0", "TEST MACHINE", "Other: WATI test message", "Diagnostics",
               datetime.now(IST).strftime("%d-%m-%Y %H:%M")]
-    ok, detail = await wati.send_template(WATI_MAINT_BREAKDOWN_TEMPLATE, num, params)
+    ok, detail = await _wsend(WATI_MAINT_BREAKDOWN_TEMPLATE, num, params, name="(test)", kind="test")
     return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_BREAKDOWN_TEMPLATE, "wati_reply": detail})
 
 
@@ -2086,6 +2137,35 @@ async def wati_template(name: str = "", emp: dict = Depends(require_employee)):
     var_count = len(re.findall(r"\{\{\s*\d+\s*\}\}", body_text or ""))
     return _json({"name": name, "body_text": body_text, "body_variable_count": var_count,
                   "buttons": buttons, "raw": match})
+
+
+@router.get("/wati-log/list")
+async def wati_log_list(result: str = Query(default=""), template: str = Query(default=""),
+                        phone: str = Query(default=""), limit: int = Query(default=300),
+                        emp: dict = Depends(require_employee)):
+    """Rows for the WhatsApp delivery log (newest first) with simple filters, plus a
+    last-24h count by result. Used by the maintenance WhatsApp Log page (admin only)."""
+    await ensure_tables()
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admins only")
+    await _ensure_wati_log_table()
+    where, args = [], []
+    if result:
+        args.append(result); where.append(f"result=${len(args)}")
+    if template:
+        args.append(f"%{template}%"); where.append(f"template ILIKE ${len(args)}")
+    if phone:
+        args.append(f"%{re.sub(r'[^0-9]', '', phone)}%"); where.append(f"phone ILIKE ${len(args)}")
+    wsql = (" WHERE " + " AND ".join(where)) if where else ""
+    args.append(max(1, min(int(limit or 300), 1000)))
+    rows = await db.fetch(
+        "SELECT id, sent_at, template, phone, name, kind, result, detail "
+        "FROM maint_wati_log" + wsql + f" ORDER BY sent_at DESC LIMIT ${len(args)}", *args)
+    summ = await db.fetch(
+        "SELECT result, COUNT(*) AS n FROM maint_wati_log "
+        "WHERE sent_at > now() - interval '24 hours' GROUP BY result")
+    return _json({"rows": [dict(r) for r in rows],
+                  "summary": {r["result"]: r["n"] for r in summ}})
 
 
 # ---- fixed maintenance person per breakdown type (hard-coded in the backend) ----
@@ -2717,7 +2797,7 @@ async def remind_one(body: dict, emp: dict = Depends(require_employee)):
     # param "1" also feeds the URL button, so it must be URL-safe (no spaces)
     params = [_url_token(name), tdisp, item, "—", "maint"]
     m = wati.normalize_number(mobile) or mobile
-    ok, detail = await wati.send_template(WATI_MAINT_DUE_TEMPLATE, m, params)
+    ok, detail = await _wsend(WATI_MAINT_DUE_TEMPLATE, m, params, name=name, kind="reminder")
     if ok:
         return _json({"ok": True, "msg": "Reminder sent to " + name + " on WhatsApp (" + mobile + ")."})
     return _json({"ok": False, "msg": "WhatsApp send failed: " + str(detail)})
@@ -2892,7 +2972,9 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
             rec["result"] = "skipped: template not set"; skipped.append(rec); return
         if dry:
             rec["result"] = "dry-run"; sent.append(rec); return
-        ok, detail = await wati.send_template(tmpl, mobile, params)
+        ok, detail = await _wsend(tmpl, mobile, params,
+                                  name=(meta.get("assignee") or "Supervisor"),
+                                  kind=(meta.get("kind") or ""))
         rec["result"] = "sent" if ok else f"failed: {detail}"
         (sent if ok else skipped).append(rec)
 

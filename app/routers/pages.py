@@ -47,6 +47,10 @@ NAV_GROUPS = [
           "href": "/maint/checklists", "active_key": "maint_checklists"},
          {"name": "Schedules", "icon": "calendar", "desc": "PM cycles by date interval and running hours.",
           "href": "/maint/schedules", "active_key": "maint_schedules"},
+         {"name": "Raise Breakdown", "icon": "warn", "desc": "Raise an unplanned stoppage and alert the team.",
+          "href": "/maint/breakdown", "active_key": "maint_breakdown"},
+         {"name": "WhatsApp Log", "icon": "msg", "desc": "Every maintenance WhatsApp sent and its delivery result.",
+          "href": "/maint/wati-log", "active_key": "maint_wati_log"},
          {"name": "Leave", "icon": "users", "desc": "Mark staff on leave so they skip reminders.",
           "href": "/maint/leave", "active_key": "maint_leave"},
      ]},
@@ -229,6 +233,7 @@ _MAINT_PAGES = [
     ("/maint/checklists", "maint_checklists.html", "maint_checklists", "Checklists", True),
     ("/maint/schedules", "maint_schedules.html", "maint_schedules", "Schedules", True),
     ("/maint/breakdown", "maint_breakdown.html", "maint_breakdown", "Raise Breakdown", False),
+    ("/maint/wati-log", "maint_wati_log.html", "maint_wati_log", "WhatsApp Log", True),
     ("/maint/leave", "maint_leave.html", "maint_leave", "Leave", True),
 ]
 

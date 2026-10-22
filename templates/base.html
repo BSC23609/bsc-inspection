@@ -107,23 +107,146 @@ function closeModal(){document.getElementById('scrim').classList.remove('show');
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeModal();});
 function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.className='toast '+(kind||'');t.textContent=msg;t.classList.add('show');clearTimeout(window._tt);window._tt=setTimeout(function(){t.classList.remove('show');},2600);}
 </script>
-<div id="od_warn" style="display:none;position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:9999;max-width:min(560px,calc(100vw - 32px));background:#fff7e6;color:#7a4b00;border:1px solid #f3c97a;border-radius:12px;padding:12px 40px 12px 14px;font-size:13px;line-height:1.45;box-shadow:0 8px 28px rgba(0,0,0,.14)">
-  <b>Saved in QMS, but not fully on OneDrive.</b> <span id="od_warn_t"></span>
-  <div style="margin-top:6px"><a href="/onedrive-sync" style="color:#0069aa;font-weight:600">Open OneDrive Sync to retry →</a></div>
-  <button onclick="this.parentElement.style.display='none'" aria-label="Close" style="position:absolute;top:8px;right:10px;border:0;background:none;font-size:18px;color:#7a4b00;cursor:pointer">×</button>
-</div>
+{% if emp %}
+<!-- Global quick "Raise breakdown" button (shows on every page) -->
+<style>
+.gbd-fab{position:fixed;right:18px;bottom:18px;z-index:40;display:flex;align-items:center;justify-content:center;gap:7px;
+  background:#c23438;color:#fff;border:none;border-radius:50%;width:56px;height:56px;
+  box-shadow:0 10px 26px rgba(194,52,56,.45);cursor:pointer;font-weight:700;line-height:1}
+.gbd-fab .gbd-plus{font-size:29px;line-height:1}
+.gbd-fab .gbd-lbl{display:none;font-size:14px;white-space:nowrap}
+.gbd-fab:hover{background:#a82c30}.gbd-fab:active{transform:translateY(1px)}
+@media(min-width:720px){.gbd-fab{width:auto;height:50px;border-radius:25px;padding:0 19px 0 16px}
+  .gbd-fab .gbd-plus{font-size:21px}.gbd-fab .gbd-lbl{display:inline}}
+.gbd-scrim{position:fixed;inset:0;background:rgba(8,24,40,.5);display:none;align-items:flex-start;justify-content:center;z-index:90;padding:24px 14px;overflow:auto}
+.gbd-modal{background:#fff;border-radius:16px;max-width:560px;width:100%;box-shadow:0 22px 60px rgba(0,0,0,.32)}
+.gbd-mh{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line,#e6ebf1)}
+.gbd-mh b{font-size:15.5px;letter-spacing:.3px}
+.gbd-mb{padding:16px 18px}.gbd-mfoot{padding:13px 18px;border-top:1px solid var(--line,#e6ebf1);display:flex;gap:10px;justify-content:flex-end}
+.gbd-mf label{display:block;font-size:11.5px;font-weight:700;color:var(--ink-2,#51607a);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
+.gbd-mf input,.gbd-mf select,.gbd-mf textarea{width:100%;padding:10px 11px;border:1px solid var(--line-2,#d7dee7);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none;box-sizing:border-box}
+.gbd-mf textarea{resize:vertical;min-height:60px}
+.gbd-mf input:focus,.gbd-mf select:focus,.gbd-mf textarea:focus{border-color:#1f8a70;box-shadow:0 0 0 3px rgba(31,138,112,.15)}
+.gbd-row{margin-bottom:14px}
+.gbd-req{color:#e5484d}.gbd-opt{text-transform:none;color:var(--muted,#8a93a3);font-weight:400}
+.gbd-pills{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+@media(min-width:460px){.gbd-pills{grid-template-columns:repeat(4,1fr)}}
+.gbd-pill{padding:10px 8px;border:1px solid var(--line-2,#d7dee7);background:#fff;border-radius:9px;font-weight:600;font-size:13px;color:var(--ink-2,#51607a);cursor:pointer;text-align:center}
+.gbd-pill.on{background:#0f1b2d;color:#fff;border-color:#0f1b2d}
+.gbd-note{font-size:11.5px;color:var(--muted,#8a93a3);margin-top:5px}
+.gbd-chk{border:1px solid var(--line-2,#d7dee7);border-radius:9px;padding:8px 10px;max-height:160px;overflow:auto}
+.gbd-chk label{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2,#51607a);padding:4px 0;cursor:pointer}
+.gbd-chk input{width:auto}
+.gbd-chk .none{color:var(--muted,#8a93a3);font-size:12.5px;padding:2px 0}
+.gbd-thumbs{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px}
+.gbd-thumb{position:relative;width:60px;height:60px;border-radius:8px;overflow:hidden;border:1px solid var(--line-2,#d7dee7)}
+.gbd-thumb img{width:100%;height:100%;object-fit:cover}
+.gbd-thumb .x{position:absolute;top:1px;right:1px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:17px;height:17px;line-height:16px;text-align:center;font-size:12px;cursor:pointer}
+</style>
+<button class="gbd-fab" type="button" onclick="gbdOpen()" title="Raise Breakdown" aria-label="Raise Breakdown"><span class="gbd-plus">+</span><span class="gbd-lbl">Raise Breakdown</span></button>
+<div class="gbd-scrim" id="gbd_scrim"><div class="gbd-modal">
+  <div class="gbd-mh">{{ icon('warn',18) }}<b>RAISE BREAKDOWN</b><span style="flex:1"></span>
+    <a href="#" onclick="gbdClose();return false" style="color:var(--muted,#8a93a3);font-size:20px;line-height:1">×</a></div>
+  <div class="gbd-mb"><div class="gbd-mf">
+    <input type="hidden" id="gbd_type" value="">
+    <div class="gbd-row"><label>Asset <span class="gbd-req">*</span></label><select id="gbd_asset" onchange="gbdOnAsset()"><option value="">Loading machines…</option></select></div>
+    <div class="gbd-row"><label>Breakdown type <span class="gbd-req">*</span></label>
+      <div class="gbd-pills">
+        <div class="gbd-pill" data-t="Electrical" onclick="gbdSetType('Electrical')">Electrical</div>
+        <div class="gbd-pill" data-t="Mechanical" onclick="gbdSetType('Mechanical')">Mechanical</div>
+        <div class="gbd-pill" data-t="Hydraulic" onclick="gbdSetType('Hydraulic')">Hydraulic</div>
+        <div class="gbd-pill" data-t="Other" onclick="gbdSetType('Other')">Other</div>
+      </div></div>
+    <div class="gbd-row"><label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;text-transform:none;letter-spacing:0">
+        <input type="checkbox" id="gbd_self" onchange="gbdToggleSelf()" style="width:auto"><span>Self — assign this breakdown to me</span></label></div>
+    <div class="gbd-row"><label>Maintenance user(s) <span class="gbd-req">*</span></label>
+      <div class="gbd-chk" id="gbd_assignees"><div class="none">Pick a breakdown type above.</div></div>
+      <div class="gbd-note" id="gbd_autonote" style="display:none"></div></div>
+    <div class="gbd-row"><label>Breakdown detail <span class="gbd-req">*</span></label>
+      <textarea id="gbd_problem" placeholder="What has failed / stopped?"></textarea></div>
+    <div class="gbd-row"><label>Breakdown date &amp; time <span class="gbd-req">*</span></label>
+      <input id="gbd_when" type="datetime-local"></div>
+    <div class="gbd-row"><label>Remarks <span class="gbd-opt">(optional)</span></label>
+      <input id="gbd_remarks" placeholder="anything useful for the technician"></div>
+    <div class="gbd-row" style="margin-bottom:0"><label>Photos <span class="gbd-opt">(optional)</span></label>
+      <input id="gbd_files" type="file" accept="image/*" multiple onchange="gbdAddFiles(this)">
+      <div class="gbd-thumbs" id="gbd_thumbs"></div></div>
+  </div></div>
+  <div class="gbd-mfoot"><button class="btn btn-ghost" onclick="gbdClose()">Cancel</button>
+    <button class="btn btn-primary" id="gbd_save" onclick="gbdRaise()">Raise &amp; alert</button></div>
+</div></div>
 <script>
-/* Every save now returns {onedrive:{ok,saved,errors}}. If OneDrive failed, say so. */
 (function(){
-  if(!window.fetch||window._odHooked)return;window._odHooked=true;var f=window.fetch;
-  window.fetch=function(){return f.apply(this,arguments).then(function(r){
-    try{var ct=r.headers.get('content-type')||'';if(ct.indexOf('application/json')>-1){r.clone().json().then(function(j){
-      if(j&&j.onedrive&&j.onedrive.ok===false){var e=(j.onedrive.errors||[]).join(' · ');
-        document.getElementById('od_warn_t').textContent=e;document.getElementById('od_warn').style.display='block';}
-    }).catch(function(){});}}catch(e){}
-    return r;});};
+  var GA=[],GE=[],GEBY={},GTS={},GAE={},GPH=[],GREADY=false;
+  var GME={id:{{ emp.id|tojson }},name:{{ (emp.name or emp.emp_no)|tojson }}};
+  function $(id){return document.getElementById(id);}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+  function val(id){var e=$(id);return e?e.value:'';}
+  function setv(id,x){var e=$(id);if(e)e.value=(x==null?'':x);}
+  function opt(v,t,sel){return '<option value="'+esc(v)+'"'+(String(sel)===String(v)?' selected':'')+'>'+esc(t)+'</option>';}
+  function nowLocal(){var d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16);}
+  function maintUsers(){var m=GE.filter(function(e){return e.is_maint;});return m.length?m:GE;}
+  function uname(id){var e=GEBY[id]||{};return (e.name||('#'+id))+(e.mobile?(' · '+e.mobile):'');}
+  function renderAssignees(sel,multi){sel=sel||[];var set={};sel.forEach(function(x){set[String(x)]=1;});
+    var us=maintUsers();var typ=multi?'checkbox':'radio';var nm=multi?'':' name="gbd_asg_one"';
+    $('gbd_assignees').innerHTML=us.length?us.map(function(e){return '<label><input type="'+typ+'" class="gbd_asg"'+nm+' value="'+esc(e.id)+'"'+(set[String(e.id)]?' checked':'')+'>'+esc((e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''))+'</label>';}).join(''):'<div class="none">No maintenance users.</div>';}
+  function renderFixed(empId){$('gbd_assignees').innerHTML='<label style="opacity:.95"><input type="checkbox" class="gbd_asg" value="'+esc(empId)+'" checked disabled>'+esc(uname(empId))+'</label>';}
+  function renderElec(){var host=$('gbd_assignees'),aid=val('gbd_asset');
+    if(!aid){host.innerHTML='<div class="none">Select a machine first.</div>';return;}
+    var us=maintUsers();if(!us.length){host.innerHTML='<div class="none">No maintenance users.</div>';return;}
+    var def=(GAE[String(aid)]||[])[0];
+    host.innerHTML='<select class="gbd_asg_sel" style="width:100%;padding:10px 11px;border:1px solid #d7dee7;border-radius:9px;font-size:13px;background:#fff;font-family:inherit"><option value="">— select —</option>'+us.map(function(e){return opt(e.id,(e.name||e.emp_no)+(e.mobile?(' · '+e.mobile):''),def);}).join('')+'</select>';}
+  function selectedAssignees(){var sel=document.querySelector('#gbd_assignees select.gbd_asg_sel');if(sel){return sel.value?[sel.value]:[];}
+    return [].map.call(document.querySelectorAll('#gbd_assignees .gbd_asg:checked'),function(c){return c.value;});}
+  function renderSelf(){$('gbd_assignees').innerHTML='<label style="opacity:.95"><input type="checkbox" class="gbd_asg" value="'+esc(GME.id)+'" checked disabled>'+esc(GME.name||('#'+GME.id))+'</label>';}
+  function renderThumbs(){$('gbd_thumbs').innerHTML=GPH.map(function(src,i){return '<div class="gbd-thumb"><img src="'+src+'"><span class="x" onclick="gbdDelPhoto('+i+')">×</span></div>';}).join('');}
+  async function loadData(){
+    if(GREADY)return;
+    try{var r=await fetch('/maint/assets/list',{cache:'no-store'});if(r.status===401)return;GA=await r.json();}catch(e){GA=[];}
+    try{GE=await (await fetch('/admin/users',{cache:'no-store'})).json();}catch(e){GE=[];}
+    GEBY={};GE.forEach(function(e){GEBY[e.id]={name:e.name||e.emp_no,mobile:e.mobile};});
+    try{GTS=await (await fetch('/maint/type-staff/list',{cache:'no-store'})).json();}catch(e){GTS={};}
+    try{GAE=await (await fetch('/maint/asset-elec/list',{cache:'no-store'})).json();}catch(e){GAE={};}
+    var a=$('gbd_asset');if(a)a.innerHTML='<option value="">Select machine…</option>'+GA.filter(function(x){return x.active;}).map(function(x){return opt(x.id,(x.code?x.code+' — ':'')+x.name);}).join('');
+    GREADY=true;
+  }
+  window.gbdOpen=function(){GPH=[];$('gbd_thumbs').innerHTML='';setv('gbd_type','');setv('gbd_asset','');setv('gbd_problem','');setv('gbd_remarks','');setv('gbd_files','');
+    $('gbd_autonote').style.display='none';var sf=$('gbd_self');if(sf)sf.checked=false;
+    $('gbd_assignees').innerHTML='<div class="none">Pick a breakdown type above.</div>';
+    [].forEach.call(document.querySelectorAll('#gbd_scrim .gbd-pill'),function(p){p.classList.remove('on');});
+    setv('gbd_when',nowLocal());$('gbd_scrim').style.display='flex';if(!GREADY)loadData();};
+  window.gbdClose=function(){$('gbd_scrim').style.display='none';};
+  window.gbdOnAsset=function(){if(val('gbd_type')==='Electrical')renderElec();};
+  window.gbdToggleSelf=function(){var on=$('gbd_self').checked;
+    if(on){if(GME.id==null){$('gbd_self').checked=false;toast('err','Could not identify your login.');return;}
+      renderSelf();var nt=$('gbd_autonote');nt.textContent='Assigned to you ('+(GME.name||'me')+').';nt.style.display='';}
+    else{var tt=val('gbd_type');if(tt)window.gbdSetType(tt);else{$('gbd_assignees').innerHTML='<div class="none">Pick a breakdown type above.</div>';$('gbd_autonote').style.display='none';}}};
+  window.gbdSetType=function(t){setv('gbd_type',t);[].forEach.call(document.querySelectorAll('#gbd_scrim .gbd-pill'),function(p){p.classList.toggle('on',p.getAttribute('data-t')===t);});
+    var note=$('gbd_autonote');var self=$('gbd_self');
+    if(self&&self.checked){renderSelf();note.textContent='Assigned to you ('+(GME.name||'me')+').';note.style.display='';return;}
+    if(t==='Mechanical'||t==='Hydraulic'){var one=(GTS[t]||[])[0];if(one){renderFixed(one);note.textContent='Fixed '+t.toLowerCase()+' maintenance user.';note.style.display='';}else{$('gbd_assignees').innerHTML='<div class="none">No '+t+' user configured.</div>';note.style.display='none';}}
+    else if(t==='Electrical'){renderElec();note.textContent='Electrical users for the selected machine.';note.style.display='';}
+    else{var mapped=GTS[t]||[];renderAssignees(mapped.length?[mapped[0]]:[],false);note.textContent='Auto-picked for this type — change if needed.';note.style.display=mapped.length?'':'none';}};
+  window.gbdAddFiles=function(inp){var files=inp.files||[];var left=6-GPH.length;
+    [].slice.call(files,0,Math.max(0,left)).forEach(function(f){if(!/^image\//.test(f.type))return;var rd=new FileReader();rd.onload=function(){GPH.push(rd.result);renderThumbs();};rd.readAsDataURL(f);});
+    inp.value='';if(files.length>left)toast('err','Up to 6 photos');};
+  window.gbdDelPhoto=function(i){GPH.splice(i,1);renderThumbs();};
+  window.gbdRaise=async function(){var aid=val('gbd_asset'),bt=val('gbd_type'),prob=val('gbd_problem').trim(),asg=selectedAssignees(),when=val('gbd_when'),rm=val('gbd_remarks').trim();
+    if(!aid){toast('err','Select a machine');return;}if(!bt){toast('err','Select a breakdown type');return;}
+    if(!prob){toast('err','Enter the breakdown detail');return;}if(!asg.length){toast('err','Select at least one maintenance user');return;}
+    if(!when){toast('err','Pick the breakdown date & time');return;}
+    var btn=$('gbd_save');btn.disabled=true;var l=btn.textContent;btn.textContent='Sending…';
+    try{var r=await fetch('/maint/breakdown/raise',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({asset_id:aid,btype:bt,problem:prob,assignees:asg,raised_at:when,remarks:rm,photos:GPH})});
+      var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
+      var al=d.alert||[];var n=al.filter(function(x){return x.result==='sent';}).length;var fail=al.filter(function(x){return x.result!=='sent';});
+      toast('ok','Breakdown raised'+(n?(' · alerted '+n):'')+(d.photos?(' · '+d.photos+' photo(s)'):''));
+      if(!n)toast('err',al.length?('WhatsApp not sent: '+(fail[0].result||'')):'WhatsApp not sent: no recipient');
+      window.gbdClose();if(typeof bdLoad==='function'){try{bdLoad();}catch(e){}}}
+    catch(e){toast('err',(e&&e.message)||'Failed');}finally{btn.disabled=false;btn.textContent=l;}};
+  var sc=$('gbd_scrim');if(sc)sc.addEventListener('click',function(e){if(e.target===this)window.gbdClose();});
 })();
 </script>
+{% endif %}
 {% block scripts %}{% endblock %}
 </body>
 </html>

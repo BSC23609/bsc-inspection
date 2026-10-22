@@ -21,6 +21,11 @@
 .openb{border:1px solid var(--acc);color:var(--acc);background:#fff;border-radius:8px;padding:6px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
 .openb.done{border-color:var(--line-2);color:var(--muted)}
 .empty{color:var(--muted);text-align:center;padding:26px}
+.my-sec{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px 6px;border-top:1px solid var(--line)}
+.my-sec:first-child{border-top:none}
+.my-sec h2{margin:0;font-size:14px;font-weight:800;letter-spacing:.3px;color:var(--acc-ink)}
+.my-sec .cnt{font-size:12px;color:var(--muted);font-weight:600;margin-left:auto}
+.mtbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media(max-width:620px){.hide-sm{display:none}.mtbl td,.mtbl th{padding:9px 8px}}
 /* popup */
 .scrim{position:fixed;inset:0;background:rgba(8,24,40,.5);display:none;align-items:flex-start;justify-content:center;z-index:70;padding:24px 14px;overflow:auto}
@@ -38,7 +43,7 @@
 .opt input{accent-color:var(--acc);width:16px;height:16px}
 .opt.sel-ok{background:#e9f6e2;border-color:#9fd089;color:#2f6b27}
 .opt.sel-no{background:#fdeceD;border-color:#e8a8ab;color:#c0241c}
-.qval input{width:160px;padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px}
+.qval input{width:100%;max-width:220px;box-sizing:border-box;padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:13px}
 .qnote{width:100%;min-height:52px;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:12.5px;resize:vertical}
 .fmfoot{padding:14px 20px;border-top:1px solid var(--line);display:flex;gap:10px;align-items:center;background:#fff;border-radius:0 0 16px 16px}
 .spec{font-size:11px;color:var(--muted);font-weight:500}
@@ -47,13 +52,6 @@
 <div class="page-head"><h1>My Checklist</h1><p>Your assigned machine checks. Open a card to fill it in — mark each point OK or Not OK and add a note. Daily checks reset each day, quarterly each quarter.</p></div>
 
 <div class="panel">
-  <div class="my-head">
-    <div class="seg">
-      <button class="sbtn on" id="t_daily" onclick="setTab('Daily')">Daily</button>
-      <button class="sbtn" id="t_quarterly" onclick="setTab('Quarterly')">Quarterly</button>
-    </div>
-    <span class="my-prog" id="my_prog"></span>
-  </div>
   <div id="my_body"><div class="empty">Loading…</div></div>
 </div>
 </div>
@@ -70,28 +68,19 @@
 {% endblock %}
 {% block scripts %}
 <script>
-var ITEMS=[],TAB='Daily',CUR=null;
+var ITEMS=[],CUR=null;
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function catCls(c){c=(c||'').toLowerCase();return c[0]==='e'?'E':(c[0]==='h'?'H':'M');}
 function fdate(s){if(!s)return'';var d=new Date(s);if(isNaN(d))return String(s).slice(0,10);return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear();}
-function setTab(t){TAB=t;document.getElementById('t_daily').classList.toggle('on',t==='Daily');
-  document.getElementById('t_quarterly').classList.toggle('on',t==='Quarterly');render();}
 async function boot(){
   var d;try{var r=await fetch('/maint/my/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}d=await r.json();}
   catch(e){document.getElementById('my_body').innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
   ITEMS=d.items||[];render();
 }
-function render(){
-  var box=document.getElementById('my_body');
-  var rows=ITEMS.filter(function(x){return x.freq===TAB;});
-  var done=rows.filter(function(x){return x.status==='done';}).length;
-  var over=rows.filter(function(x){return x.status==='overdue';}).length;
-  document.getElementById('my_prog').textContent=rows.length?(done+' done · '+over+' overdue · '+rows.length+' total'):'';
-  if(!rows.length){box.innerHTML='<div class="empty">No '+TAB.toLowerCase()+' checks assigned to you.</div>';return;}
-  // order: overdue, due, upcoming, done
+function rowsHtml(rows){
   var rank={overdue:0,due:1,upcoming:2,done:3};
   rows.sort(function(a,b){return (rank[a.status]-rank[b.status])||String(a.asset_name).localeCompare(b.asset_name);});
-  box.innerHTML='<table class="mtbl"><thead><tr><th>Machine</th><th class="hide-sm">Items</th><th class="hide-sm">Next due</th><th>Status</th><th></th></tr></thead><tbody>'
+  return '<div class="mtbl-wrap"><table class="mtbl"><thead><tr><th>Machine</th><th class="hide-sm">Items</th><th class="hide-sm">Next due</th><th>Status</th><th></th></tr></thead><tbody>'
     +rows.map(function(x){
       var lbl={overdue:'Overdue',due:'Due',done:'Done',upcoming:'Upcoming'}[x.status]||x.status;
       var btn=x.status==='done'
@@ -102,7 +91,19 @@ function render(){
         +'<td class="hide-sm">'+(x.next_due?fdate(x.next_due):'—')+'</td>'
         +'<td><span class="pill '+x.status+'">'+lbl+'</span></td>'
         +'<td style="text-align:right">'+btn+'</td></tr>';
-    }).join('')+'</tbody></table>';
+    }).join('')+'</tbody></table></div>';
+}
+function sectionHtml(freq){
+  var rows=ITEMS.filter(function(x){return x.freq===freq;});
+  var done=rows.filter(function(x){return x.status==='done';}).length;
+  var over=rows.filter(function(x){return x.status==='overdue';}).length;
+  var head='<div class="my-sec"><h2>'+freq+'</h2><span class="cnt">'
+    +(rows.length?(done+' done · '+over+' overdue · '+rows.length+' total'):'nothing assigned')+'</span></div>';
+  return head+(rows.length?rowsHtml(rows):'<div class="empty">No '+freq.toLowerCase()+' checks assigned to you.</div>');
+}
+function render(){
+  // Daily and Quarterly shown together, each as its own labelled section
+  document.getElementById('my_body').innerHTML=sectionHtml('Daily')+sectionHtml('Quarterly');
 }
 async function openForm(cid){
   document.getElementById('f_scrim').style.display='flex';
