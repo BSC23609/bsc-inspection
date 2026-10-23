@@ -17,6 +17,20 @@
 .badge.on{background:#e3f6ee;color:#0a7d55}.badge.off{background:#fdecec;color:#c23438}
 .badge.adm{background:var(--blue-soft);color:var(--blue-ink)}
 .badge.mnt{background:#e6f4f3;color:#0a6b63;margin-left:4px}
+.scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:flex-start;justify-content:center;z-index:60;padding:28px 16px;overflow:auto}
+.mmodal{background:#fff;border-radius:16px;max-width:480px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.mmodal .mh{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line)}
+.mmodal .mh b{font-size:15px;letter-spacing:.3px}
+.mmodal .mb{padding:14px 18px}.mmodal .mfoot{padding:12px 18px;border-top:1px solid var(--line);display:flex;justify-content:flex-end}
+.mnote{font-size:12px;color:var(--muted);margin:0 0 12px}
+.m-list{max-height:52vh;overflow:auto}
+.m-item{display:flex;align-items:center;gap:10px;padding:9px 2px;border-top:1px solid var(--line);font-size:13.5px}
+.m-item:first-child{border-top:none}
+.m-item input{width:auto}.m-item .nm{flex:1}.m-item .cd{color:var(--muted);font-size:12px}
+/* keep every field on one line; scroll the table sideways on small screens */
+#u_rows{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#u_rows table.dgrid{table-layout:auto;min-width:640px}
+#u_rows table.dgrid th,#u_rows table.dgrid td{white-space:nowrap;word-break:normal;overflow:visible}
 </style>
 
 <div class="page-head"><h1>Users</h1>
@@ -32,7 +46,6 @@
   </div>
   <div class="row r4">
     <div class="field"><label id="u_pw_lab">Password</label><input id="u_pw" type="text" placeholder="Set a password"></div>
-    <div class="chk"><input type="checkbox" id="u_maint"><label for="u_maint" style="margin:0">Maintenance user</label></div>
     <div class="chk"><input type="checkbox" id="u_active" checked><label for="u_active" style="margin:0">Active</label></div>
   </div>
   <div style="display:flex;gap:10px;align-items:center">
@@ -42,13 +55,27 @@
   </div>
 </div></div></div>
 
-<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('users',17) }}</span>Employees<span class="sub" id="u_cnt"></span></div>
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('users',17) }}</span>Employees<span class="sub" id="u_cnt"></span>
+  <span style="flex:1"></span>
+  <button class="btn btn-ghost" style="padding:6px 12px" onclick="openMaint()">Maintenance users</button></div>
 <div class="panel-body">
   <input id="u_search" oninput="uRender()" placeholder="Search name / code / mobile…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
   <div class="dgrid-wrap" id="u_rows"><div class="empty">Loading…</div></div>
 </div></div>
 
 </div>
+
+<!-- Maintenance users popup -->
+<div class="scrim" id="maint_scrim"><div class="mmodal">
+  <div class="mh">{{ icon('users',18) }}<b>MAINTENANCE USERS</b><span style="flex:1"></span>
+    <a href="#" onclick="closeMaint();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb">
+    <p class="mnote">Tick the staff who handle maintenance. Only they appear as the maintenance user on the Raise Breakdown form.</p>
+    <input id="m_search" oninput="mRender()" placeholder="Search…" style="width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:10px">
+    <div id="m_rows" class="m-list"><div class="empty">Loading…</div></div>
+  </div>
+  <div class="mfoot"><button class="btn btn-primary" onclick="closeMaint()">Done</button></div>
+</div></div>
 {% endblock %}
 {% block scripts %}
 <script>
@@ -88,7 +115,7 @@ function uRender(){
 }
 function uReset(){
   sv('u_id','');sv('u_emp_no','');sv('u_name','');sv('u_mobile','');sv('u_pw','');
-  setChk('u_admin',false);setChk('u_maint',false);setChk('u_active',true);
+  setChk('u_admin',false);setChk('u_active',true);
   document.getElementById('u_emp_no').disabled=false;
   document.getElementById('u_form_title').textContent='Add user';
   document.getElementById('u_save').textContent='Add user';
@@ -98,7 +125,7 @@ function uReset(){
 }
 function uEdit(id){var x=USERS.filter(function(r){return r.id===id;})[0];if(!x)return;
   sv('u_id',x.id);sv('u_emp_no',x.emp_no||'');sv('u_name',x.name||'');sv('u_mobile',x.mobile||'');sv('u_pw','');
-  setChk('u_admin',x.is_admin);setChk('u_maint',x.is_maint);setChk('u_active',x.active);
+  setChk('u_admin',x.is_admin);setChk('u_active',x.active);
   document.getElementById('u_form_title').textContent='Edit '+(x.emp_no||'user');
   document.getElementById('u_save').textContent='Update user';
   document.getElementById('u_pw_lab').textContent='New password (leave blank to keep)';
@@ -107,7 +134,7 @@ function uEdit(id){var x=USERS.filter(function(r){return r.id===id;})[0];if(!x)r
   window.scrollTo({top:0,behavior:'smooth'});
 }
 async function uSave(){
-  var p={id:v('u_id')||null,emp_no:v('u_emp_no').trim(),name:v('u_name').trim(),mobile:v('u_mobile').trim(),is_admin:chk('u_admin'),is_maint:chk('u_maint'),active:chk('u_active'),password:v('u_pw')};
+  var p={id:v('u_id')||null,emp_no:v('u_emp_no').trim(),name:v('u_name').trim(),mobile:v('u_mobile').trim(),is_admin:chk('u_admin'),active:chk('u_active'),password:v('u_pw')};
   if(!p.emp_no){toast('err','Enter the employee code');return;}
   if(!p.id && !p.password){toast('err','Set a password for the new user');return;}
   var b=document.getElementById('u_save');b.disabled=true;var lbl=b.textContent;b.textContent='Saving…';
@@ -125,6 +152,22 @@ async function uToggle(id,active){if(!confirm((active?'Activate':'Deactivate')+'
   try{var r=await fetch('/admin/users/toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,active:active})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');toast('ok',active?'Activated':'Deactivated');await uLoad();
   }catch(e){toast('err','Couldn’t update: '+((e&&e.message)||e));}}
+/* ---------- maintenance users popup ---------- */
+function openMaint(){document.getElementById('maint_scrim').style.display='flex';sv('m_search','');mRender();}
+function closeMaint(){document.getElementById('maint_scrim').style.display='none';}
+function mRender(){var host=document.getElementById('m_rows'),q=(v('m_search')||'').toLowerCase();
+  var rows=USERS.filter(function(x){if(!q)return true;return [x.emp_no,x.name].join(' ').toLowerCase().indexOf(q)>=0;});
+  if(!rows.length){host.innerHTML='<div class="empty">No users.</div>';return;}
+  host.innerHTML=rows.map(function(x){
+    return '<label class="m-item"><input type="checkbox" '+(x.is_maint?'checked':'')+' onchange="mToggle('+x.id+',this.checked)">'
+      +'<span class="nm">'+esc(x.name||x.emp_no)+'</span><span class="cd">'+esc(x.emp_no||'')+'</span></label>';}).join('');}
+async function mToggle(id,on){
+  try{var r=await fetch('/admin/users/maint-toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,is_maint:on})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');
+    var u=USERS.filter(function(z){return z.id===id;})[0];if(u)u.is_maint=on;toast('ok',on?'Marked maintenance user':'Removed');uRender();
+  }catch(e){toast('err','Couldn’t update: '+((e&&e.message)||e));mRender();}}
+document.getElementById('maint_scrim').addEventListener('click',function(e){if(e.target===this)closeMaint();});
+
 (function(){uReset();uLoad();})();
 </script>
 {% endblock %}
