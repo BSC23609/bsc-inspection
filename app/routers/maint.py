@@ -3127,6 +3127,32 @@ async def test_overdue(token: str = Query(default=""), to: str = Query(default="
     return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_OVERDUE_TEMPLATE, "wati_reply": detail})
 
 
+@router.get("/admin/export-onedrive")
+async def export_onedrive(token: str = Query(default=""), emp: dict = Depends(require_employee)):
+    """Generate the Maintenance Log / Machine History Card workbook from the app's
+    recorded data (maint_logs + maint_breakdowns) and save it to OneDrive. Admin or
+    ?token=AGENT_TOKEN. Run once a day by the GitHub Actions export job."""
+    await ensure_tables()
+    if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    from .. import maint_export
+    logs = await db.fetch("SELECT * FROM maint_logs ORDER BY done_at")
+    bds = await db.fetch("SELECT * FROM maint_breakdowns ORDER BY raised_at")
+    assets = await db.fetch("SELECT * FROM maint_assets ORDER BY code")
+    emps = await db.fetch("SELECT id, name, emp_no FROM employees")
+    content = maint_export.build(logs, bds, assets, emps)
+    path = f"{ONEDRIVE_BASE}/Maintenance/Maintenance_Log_Machine_History_Card.xlsx"
+    try:
+        gtoken = await graph.get_token()
+        await graph.upload_file(
+            gtoken, path, content,
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except Exception as e:
+        return _json({"ok": False, "path": path, "size": len(content), "detail": str(e)[:300]})
+    return _json({"ok": True, "path": path, "size": len(content),
+                  "events": len(logs) + len(bds), "machines": len(assets)})
+
+
 @router.get("/reminders/preview")
 async def reminders_preview(emp: dict = Depends(require_employee)):
     """Staff-only preview of what the reminder run would send right now."""
