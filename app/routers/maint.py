@@ -42,7 +42,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-23-v3-LATEST-1527"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-23-v4-leavefix"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -2079,7 +2079,10 @@ async def leave_list(emp: dict = Depends(require_employee)):
 @router.post("/leave/save")
 async def leave_save(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
-    eid = body.get("emp_id")
+    try:
+        eid = int(body.get("emp_id"))          # select sends a string — INT column needs an int
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Pick a staff member")
     f = _d(body.get("from_date"))
     t = _d(body.get("to_date")) or f
     if not eid or not f:
@@ -2095,7 +2098,11 @@ async def leave_save(body: dict, emp: dict = Depends(require_employee)):
 @router.post("/leave/delete")
 async def leave_delete(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
-    await db.execute("DELETE FROM maint_leave WHERE id=$1", body.get("id"))
+    try:
+        lid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Missing id")
+    await db.execute("DELETE FROM maint_leave WHERE id=$1", lid)
     return {"ok": True}
 
 
