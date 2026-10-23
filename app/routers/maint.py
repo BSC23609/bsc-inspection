@@ -42,7 +42,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-23-checkpoint-multiselect"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-23-prev-subfolders-v2"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -2199,9 +2199,9 @@ def _machine_folder(code: str, name: str) -> str:
 async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
                           results, checklist_id, location="", when=None):
     """Generate a preventive-maintenance work-order PDF and save it to
-    OneDrive/<base>/Maintenance/<machine>/<dd-mm-yy>_<code>_pm.pdf. The filename is
-    fixed per machine+day, so a re-submit the same day overwrites it — one PM report
-    per machine per day. Never raises."""
+    OneDrive/<base>/Maintenance/Preventive/<machine>/<dd-mm-yy>_<code>_pm.pdf. The
+    filename is fixed per machine+day, so a re-submit the same day overwrites it —
+    one PM report per machine per day. Never raises."""
     try:
         from .. import maint_pdf
         texts = {}
@@ -2223,7 +2223,7 @@ async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
         code = _safe_code(asset_code)
         folder = _machine_folder(asset_code, asset_name)
         fname = f"{when.strftime('%d-%m-%y')}_{code}_pm.pdf"   # one per machine per day
-        path = f"{ONEDRIVE_BASE}/Maintenance/{folder}/{fname}"
+        path = f"{ONEDRIVE_BASE}/Maintenance/Preventive/{folder}/{fname}"
         token = await graph.get_token()
         await graph.upload_file(token, path, pdf, "application/pdf")
         print("[maint] PM report saved:", path)
@@ -2235,9 +2235,9 @@ async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
 
 async def _file_breakdown_report(bd: dict, assignee_names: str):
     """Generate a breakdown work-order PDF and save it to
-    OneDrive/<base>/Maintenance/<machine>/<dd-mm-yy>_<code>_bm.pdf. The ticket id is
-    kept in the name so two breakdowns on the same machine/day don't overwrite each
-    other (each breakdown is its own event). Never raises."""
+    OneDrive/<base>/Maintenance/Breakdown/<machine>/<dd-mm-yy>_<code>_bm_<id>.pdf. The
+    ticket id is kept in the name so two breakdowns on the same machine/day don't
+    overwrite each other (each breakdown is its own event). Never raises."""
     try:
         from .. import maint_pdf
         now = datetime.now(IST)
@@ -2256,7 +2256,7 @@ async def _file_breakdown_report(bd: dict, assignee_names: str):
         folder = _machine_folder(bd.get("asset_code"), bd.get("asset_name"))
         rdate = raised.strftime("%d-%m-%y") if isinstance(raised, datetime) else now.strftime("%d-%m-%y")
         fname = f"{rdate}_{code}_bm_{bd.get('id')}.pdf"
-        path = f"{ONEDRIVE_BASE}/Maintenance/{folder}/{fname}"
+        path = f"{ONEDRIVE_BASE}/Maintenance/Breakdown/{folder}/{fname}"
         token = await graph.get_token()
         await graph.upload_file(token, path, pdf, "application/pdf")
         print("[maint] breakdown report saved:", path)
@@ -3536,7 +3536,9 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
     base = f"https://qms.bharatsteels.in/maint/admin/backfill-reports?token={token}&kind={k}&limit={limit}"
     out = {"ok": True, "kind": k, "records_total": total, "saved_this_page": saved,
            "done_through": done_through, "remaining": remaining,
-           "note_naming": "Saved under BSC Inspections/Maintenance/<machine>/ as <dd-mm-yy>_<code>_"
+           "note_naming": "Saved under BSC Inspections/Maintenance/"
+                          + ("Preventive" if k == "pm" else "Breakdown")
+                          + "/<machine>/ as <dd-mm-yy>_<code>_"
                           + ("pm" if k == "pm" else "bm") + ".pdf",
            "files": paths}
     if remaining:
