@@ -3270,62 +3270,97 @@ async def export_onedrive(token: str = Query(default=""), emp: dict = Depends(re
 
 
 @router.get("/admin/backfill-reports")
-async def backfill_reports(token: str = Query(default=""), n: int = Query(default=5),
+async def backfill_reports(token: str = Query(default=""), limit: int = Query(default=6),
+                           skip: int = Query(default=0), kind: str = Query(default="pm"),
                            emp: dict = Depends(require_employee)):
-    """Generate work-order PDFs for the most recent PM completions and breakdowns
-    and save them to OneDrive/Maintenance/Preventive and /Breakdown. This also
-    creates the two folders. Admin or ?token=AGENT_TOKEN. Use ?n=10 for more.
-    New completions and breakdowns file their own report automatically from now on."""
+    """Seed OneDrive with a work-order PDF for EVERY machine that has history —
+    one report per machine (its latest completion), not just the most recent events.
+    Paginated so each call stays under Vercel's 10s limit: it processes `limit`
+    machines starting at `skip`, and the reply's `next_url` is the link to click
+    for the next page until `remaining` is 0.
+      kind=pm  -> preventive reports, one per machine (default)
+      kind=bd  -> breakdown reports, one per machine (latest breakdown)
+    Admin or ?token=AGENT_TOKEN. New completions/breakdowns file their own report
+    automatically from now on; this is only for back-filling existing history."""
     await ensure_tables()
     if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
-    n = max(1, min(int(n or 5), 25))
-    pm_done = bd_done = 0
-    pm_paths, bd_paths = [], []
-    # --- recent preventive completions ---
-    logs = await db.fetch(
-        "SELECT l.*, a.code AS asset_code, a.name AS asset_name, a.location AS location, "
-        "c.name AS checklist_name FROM maint_logs l "
-        "LEFT JOIN maint_assets a ON a.id=l.asset_id "
-        "LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
-        "ORDER BY l.done_at DESC NULLS LAST LIMIT $1", n)
-    for l in logs:
-        try:
-            res = l["results"]
-            if isinstance(res, str):
-                res = json.loads(res or "[]")
-            p = await _file_pm_report(
-                asset_code=l["asset_code"], asset_name=l["asset_name"],
-                checklist=l["checklist_name"] or "Checklist", doc_no=str(l["id"]),
-                done_by=l["done_by"], results=res or [], checklist_id=l["checklist_id"],
-                location=l["location"])
-            if p:
-                pm_done += 1; pm_paths.append(p)
-        except Exception as e:
-            print("[maint] backfill PM skipped:", e)
-    # --- recent breakdowns ---
-    bds = await db.fetch(
-        "SELECT b.*, a.code AS asset_code, a.name AS asset_name, a.location AS location "
-        "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
-        "ORDER BY b.raised_at DESC NULLS LAST LIMIT $1", n)
-    for b in bds:
-        try:
-            b = dict(b)
-            ids = b.get("assignees") or ([b["assignee_emp_id"]] if b.get("assignee_emp_id") else [])
-            names = []
-            if ids:
-                nm = {r["id"]: (r["name"] or r["emp_no"]) for r in await db.fetch(
-                    "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", ids)}
-                names = [nm[i] for i in ids if nm.get(i)]
-            p = await _file_breakdown_report(b, ", ".join(names))
-            if p:
-                bd_done += 1; bd_paths.append(p)
-        except Exception as e:
-            print("[maint] backfill BD skipped:", e)
-    return _json({"ok": True, "preventive_saved": pm_done, "breakdown_saved": bd_done,
-                  "preventive_folder": f"{ONEDRIVE_BASE}/Maintenance/Preventive",
-                  "breakdown_folder": f"{ONEDRIVE_BASE}/Maintenance/Breakdown",
-                  "preventive_files": pm_paths, "breakdown_files": bd_paths})
+    limit = max(1, min(int(limit or 6), 12))
+    skip = max(0, int(skip or 0))
+    k = kind if kind in ("pm", "bd") else "pm"
+    saved, paths, missing = 0, [], []
+
+    if k == "pm":
+        # latest completion per machine (one row per asset) — lightweight, no PDF yet
+        rows = await db.fetch(
+            "SELECT DISTINCT ON (l.asset_id) l.*, a.code AS asset_code, a.name AS asset_name, "
+            "a.location AS location, c.name AS checklist_name "
+            "FROM maint_logs l "
+            "LEFT JOIN maint_assets a ON a.id=l.asset_id "
+            "LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
+            "WHERE l.asset_id IS NOT NULL "
+            "ORDER BY l.asset_id, l.done_at DESC NULLS LAST")
+        rows = sorted((dict(r) for r in rows), key=lambda r: (r.get("asset_code") or ""))
+        total = len(rows)
+        for l in rows[skip:skip + limit]:
+            try:
+                res = l["results"]
+                if isinstance(res, str):
+                    res = json.loads(res or "[]")
+                p = await _file_pm_report(
+                    asset_code=l["asset_code"], asset_name=l["asset_name"],
+                    checklist=l["checklist_name"] or "Checklist", doc_no=str(l["id"]),
+                    done_by=l["done_by"], results=res or [], checklist_id=l["checklist_id"],
+                    location=l["location"])
+                if p:
+                    saved += 1; paths.append(p)
+            except Exception as e:
+                print("[maint] backfill PM skipped:", e)
+        # machines that have NO completion at all -> no report can be made yet
+        done_assets = {r["asset_id"] for r in rows}
+        for a in await db.fetch("SELECT id, code, name FROM maint_assets ORDER BY code"):
+            if a["id"] not in done_assets:
+                missing.append(f'{a["code"]} {a["name"]}'.strip())
+    else:
+        rows = await db.fetch(
+            "SELECT DISTINCT ON (b.asset_id) b.*, a.code AS asset_code, a.name AS asset_name, "
+            "a.location AS location FROM maint_breakdowns b "
+            "LEFT JOIN maint_assets a ON a.id=b.asset_id "
+            "WHERE b.asset_id IS NOT NULL "
+            "ORDER BY b.asset_id, b.raised_at DESC NULLS LAST")
+        rows = sorted((dict(r) for r in rows), key=lambda r: (r.get("asset_code") or ""))
+        total = len(rows)
+        for b in rows[skip:skip + limit]:
+            try:
+                ids = b.get("assignees") or ([b["assignee_emp_id"]] if b.get("assignee_emp_id") else [])
+                names = []
+                if ids:
+                    nm = {r["id"]: (r["name"] or r["emp_no"]) for r in await db.fetch(
+                        "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", ids)}
+                    names = [nm[i] for i in ids if nm.get(i)]
+                p = await _file_breakdown_report(b, ", ".join(names))
+                if p:
+                    saved += 1; paths.append(p)
+            except Exception as e:
+                print("[maint] backfill BD skipped:", e)
+
+    done_through = min(skip + limit, total)
+    remaining = max(0, total - done_through)
+    base = f"https://qms.bharatsteels.in/maint/admin/backfill-reports?token={token}&kind={k}&limit={limit}"
+    out = {"ok": True, "kind": k, "machines_total": total, "saved_this_page": saved,
+           "done_through": done_through, "remaining": remaining,
+           "folder": f"{ONEDRIVE_BASE}/Maintenance/{'Preventive' if k == 'pm' else 'Breakdown'}",
+           "files": paths}
+    if remaining:
+        out["next_url"] = f"{base}&skip={done_through}"
+    else:
+        out["note"] = "All machines done for this kind. Switch kind=bd for breakdown reports." if k == "pm" else "All breakdown machines done."
+    if missing:
+        out["machines_without_any_completion"] = missing
+        out["note_missing"] = ("These machines have no completed checklist yet, so no "
+                               "preventive report exists for them — they'll get one the "
+                               "first time their checklist is completed in the app.")
+    return _json(out)
 
 
 @router.get("/reminders/preview")
