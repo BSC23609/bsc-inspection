@@ -42,6 +42,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
+MAINT_BUILD = "2026-10-23-reports+u2028"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3238,9 +3239,15 @@ async def test_overdue(token: str = Query(default=""), to: str = Query(default="
         "M/C-018 IRON WORKER MACHINE - Daily PM - Surajit Sasanka Maity",
         "M/C-005 TMT BENDING M/C 8 MM TO 32 MM - Daily PM - Velu C",
     ]
-    params = [_today().strftime("%d-%m-%Y"), _numbered(sample), "—"]
+    body = _numbered(sample)
+    params = [_today().strftime("%d-%m-%Y"), body, "—"]
     ok, detail = await _wsend(WATI_MAINT_OVERDUE_TEMPLATE, num, params, name="(test)", kind="test")
-    return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_OVERDUE_TEMPLATE, "wati_reply": detail})
+    # preview: show exactly what separator the LIVE build put between items.
+    # ⏎ marker = U+2028 line separator (this build); ", " = old build still live.
+    preview = body.replace(" ", " ⏎ ").replace(" ", " ⏎ ")
+    return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_OVERDUE_TEMPLATE,
+                  "build": MAINT_BUILD, "separator": ("U+2028 (line break)" if " " in body else "space/other"),
+                  "sent_text_preview": preview, "wati_reply": detail})
 
 
 @router.get("/admin/export-onedrive")
