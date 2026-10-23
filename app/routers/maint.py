@@ -42,7 +42,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-23-v4-leavefix"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-23-v5-digest-bullets"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3232,17 +3232,17 @@ def _join_items(items, cap=900):
 
 
 def _numbered(items, cap=1000):
-    """Numbered list. A regular newline inside a template variable is rejected by
-    WhatsApp, but the Unicode LINE SEPARATOR (U+2028) is NOT a \\n/\\t, so WATI accepts
-    it and WhatsApp usually renders it as a line break — giving one machine per line
-    with the existing template, no template change needed."""
-    SEP = " "
+    """One-line list for the WhatsApp overdue/due digest: "1) <machine> • 2) <machine> …".
+    WhatsApp won't keep real line breaks inside a template variable, so machines are set
+    off with a bullet divider and ") " numbering; " - " field separators become " — "."""
+    SEP = " • "
     out, used = [], 0
     for i, it in enumerate(items):
-        line = f"{i + 1}. {it}"
-        if used + len(line) + 1 > cap:
+        it = str(it).replace(" - ", " — ")
+        line = f"{i + 1}) {it}"
+        if used + len(line) + len(SEP) > cap:
             out.append(f"…and {len(items) - i} more"); break
-        out.append(line); used += len(line) + 1
+        out.append(line); used += len(line) + len(SEP)
     return SEP.join(out) if out else "—"
 
 
