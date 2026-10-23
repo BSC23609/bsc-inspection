@@ -1759,14 +1759,25 @@ async def my_checklist_submit(body: dict, emp: dict = Depends(require_employee))
     # audit entry in the maintenance log (does not advance the PM schedule)
     status = "issues" if any((r.get("ok") is False or r.get("result") == "Not OK") for r in results) else "done"
     sid = body.get("schedule_id")
+    done_by = emp.get("name") or emp.get("emp_no")
+    log_id = None
     try:
-        await db.execute(
+        log_id = await db.fetchval(
             "INSERT INTO maint_logs (asset_id,schedule_id,checklist_id,done_by,done_by_emp_id,"
-            "status,results,remarks) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)",
-            c["asset_id"], sid, cid, emp.get("name") or emp.get("emp_no"), eid,
+            "status,results,remarks) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
+            c["asset_id"], sid, cid, done_by, eid,
             status, json.dumps(results), (body.get("remarks") or "").strip())
     except Exception as e:
         print("[maint] my submit log skipped:", e)
+    # work-order PDF -> OneDrive/Maintenance/Preventive
+    try:
+        a = await db.fetchrow("SELECT code, name, location FROM maint_assets WHERE id=$1", c["asset_id"])
+        await _file_pm_report(
+            asset_code=(a["code"] if a else ""), asset_name=(a["name"] if a else ""),
+            checklist=c["name"], doc_no=str(log_id or ""), done_by=done_by,
+            results=results, checklist_id=cid, location=(a["location"] if a else ""))
+    except Exception as e:
+        print("[maint] my submit report skipped:", e)
     return {"ok": True, "saved": saved, "status": status, "period_key": pk}
 
 
@@ -2000,6 +2011,86 @@ async def _breakdown_photos(bid: int, photos: list) -> list:
         except Exception as e:
             print("[maint] breakdown photo upload failed:", e)
     return out
+
+
+# =======================================================================
+#  WORK-ORDER PDF REPORTS -> OneDrive (Maintenance/Preventive + /Breakdown)
+#  Each checklist completion files a preventive report; each breakdown raised
+#  files a breakdown report. All wrapped so a failure never breaks the action.
+# =======================================================================
+def _pm_rows(results: list, texts: dict, done_by: str, when: str) -> list:
+    """Build the inspection-report rows (#, checkpoint text, result, recorded)."""
+    out = []
+    for i, r in enumerate(results or [], 1):
+        pid = r.get("checkpoint_id")
+        txt = texts.get(pid) or r.get("text") or (f"Checkpoint {pid}" if pid else "Checkpoint")
+        res = (r.get("result") or ("Not OK" if r.get("ok") is False else "OK")) or "OK"
+        note = (r.get("note") or "").strip()
+        if note:
+            res = f"{res} — {note}"
+        out.append((str(i), txt, res, f"{when} · {done_by}"))
+    return out
+
+
+async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
+                          results, checklist_id, location=""):
+    """Generate a preventive-maintenance work-order PDF and save it to
+    OneDrive/<base>/Maintenance/Preventive/. Never raises."""
+    try:
+        from .. import maint_pdf
+        texts = {}
+        if checklist_id:
+            for r in await db.fetch(
+                    "SELECT id, text FROM maint_checkpoints WHERE checklist_id=$1", checklist_id):
+                texts[r["id"]] = r["text"]
+        now = datetime.now(IST)
+        rows = _pm_rows(results, texts, done_by or "—", now.strftime("%d %b %H:%M"))
+        meta = {"doc_no": doc_no or now.strftime("%y%m%d%H%M"),
+                "asset_code": asset_code or "", "asset_name": asset_name or "",
+                "checklist": checklist or "Checklist", "started": None, "completed": now,
+                "due": None, "raised_by": done_by or "—", "completed_by": done_by or "—",
+                "category": "Scheduled Preventive Maintenance",
+                "location": location or "--",
+                "qr_url": "https://qms.bharatsteels.in/maint"}
+        pdf = maint_pdf.build_pm_report(meta, rows)
+        code = re.sub(r"[^A-Za-z0-9_.-]", "-", (asset_code or "ASSET"))
+        fname = f"PM_{code}_{now.strftime('%Y%m%d-%H%M%S')}.pdf"
+        path = f"{ONEDRIVE_BASE}/Maintenance/Preventive/{fname}"
+        token = await graph.get_token()
+        await graph.upload_file(token, path, pdf, "application/pdf")
+        print("[maint] PM report saved:", path)
+        return path
+    except Exception as e:
+        print("[maint] PM report skipped:", e)
+        return None
+
+
+async def _file_breakdown_report(bd: dict, assignee_names: str):
+    """Generate a breakdown work-order PDF and save it to
+    OneDrive/<base>/Maintenance/Breakdown/. Never raises."""
+    try:
+        from .. import maint_pdf
+        now = datetime.now(IST)
+        meta = {"doc_no": str(bd.get("id") or now.strftime("%y%m%d%H%M")),
+                "asset_code": bd.get("asset_code") or "", "asset_name": bd.get("asset_name") or "",
+                "raised": bd.get("raised_at") or now, "raised_by": bd.get("reported_by") or "—",
+                "btype": bd.get("btype") or "--", "problem": bd.get("problem") or "--",
+                "assignees": assignee_names or "--", "location": bd.get("location") or "--",
+                "status": (bd.get("status") or "open").title(),
+                "closed": bd.get("closed_at"), "closed_by": bd.get("closed_by"),
+                "resolution": bd.get("resolution"),
+                "qr_url": "https://qms.bharatsteels.in/maint"}
+        pdf = maint_pdf.build_breakdown_report(meta)
+        code = re.sub(r"[^A-Za-z0-9_.-]", "-", (bd.get("asset_code") or "ASSET"))
+        fname = f"BD{bd.get('id')}_{code}_{now.strftime('%Y%m%d-%H%M%S')}.pdf"
+        path = f"{ONEDRIVE_BASE}/Maintenance/Breakdown/{fname}"
+        token = await graph.get_token()
+        await graph.upload_file(token, path, pdf, "application/pdf")
+        print("[maint] breakdown report saved:", path)
+        return path
+    except Exception as e:
+        print("[maint] breakdown report skipped:", e)
+        return None
 
 
 _WLOG_TABLE_READY = False
@@ -2404,7 +2495,8 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
     except Exception as e:
         print("[maint] breakdown photos skipped:", e)
     bd = await db.fetchrow(
-        "SELECT b.*, a.code AS asset_code, a.name AS asset_name, e.mobile AS assignee_mobile "
+        "SELECT b.*, a.code AS asset_code, a.name AS asset_name, a.location AS location, "
+        "e.mobile AS assignee_mobile "
         "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
         "LEFT JOIN employees e ON e.id=b.assignee_emp_id WHERE b.id=$1", bid)
     alert = []
@@ -2412,6 +2504,16 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
         alert = await _send_breakdown_alert(dict(bd))
     except Exception as e:
         print("[maint] breakdown alert skipped:", e)
+    # work-order PDF -> OneDrive/Maintenance/Breakdown
+    try:
+        names = []
+        if aids:
+            nm = {r["id"]: (r["name"] or r["emp_no"]) for r in await db.fetch(
+                "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", aids)}
+            names = [nm[i] for i in aids if nm.get(i)]
+        await _file_breakdown_report(dict(bd), ", ".join(names))
+    except Exception as e:
+        print("[maint] breakdown report skipped:", e)
     return {"ok": True, "id": bid, "photos": len(paths), "alert": alert}
 
 
@@ -2783,17 +2885,31 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
     hrs = _num(body.get("running_hours"))
     today = _today()
     next_due = next_due_date({**s, "last_done": today}, today)
-    await db.execute(
+    done_by = emp.get("name") or emp.get("emp_no")
+    log_id = await db.fetchval(
         "INSERT INTO maint_logs (asset_id,schedule_id,checklist_id,done_by,done_by_emp_id,"
-        "running_hours,status,results,remarks,next_due) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
+        "running_hours,status,results,remarks,next_due) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id",
         s["asset_id"], sid, s.get("checklist_id"),
-        emp.get("name") or emp.get("emp_no"), emp.get("id"),
+        done_by, emp.get("id"),
         hrs, status, json.dumps(results), (body.get("remarks") or "").strip(), next_due)
     await db.execute("UPDATE maint_schedules SET last_done=$1, last_done_hours=$2 WHERE id=$3",
                      today, hrs, sid)
     if hrs is not None:
         await db.execute("UPDATE maint_assets SET running_hours=$1, hours_updated_at=now() WHERE id=$2",
                          hrs, s["asset_id"])
+    # work-order PDF -> OneDrive/Maintenance/Preventive
+    try:
+        a = await db.fetchrow("SELECT code, name, location FROM maint_assets WHERE id=$1", s["asset_id"])
+        cl = None
+        if s.get("checklist_id"):
+            cl = await db.fetchval("SELECT name FROM maint_checklists WHERE id=$1", s["checklist_id"])
+        await _file_pm_report(
+            asset_code=(a["code"] if a else ""), asset_name=(a["name"] if a else ""),
+            checklist=cl or s.get("title") or "Checklist", doc_no=str(log_id or ""),
+            done_by=done_by, results=results, checklist_id=s.get("checklist_id"),
+            location=(a["location"] if a else ""))
+    except Exception as e:
+        print("[maint] complete report skipped:", e)
     return {"ok": True, "status": status, "next_due": next_due.isoformat() if next_due else None}
 
 
@@ -3151,6 +3267,65 @@ async def export_onedrive(token: str = Query(default=""), emp: dict = Depends(re
         return _json({"ok": False, "path": path, "size": len(content), "detail": str(e)[:300]})
     return _json({"ok": True, "path": path, "size": len(content),
                   "events": len(logs) + len(bds), "machines": len(assets)})
+
+
+@router.get("/admin/backfill-reports")
+async def backfill_reports(token: str = Query(default=""), n: int = Query(default=5),
+                           emp: dict = Depends(require_employee)):
+    """Generate work-order PDFs for the most recent PM completions and breakdowns
+    and save them to OneDrive/Maintenance/Preventive and /Breakdown. This also
+    creates the two folders. Admin or ?token=AGENT_TOKEN. Use ?n=10 for more.
+    New completions and breakdowns file their own report automatically from now on."""
+    await ensure_tables()
+    if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    n = max(1, min(int(n or 5), 25))
+    pm_done = bd_done = 0
+    pm_paths, bd_paths = [], []
+    # --- recent preventive completions ---
+    logs = await db.fetch(
+        "SELECT l.*, a.code AS asset_code, a.name AS asset_name, a.location AS location, "
+        "c.name AS checklist_name FROM maint_logs l "
+        "LEFT JOIN maint_assets a ON a.id=l.asset_id "
+        "LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
+        "ORDER BY l.done_at DESC NULLS LAST LIMIT $1", n)
+    for l in logs:
+        try:
+            res = l["results"]
+            if isinstance(res, str):
+                res = json.loads(res or "[]")
+            p = await _file_pm_report(
+                asset_code=l["asset_code"], asset_name=l["asset_name"],
+                checklist=l["checklist_name"] or "Checklist", doc_no=str(l["id"]),
+                done_by=l["done_by"], results=res or [], checklist_id=l["checklist_id"],
+                location=l["location"])
+            if p:
+                pm_done += 1; pm_paths.append(p)
+        except Exception as e:
+            print("[maint] backfill PM skipped:", e)
+    # --- recent breakdowns ---
+    bds = await db.fetch(
+        "SELECT b.*, a.code AS asset_code, a.name AS asset_name, a.location AS location "
+        "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+        "ORDER BY b.raised_at DESC NULLS LAST LIMIT $1", n)
+    for b in bds:
+        try:
+            b = dict(b)
+            ids = b.get("assignees") or ([b["assignee_emp_id"]] if b.get("assignee_emp_id") else [])
+            names = []
+            if ids:
+                nm = {r["id"]: (r["name"] or r["emp_no"]) for r in await db.fetch(
+                    "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", ids)}
+                names = [nm[i] for i in ids if nm.get(i)]
+            p = await _file_breakdown_report(b, ", ".join(names))
+            if p:
+                bd_done += 1; bd_paths.append(p)
+        except Exception as e:
+            print("[maint] backfill BD skipped:", e)
+    return _json({"ok": True, "preventive_saved": pm_done, "breakdown_saved": bd_done,
+                  "preventive_folder": f"{ONEDRIVE_BASE}/Maintenance/Preventive",
+                  "breakdown_folder": f"{ONEDRIVE_BASE}/Maintenance/Breakdown",
+                  "preventive_files": pm_paths, "breakdown_files": bd_paths})
 
 
 @router.get("/reminders/preview")
