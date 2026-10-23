@@ -42,7 +42,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-23-reports+u2028"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-23-v3-LATEST-1527"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -1351,6 +1351,156 @@ async def checklist_delete(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True}
 
 
+# =======================================================================
+#  CHECKPOINT ASSIGNMENT  (admin screen: per-checkpoint add/edit/delete +
+#  bulk reassign everything from one person to another)
+# =======================================================================
+@router.get("/employees/list")
+async def maint_employees_list(emp: dict = Depends(require_employee)):
+    """Active employees, for the Assigned-To picker and the reassign tool."""
+    await ensure_tables()
+    return _json(await _employees_all())
+
+
+@router.post("/checkpoint/save")
+async def checkpoint_save(body: dict, emp: dict = Depends(require_employee)):
+    """Add (no id) or edit (with id) ONE checkpoint. Admin only. Preserves the
+    checkpoint id on edit so completion history stays linked."""
+    await ensure_tables()
+    _require_admin(emp)
+    try:
+        cid = int(body.get("checklist_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Choose a checklist first")
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "Enter the checkpoint")
+    itype = (body.get("input_type") or "check").strip().lower()
+    if itype not in ("check", "value"):
+        itype = "check"
+    spec = (body.get("spec") or "").strip()
+    unit = (body.get("unit") or "").strip()
+    eid = body.get("assigned_emp_id")
+    try:
+        eid = int(eid) if eid not in (None, "", "0", 0) else None
+    except (TypeError, ValueError):
+        eid = None
+    who = None
+    if eid:
+        r = await db.fetchrow("SELECT name, emp_no FROM employees WHERE id=$1", eid)
+        who = (r["name"] or r["emp_no"]) if r else None
+    cat = _scope_cat(text)
+    pid = body.get("id")
+    try:
+        pid = int(pid) if pid else None
+    except (TypeError, ValueError):
+        pid = None
+    if pid:
+        await db.execute(
+            "UPDATE maint_checkpoints SET text=$1, input_type=$2, spec=$3, unit=$4, "
+            "assigned_to=$5, assigned_emp_id=$6, "
+            "category=CASE WHEN COALESCE(category,'')='' THEN $7 ELSE category END "
+            "WHERE id=$8 AND checklist_id=$9", text, itype, spec, unit, who, eid, cat, pid, cid)
+    else:
+        seq = await db.fetchval(
+            "SELECT COALESCE(MAX(seq),0)+1 FROM maint_checkpoints WHERE checklist_id=$1", cid)
+        pid = await db.fetchval(
+            "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec,"
+            "assigned_to,assigned_emp_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",
+            cid, seq, text, cat, itype, unit, spec, who, eid)
+    await _ensure_schedule_assignees()
+    return {"ok": True, "id": pid}
+
+
+@router.post("/checkpoint/delete")
+async def checkpoint_delete(body: dict, emp: dict = Depends(require_employee)):
+    """Delete ONE checkpoint (and its completion ticks). Admin only."""
+    await ensure_tables()
+    _require_admin(emp)
+    try:
+        pid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Missing id")
+    await db.execute("DELETE FROM maint_checkpoint_done WHERE checkpoint_id=$1", pid)
+    await db.execute("DELETE FROM maint_checkpoints WHERE id=$1", pid)
+    await _ensure_schedule_assignees()
+    return {"ok": True}
+
+
+@router.post("/checkpoints/reassign")
+async def checkpoints_reassign(body: dict, emp: dict = Depends(require_employee)):
+    """Move every checkpoint assigned to one person over to another person — e.g. when
+    someone leaves and a new person takes over their machines. Admin only.
+    body: from_emp_id, to_emp_id, scope = all | asset | checklist (+ asset_id/checklist_id)."""
+    await ensure_tables()
+    _require_admin(emp)
+    try:
+        frm = int(body.get("from_emp_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Choose the person to move work FROM")
+    try:
+        to = int(body.get("to_emp_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Choose the person to move work TO")
+    if frm == to:
+        raise HTTPException(400, "Pick two different people")
+    r = await db.fetchrow("SELECT name, emp_no FROM employees WHERE id=$1", to)
+    if not r:
+        raise HTTPException(404, "The new person was not found")
+    toname = (r["name"] or r["emp_no"])
+    scope = (body.get("scope") or "all").strip()
+    q = "UPDATE maint_checkpoints SET assigned_emp_id=$1, assigned_to=$2 WHERE assigned_emp_id=$3"
+    params = [to, toname, frm]
+    if scope == "checklist" and body.get("checklist_id"):
+        q += " AND checklist_id=$4"; params.append(int(body["checklist_id"]))
+    elif scope == "asset" and body.get("asset_id"):
+        q += " AND checklist_id IN (SELECT id FROM maint_checklists WHERE asset_id=$4)"
+        params.append(int(body["asset_id"]))
+    res = await db.execute(q, *params)
+    try:
+        moved = int(str(res).split()[-1])
+    except Exception:
+        moved = 0
+    await _ensure_schedule_assignees()
+    return {"ok": True, "moved": moved, "to": toname}
+
+
+@router.post("/checkpoints/assign-bulk")
+async def checkpoints_assign_bulk(body: dict, emp: dict = Depends(require_employee)):
+    """Set the assigned person on a SELECTED set of checkpoints at once. Admin only.
+    body: ids = [checkpoint ids], emp_id (empty/0 = unassign)."""
+    await ensure_tables()
+    _require_admin(emp)
+    ids = []
+    for x in (body.get("ids") or []):
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    if not ids:
+        raise HTTPException(400, "Select at least one checkpoint")
+    eid = body.get("emp_id")
+    try:
+        eid = int(eid) if eid not in (None, "", "0", 0) else None
+    except (TypeError, ValueError):
+        eid = None
+    who = None
+    if eid:
+        r = await db.fetchrow("SELECT name, emp_no FROM employees WHERE id=$1", eid)
+        if not r:
+            raise HTTPException(404, "User not found")
+        who = (r["name"] or r["emp_no"])
+    res = await db.execute(
+        "UPDATE maint_checkpoints SET assigned_emp_id=$1, assigned_to=$2 WHERE id = ANY($3::int[])",
+        eid, who, ids)
+    try:
+        n = int(str(res).split()[-1])
+    except Exception:
+        n = 0
+    await _ensure_schedule_assignees()
+    return {"ok": True, "updated": n, "to": who or "Unassigned"}
+
+
 _CL_GENERIC = ("upload  a photo", "upload a photo", "describe  any abnormalities",
                "describe any abnormalities", "sign here", "record voice")
 
@@ -2033,10 +2183,25 @@ def _pm_rows(results: list, texts: dict, done_by: str, when: str) -> list:
     return out
 
 
+def _safe_code(code: str) -> str:
+    """Machine code made safe for a OneDrive file/folder segment (no path chars)."""
+    return (re.sub(r'[\\/:*?"<>|]+', "-", (code or "ASSET")).strip() or "ASSET")
+
+
+def _machine_folder(code: str, name: str) -> str:
+    """One folder per machine, e.g. 'M-C-005 TMT BENDING M-C 8 MM TO 32 MM'."""
+    seg = f"{_safe_code(code)} {name or ''}".strip()
+    seg = re.sub(r'[\\/:*?"<>|]+', "-", seg)
+    seg = re.sub(r"\s+", " ", seg).strip()
+    return seg[:120] or _safe_code(code)
+
+
 async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
-                          results, checklist_id, location=""):
+                          results, checklist_id, location="", when=None):
     """Generate a preventive-maintenance work-order PDF and save it to
-    OneDrive/<base>/Maintenance/Preventive/. Never raises."""
+    OneDrive/<base>/Maintenance/Preventive/<machine>/<dd-mm-yy>_<code>_pm.pdf. The
+    filename is fixed per machine+day, so a re-submit the same day overwrites it —
+    one PM report per machine per day. Never raises."""
     try:
         from .. import maint_pdf
         texts = {}
@@ -2045,18 +2210,20 @@ async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
                     "SELECT id, text FROM maint_checkpoints WHERE checklist_id=$1", checklist_id):
                 texts[r["id"]] = r["text"]
         now = datetime.now(IST)
-        rows = _pm_rows(results, texts, done_by or "—", now.strftime("%d %b %H:%M"))
-        meta = {"doc_no": doc_no or now.strftime("%y%m%d%H%M"),
+        when = when or now          # the completion moment (backfill passes the log's date)
+        rows = _pm_rows(results, texts, done_by or "—", when.strftime("%d %b %H:%M"))
+        meta = {"doc_no": doc_no or when.strftime("%y%m%d%H%M"),
                 "asset_code": asset_code or "", "asset_name": asset_name or "",
-                "checklist": checklist or "Checklist", "started": None, "completed": now,
+                "checklist": checklist or "Checklist", "started": None, "completed": when,
                 "due": None, "raised_by": done_by or "—", "completed_by": done_by or "—",
                 "category": "Scheduled Preventive Maintenance",
                 "location": location or "--",
                 "qr_url": "https://qms.bharatsteels.in/maint"}
         pdf = maint_pdf.build_pm_report(meta, rows)
-        code = re.sub(r"[^A-Za-z0-9_.-]", "-", (asset_code or "ASSET"))
-        fname = f"PM_{code}_{now.strftime('%Y%m%d-%H%M%S')}.pdf"
-        path = f"{ONEDRIVE_BASE}/Maintenance/Preventive/{fname}"
+        code = _safe_code(asset_code)
+        folder = _machine_folder(asset_code, asset_name)
+        fname = f"{when.strftime('%d-%m-%y')}_{code}_pm.pdf"   # one per machine per day
+        path = f"{ONEDRIVE_BASE}/Maintenance/Preventive/{folder}/{fname}"
         token = await graph.get_token()
         await graph.upload_file(token, path, pdf, "application/pdf")
         print("[maint] PM report saved:", path)
@@ -2068,13 +2235,16 @@ async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
 
 async def _file_breakdown_report(bd: dict, assignee_names: str):
     """Generate a breakdown work-order PDF and save it to
-    OneDrive/<base>/Maintenance/Breakdown/. Never raises."""
+    OneDrive/<base>/Maintenance/Breakdown/<machine>/<dd-mm-yy>_<code>_bm_<id>.pdf. The
+    ticket id is kept in the name so two breakdowns on the same machine/day don't
+    overwrite each other (each breakdown is its own event). Never raises."""
     try:
         from .. import maint_pdf
         now = datetime.now(IST)
+        raised = bd.get("raised_at") or now
         meta = {"doc_no": str(bd.get("id") or now.strftime("%y%m%d%H%M")),
                 "asset_code": bd.get("asset_code") or "", "asset_name": bd.get("asset_name") or "",
-                "raised": bd.get("raised_at") or now, "raised_by": bd.get("reported_by") or "—",
+                "raised": raised, "raised_by": bd.get("reported_by") or "—",
                 "btype": bd.get("btype") or "--", "problem": bd.get("problem") or "--",
                 "assignees": assignee_names or "--", "location": bd.get("location") or "--",
                 "status": (bd.get("status") or "open").title(),
@@ -2082,9 +2252,11 @@ async def _file_breakdown_report(bd: dict, assignee_names: str):
                 "resolution": bd.get("resolution"),
                 "qr_url": "https://qms.bharatsteels.in/maint"}
         pdf = maint_pdf.build_breakdown_report(meta)
-        code = re.sub(r"[^A-Za-z0-9_.-]", "-", (bd.get("asset_code") or "ASSET"))
-        fname = f"BD{bd.get('id')}_{code}_{now.strftime('%Y%m%d-%H%M%S')}.pdf"
-        path = f"{ONEDRIVE_BASE}/Maintenance/Breakdown/{fname}"
+        code = _safe_code(bd.get("asset_code"))
+        folder = _machine_folder(bd.get("asset_code"), bd.get("asset_name"))
+        rdate = raised.strftime("%d-%m-%y") if isinstance(raised, datetime) else now.strftime("%d-%m-%y")
+        fname = f"{rdate}_{code}_bm_{bd.get('id')}.pdf"
+        path = f"{ONEDRIVE_BASE}/Maintenance/Breakdown/{folder}/{fname}"
         token = await graph.get_token()
         await graph.upload_file(token, path, pdf, "application/pdf")
         print("[maint] breakdown report saved:", path)
@@ -3280,13 +3452,14 @@ async def export_onedrive(token: str = Query(default=""), emp: dict = Depends(re
 async def backfill_reports(token: str = Query(default=""), limit: int = Query(default=6),
                            skip: int = Query(default=0), kind: str = Query(default="pm"),
                            emp: dict = Depends(require_employee)):
-    """Seed OneDrive with a work-order PDF for EVERY machine that has history —
-    one report per machine (its latest completion), not just the most recent events.
-    Paginated so each call stays under Vercel's 10s limit: it processes `limit`
-    machines starting at `skip`, and the reply's `next_url` is the link to click
-    for the next page until `remaining` is 0.
-      kind=pm  -> preventive reports, one per machine (default)
-      kind=bd  -> breakdown reports, one per machine (latest breakdown)
+    """Seed OneDrive with a work-order PDF for the recorded history — one PM report per
+    machine per DAY (matching the Excel log), filed in that machine's own folder as
+    <dd-mm-yy>_<code>_pm.pdf, and one report per breakdown as <dd-mm-yy>_<code>_bm_<id>.pdf.
+    Paginated so each call stays under Vercel's 10s limit: it processes `limit` records
+    starting at `skip`, and the reply's `next_url` is the link to click for the next page
+    until `remaining` is 0.
+      kind=pm  -> preventive reports, one per machine per day (default)
+      kind=bd  -> breakdown reports, one per breakdown
     Admin or ?token=AGENT_TOKEN. New completions/breakdowns file their own report
     automatically from now on; this is only for back-filling existing history."""
     await ensure_tables()
@@ -3298,16 +3471,24 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
     saved, paths, missing = 0, [], []
 
     if k == "pm":
-        # latest completion per machine (one row per asset) — lightweight, no PDF yet
-        rows = await db.fetch(
-            "SELECT DISTINCT ON (l.asset_id) l.*, a.code AS asset_code, a.name AS asset_name, "
+        # all completions, then keep the latest per (machine, day) so the backfill
+        # mirrors the Excel log: one PM report per machine per day.
+        allrows = await db.fetch(
+            "SELECT l.*, a.code AS asset_code, a.name AS asset_name, "
             "a.location AS location, c.name AS checklist_name "
             "FROM maint_logs l "
             "LEFT JOIN maint_assets a ON a.id=l.asset_id "
             "LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
-            "WHERE l.asset_id IS NOT NULL "
-            "ORDER BY l.asset_id, l.done_at DESC NULLS LAST")
-        rows = sorted((dict(r) for r in rows), key=lambda r: (r.get("asset_code") or ""))
+            "WHERE l.asset_id IS NOT NULL AND l.done_at IS NOT NULL "
+            "ORDER BY l.done_at")
+        latest = {}
+        for r in allrows:
+            r = dict(r)
+            key = (r["asset_id"], r["done_at"].date())
+            prev = latest.get(key)
+            if prev is None or r["done_at"] >= prev["done_at"]:
+                latest[key] = r
+        rows = sorted(latest.values(), key=lambda r: (r.get("asset_code") or "", r["done_at"]))
         total = len(rows)
         for l in rows[skip:skip + limit]:
             try:
@@ -3318,7 +3499,7 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
                     asset_code=l["asset_code"], asset_name=l["asset_name"],
                     checklist=l["checklist_name"] or "Checklist", doc_no=str(l["id"]),
                     done_by=l["done_by"], results=res or [], checklist_id=l["checklist_id"],
-                    location=l["location"])
+                    location=l["location"], when=l["done_at"])
                 if p:
                     saved += 1; paths.append(p)
             except Exception as e:
@@ -3330,12 +3511,11 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
                 missing.append(f'{a["code"]} {a["name"]}'.strip())
     else:
         rows = await db.fetch(
-            "SELECT DISTINCT ON (b.asset_id) b.*, a.code AS asset_code, a.name AS asset_name, "
-            "a.location AS location FROM maint_breakdowns b "
-            "LEFT JOIN maint_assets a ON a.id=b.asset_id "
-            "WHERE b.asset_id IS NOT NULL "
-            "ORDER BY b.asset_id, b.raised_at DESC NULLS LAST")
-        rows = sorted((dict(r) for r in rows), key=lambda r: (r.get("asset_code") or ""))
+            "SELECT b.*, a.code AS asset_code, a.name AS asset_name, a.location AS location "
+            "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+            "WHERE b.asset_id IS NOT NULL AND b.raised_at IS NOT NULL "
+            "ORDER BY a.code, b.raised_at")
+        rows = [dict(r) for r in rows]
         total = len(rows)
         for b in rows[skip:skip + limit]:
             try:
@@ -3354,20 +3534,32 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
     done_through = min(skip + limit, total)
     remaining = max(0, total - done_through)
     base = f"https://qms.bharatsteels.in/maint/admin/backfill-reports?token={token}&kind={k}&limit={limit}"
-    out = {"ok": True, "kind": k, "machines_total": total, "saved_this_page": saved,
+    out = {"ok": True, "kind": k, "records_total": total, "saved_this_page": saved,
            "done_through": done_through, "remaining": remaining,
-           "folder": f"{ONEDRIVE_BASE}/Maintenance/{'Preventive' if k == 'pm' else 'Breakdown'}",
+           "note_naming": "Saved under BSC Inspections/Maintenance/"
+                          + ("Preventive" if k == "pm" else "Breakdown")
+                          + "/<machine>/ as <dd-mm-yy>_<code>_"
+                          + ("pm" if k == "pm" else "bm") + ".pdf",
            "files": paths}
     if remaining:
         out["next_url"] = f"{base}&skip={done_through}"
     else:
-        out["note"] = "All machines done for this kind. Switch kind=bd for breakdown reports." if k == "pm" else "All breakdown machines done."
+        out["note"] = ("All preventive history done. Now run kind=bd for breakdown reports."
+                       if k == "pm" else "All breakdown reports done.")
     if missing:
         out["machines_without_any_completion"] = missing
         out["note_missing"] = ("These machines have no completed checklist yet, so no "
                                "preventive report exists for them — they'll get one the "
                                "first time their checklist is completed in the app.")
     return _json(out)
+
+
+@router.get("/version")
+async def maint_version():
+    """Read-only build check — no login, no side effects. Open
+    qms.bharatsteels.in/maint/version after deploying: if `build` is not the latest,
+    Vercel is still serving an older build and the deploy hasn't landed."""
+    return _json({"build": MAINT_BUILD, "schema": SCHEMA_VER})
 
 
 @router.get("/reminders/preview")
