@@ -42,7 +42,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-23-permachine-folders"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-23-checkpoint-assignment"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -1349,6 +1349,120 @@ async def checklist_delete(body: dict, emp: dict = Depends(require_employee)):
     await db.execute("DELETE FROM maint_checkpoints WHERE checklist_id=$1", cid)
     await db.execute("DELETE FROM maint_checklists WHERE id=$1", cid)
     return {"ok": True}
+
+
+# =======================================================================
+#  CHECKPOINT ASSIGNMENT  (admin screen: per-checkpoint add/edit/delete +
+#  bulk reassign everything from one person to another)
+# =======================================================================
+@router.get("/employees/list")
+async def maint_employees_list(emp: dict = Depends(require_employee)):
+    """Active employees, for the Assigned-To picker and the reassign tool."""
+    await ensure_tables()
+    return _json(await _employees_all())
+
+
+@router.post("/checkpoint/save")
+async def checkpoint_save(body: dict, emp: dict = Depends(require_employee)):
+    """Add (no id) or edit (with id) ONE checkpoint. Admin only. Preserves the
+    checkpoint id on edit so completion history stays linked."""
+    await ensure_tables()
+    _require_admin(emp)
+    try:
+        cid = int(body.get("checklist_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Choose a checklist first")
+    text = (body.get("text") or "").strip()
+    if not text:
+        raise HTTPException(400, "Enter the checkpoint")
+    itype = (body.get("input_type") or "check").strip().lower()
+    if itype not in ("check", "value"):
+        itype = "check"
+    spec = (body.get("spec") or "").strip()
+    unit = (body.get("unit") or "").strip()
+    eid = body.get("assigned_emp_id")
+    try:
+        eid = int(eid) if eid not in (None, "", "0", 0) else None
+    except (TypeError, ValueError):
+        eid = None
+    who = None
+    if eid:
+        r = await db.fetchrow("SELECT name, emp_no FROM employees WHERE id=$1", eid)
+        who = (r["name"] or r["emp_no"]) if r else None
+    cat = _scope_cat(text)
+    pid = body.get("id")
+    try:
+        pid = int(pid) if pid else None
+    except (TypeError, ValueError):
+        pid = None
+    if pid:
+        await db.execute(
+            "UPDATE maint_checkpoints SET text=$1, input_type=$2, spec=$3, unit=$4, "
+            "assigned_to=$5, assigned_emp_id=$6, "
+            "category=CASE WHEN COALESCE(category,'')='' THEN $7 ELSE category END "
+            "WHERE id=$8 AND checklist_id=$9", text, itype, spec, unit, who, eid, cat, pid, cid)
+    else:
+        seq = await db.fetchval(
+            "SELECT COALESCE(MAX(seq),0)+1 FROM maint_checkpoints WHERE checklist_id=$1", cid)
+        pid = await db.fetchval(
+            "INSERT INTO maint_checkpoints (checklist_id,seq,text,category,input_type,unit,spec,"
+            "assigned_to,assigned_emp_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id",
+            cid, seq, text, cat, itype, unit, spec, who, eid)
+    await _ensure_schedule_assignees()
+    return {"ok": True, "id": pid}
+
+
+@router.post("/checkpoint/delete")
+async def checkpoint_delete(body: dict, emp: dict = Depends(require_employee)):
+    """Delete ONE checkpoint (and its completion ticks). Admin only."""
+    await ensure_tables()
+    _require_admin(emp)
+    try:
+        pid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Missing id")
+    await db.execute("DELETE FROM maint_checkpoint_done WHERE checkpoint_id=$1", pid)
+    await db.execute("DELETE FROM maint_checkpoints WHERE id=$1", pid)
+    await _ensure_schedule_assignees()
+    return {"ok": True}
+
+
+@router.post("/checkpoints/reassign")
+async def checkpoints_reassign(body: dict, emp: dict = Depends(require_employee)):
+    """Move every checkpoint assigned to one person over to another person — e.g. when
+    someone leaves and a new person takes over their machines. Admin only.
+    body: from_emp_id, to_emp_id, scope = all | asset | checklist (+ asset_id/checklist_id)."""
+    await ensure_tables()
+    _require_admin(emp)
+    try:
+        frm = int(body.get("from_emp_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Choose the person to move work FROM")
+    try:
+        to = int(body.get("to_emp_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Choose the person to move work TO")
+    if frm == to:
+        raise HTTPException(400, "Pick two different people")
+    r = await db.fetchrow("SELECT name, emp_no FROM employees WHERE id=$1", to)
+    if not r:
+        raise HTTPException(404, "The new person was not found")
+    toname = (r["name"] or r["emp_no"])
+    scope = (body.get("scope") or "all").strip()
+    q = "UPDATE maint_checkpoints SET assigned_emp_id=$1, assigned_to=$2 WHERE assigned_emp_id=$3"
+    params = [to, toname, frm]
+    if scope == "checklist" and body.get("checklist_id"):
+        q += " AND checklist_id=$4"; params.append(int(body["checklist_id"]))
+    elif scope == "asset" and body.get("asset_id"):
+        q += " AND checklist_id IN (SELECT id FROM maint_checklists WHERE asset_id=$4)"
+        params.append(int(body["asset_id"]))
+    res = await db.execute(q, *params)
+    try:
+        moved = int(str(res).split()[-1])
+    except Exception:
+        moved = 0
+    await _ensure_schedule_assignees()
+    return {"ok": True, "moved": moved, "to": toname}
 
 
 _CL_GENERIC = ("upload  a photo", "upload a photo", "describe  any abnormalities",

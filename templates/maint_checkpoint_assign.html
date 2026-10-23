@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Checkpoint Assignment · {{ app_name }}{% endblock %}
+{% block tb_title %}Checkpoint Assignment{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.ca-row{display:grid;gap:12px;margin-bottom:12px}
+.ca-2{grid-template-columns:1fr 1fr}
+@media(max-width:720px){.ca-2{grid-template-columns:1fr}}
+.ca-f label{display:block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);margin-bottom:5px}
+.ca-f select,.ca-f input{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;font-family:inherit;background:#fff;color:var(--ink)}
+.ca-form{display:grid;grid-template-columns:2.4fr .9fr 1.1fr 1.3fr auto;gap:10px;align-items:end}
+@media(max-width:860px){.ca-form{grid-template-columns:1fr 1fr}}
+#cp_rows{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#cp_rows table.dgrid{table-layout:auto;min-width:720px}
+#cp_rows table.dgrid th,#cp_rows table.dgrid td{white-space:nowrap;word-break:normal;overflow:visible}
+#cp_rows td.cpt{white-space:normal;min-width:240px}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px;background:var(--blue-soft);color:var(--blue-ink)}
+.pill.none{background:#fdecec;color:#c23438}
+.muted{color:var(--muted)}
+.hintbar{font-size:12.5px;color:var(--muted);padding:10px 2px}
+</style>
+
+<div class="page-head"><h1>Checkpoint Assignment</h1>
+<p>Pick a machine and one of its checklists to see every checkpoint. Add, edit or delete checkpoints and set who each one is assigned to. Use <b>Reassign work</b> when a person leaves and someone takes over their checkpoints.</p></div>
+
+<!-- 1. pick asset + checklist -->
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('cube',17) }}</span>Select machine &amp; checklist</div>
+<div class="panel-body">
+  <div class="ca-row ca-2">
+    <div class="ca-f"><label>Machine / Asset</label>
+      <select id="sel_asset" onchange="onAsset()"><option value="">Loading…</option></select></div>
+    <div class="ca-f"><label>Checklist</label>
+      <select id="sel_cl" onchange="onChecklist()"><option value="">Select a machine first</option></select></div>
+  </div>
+</div></div>
+
+<!-- 2. checkpoints -->
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('clipboard',17) }}</span>Checkpoints<span class="sub" id="cp_cnt"></span></div>
+<div class="panel-body">
+  <!-- add / edit form -->
+  <div class="ca-form" id="cp_form" style="display:none">
+    <input type="hidden" id="cp_id" value="">
+    <div class="ca-f"><label>Checkpoint</label><input id="cp_text" placeholder="What to check"></div>
+    <div class="ca-f"><label>Data type</label>
+      <select id="cp_type"><option value="check">Check (OK / Not OK)</option><option value="value">Value (reading)</option></select></div>
+    <div class="ca-f"><label>Options / Spec</label><input id="cp_spec" placeholder="e.g. 0–5 bar"></div>
+    <div class="ca-f"><label>Assigned to</label><select id="cp_emp"><option value="">— Unassigned —</option></select></div>
+    <div class="ca-f"><label>&nbsp;</label>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-primary" id="cp_save" onclick="cpSave()">Add</button>
+        <button class="btn btn-ghost" id="cp_cancel" style="display:none" onclick="cpResetForm()">Cancel</button>
+      </div></div>
+  </div>
+  <div id="cp_rows"><div class="hintbar">Select a checklist above to see its checkpoints.</div></div>
+</div></div>
+
+<!-- 3. reassign -->
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('users',17) }}</span>Reassign work (person left → new person)</div>
+<div class="panel-body">
+  <p class="hintbar" style="padding-top:0">Move every checkpoint from one person to another. Choose the scope: just this checklist, this whole machine, or everywhere.</p>
+  <div class="ca-row" style="grid-template-columns:1fr 1fr 1fr auto;gap:10px;align-items:end">
+    <div class="ca-f"><label>From (leaving)</label><select id="ra_from"><option value="">—</option></select></div>
+    <div class="ca-f"><label>To (new person)</label><select id="ra_to"><option value="">—</option></select></div>
+    <div class="ca-f"><label>Scope</label>
+      <select id="ra_scope">
+        <option value="all">Everywhere (all machines)</option>
+        <option value="asset">This machine only</option>
+        <option value="checklist">This checklist only</option>
+      </select></div>
+    <div class="ca-f"><label>&nbsp;</label><button class="btn btn-primary" onclick="doReassign()">Reassign</button></div>
+  </div>
+</div></div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var ASSETS=[],EMPS=[],CPS=[];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+
+function empName(id){for(var i=0;i<EMPS.length;i++){if(String(EMPS[i].id)===String(id))return EMPS[i].name||EMPS[i].emp_no;}return '';}
+function empOpts(sel){return '<option value="">— Unassigned —</option>'+EMPS.map(function(e){
+  return '<option value="'+e.id+'"'+(String(e.id)===String(sel)?' selected':'')+'>'+esc(e.name||e.emp_no)+'</option>';}).join('');}
+
+async function boot(){
+  try{
+    var a=await fetch('/maint/assets/list',{cache:'no-store'});if(a.status===401){location.href='/login';return;}
+    ASSETS=await a.json();if(!Array.isArray(ASSETS))ASSETS=[];
+  }catch(e){ASSETS=[];}
+  try{var r=await fetch('/maint/employees/list',{cache:'no-store'});EMPS=await r.json();if(!Array.isArray(EMPS))EMPS=[];}catch(e){EMPS=[];}
+  document.getElementById('sel_asset').innerHTML='<option value="">— Select machine —</option>'+
+    ASSETS.map(function(x){return '<option value="'+x.id+'">'+esc((x.code||'')+' '+(x.name||''))+'</option>';}).join('');
+  document.getElementById('cp_emp').innerHTML=empOpts('');
+  document.getElementById('ra_from').innerHTML='<option value="">—</option>'+EMPS.map(function(e){return '<option value="'+e.id+'">'+esc(e.name||e.emp_no)+'</option>';}).join('');
+  document.getElementById('ra_to').innerHTML=document.getElementById('ra_from').innerHTML;
+}
+
+async function onAsset(){
+  var aid=v('sel_asset');var cl=document.getElementById('sel_cl');
+  CPS=[];renderCps();document.getElementById('cp_form').style.display='none';
+  if(!aid){cl.innerHTML='<option value="">Select a machine first</option>';return;}
+  cl.innerHTML='<option value="">Loading…</option>';
+  try{var r=await fetch('/maint/checklists/list?asset='+encodeURIComponent(aid),{cache:'no-store'});var d=await r.json();
+    if(!Array.isArray(d)||!d.length){cl.innerHTML='<option value="">No checklists for this machine</option>';return;}
+    cl.innerHTML='<option value="">— Select checklist —</option>'+d.map(function(c){return '<option value="'+c.id+'">'+esc(c.name)+' ('+(c.points||0)+')</option>';}).join('');
+  }catch(e){cl.innerHTML='<option value="">Couldn’t load</option>';}
+}
+
+async function onChecklist(){
+  var cid=v('sel_cl');
+  if(!cid){CPS=[];renderCps();document.getElementById('cp_form').style.display='none';return;}
+  document.getElementById('cp_rows').innerHTML='<div class="hintbar">Loading…</div>';
+  try{var r=await fetch('/maint/checklist/get?id='+encodeURIComponent(cid),{cache:'no-store'});var d=await r.json();
+    CPS=(d&&d.checkpoints)||[];}catch(e){CPS=[];}
+  cpResetForm();document.getElementById('cp_form').style.display='grid';renderCps();
+}
+
+function renderCps(){
+  var host=document.getElementById('cp_rows');
+  document.getElementById('cp_cnt').textContent=CPS.length?(' · '+CPS.length):'';
+  if(!v('sel_cl')){host.innerHTML='<div class="hintbar">Select a checklist above to see its checkpoints.</div>';return;}
+  if(!CPS.length){host.innerHTML='<div class="hintbar">No checkpoints yet — add one using the form above.</div>';return;}
+  var body=CPS.map(function(p,i){
+    var who=p.assigned_emp_id?('<span class="pill">'+esc(empName(p.assigned_emp_id)||p.assigned_to||'')+'</span>'):'<span class="pill none">Unassigned</span>';
+    var dt=(p.input_type==='value')?'Value':'Check';
+    return '<tr><td class="c">'+(i+1)+'</td>'
+      +'<td class="cpt">'+esc(p.text||'')+'</td>'
+      +'<td class="c">'+dt+'</td>'
+      +'<td>'+(p.spec?esc(p.spec):'<span class="muted">—</span>')+'</td>'
+      +'<td>'+who+'</td>'
+      +'<td class="c"><a href="#" class="ic-edit" onclick="cpEdit('+p.id+');return false">Edit</a> · '
+      +'<a href="#" class="ic-del" onclick="cpDel('+p.id+');return false">Delete</a></td></tr>';
+  }).join('');
+  host.innerHTML='<table class="dgrid"><thead><tr><th>S.No</th><th>Checkpoint</th><th>Data type</th><th>Options</th><th>Assigned To</th><th></th></tr></thead><tbody>'+body+'</tbody></table>';
+}
+
+function cpResetForm(){
+  sv('cp_id','');sv('cp_text','');sv('cp_spec','');
+  document.getElementById('cp_type').value='check';document.getElementById('cp_emp').value='';
+  document.getElementById('cp_save').textContent='Add';document.getElementById('cp_cancel').style.display='none';
+}
+function cpEdit(id){
+  var p=CPS.filter(function(x){return x.id===id;})[0];if(!p)return;
+  sv('cp_id',p.id);sv('cp_text',p.text||'');sv('cp_spec',p.spec||'');
+  document.getElementById('cp_type').value=(p.input_type==='value'?'value':'check');
+  document.getElementById('cp_emp').value=p.assigned_emp_id||'';
+  document.getElementById('cp_save').textContent='Update';document.getElementById('cp_cancel').style.display='';
+  document.getElementById('cp_form').scrollIntoView({behavior:'smooth',block:'center'});
+}
+async function cpSave(){
+  var cid=v('sel_cl');if(!cid){toast('err','Select a checklist first');return;}
+  var text=v('cp_text').trim();if(!text){toast('err','Enter the checkpoint');return;}
+  var p={id:v('cp_id')||null,checklist_id:cid,text:text,input_type:v('cp_type'),
+         spec:v('cp_spec').trim(),assigned_emp_id:v('cp_emp')||null};
+  var b=document.getElementById('cp_save');b.disabled=true;var l=b.textContent;b.textContent='Saving…';
+  try{var r=await fetch('/maint/checkpoint/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
+    toast('ok',p.id?'Checkpoint updated':'Checkpoint added');await onChecklist();
+  }catch(e){toast('err','Couldn’t save: '+((e&&e.message)||e));}finally{b.disabled=false;b.textContent=l;}
+}
+async function cpDel(id){
+  if(!confirm('Delete this checkpoint? Its tick history is removed too.'))return;
+  try{var r=await fetch('/maint/checkpoint/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');
+    toast('ok','Checkpoint deleted');await onChecklist();
+  }catch(e){toast('err','Couldn’t delete: '+((e&&e.message)||e));}
+}
+
+async function doReassign(){
+  var frm=v('ra_from'),to=v('ra_to'),scope=v('ra_scope');
+  if(!frm||!to){toast('err','Choose both people');return;}
+  if(frm===to){toast('err','Pick two different people');return;}
+  var p={from_emp_id:frm,to_emp_id:to,scope:scope,asset_id:v('sel_asset')||null,checklist_id:v('sel_cl')||null};
+  if((scope==='asset'&&!p.asset_id)){toast('err','Select a machine for this scope');return;}
+  if((scope==='checklist'&&!p.checklist_id)){toast('err','Select a checklist for this scope');return;}
+  var lbl={all:'everywhere',asset:'this machine',checklist:'this checklist'}[scope];
+  if(!confirm('Move all checkpoints from '+empName(frm)+' to '+empName(to)+' ('+lbl+')?'))return;
+  try{var r=await fetch('/maint/checkpoints/reassign',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');
+    toast('ok',(d.moved||0)+' checkpoint(s) moved to '+(d.to||empName(to)));
+    if(v('sel_cl'))await onChecklist();
+  }catch(e){toast('err','Couldn’t reassign: '+((e&&e.message)||e));}
+}
+
+boot();
+</script>
+{% endblock %}
