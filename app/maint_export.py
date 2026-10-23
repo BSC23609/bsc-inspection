@@ -114,11 +114,18 @@ def _events(logs, breakdowns, assets, employees):
             "is_breakdown": True,
         })
 
+    # Preventive completions: ONE row per machine per day. A daily checklist can be
+    # submitted several times a day (each submit writes a log row); the log should show
+    # a single consolidated entry per machine per day — keep the latest submission.
+    pm_latest = {}
     for l in logs:
-        a = a_by.get(l.get("asset_id")) or {}
         done = _d(l.get("done_at"))
+        if not done:
+            continue
+        a = a_by.get(l.get("asset_id")) or {}
         st = (l.get("status") or "").strip()
-        ev.append({
+        key = (l.get("asset_id"), done.date())
+        rec = {
             "dt": done, "code": a.get("code", ""), "name": a.get("name", ""),
             "asset_id": l.get("asset_id"),
             "desc": "Preventive maintenance checklist",
@@ -128,7 +135,11 @@ def _events(logs, breakdowns, assets, employees):
             "action": (l.get("remarks") or "").strip() or "Checklist completed",
             "status": "Completed" if st in ("", "done", "completed", "ok") else st.title(),
             "is_breakdown": False,
-        })
+        }
+        prev = pm_latest.get(key)
+        if prev is None or done >= prev["dt"]:
+            pm_latest[key] = rec
+    ev.extend(pm_latest.values())
 
     ev = [e for e in ev if e["dt"]]
     ev.sort(key=lambda e: e["dt"])
