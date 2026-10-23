@@ -202,7 +202,7 @@
         </div>
         <div class="fg fg-1">
           <div class="field">
-            <label>Machine Name</label>
+            <label>Machine Name <span style="color:#c23438">*</span></label>
             <div class="pills" id="qg_machine_name">
               <div class="pill" onclick="rp('qg_machine_name',this,'CTL - 1')">CTL - 1</div>
               <div class="pill" onclick="rp('qg_machine_name',this,'CTL - 2')">CTL - 2</div>
@@ -842,6 +842,7 @@ async function qlSubmit(){
   if(!d.coil_number){toast('err','Enter the coil number');return;}
   if(!d.batch_number){toast('err','Enter the batch number');return;}
   if(!d.inspector){toast('err','Enter who inspected');return;}
+  if(!d.machine_name){toast('err','Select the machine name');return;}
   try{ d.photos = await collectPhotosBase64(['q_photos']); }catch(e){ d.photos=[]; }
   var editId=document.getElementById('q_edit_id').value;
   var payload={id:editId||null, data:d};
