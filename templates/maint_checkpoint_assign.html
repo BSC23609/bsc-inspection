@@ -20,6 +20,12 @@
 .pill.none{background:#fdecec;color:#c23438}
 .muted{color:var(--muted)}
 .hintbar{font-size:12.5px;color:var(--muted);padding:10px 2px}
+.bulkbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:var(--blue-soft);border:1px solid var(--line-2);border-radius:10px;padding:9px 12px;margin-bottom:10px}
+.bulkbar .bn{font-weight:700;font-size:12.5px;color:var(--blue-ink)}
+.bulkbar .bl{font-size:12.5px;color:var(--muted)}
+.bulkbar select{padding:7px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;font-family:inherit;background:#fff;min-width:160px}
+#cp_rows td.chk,#cp_rows th.chk{text-align:center;width:34px}
+#cp_rows input[type=checkbox]{width:16px;height:16px}
 </style>
 
 <div class="page-head"><h1>Checkpoint Assignment</h1>
@@ -52,6 +58,14 @@
         <button class="btn btn-primary" id="cp_save" onclick="cpSave()">Add</button>
         <button class="btn btn-ghost" id="cp_cancel" style="display:none" onclick="cpResetForm()">Cancel</button>
       </div></div>
+  </div>
+  <!-- bulk action bar (shows when checkpoints are ticked) -->
+  <div id="cp_bulk" class="bulkbar" style="display:none">
+    <span id="cp_bulk_n" class="bn">0 selected</span>
+    <span class="bl">Assign selected to</span>
+    <select id="cp_bulk_emp"><option value="">— Unassigned —</option></select>
+    <button class="btn btn-primary" onclick="bulkAssign()">Apply</button>
+    <button class="btn btn-ghost" onclick="cpClearSel()">Clear</button>
   </div>
   <div id="cp_rows"><div class="hintbar">Select a checklist above to see its checkpoints.</div></div>
 </div></div>
@@ -95,6 +109,7 @@ async function boot(){
   document.getElementById('sel_asset').innerHTML='<option value="">— Select machine —</option>'+
     ASSETS.map(function(x){return '<option value="'+x.id+'">'+esc((x.code||'')+' '+(x.name||''))+'</option>';}).join('');
   document.getElementById('cp_emp').innerHTML=empOpts('');
+  document.getElementById('cp_bulk_emp').innerHTML=empOpts('');
   document.getElementById('ra_from').innerHTML='<option value="">—</option>'+EMPS.map(function(e){return '<option value="'+e.id+'">'+esc(e.name||e.emp_no)+'</option>';}).join('');
   document.getElementById('ra_to').innerHTML=document.getElementById('ra_from').innerHTML;
 }
@@ -127,7 +142,8 @@ function renderCps(){
   var body=CPS.map(function(p,i){
     var who=p.assigned_emp_id?('<span class="pill">'+esc(empName(p.assigned_emp_id)||p.assigned_to||'')+'</span>'):'<span class="pill none">Unassigned</span>';
     var dt=(p.input_type==='value')?'Value':'Check';
-    return '<tr><td class="c">'+(i+1)+'</td>'
+    return '<tr><td class="chk"><input type="checkbox" class="cpchk" value="'+p.id+'" onchange="cpSelChange()"></td>'
+      +'<td class="c">'+(i+1)+'</td>'
       +'<td class="cpt">'+esc(p.text||'')+'</td>'
       +'<td class="c">'+dt+'</td>'
       +'<td>'+(p.spec?esc(p.spec):'<span class="muted">—</span>')+'</td>'
@@ -135,7 +151,27 @@ function renderCps(){
       +'<td class="c"><a href="#" class="ic-edit" onclick="cpEdit('+p.id+');return false">Edit</a> · '
       +'<a href="#" class="ic-del" onclick="cpDel('+p.id+');return false">Delete</a></td></tr>';
   }).join('');
-  host.innerHTML='<table class="dgrid"><thead><tr><th>S.No</th><th>Checkpoint</th><th>Data type</th><th>Options</th><th>Assigned To</th><th></th></tr></thead><tbody>'+body+'</tbody></table>';
+  host.innerHTML='<table class="dgrid"><thead><tr><th class="chk"><input type="checkbox" id="cp_all" onclick="cpToggleAll(this.checked)"></th><th>S.No</th><th>Checkpoint</th><th>Data type</th><th>Options</th><th>Assigned To</th><th></th></tr></thead><tbody>'+body+'</tbody></table>';
+  cpSelChange();
+}
+function selectedIds(){var out=[];var ns=document.querySelectorAll('#cp_rows .cpchk:checked');for(var i=0;i<ns.length;i++)out.push(ns[i].value);return out;}
+function cpSelChange(){
+  var ids=selectedIds();var bar=document.getElementById('cp_bulk');
+  document.getElementById('cp_bulk_n').textContent=ids.length+' selected';
+  bar.style.display=ids.length?'flex':'none';
+  var all=document.getElementById('cp_all');
+  if(all){var tot=document.querySelectorAll('#cp_rows .cpchk').length;all.checked=(tot>0&&ids.length===tot);}
+}
+function cpToggleAll(on){var ns=document.querySelectorAll('#cp_rows .cpchk');for(var i=0;i<ns.length;i++)ns[i].checked=on;cpSelChange();}
+function cpClearSel(){var ns=document.querySelectorAll('#cp_rows .cpchk');for(var i=0;i<ns.length;i++)ns[i].checked=false;var a=document.getElementById('cp_all');if(a)a.checked=false;cpSelChange();}
+async function bulkAssign(){
+  var ids=selectedIds();if(!ids.length){toast('err','Select checkpoints first');return;}
+  var eid=v('cp_bulk_emp');var nm=eid?empName(eid):'Unassigned';
+  if(!confirm('Assign '+ids.length+' checkpoint(s) to '+nm+'?'))return;
+  try{var r=await fetch('/maint/checkpoints/assign-bulk',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({ids:ids,emp_id:eid||null})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');
+    toast('ok',(d.updated||0)+' checkpoint(s) → '+(d.to||nm));await onChecklist();
+  }catch(e){toast('err','Couldn’t assign: '+((e&&e.message)||e));}
 }
 
 function cpResetForm(){

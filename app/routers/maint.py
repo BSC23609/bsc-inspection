@@ -42,7 +42,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-23-checkpoint-assignment"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-23-checkpoint-multiselect"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -1463,6 +1463,42 @@ async def checkpoints_reassign(body: dict, emp: dict = Depends(require_employee)
         moved = 0
     await _ensure_schedule_assignees()
     return {"ok": True, "moved": moved, "to": toname}
+
+
+@router.post("/checkpoints/assign-bulk")
+async def checkpoints_assign_bulk(body: dict, emp: dict = Depends(require_employee)):
+    """Set the assigned person on a SELECTED set of checkpoints at once. Admin only.
+    body: ids = [checkpoint ids], emp_id (empty/0 = unassign)."""
+    await ensure_tables()
+    _require_admin(emp)
+    ids = []
+    for x in (body.get("ids") or []):
+        try:
+            ids.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    if not ids:
+        raise HTTPException(400, "Select at least one checkpoint")
+    eid = body.get("emp_id")
+    try:
+        eid = int(eid) if eid not in (None, "", "0", 0) else None
+    except (TypeError, ValueError):
+        eid = None
+    who = None
+    if eid:
+        r = await db.fetchrow("SELECT name, emp_no FROM employees WHERE id=$1", eid)
+        if not r:
+            raise HTTPException(404, "User not found")
+        who = (r["name"] or r["emp_no"])
+    res = await db.execute(
+        "UPDATE maint_checkpoints SET assigned_emp_id=$1, assigned_to=$2 WHERE id = ANY($3::int[])",
+        eid, who, ids)
+    try:
+        n = int(str(res).split()[-1])
+    except Exception:
+        n = 0
+    await _ensure_schedule_assignees()
+    return {"ok": True, "updated": n, "to": who or "Unassigned"}
 
 
 _CL_GENERIC = ("upload  a photo", "upload a photo", "describe  any abnormalities",
