@@ -3402,6 +3402,14 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
     return _json(out)
 
 
+@router.get("/version")
+async def maint_version():
+    """Read-only build check — no login, no side effects. Open
+    qms.bharatsteels.in/maint/version after deploying: if `build` is not the latest,
+    Vercel is still serving an older build and the deploy hasn't landed."""
+    return _json({"build": MAINT_BUILD, "schema": SCHEMA_VER})
+
+
 @router.get("/reminders/preview")
 async def reminders_preview(emp: dict = Depends(require_employee)):
     """Staff-only preview of what the reminder run would send right now."""
