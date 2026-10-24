@@ -207,11 +207,12 @@ async def _write_excel(data: dict, file_name: str):
         print("[quality-xlsx]", e)
 
 
-async def _save_quality_pdf(data: dict, rec_id, s: dict, token=None):
+async def _save_quality_pdf(data: dict, rec_id, s: dict, token=None, strict=False):
     """Save the inspection's PDF to OneDrive/<base>/Quality/PDF/<machine>/ with a UNIQUE
     name (coil + date + record id), matching the existing per-machine folder layout
     (CTL-1, CTL-2) and so two inspections of the same coil on the same day never overwrite
-    each other. Best-effort — never raises."""
+    each other. Best-effort — never raises (unless strict=True, used by the targeted
+    regenerate so the real error is reported)."""
     try:
         if token is None:
             token = await graph.get_token()
@@ -227,6 +228,8 @@ async def _save_quality_pdf(data: dict, rec_id, s: dict, token=None):
         return path
     except Exception as e:
         print("[quality-pdf]", e)
+        if strict:
+            raise
         return None
 
 
@@ -497,15 +500,91 @@ async def q_pdf_legacy(i: int = Query(...), emp: dict = Depends(require_employee
 
 @router.get("/admin/backfill-pdfs")
 async def q_backfill_pdfs(token: str = Query(default=""), limit: int = Query(default=6),
-                          skip: int = Query(default=0), emp: dict = Depends(require_employee)):
-    """Generate and save to OneDrive/<base>/Quality/Reports/ a uniquely-named PDF for
-    EVERY existing CTL inspection (one per record). Admin or ?token=AGENT_TOKEN.
-    Paginated for Vercel's 10s limit: open the reply's next_url until remaining is 0."""
+                          skip: int = Query(default=0), coil: str = Query(default=""),
+                          source: str = Query(default="db"),
+                          emp: dict = Depends(require_employee)):
+    """Generate and save a uniquely-named PDF per CTL inspection into
+    OneDrive/<base>/Quality/PDF/<machine>/. Admin or ?token=AGENT_TOKEN.
+    - No args: paginated over ALL records (open the reply's next_url until remaining is 0).
+    - ?coil=<coil no>: regenerate only that coil's records and report each one's result
+      (and the exact error if an upload fails) — handy to fix a single missing PDF."""
     await ensure_table()
     if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
+
+    # --- targeted: regenerate just one coil's PDFs, with per-record result ---
+    coil = (coil or "").strip()
+    if coil:
+        rows = await db.fetch(
+            "SELECT id, coil_number, batch_number, log_date, machine_name, payload "
+            "FROM quality_inspection "
+            "WHERE lower(coil_number)=lower($1) OR lower(batch_number)=lower($1) ORDER BY id", coil)
+        gtoken = None
+        try:
+            gtoken = await graph.get_token()
+        except Exception as e:
+            print("[q-backfill-token]", e)
+        results = []
+        for r in rows:
+            r = dict(r)
+            payload = r.get("payload")
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {}
+            s = {"coil_number": r.get("coil_number") or "", "batch_number": r.get("batch_number") or "",
+                 "machine_name": r.get("machine_name") or "", "log_date": r.get("log_date")}
+            rec = {"id": r["id"],
+                   "date": r["log_date"].strftime("%d-%m-%Y") if r.get("log_date") else None,
+                   "machine": r.get("machine_name")}
+            try:
+                p = await _save_quality_pdf(payload or {}, r["id"], s, gtoken, strict=True)
+                rec["ok"] = True; rec["file"] = p
+            except Exception as e:
+                rec["ok"] = False; rec["error"] = str(e)[:300]
+            results.append(rec)
+        return JSONResponse({"ok": True, "coil": coil, "matched": len(rows), "results": results})
+
     limit = max(1, min(int(limit or 6), 12))
     skip = max(0, int(skip or 0))
+
+    # --- legacy: records that live only in the Excel log ("PDF from log" rows) ---
+    if (source or "").strip().lower() == "log":
+        legacy = await _read_quality_legacy(full=True)
+        # skip log rows that already have a matching DB record (those got PDFs already)
+        db_keys = {_qkey(dict(r)) for r in await db.fetch(
+            "SELECT coil_number, batch_number, log_date FROM quality_inspection")}
+        legacy = [r for r in legacy if _qkey(r) not in db_keys]
+        total = len(legacy)
+        saved, paths = 0, []
+        gtoken = None
+        try:
+            gtoken = await graph.get_token()
+        except Exception as e:
+            print("[q-backfill-token]", e)
+        for rec in legacy[skip:skip + limit]:
+            ld = None
+            try:
+                ld = date.fromisoformat(str(rec.get("date"))[:10]) if rec.get("date") else None
+            except ValueError:
+                ld = None
+            s = {"coil_number": rec.get("coil_number") or "", "batch_number": rec.get("batch_number") or "",
+                 "machine_name": rec.get("machine_name") or "", "log_date": ld}
+            p = await _save_quality_pdf(rec, f"L{rec.get('_row')}", s, gtoken)
+            if p:
+                saved += 1; paths.append(p)
+        done_through = min(skip + limit, total)
+        remaining = max(0, total - done_through)
+        base = f"https://qms.bharatsteels.in/quality/admin/backfill-pdfs?token={token}&source=log&limit={limit}"
+        out = {"ok": True, "source": "log", "records_total": total, "saved_this_page": saved,
+               "done_through": done_through, "remaining": remaining, "files": paths}
+        if remaining:
+            out["next_url"] = f"{base}&skip={done_through}"
+        else:
+            out["note"] = "All log-only inspection PDFs generated into Quality/PDF/<machine>."
+        return JSONResponse(out)
+
     rows = await db.fetch(
         "SELECT id, coil_number, batch_number, log_date, machine_name, payload "
         "FROM quality_inspection ORDER BY id")
