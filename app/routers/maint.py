@@ -14,6 +14,7 @@ import json
 import re
 import base64
 import calendar
+import asyncio
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional
@@ -42,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-24-v6-auto-reconcile"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-24-v7-speed"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -1920,13 +1921,14 @@ async def my_checklist_submit(body: dict, emp: dict = Depends(require_employee))
             status, json.dumps(results), (body.get("remarks") or "").strip())
     except Exception as e:
         print("[maint] my submit log skipped:", e)
-    # work-order PDF -> OneDrive/Maintenance/Preventive
+    # work-order PDF -> OneDrive/Maintenance/Preventive (in the background so the
+    # save returns immediately; the nightly reconcile backstops any that don't finish)
     try:
         a = await db.fetchrow("SELECT code, name, location FROM maint_assets WHERE id=$1", c["asset_id"])
-        await _file_pm_report(
+        asyncio.create_task(_file_pm_report(
             asset_code=(a["code"] if a else ""), asset_name=(a["name"] if a else ""),
             checklist=c["name"], doc_no=str(log_id or ""), done_by=done_by,
-            results=results, checklist_id=cid, location=(a["location"] if a else ""))
+            results=results, checklist_id=cid, location=(a["location"] if a else "")))
     except Exception as e:
         print("[maint] my submit report skipped:", e)
     return {"ok": True, "saved": saved, "status": status, "period_key": pk}
@@ -2684,14 +2686,14 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
         alert = await _send_breakdown_alert(dict(bd))
     except Exception as e:
         print("[maint] breakdown alert skipped:", e)
-    # work-order PDF -> OneDrive/Maintenance/Breakdown
+    # work-order PDF -> OneDrive/Maintenance/Breakdown (background; see note above)
     try:
         names = []
         if aids:
             nm = {r["id"]: (r["name"] or r["emp_no"]) for r in await db.fetch(
                 "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", aids)}
             names = [nm[i] for i in aids if nm.get(i)]
-        await _file_breakdown_report(dict(bd), ", ".join(names))
+        asyncio.create_task(_file_breakdown_report(dict(bd), ", ".join(names)))
     except Exception as e:
         print("[maint] breakdown report skipped:", e)
     return {"ok": True, "id": bid, "photos": len(paths), "alert": alert}
@@ -3077,17 +3079,17 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
     if hrs is not None:
         await db.execute("UPDATE maint_assets SET running_hours=$1, hours_updated_at=now() WHERE id=$2",
                          hrs, s["asset_id"])
-    # work-order PDF -> OneDrive/Maintenance/Preventive
+    # work-order PDF -> OneDrive/Maintenance/Preventive (background; see note above)
     try:
         a = await db.fetchrow("SELECT code, name, location FROM maint_assets WHERE id=$1", s["asset_id"])
         cl = None
         if s.get("checklist_id"):
             cl = await db.fetchval("SELECT name FROM maint_checklists WHERE id=$1", s["checklist_id"])
-        await _file_pm_report(
+        asyncio.create_task(_file_pm_report(
             asset_code=(a["code"] if a else ""), asset_name=(a["name"] if a else ""),
             checklist=cl or s.get("title") or "Checklist", doc_no=str(log_id or ""),
             done_by=done_by, results=results, checklist_id=s.get("checklist_id"),
-            location=(a["location"] if a else ""))
+            location=(a["location"] if a else "")))
     except Exception as e:
         print("[maint] complete report skipped:", e)
     return {"ok": True, "status": status, "next_due": next_due.isoformat() if next_due else None}
