@@ -17,6 +17,8 @@ from pydantic import BaseModel
 from .. import db, graph, xlsxlog
 from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
+from .. import config as _qcfg
+AGENT_TOKEN = getattr(_qcfg, "AGENT_TOKEN", "BSC@123")
 from ..pdfgen import build_quality_pdf
 
 router = APIRouter(prefix="/quality", tags=["quality"])
@@ -489,3 +491,51 @@ async def q_pdf_legacy(i: int = Query(...), emp: dict = Depends(require_employee
     return Response(pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="CTL_Quality_{b}.pdf"',
                              "Cache-Control": "no-store"})
+
+
+@router.get("/admin/backfill-pdfs")
+async def q_backfill_pdfs(token: str = Query(default=""), limit: int = Query(default=6),
+                          skip: int = Query(default=0), emp: dict = Depends(require_employee)):
+    """Generate and save to OneDrive/<base>/Quality/Reports/ a uniquely-named PDF for
+    EVERY existing CTL inspection (one per record). Admin or ?token=AGENT_TOKEN.
+    Paginated for Vercel's 10s limit: open the reply's next_url until remaining is 0."""
+    await ensure_table()
+    if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    limit = max(1, min(int(limit or 6), 12))
+    skip = max(0, int(skip or 0))
+    rows = await db.fetch(
+        "SELECT id, coil_number, batch_number, log_date, payload "
+        "FROM quality_inspection ORDER BY id")
+    total = len(rows)
+    saved, paths = 0, []
+    gtoken = None
+    try:
+        gtoken = await graph.get_token()
+    except Exception as e:
+        print("[q-backfill-token]", e)
+    for r in rows[skip:skip + limit]:
+        r = dict(r)
+        payload = r.get("payload")
+        if isinstance(payload, str):
+            try:
+                payload = json.loads(payload)
+            except Exception:
+                payload = {}
+        s = {"coil_number": r.get("coil_number") or "",
+             "batch_number": r.get("batch_number") or "",
+             "log_date": r.get("log_date")}
+        p = await _save_quality_pdf(payload or {}, r["id"], s, gtoken)
+        if p:
+            saved += 1; paths.append(p)
+    done_through = min(skip + limit, total)
+    remaining = max(0, total - done_through)
+    base = f"https://qms.bharatsteels.in/quality/admin/backfill-pdfs?token={token}&limit={limit}"
+    out = {"ok": True, "records_total": total, "saved_this_page": saved,
+           "done_through": done_through, "remaining": remaining,
+           "folder": f"{ONEDRIVE_BASE}/Quality/Reports", "files": paths}
+    if remaining:
+        out["next_url"] = f"{base}&skip={done_through}"
+    else:
+        out["note"] = "All inspection PDFs generated into Quality/Reports."
+    return JSONResponse(out)
