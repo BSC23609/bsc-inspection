@@ -15,7 +15,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
 from .. import db, graph, xlsxlog
-from ..auth import require_employee
+from ..auth import require_employee, current_employee
 from ..config import ONEDRIVE_BASE
 from .. import config as _qcfg
 AGENT_TOKEN = getattr(_qcfg, "AGENT_TOKEN", "BSC@123")
@@ -502,14 +502,17 @@ async def q_pdf_legacy(i: int = Query(...), emp: dict = Depends(require_employee
 async def q_backfill_pdfs(token: str = Query(default=""), limit: int = Query(default=6),
                           skip: int = Query(default=0), coil: str = Query(default=""),
                           source: str = Query(default="db"),
-                          emp: dict = Depends(require_employee)):
+                          emp: dict = Depends(current_employee)):
     """Generate and save a uniquely-named PDF per CTL inspection into
     OneDrive/<base>/Quality/PDF/<machine>/. Admin or ?token=AGENT_TOKEN.
     - No args: paginated over ALL records (open the reply's next_url until remaining is 0).
     - ?coil=<coil no>: regenerate only that coil's records and report each one's result
       (and the exact error if an upload fails) — handy to fix a single missing PDF."""
     await ensure_table()
-    if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
+    # Allow EITHER a logged-in admin OR the agent token (so a GitHub Action with no
+    # login session can run it). require_employee would 401 before the body, so this
+    # endpoint uses the optional current_employee and checks access here.
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
 
     # --- targeted: regenerate just one coil's PDFs, with per-record result ---
