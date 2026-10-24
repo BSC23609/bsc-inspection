@@ -1,0 +1,30 @@
+name: Maintenance reports auto-reconcile
+
+# Once a day, regenerate any missing preventive + breakdown PDFs for the last few
+# days (catches reports that failed to upload at completion time, e.g. OneDrive was
+# locked). New completions already file their own PDF — this is just the safety net.
+# 14:00 UTC = 7:30 PM IST (just after the 7:00 PM workbook export).
+on:
+  schedule:
+    - cron: '0 14 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  reconcile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Backfill missing PM + breakdown reports (last 3 days)
+        run: |
+          base="https://qms.bharatsteels.in/maint/admin/backfill-reports?token=BSC%40123&limit=6&days=3"
+          for kind in pm bd; do
+            skip=0
+            for i in $(seq 1 40); do
+              resp=$(curl -fsS --max-time 100 "$base&kind=$kind&skip=$skip" || echo '{}')
+              echo "[$kind skip=$skip] $(echo "$resp" | head -c 300)"
+              remaining=$(echo "$resp" | jq -r '.remaining // 0' 2>/dev/null || echo 0)
+              nextskip=$(echo "$resp" | jq -r '.done_through // 0' 2>/dev/null || echo 0)
+              if [ "$remaining" = "0" ] || [ "$nextskip" = "0" ]; then break; fi
+              skip=$nextskip
+            done
+          done
+          echo "Auto-reconcile finished."

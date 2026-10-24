@@ -42,7 +42,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-23-v5-digest-bullets"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-24-v6-auto-reconcile"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3458,6 +3458,7 @@ async def export_onedrive(token: str = Query(default=""), emp: dict = Depends(re
 @router.get("/admin/backfill-reports")
 async def backfill_reports(token: str = Query(default=""), limit: int = Query(default=6),
                            skip: int = Query(default=0), kind: str = Query(default="pm"),
+                           days: int = Query(default=0),
                            emp: dict = Depends(require_employee)):
     """Seed OneDrive with a work-order PDF for the recorded history — one PM report per
     machine per DAY (matching the Excel log), filed in that machine's own folder as
@@ -3475,19 +3476,23 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
     limit = max(1, min(int(limit or 6), 12))
     skip = max(0, int(skip or 0))
     k = kind if kind in ("pm", "bd") else "pm"
+    days = max(0, int(days or 0))
+    cutoff = (_today() - timedelta(days=days - 1)) if days > 0 else None  # days=1 -> today only
     saved, paths, missing = 0, [], []
 
     if k == "pm":
         # all completions, then keep the latest per (machine, day) so the backfill
-        # mirrors the Excel log: one PM report per machine per day.
-        allrows = await db.fetch(
-            "SELECT l.*, a.code AS asset_code, a.name AS asset_name, "
-            "a.location AS location, c.name AS checklist_name "
-            "FROM maint_logs l "
-            "LEFT JOIN maint_assets a ON a.id=l.asset_id "
-            "LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
-            "WHERE l.asset_id IS NOT NULL AND l.done_at IS NOT NULL "
-            "ORDER BY l.done_at")
+        # mirrors the Excel log: one PM report per machine per day. `days` limits it to
+        # recent completions so the daily auto-reconcile stays small and fast.
+        q = ("SELECT l.*, a.code AS asset_code, a.name AS asset_name, "
+             "a.location AS location, c.name AS checklist_name "
+             "FROM maint_logs l "
+             "LEFT JOIN maint_assets a ON a.id=l.asset_id "
+             "LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
+             "WHERE l.asset_id IS NOT NULL AND l.done_at IS NOT NULL "
+             + ("AND l.done_at::date >= $1 " if cutoff else "")
+             + "ORDER BY l.done_at")
+        allrows = await (db.fetch(q, cutoff) if cutoff else db.fetch(q))
         latest = {}
         for r in allrows:
             r = dict(r)
@@ -3512,16 +3517,19 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
             except Exception as e:
                 print("[maint] backfill PM skipped:", e)
         # machines that have NO completion at all -> no report can be made yet
-        done_assets = {r["asset_id"] for r in rows}
-        for a in await db.fetch("SELECT id, code, name FROM maint_assets ORDER BY code"):
-            if a["id"] not in done_assets:
-                missing.append(f'{a["code"]} {a["name"]}'.strip())
+        # (only meaningful on a full run, not the recent-days reconcile)
+        if not cutoff:
+            done_assets = {r["asset_id"] for r in rows}
+            for a in await db.fetch("SELECT id, code, name FROM maint_assets ORDER BY code"):
+                if a["id"] not in done_assets:
+                    missing.append(f'{a["code"]} {a["name"]}'.strip())
     else:
-        rows = await db.fetch(
-            "SELECT b.*, a.code AS asset_code, a.name AS asset_name, a.location AS location "
-            "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
-            "WHERE b.asset_id IS NOT NULL AND b.raised_at IS NOT NULL "
-            "ORDER BY a.code, b.raised_at")
+        q = ("SELECT b.*, a.code AS asset_code, a.name AS asset_name, a.location AS location "
+             "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+             "WHERE b.asset_id IS NOT NULL AND b.raised_at IS NOT NULL "
+             + ("AND b.raised_at::date >= $1 " if cutoff else "")
+             + "ORDER BY a.code, b.raised_at")
+        rows = await (db.fetch(q, cutoff) if cutoff else db.fetch(q))
         rows = [dict(r) for r in rows]
         total = len(rows)
         for b in rows[skip:skip + limit]:
@@ -3541,6 +3549,8 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
     done_through = min(skip + limit, total)
     remaining = max(0, total - done_through)
     base = f"https://qms.bharatsteels.in/maint/admin/backfill-reports?token={token}&kind={k}&limit={limit}"
+    if days:
+        base += f"&days={days}"
     out = {"ok": True, "kind": k, "records_total": total, "saved_this_page": saved,
            "done_through": done_through, "remaining": remaining,
            "note_naming": "Saved under BSC Inspections/Maintenance/"
