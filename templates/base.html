@@ -8,7 +8,12 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/app.css?v=20261023b">
+<link rel="stylesheet" href="/static/app.css?v=20261024c">
+<style>
+/* sidebar scroll — inline so it loads with the page and can't be blocked by a cached app.css */
+.rail{height:100vh;height:100dvh}
+.rail-scroll{flex:1 1 auto;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain}
+</style>
 {% include "_pwa_head.html" %}
 </head>
 <body>
