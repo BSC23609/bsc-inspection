@@ -208,9 +208,10 @@ async def _write_excel(data: dict, file_name: str):
 
 
 async def _save_quality_pdf(data: dict, rec_id, s: dict, token=None):
-    """Save the inspection's PDF to OneDrive/<base>/Quality/Reports/ with a UNIQUE name
-    (coil + date + record id), so two inspections of the same coil on the same day never
-    overwrite each other. Best-effort — never raises."""
+    """Save the inspection's PDF to OneDrive/<base>/Quality/PDF/<machine>/ with a UNIQUE
+    name (coil + date + record id), matching the existing per-machine folder layout
+    (CTL-1, CTL-2) and so two inspections of the same coil on the same day never overwrite
+    each other. Best-effort — never raises."""
     try:
         if token is None:
             token = await graph.get_token()
@@ -218,8 +219,9 @@ async def _save_quality_pdf(data: dict, rec_id, s: dict, token=None):
         coil = _safe(s.get("coil_number") or s.get("batch_number") or "coil")
         ld = s.get("log_date")
         dt = ld.strftime("%d-%m-%Y") if ld else "nodate"
+        mc = re.sub(r"[^A-Za-z0-9-]", "", re.sub(r"\s+", "", str(s.get("machine_name") or ""))) or "CTL"
         fname = f"{coil}_({dt})_CTL_Inspection_{rec_id}.pdf"
-        path = f"{ONEDRIVE_BASE}/Quality/Reports/{fname}"
+        path = f"{ONEDRIVE_BASE}/Quality/PDF/{mc}/{fname}"
         await graph.upload_file(token, path, pdf, "application/pdf")
         print("[quality-pdf] saved:", path)
         return path
@@ -505,7 +507,7 @@ async def q_backfill_pdfs(token: str = Query(default=""), limit: int = Query(def
     limit = max(1, min(int(limit or 6), 12))
     skip = max(0, int(skip or 0))
     rows = await db.fetch(
-        "SELECT id, coil_number, batch_number, log_date, payload "
+        "SELECT id, coil_number, batch_number, log_date, machine_name, payload "
         "FROM quality_inspection ORDER BY id")
     total = len(rows)
     saved, paths = 0, []
@@ -524,6 +526,7 @@ async def q_backfill_pdfs(token: str = Query(default=""), limit: int = Query(def
                 payload = {}
         s = {"coil_number": r.get("coil_number") or "",
              "batch_number": r.get("batch_number") or "",
+             "machine_name": r.get("machine_name") or "",
              "log_date": r.get("log_date")}
         p = await _save_quality_pdf(payload or {}, r["id"], s, gtoken)
         if p:
@@ -533,9 +536,9 @@ async def q_backfill_pdfs(token: str = Query(default=""), limit: int = Query(def
     base = f"https://qms.bharatsteels.in/quality/admin/backfill-pdfs?token={token}&limit={limit}"
     out = {"ok": True, "records_total": total, "saved_this_page": saved,
            "done_through": done_through, "remaining": remaining,
-           "folder": f"{ONEDRIVE_BASE}/Quality/Reports", "files": paths}
+           "folder": f"{ONEDRIVE_BASE}/Quality/PDF/<machine>", "files": paths}
     if remaining:
         out["next_url"] = f"{base}&skip={done_through}"
     else:
-        out["note"] = "All inspection PDFs generated into Quality/Reports."
+        out["note"] = "All inspection PDFs generated into Quality/PDF/<machine>."
     return JSONResponse(out)
