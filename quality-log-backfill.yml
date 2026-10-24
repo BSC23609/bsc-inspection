@@ -1,0 +1,27 @@
+name: Quality log PDF backfill (one-time)
+on:
+  workflow_dispatch: {}
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Generate PDFs for all log-only inspections
+        run: |
+          base="https://qms.bharatsteels.in/quality/admin/backfill-pdfs?token=BSC%40123&source=log&limit=6"
+          skip=0
+          total_saved=0
+          for i in $(seq 1 400); do
+            resp=$(curl -fsS --max-time 100 "$base&skip=$skip" || echo '{}')
+            saved=$(echo "$resp" | jq -r '.saved_this_page // 0' 2>/dev/null || echo 0)
+            remaining=$(echo "$resp" | jq -r '.remaining // 0' 2>/dev/null || echo 0)
+            nextskip=$(echo "$resp" | jq -r '.done_through // 0' 2>/dev/null || echo 0)
+            total_saved=$((total_saved + saved))
+            echo "page skip=$skip saved=$saved remaining=$remaining (total: $total_saved)"
+            if [ "$remaining" = "0" ] || [ "$nextskip" = "0" ] || [ "$nextskip" = "$skip" ]; then
+              break
+            fi
+            skip=$nextskip
+            sleep 1
+          done
+          echo "Done. Total PDFs saved this run: $total_saved"
