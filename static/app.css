@@ -56,7 +56,7 @@ a{color:inherit;text-decoration:none}
 .nav-group.open>.ng-head{color:#fff}
 .nav-group.open>.ng-head .chev{transform:rotate(90deg)}
 .ng-body{overflow:hidden;max-height:0;transition:max-height .24s ease;margin-left:9px;border-left:1px solid rgba(255,255,255,.09);padding-left:6px}
-.nav-group.open>.ng-body{max-height:340px}
+.nav-group.open>.ng-body{max-height:700px}
 .ng-body .nav-sub{display:flex;align-items:center;gap:10px;padding:8px 11px;border-radius:9px;color:var(--rail-dim);
   font-size:12.8px;font-weight:500;margin:1px 0;cursor:pointer;transition:background .12s,color .12s}
 .ng-body .nav-sub svg{opacity:.75}
