@@ -1,6 +1,7 @@
 """Microsoft Graph helpers — OneDrive upload + read, using the same app
 registration as the Node QMS (TENANT_ID / CLIENT_ID / CLIENT_SECRET / USER_ID)."""
 import time
+import asyncio
 import httpx
 from urllib.parse import quote
 from .config import TENANT_ID, CLIENT_ID, CLIENT_SECRET, USER_ID
@@ -43,13 +44,35 @@ def _item_url(path: str, suffix: str) -> str:
     return f"{_GRAPH}/users/{USER_ID}/drive/root:/{quote(path)}:{suffix}"
 
 
-async def upload_file(token: str, path: str, content: bytes, content_type: str):
+async def upload_file(token: str, path: str, content: bytes, content_type: str, tries: int = 3):
+    """Upload to OneDrive, retrying transient failures (429 throttling, 423 locked,
+    5xx, network blips) so a bulk run doesn't silently drop files. Small backoff so a
+    page of uploads still fits Vercel's time limit."""
     url = _item_url(path, "/content")
-    async with httpx.AsyncClient(timeout=60) as c:
-        r = await c.put(url, headers={"Authorization": f"Bearer {token}",
-                                      "Content-Type": content_type}, content=content)
-    if r.status_code >= 300:
-        raise RuntimeError(f"Upload failed ({r.status_code}): {r.text}")
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": content_type}
+    last_err = None
+    for attempt in range(max(1, tries)):
+        try:
+            async with httpx.AsyncClient(timeout=60) as c:
+                r = await c.put(url, headers=headers, content=content)
+            if r.status_code < 300:
+                return
+            if r.status_code in (423, 429, 500, 502, 503, 504) and attempt < tries - 1:
+                try:
+                    wait = float(r.headers.get("Retry-After", 0) or 0)
+                except (TypeError, ValueError):
+                    wait = 0.0
+                await asyncio.sleep(min(wait or (1.2 * (attempt + 1)), 6.0))
+                continue
+            raise RuntimeError(f"Upload failed ({r.status_code}): {r.text}")
+        except (httpx.TransportError, httpx.TimeoutException) as e:
+            last_err = e
+            if attempt < tries - 1:
+                await asyncio.sleep(1.2 * (attempt + 1))
+                continue
+            raise
+    if last_err:
+        raise last_err
 
 
 async def read_text(token: str, path: str) -> str | None:
