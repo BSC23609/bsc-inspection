@@ -75,6 +75,42 @@ async def upload_file(token: str, path: str, content: bytes, content_type: str, 
         raise last_err
 
 
+async def create_folder(token: str, parent_path: str, name: str) -> bool:
+    """Create an (empty) folder `name` under `parent_path` in OneDrive. Idempotent:
+    an existing folder is left untouched (409 Conflict is treated as success). The
+    parent folder must already exist. Used to pre-create the per-machine report
+    subfolders so each machine shows Daily / Quarterly / Breakdown even when empty."""
+    url = f"{_GRAPH}/users/{USER_ID}/drive/root:/{quote(parent_path)}:/children"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    body = {"name": name, "folder": {}, "@microsoft.graph.conflictBehavior": "fail"}
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.post(url, headers=headers, json=body)
+    return r.status_code in (200, 201, 409)
+
+
+async def list_children(token: str, path: str) -> list[dict]:
+    """List the immediate children of a folder path. Returns [{id,name,is_folder}].
+    Empty list on any failure (e.g. the folder doesn't exist)."""
+    url = (f"{_GRAPH}/users/{USER_ID}/drive/root:/{quote(path)}:/children"
+           f"?$select=id,name,folder,file&$top=999")
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+    if r.status_code != 200:
+        return []
+    return [{"id": it.get("id"), "name": it.get("name"), "is_folder": ("folder" in it)}
+            for it in (r.json().get("value") or [])]
+
+
+async def move_item(token: str, item_id: str, target_parent_id: str) -> bool:
+    """Move a drive item (file or folder) into the folder with id target_parent_id."""
+    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.patch(url, headers=headers,
+                          json={"parentReference": {"id": target_parent_id}})
+    return r.status_code < 300
+
+
 async def read_text(token: str, path: str) -> str | None:
     """Return a file's text content, or None if it doesn't exist."""
     url = _item_url(path, "/content")

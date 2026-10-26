@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-26-v11-reports-folders"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-26-v13-ensure-folders2"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3643,6 +3643,64 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
         out["note_missing"] = ("These machines have no completed checklist yet, so no "
                                "preventive report exists for them — they'll get one the "
                                "first time their checklist is completed in the app.")
+    return _json(out)
+
+
+_REPORT_SUBS = ("Daily Preventive Maintenance",
+                "Quarterly Preventive Maintenance",
+                "Breakdown Maintenance")
+
+
+@router.get("/admin/ensure-report-folders")
+async def ensure_report_folders(token: str = Query(default=""), skip: int = Query(default=0),
+                                limit: int = Query(default=3),
+                                emp: dict = Depends(current_employee)):
+    """Make every machine folder already under Maintenance/Reports/ have all three
+    subfolders (Daily / Quarterly / Breakdown), and tidy any loose PDFs that sit
+    directly in a machine folder (e.g. folders moved in from the old Preventive) by
+    moving them into that machine's 'Daily Preventive Maintenance' subfolder.
+    Idempotent and paginated — follow next_url until remaining is 0. Admin or ?token=."""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    limit = max(1, min(int(limit or 3), 5))
+    skip = max(0, int(skip or 0))
+    base = f"{ONEDRIVE_BASE}/Maintenance/Reports"
+    try:
+        gtoken = await graph.get_token()
+    except Exception as e:
+        raise HTTPException(500, f"Graph token error: {e}")
+    machines = sorted(
+        [m["name"] for m in await graph.list_children(gtoken, base) if m.get("is_folder")])
+    total = len(machines)
+    done = []
+    for name in machines[skip:skip + limit]:
+        mpath = f"{base}/{name}"
+        moved = 0
+        try:
+            for sub in _REPORT_SUBS:                       # create the 3 subfolders
+                await graph.create_folder(gtoken, mpath, sub)
+            # move any loose PDFs (sitting directly in the machine folder) into Daily
+            loose = [c for c in await graph.list_children(gtoken, mpath)
+                     if (not c.get("is_folder")) and (c.get("name") or "").lower().endswith(".pdf")]
+            if loose:
+                daily_id = await graph.get_item_id(gtoken, f"{mpath}/Daily Preventive Maintenance")
+                for c in loose:
+                    if daily_id and await graph.move_item(gtoken, c["id"], daily_id):
+                        moved += 1
+        except Exception as e:
+            print("[maint] ensure-report-folders skip", name, e)
+        done.append({"machine": name, "loose_pdfs_moved": moved})
+    done_through = min(skip + limit, total)
+    remaining = max(0, total - done_through)
+    out = {"ok": True, "machines_total": total, "done_this_page": done,
+           "done_through": done_through, "remaining": remaining}
+    if remaining:
+        out["next_url"] = (f"https://qms.bharatsteels.in/maint/admin/ensure-report-folders"
+                           f"?token={token}&limit={limit}&skip={done_through}")
+    else:
+        out["note"] = ("Every machine in Reports now has Daily / Quarterly / Breakdown "
+                       "subfolders; any loose PDFs were moved into Daily Preventive Maintenance.")
     return _json(out)
 
 
