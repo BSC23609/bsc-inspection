@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-26-v8-combined-pm"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-26-v9-leave-board"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3233,6 +3233,7 @@ async def board(emp: dict = Depends(require_employee)):
     await ensure_tables()
     await _refresh_holidays()
     today = _today()
+    on_leave = await _on_leave_ids(today)   # assignees on leave today
     # two independent boards: Daily and Periodic (quarterly/interval)
     daily = {"overdue": [], "due": [], "upcoming": []}
     periodic = {"overdue": [], "due": [], "upcoming": []}
@@ -3245,6 +3246,14 @@ async def board(emp: dict = Depends(require_employee)):
         s.update(info)
         bucket = daily if is_daily else periodic
         if info["overdue"]:
+            # Daily: if the assignee is on leave today, skip their overdue task — a
+            # missed daily check during leave shouldn't pile up as overdue on the
+            # board. Periodic (quarterly) work is NOT skipped; it stays so they do it
+            # when they are back.
+            if is_daily:
+                aid = s.get("assignee_emp_id")
+                if aid and aid in on_leave:
+                    continue
             bucket["overdue"].append(s)
         elif info["due"]:
             bucket["due"].append(s)
