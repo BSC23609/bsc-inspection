@@ -163,8 +163,10 @@ function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.c
         <div class="gbd-pill" data-t="Hydraulic" onclick="gbdSetType('Hydraulic')">Hydraulic</div>
         <div class="gbd-pill" data-t="Other" onclick="gbdSetType('Other')">Other</div>
       </div></div>
+    {% if emp and (emp.is_admin or emp.is_maint) %}
     <div class="gbd-row"><label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600;text-transform:none;letter-spacing:0">
         <input type="checkbox" id="gbd_self" onchange="gbdToggleSelf()" style="width:auto"><span>Self — assign this breakdown to me</span></label></div>
+    {% endif %}
     <div class="gbd-row"><label>Maintenance user(s) <span class="gbd-req">*</span></label>
       <div class="gbd-chk" id="gbd_assignees"><div class="none">Pick a breakdown type above.</div></div>
       <div class="gbd-note" id="gbd_autonote" style="display:none"></div></div>
@@ -191,7 +193,7 @@ function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.c
   function setv(id,x){var e=$(id);if(e)e.value=(x==null?'':x);}
   function opt(v,t,sel){return '<option value="'+esc(v)+'"'+(String(sel)===String(v)?' selected':'')+'>'+esc(t)+'</option>';}
   function nowLocal(){var d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16);}
-  function maintUsers(){var m=GE.filter(function(e){return e.is_maint;});return m.length?m:GE;}
+  function maintUsers(){return GE.filter(function(e){return (e.is_maint||e.is_admin)&&e.active!==false;});}
   function uname(id){var e=GEBY[id]||{};return (e.name||('#'+id))+(e.mobile?(' · '+e.mobile):'');}
   function renderAssignees(sel,multi){sel=sel||[];var set={};sel.forEach(function(x){set[String(x)]=1;});
     var us=maintUsers();var typ=multi?'checkbox':'radio';var nm=multi?'':' name="gbd_asg_one"';
