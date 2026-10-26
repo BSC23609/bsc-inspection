@@ -81,12 +81,14 @@
         <div class="pill" data-t="Other" onclick="setType('Other')">Other</div>
       </div>
     </div>
+    {% if emp.is_admin or emp.is_maint %}
     <div style="margin-bottom:14px">
       <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
         <input type="checkbox" id="b_self" onchange="toggleSelf()" style="width:auto">
         <span>Self — assign this breakdown to me</span>
       </label>
     </div>
+    {% endif %}
     <div class="row"><div><label>Maintenance user(s) <span class="req">*</span></label>
       <div class="chkbox" id="b_assignees"><div class="none">Pick a breakdown type above.</div></div>
       <div class="note" id="b_autonote" style="display:none">Auto-picked for this type — add or remove as needed.</div></div></div>
@@ -138,7 +140,7 @@
 var ASSETS=[],EMPS=[],EMPBY={},TYPES=['Electrical','Mechanical','Hydraulic','Other'],TYPE_STAFF={},ASSET_ELEC={},PHOTOS=[];
 var ME={id:{{ emp.id|tojson }},name:{{ (emp.name or emp.emp_no)|tojson }}};
 var IS_ADMIN={{ 'true' if emp.is_admin else 'false' }};
-function maintUsers(){var m=EMPS.filter(function(e){return e.is_maint;});return m.length?m:EMPS;}
+function maintUsers(){return EMPS.filter(function(e){return (e.is_maint||e.is_admin)&&e.active!==false;});}
 function uname(id){var e=EMPBY[id]||{};return (e.name||('#'+id))+(e.mobile?(' · '+e.mobile):'');}
 function renderAssignees(sel,multi){sel=sel||[];var set={};sel.forEach(function(x){set[String(x)]=1;});
   var us=maintUsers();var typ=multi?'checkbox':'radio';var nm=multi?'':' name="b_asg_one"';
