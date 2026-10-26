@@ -97,7 +97,8 @@ def _nav_groups_for(emp):
 
 def _ctx(request, emp, active, **extra):
     base = {"request": request, "emp": emp, "app_name": APP_NAME,
-            "active": active, "groups": _nav_groups_for(emp), "admin_nav": ADMIN_NAV}
+            "active": active, "groups": _nav_groups_for(emp),
+            "admin_nav": ADMIN_NAV if _is_admin(emp) else []}
     base.update(extra)
     return base
 
@@ -205,6 +206,8 @@ async def admin_page(request: Request):
     emp = await current_employee(request)
     if not emp:
         return RedirectResponse("/login", status_code=303)
+    if not _is_admin(emp):
+        return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse("admin.html", _ctx(request, emp, "admin", section="Settings"))
 
 
@@ -213,6 +216,8 @@ async def users_page(request: Request):
     emp = await current_employee(request)
     if not emp:
         return RedirectResponse("/login", status_code=303)
+    if not _is_admin(emp):
+        return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse("users.html", _ctx(request, emp, "users", section="Users"))
 
 
@@ -221,6 +226,8 @@ async def customers_page(request: Request):
     emp = await current_employee(request)
     if not emp:
         return RedirectResponse("/login", status_code=303)
+    if not _is_admin(emp):
+        return RedirectResponse("/", status_code=303)
     return templates.TemplateResponse("customers.html", _ctx(request, emp, "customers", section="Customers"))
 
 

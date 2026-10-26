@@ -88,6 +88,7 @@ class SettingsIn(BaseModel):
 
 @router.post("/settings/save")
 async def post_settings(body: SettingsIn, emp: dict = Depends(require_employee)):
+    await _admin_guard(emp)
     if not isinstance(body.settings, dict):
         raise HTTPException(400, "invalid settings")
     merged = await save_settings(body.settings)
@@ -201,6 +202,7 @@ async def users_save(body: UserIn, emp: dict = Depends(require_employee)):
 # ============================================================
 @router.get("/customers")
 async def customers_list(emp: dict = Depends(require_employee)):
+    await _admin_guard(emp)
     return JSONResponse(await CA.list_all(), headers={"Cache-Control": "no-store"})
 
 
