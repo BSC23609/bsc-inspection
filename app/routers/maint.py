@@ -23,7 +23,7 @@ from fastapi.responses import JSONResponse
 
 from .. import db, wati, graph
 from .. import config as _cfg
-from ..auth import require_employee
+from ..auth import require_employee, current_employee
 
 # Read config defensively so a slightly older app/config.py (missing one of the
 # newer maintenance vars) can never crash the whole app at import time.
@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-24-v7-speed"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-26-v8-combined-pm"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -2205,26 +2205,84 @@ def _machine_folder(code: str, name: str) -> str:
     return seg[:120] or _safe_code(code)
 
 
+async def _pm_rows_full(checklist_id, period_key):
+    """Build the inspection rows from the FULL checklist state for one period:
+    EVERY checkpoint of the checklist, each with its result and who marked it; a
+    checkpoint not yet done shows 'Pending' with the person it is assigned to. This
+    is what makes one combined report fill up as each assigned person submits their
+    own checkpoints. Returns (rows, contributors, pending_count)."""
+    cps = await db.fetch(
+        "SELECT id, seq, text, assigned_to FROM maint_checkpoints "
+        "WHERE checklist_id=$1 ORDER BY seq, id", checklist_id)
+    rows, contributors, pending = [], [], 0
+    if not cps:
+        return rows, contributors, pending
+    ids = [r["id"] for r in cps]
+    done = {}
+    for d in await db.fetch(
+            "SELECT checkpoint_id, emp_id, result, note, done_at FROM maint_checkpoint_done "
+            "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])", period_key, ids):
+        done[d["checkpoint_id"]] = dict(d)
+    emp_ids = list({d["emp_id"] for d in done.values() if d.get("emp_id")})
+    names = {}
+    if emp_ids:
+        for e in await db.fetch(
+                "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", emp_ids):
+            names[e["id"]] = e["name"] or e["emp_no"]
+    for i, cp in enumerate(cps, 1):
+        d = done.get(cp["id"])
+        if d:
+            who = names.get(d.get("emp_id")) or (cp["assigned_to"] or "—")
+            res = (d.get("result") or "OK")
+            if (d.get("note") or "").strip():
+                res = f"{res} — {d['note'].strip()}"
+            dt = d.get("done_at")
+            when_s = dt.astimezone(IST).strftime("%d %b %H:%M") if isinstance(dt, datetime) else ""
+            rec = (f"{when_s} · {who}").strip(" ·")
+            if who and who != "—" and who not in contributors:
+                contributors.append(who)
+        else:
+            pending += 1
+            res = "Pending"
+            rec = cp["assigned_to"] or "—"
+        rows.append((str(i), cp["text"], res, rec))
+    return rows, contributors, pending
+
+
 async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
                           results, checklist_id, location="", when=None):
     """Generate a preventive-maintenance work-order PDF and save it to
     OneDrive/<base>/Maintenance/Preventive/<machine>/<dd-mm-yy>_<code>_pm.pdf. The
     filename is fixed per machine+day, so a re-submit the same day overwrites it —
-    one PM report per machine per day. Never raises."""
+    one PM report per machine per day. When the checklist's checkpoints are split
+    across several people, the report is built from the full checklist state for the
+    day (every checkpoint + who did it, pending ones flagged), so it fills up as each
+    person submits instead of showing only the last submitter. Never raises."""
     try:
         from .. import maint_pdf
-        texts = {}
-        if checklist_id:
-            for r in await db.fetch(
-                    "SELECT id, text FROM maint_checkpoints WHERE checklist_id=$1", checklist_id):
-                texts[r["id"]] = r["text"]
         now = datetime.now(IST)
         when = when or now          # the completion moment (backfill passes the log's date)
-        rows = _pm_rows(results, texts, done_by or "—", when.strftime("%d %b %H:%M"))
+        wdate = when.astimezone(IST).date() if isinstance(when, datetime) else None
+        rows, contributors, pending = [], [], 0
+        if checklist_id:
+            pk = _period_key(checklist, wdate)
+            rows, contributors, pending = await _pm_rows_full(checklist_id, pk)
+        if not rows:
+            # fallback: no per-checkpoint data for this period (e.g. older history) —
+            # build from the submitter's / log's own results, as before.
+            texts = {}
+            if checklist_id:
+                for r in await db.fetch(
+                        "SELECT id, text FROM maint_checkpoints WHERE checklist_id=$1", checklist_id):
+                    texts[r["id"]] = r["text"]
+            rows = _pm_rows(results, texts, done_by or "—", when.strftime("%d %b %H:%M"))
+        completed_by = ", ".join(contributors) if contributors else (done_by or "—")
+        status = "Completed" if pending == 0 else f"In progress — {pending} pending"
         meta = {"doc_no": doc_no or when.strftime("%y%m%d%H%M"),
                 "asset_code": asset_code or "", "asset_name": asset_name or "",
                 "checklist": checklist or "Checklist", "started": None, "completed": when,
-                "due": None, "raised_by": done_by or "—", "completed_by": done_by or "—",
+                "due": None, "raised_by": done_by or "—", "completed_by": completed_by,
+                "status": status,
                 "category": "Scheduled Preventive Maintenance",
                 "location": location or "--",
                 "qr_url": "https://qms.bharatsteels.in/maint"}
@@ -3375,13 +3433,13 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
 
 @router.get("/admin/clear-overdue")
 async def clear_overdue(token: str = Query(default=""), before: str = Query(default=""),
-                        dry: int = Query(default=0), emp: dict = Depends(require_employee)):
+                        dry: int = Query(default=0), emp: dict = Depends(current_employee)):
     """Clear the overdue backlog: every schedule whose next due date is on or before
     `before` (YYYY-MM-DD, default yesterday) is marked done on that date, so it stops
     showing overdue while the schedule keeps running from its next cycle. The schedules
     themselves are NOT deleted. Admin only (or ?token=AGENT_TOKEN). Add &dry=1 to preview."""
     await ensure_tables()
-    if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
     try:
         cutoff = date.fromisoformat(before) if before else (_today() - timedelta(days=1))
@@ -3432,12 +3490,12 @@ async def test_overdue(token: str = Query(default=""), to: str = Query(default="
 
 
 @router.get("/admin/export-onedrive")
-async def export_onedrive(token: str = Query(default=""), emp: dict = Depends(require_employee)):
+async def export_onedrive(token: str = Query(default=""), emp: dict = Depends(current_employee)):
     """Generate the Maintenance Log / Machine History Card workbook from the app's
     recorded data (maint_logs + maint_breakdowns) and save it to OneDrive. Admin or
     ?token=AGENT_TOKEN. Run once a day by the GitHub Actions export job."""
     await ensure_tables()
-    if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
     from .. import maint_export
     logs = await db.fetch("SELECT * FROM maint_logs ORDER BY done_at")
@@ -3461,7 +3519,7 @@ async def export_onedrive(token: str = Query(default=""), emp: dict = Depends(re
 async def backfill_reports(token: str = Query(default=""), limit: int = Query(default=6),
                            skip: int = Query(default=0), kind: str = Query(default="pm"),
                            days: int = Query(default=0),
-                           emp: dict = Depends(require_employee)):
+                           emp: dict = Depends(current_employee)):
     """Seed OneDrive with a work-order PDF for the recorded history — one PM report per
     machine per DAY (matching the Excel log), filed in that machine's own folder as
     <dd-mm-yy>_<code>_pm.pdf, and one report per breakdown as <dd-mm-yy>_<code>_bm_<id>.pdf.
@@ -3473,7 +3531,7 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
     Admin or ?token=AGENT_TOKEN. New completions/breakdowns file their own report
     automatically from now on; this is only for back-filling existing history."""
     await ensure_tables()
-    if not (emp.get("is_admin") or (AGENT_TOKEN and token == AGENT_TOKEN)):
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
     limit = max(1, min(int(limit or 6), 12))
     skip = max(0, int(skip or 0))

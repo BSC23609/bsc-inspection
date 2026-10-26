@@ -174,7 +174,7 @@ def build_pm_report(meta: dict, checkpoints: list) -> bytes:
         ("Category:", meta.get("category", "Preventive Maintenance")),
         ("Location:", meta.get("location", "--") or "--"),
         ("Asset:", f"{meta.get('asset_code','')} - {meta.get('asset_name','')}"),
-        ("Status:", "Completed"),
+        ("Status:", meta.get("status", "Completed")),
     ]
     footer = [("Completed by:", meta.get("completed_by", "--")),
               ("Completed at:", _fmt_dt(meta.get("completed")))]
