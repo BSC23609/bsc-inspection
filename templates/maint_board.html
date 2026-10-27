@@ -49,6 +49,7 @@
 {% block scripts %}
 <script>
 var CUR=null;
+var IS_ADMIN={{ 'true' if emp.is_admin else 'false' }};
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function cad(x){var p=[];if(x.freq_days)p.push('every '+x.freq_days+'d');if(x.hours_interval)p.push('every '+x.hours_interval+'h');return p.join(' · ');}
 async function load(){
@@ -84,7 +85,9 @@ function section(label,cls,items){if(!items.length)return '';
     return '<div class="mcard '+cls+'"><div><div class="ti">'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+' — '+esc(x.title||'')+'</div>'
       +'<div class="meta">'+esc(cad(x))+' '+(due?('· '+due):'')+' '+who+'</div></div><div class="sp" style="flex:1"></div>'
       +'<button class="btn btn-primary" onclick="openComplete('+x.id+')">Complete</button>'
-      +'<button class="btn btn-ghost" style="margin-left:6px" onclick="remindOne('+x.id+',this)">Send reminder</button></div>';
+      +'<button class="btn btn-ghost" style="margin-left:6px" onclick="remindOne('+x.id+',this)">Send reminder</button>'
+      +(IS_ADMIN?'<button class="btn btn-ghost" style="margin-left:6px;color:#c23438;border-color:#e3b7b9" onclick="deleteLog('+x.id+',this)">Delete log</button>':'')
+      +'</div>';
   }).join('');
   return h;
 }
@@ -105,6 +108,19 @@ async function remindOne(sid,btn){
     toast(d.msg||(d.ok?'Reminder sent.':'Could not send reminder.'), !d.ok);
   }catch(e){toast('Could not send reminder: '+e, true);}
   if(btn){btn.disabled=false;btn.textContent=old||'Send reminder';}
+}
+async function deleteLog(sid,btn){
+  if(!IS_ADMIN)return;
+  if(!confirm('Delete the latest completion log for this task?\n\nThis removes the most recent recorded entry and the task will show as due again. The OneDrive PDF already saved is not affected.'))return;
+  var old=btn?btn.textContent:'';
+  if(btn){btn.disabled=true;btn.textContent='Deleting…';}
+  try{
+    var r=await fetch('/maint/log/delete-latest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schedule_id:sid})});
+    var d=await r.json();
+    toast(d.msg||(d.ok?'Log deleted.':'Could not delete log.'), !d.ok);
+    if(d.ok)load();
+  }catch(e){toast('Could not delete log: '+e, true);}
+  if(btn){btn.disabled=false;btn.textContent=old||'Delete log';}
 }
 function recentHTML(rows){
   if(!rows.length)return '<div class="empty">No maintenance recorded yet.</div>';

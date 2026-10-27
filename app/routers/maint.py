@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-26-v13-ensure-folders2"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-27-v14-delete-log"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3155,6 +3155,44 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
     except Exception as e:
         print("[maint] complete report skipped:", e)
     return {"ok": True, "status": status, "next_due": next_due.isoformat() if next_due else None}
+
+
+@router.post("/log/delete-latest")
+async def log_delete_latest(body: dict, emp: dict = Depends(require_employee)):
+    """Admin-only: delete the most recent completion log for a schedule and revert the
+    schedule's last_done to the previous completion, so the task shows as due again.
+    Backs the board's 'Delete log' button (undo a wrong/duplicate Complete). The
+    OneDrive PDF already filed for that completion is not removed."""
+    await ensure_tables()
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admins only")
+    try:
+        sid = int(body.get("schedule_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Bad schedule id")
+    last = await db.fetchrow(
+        "SELECT id, done_at, done_by FROM maint_logs WHERE schedule_id=$1 "
+        "ORDER BY done_at DESC NULLS LAST, id DESC LIMIT 1", sid)
+    if not last:
+        return _json({"ok": False, "msg": "No completion log to delete for this task."})
+    await db.execute("DELETE FROM maint_logs WHERE id=$1", last["id"])
+    # revert the schedule to the previous completion (or none)
+    prev = await db.fetchrow(
+        "SELECT done_at, running_hours FROM maint_logs WHERE schedule_id=$1 "
+        "ORDER BY done_at DESC NULLS LAST, id DESC LIMIT 1", sid)
+    if prev:
+        pd = prev["done_at"].date() if isinstance(prev["done_at"], datetime) else None
+        await db.execute("UPDATE maint_schedules SET last_done=$1, last_done_hours=$2 WHERE id=$3",
+                         pd, prev["running_hours"], sid)
+    else:
+        await db.execute(
+            "UPDATE maint_schedules SET last_done=NULL, last_done_hours=NULL WHERE id=$1", sid)
+    dt = last["done_at"]
+    dstr = (dt.astimezone(IST).strftime("%d-%m-%Y %H:%M")
+            if isinstance(dt, datetime) else str(dt or ""))
+    return _json({"ok": True,
+                  "msg": f"Deleted the completion of {dstr} by {last['done_by'] or '—'}; "
+                         "the task now shows as due again."})
 
 
 def _url_token(s: str) -> str:
