@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Monitor · {{ app_name }}{% endblock %}
+{% block tb_title %}Monitor{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.mon-filters{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:4px}
+@media(max-width:900px){.mon-filters{grid-template-columns:1fr 1fr}}
+.mon-filters label{display:block;font-size:10.5px;font-weight:700;color:var(--ink-2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
+.mon-filters input,.mon-filters select{width:100%;padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;font-family:inherit;font-size:12.5px;background:#fff;outline:none}
+.mon-filters input:focus,.mon-filters select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.mon-wrap{overflow-x:auto}
+table.mon{width:100%;border-collapse:collapse;font-size:12.5px;min-width:820px}
+table.mon th{text-align:left;padding:9px 10px;background:#1f3b5b;color:#fff;font-weight:600;font-size:11.5px;white-space:nowrap;position:sticky;top:0}
+table.mon td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+table.mon tr:nth-child(even) td{background:#f7f9fc}
+.cat{display:inline-block;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px}
+.cat.d{background:#e7f0fb;color:#1f3b5b}.cat.q{background:#efe7fb;color:#5b3b7d}.cat.b{background:#fdeaea;color:#c23438}
+.asg-line{display:flex;align-items:center;gap:8px;padding:2px 0;white-space:nowrap}
+.asg-line .nm{min-width:120px}
+.st{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px}
+.st.done{background:#e3f6ee;color:#0a7d55}.st.pend{background:#fff3d6;color:#9a6a00}.st.absent{background:#eef1f4;color:#6b7280}
+.btn-abs{font-size:10.5px;font-weight:700;border:1px solid #e3b7b9;color:#c23438;background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer}
+.btn-abs:hover{background:#fdeaea}
+.mon-meta{font-size:12px;color:var(--muted);margin:2px 0 10px}
+</style>
+
+<div class="page-head"><h1>Monitor</h1><p>Every work order — preventive (Daily / Quarterly) and breakdown — with each assignee’s status. For a Daily&nbsp;PM, if someone is on leave you can mark them <b>absent</b>: if they were the only one left the day is skipped, otherwise the report saves without their checkpoints.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('clipboard',17) }}</span>Filters</div>
+<div class="panel-body">
+  <div class="mon-filters">
+    <div><label>Window</label><select id="f_days" onchange="reload()"><option value="30">Last 30 days</option><option value="60">Last 60 days</option><option value="90">Last 90 days</option><option value="180">Last 180 days</option><option value="365">Last 365 days</option></select></div>
+    <div><label>From date</label><input id="f_from" type="date" oninput="apply()"></div>
+    <div><label>To date</label><input id="f_to" type="date" oninput="apply()"></div>
+    <div><label>Category</label><select id="f_cat" onchange="apply()"><option value="">All</option><option>Daily PM</option><option>Quarterly PM</option><option>BM</option></select></div>
+    <div><label>Machine code</label><input id="f_code" oninput="apply()" placeholder="e.g. M-C-007"></div>
+    <div><label>Machine name</label><input id="f_name" oninput="apply()" placeholder="name contains…"></div>
+    <div><label>Assigner</label><input id="f_asgr" oninput="apply()" placeholder="assigner contains…"></div>
+    <div><label>Assignee</label><input id="f_asg" oninput="apply()" placeholder="assignee contains…"></div>
+    <div><label>Status</label><select id="f_st" onchange="apply()"><option value="">All</option><option>Done</option><option>Pending</option><option>Absent</option></select></div>
+  </div>
+</div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('gauge',17) }}</span>Work orders</div>
+<div class="panel-body">
+  <div class="mon-meta" id="mon_meta"></div>
+  <div class="mon-wrap"><table class="mon">
+    <thead><tr><th>Date</th><th>Category</th><th>M/C Code</th><th>Machine Name</th><th>Assigner</th><th>Assignee(s)</th><th>Status</th></tr></thead>
+    <tbody id="mon_rows"><tr><td colspan="7" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
+  </table></div>
+</div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var ROWS=[];
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function toast(msg,bad){var t=document.createElement('div');t.textContent=msg;
+  t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:999;background:'+(bad?'#c23438':'#0a7d55')+';color:#fff;padding:11px 16px;border-radius:9px;font-size:13px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:90%;text-align:center';
+  document.body.appendChild(t);setTimeout(function(){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove();},400);},3400);}
+function catClass(c){return c==='Daily PM'?'d':(c==='Quarterly PM'?'q':'b');}
+function stClass(s){return s==='Done'?'done':(s==='Absent'?'absent':'pend');}
+async function reload(){
+  var days=document.getElementById('f_days').value;
+  document.getElementById('mon_rows').innerHTML='<tr><td colspan="7" style="padding:18px;color:var(--muted)">Loading…</td></tr>';
+  try{var r=await fetch('/maint/monitor/data?days='+days,{cache:'no-store'});
+    if(r.status===401){location.href='/login';return;}
+    if(r.status===403){document.getElementById('mon_rows').innerHTML='<tr><td colspan="7" style="padding:18px;color:#c23438">Admins only.</td></tr>';return;}
+    var d=await r.json();ROWS=d.rows||[];}
+  catch(e){document.getElementById('mon_rows').innerHTML='<tr><td colspan="7" style="padding:18px;color:#c23438">Could not load.</td></tr>';return;}
+  apply();
+}
+function apply(){
+  var cat=document.getElementById('f_cat').value,code=document.getElementById('f_code').value.trim().toLowerCase(),
+      name=document.getElementById('f_name').value.trim().toLowerCase(),asgr=document.getElementById('f_asgr').value.trim().toLowerCase(),
+      asg=document.getElementById('f_asg').value.trim().toLowerCase(),st=document.getElementById('f_st').value,
+      from=document.getElementById('f_from').value,to=document.getElementById('f_to').value;
+  var out=ROWS.filter(function(x){
+    if(cat&&x.category!==cat)return false;
+    if(from&&x.date&&x.date<from)return false;
+    if(to&&x.date&&x.date>to)return false;
+    if(code&&(x.machine_code||'').toLowerCase().indexOf(code)<0)return false;
+    if(name&&(x.machine_name||'').toLowerCase().indexOf(name)<0)return false;
+    if(asgr&&(x.assigner||'').toLowerCase().indexOf(asgr)<0)return false;
+    if(asg&&!(x.statuses||[]).some(function(s){return (s.emp||'').toLowerCase().indexOf(asg)>=0;}))return false;
+    if(st&&!(x.statuses||[]).some(function(s){return s.status===st;}))return false;
+    return true;
+  });
+  render(out);
+}
+function render(list){
+  document.getElementById('mon_meta').textContent=list.length+' work order'+(list.length===1?'':'s')+' shown';
+  if(!list.length){document.getElementById('mon_rows').innerHTML='<tr><td colspan="7" style="padding:18px;color:var(--muted)">No work orders match.</td></tr>';return;}
+  document.getElementById('mon_rows').innerHTML=list.map(function(x){
+    var sts=x.statuses||[];
+    var names=sts.length?sts.map(function(s){return esc(s.emp);}).join('<br>'):'<span style="color:var(--muted)">—</span>';
+    var stcells=sts.length?sts.map(function(s){
+      var b='<span class="st '+stClass(s.status)+'">'+esc(s.status)+'</span>';
+      if(x.can_absent&&s.status==='Pending'){
+        b+=' <button class="btn-abs" onclick="markAbsent('+x.checklist_id+',\''+esc(x.period_key)+'\','+s.emp_id+',this)">Mark absent</button>';
+      }
+      return '<div class="asg-line"><span class="nm">'+b+'</span></div>';
+    }).join(''):'<span style="color:var(--muted)">—</span>';
+    return '<tr><td>'+esc(x.date)+'</td>'
+      +'<td><span class="cat '+catClass(x.category)+'">'+esc(x.category)+'</span></td>'
+      +'<td>'+esc(x.machine_code)+'</td><td>'+esc(x.machine_name)+'</td>'
+      +'<td>'+esc(x.assigner)+'</td><td>'+names+'</td><td>'+stcells+'</td></tr>';
+  }).join('');
+}
+async function markAbsent(cid,pk,eid,btn){
+  if(!confirm('Mark this assignee absent for this Daily PM?\n\nIf they were the only assignee left, the day is skipped (no report). Otherwise the report is saved now without their checkpoints.'))return;
+  if(btn){btn.disabled=true;btn.textContent='…';}
+  try{
+    var r=await fetch('/maint/monitor/mark-absent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({checklist_id:cid,period_key:pk,emp_id:eid})});
+    var d=await r.json();
+    toast(d.msg||(d.ok?'Marked absent.':'Could not mark absent.'), !d.ok);
+    if(d.ok)reload();
+  }catch(e){toast('Could not mark absent: '+e, true);if(btn){btn.disabled=false;btn.textContent='Mark absent';}}
+}
+reload();
+</script>
+{% endblock %}

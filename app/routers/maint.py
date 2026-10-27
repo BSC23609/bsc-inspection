@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-27-v14-delete-log"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-27-v15-monitor"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -2205,16 +2205,55 @@ def _machine_folder(code: str, name: str) -> str:
     return seg[:120] or _safe_code(code)
 
 
+_WO_ABSENT_READY = False
+
+
+async def _ensure_absent_table():
+    """Per-work-order 'assignee absent' marks (admin, Daily PM). Lazily created so we
+    don't need a SCHEMA_VER bump. Keyed by (checklist_id, period_key, emp_id)."""
+    global _WO_ABSENT_READY
+    if _WO_ABSENT_READY:
+        return
+    try:
+        await db.execute("""CREATE TABLE IF NOT EXISTS maint_wo_absent (
+            id SERIAL PRIMARY KEY, checklist_id INT, period_key TEXT, emp_id INT,
+            marked_by TEXT, marked_at TIMESTAMPTZ DEFAULT now())""")
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_woabs "
+                         "ON maint_wo_absent (checklist_id, period_key, emp_id)")
+        _WO_ABSENT_READY = True
+    except Exception as e:
+        print("[maint] absent table ensure skip:", e)
+
+
+async def _absent_emp_ids(checklist_id, period_key) -> set:
+    """Employee ids marked absent for this checklist+period."""
+    await _ensure_absent_table()
+    try:
+        rows = await db.fetch(
+            "SELECT emp_id FROM maint_wo_absent WHERE checklist_id=$1 AND period_key=$2",
+            checklist_id, period_key)
+        return {r["emp_id"] for r in rows if r["emp_id"] is not None}
+    except Exception:
+        return set()
+
+
 async def _pm_rows_full(checklist_id, period_key):
     """Build the inspection rows from the FULL checklist state for one period:
     EVERY checkpoint of the checklist, each with its result and who marked it; a
     checkpoint not yet done shows 'Pending' with the person it is assigned to. This
     is what makes one combined report fill up as each assigned person submits their
-    own checkpoints. Returns (rows, contributors, pending_count)."""
+    own checkpoints. Checkpoints assigned to anyone marked ABSENT for this period are
+    left out entirely, so an absent person's points don't hold up or clutter the
+    report. Returns (rows, contributors, pending_count)."""
     cps = await db.fetch(
-        "SELECT id, seq, text, assigned_to FROM maint_checkpoints "
+        "SELECT id, seq, text, assigned_to, assigned_emp_id FROM maint_checkpoints "
         "WHERE checklist_id=$1 ORDER BY seq, id", checklist_id)
     rows, contributors, pending = [], [], 0
+    if not cps:
+        return rows, contributors, pending
+    absent = await _absent_emp_ids(checklist_id, period_key)
+    if absent:
+        cps = [c for c in cps if c["assigned_emp_id"] not in absent]
     if not cps:
         return rows, contributors, pending
     ids = [r["id"] for r in cps]
@@ -3740,6 +3779,190 @@ async def ensure_report_folders(token: str = Query(default=""), skip: int = Quer
         out["note"] = ("Every machine in Reports now has Daily / Quarterly / Breakdown "
                        "subfolders; any loose PDFs were moved into Daily Preventive Maintenance.")
     return _json(out)
+
+
+def _wo_category(cname: str) -> str:
+    return "Quarterly PM" if "quarter" in (cname or "").lower() else "Daily PM"
+
+
+@router.get("/monitor/data")
+async def monitor_data(days: int = Query(default=30), emp: dict = Depends(require_employee)):
+    """Admin-only work-order monitor: every PM completion (grouped per machine +
+    checklist + period) and every breakdown, with per-assignee status. Also lists
+    today's not-yet-started Daily PM work orders so the admin can mark an absentee."""
+    await ensure_tables()
+    await _ensure_absent_table()
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admins only")
+    days = max(1, min(int(days or 30), 400))
+    today = _today()
+    cutoff = today - timedelta(days=days - 1)
+    emps = {e["id"]: (e["name"] or e["emp_no"])
+            for e in await db.fetch("SELECT id, name, emp_no FROM employees")}
+
+    # ---- PM work orders from the logs, grouped by (asset, checklist, period) ----
+    wo = {}
+    for l in await db.fetch(
+            "SELECT l.asset_id, l.checklist_id, l.done_at, a.code AS acode, a.name AS aname, "
+            "c.name AS cname FROM maint_logs l "
+            "LEFT JOIN maint_assets a ON a.id=l.asset_id "
+            "LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
+            "WHERE l.done_at::date >= $1 AND l.asset_id IS NOT NULL ORDER BY l.done_at", cutoff):
+        cname = l["cname"] or ""
+        dd = l["done_at"].astimezone(IST).date() if isinstance(l["done_at"], datetime) else None
+        pk = _period_key(cname, dd)
+        key = (l["asset_id"], l["checklist_id"], pk)
+        g = wo.get(key)
+        if g is None:
+            wo[key] = {"date": dd, "pk": pk, "acode": l["acode"], "aname": l["aname"],
+                       "cname": cname, "checklist_id": l["checklist_id"]}
+        elif dd and (g["date"] is None or dd > g["date"]):
+            g["date"] = dd
+
+    # add today's not-yet-started DAILY work orders so absentees can be marked
+    for s in await db.fetch(
+            "SELECT s.checklist_id, s.asset_id, s.freq_type, s.freq_days, "
+            "a.code AS acode, a.name AS aname, c.name AS cname "
+            "FROM maint_schedules s LEFT JOIN maint_assets a ON a.id=s.asset_id "
+            "LEFT JOIN maint_checklists c ON c.id=s.checklist_id "
+            "WHERE COALESCE(s.active,true)=true AND s.checklist_id IS NOT NULL"):
+        ft = (s["freq_type"] or "").lower()
+        is_daily = ft == "daily" or (not ft and s["freq_days"] and int(s["freq_days"]) == 1)
+        if not is_daily:
+            continue
+        cname = s["cname"] or ""
+        pk = _period_key(cname, today)
+        key = (s["asset_id"], s["checklist_id"], pk)
+        if key not in wo:
+            wo[key] = {"date": today, "pk": pk, "acode": s["acode"], "aname": s["aname"],
+                       "cname": cname, "checklist_id": s["checklist_id"]}
+
+    # checkpoints (with assignee) for the involved checklists
+    cl_ids = list({k[1] for k in wo.keys() if k[1]})
+    cps_by_cl = {}
+    if cl_ids:
+        for cp in await db.fetch(
+                "SELECT id, checklist_id, assigned_emp_id FROM maint_checkpoints "
+                "WHERE checklist_id = ANY($1::int[])", cl_ids):
+            cps_by_cl.setdefault(cp["checklist_id"], []).append(cp)
+    # which checkpoints are done, for the involved periods
+    pks = list({k[2] for k in wo.keys()})
+    all_cp_ids = [cp["id"] for lst in cps_by_cl.values() for cp in lst]
+    done_set = set()
+    if all_cp_ids and pks:
+        for d in await db.fetch(
+                "SELECT checkpoint_id, period_key FROM maint_checkpoint_done "
+                "WHERE period_key = ANY($1::text[]) AND checkpoint_id = ANY($2::int[])", pks, all_cp_ids):
+            done_set.add((d["checkpoint_id"], d["period_key"]))
+    absent_set = {(a["checklist_id"], a["period_key"], a["emp_id"])
+                  for a in await db.fetch("SELECT checklist_id, period_key, emp_id FROM maint_wo_absent")}
+
+    rows = []
+    for (asset_id, checklist_id, pk), g in wo.items():
+        cps = cps_by_cl.get(checklist_id, [])
+        assignee_ids, seen = [], set()
+        for cp in cps:
+            aid = cp["assigned_emp_id"]
+            if aid and aid not in seen:
+                seen.add(aid); assignee_ids.append(aid)
+        is_daily = "quarter" not in (g["cname"] or "").lower()
+        statuses = []
+        for aid in assignee_ids:
+            if (checklist_id, pk, aid) in absent_set:
+                st = "Absent"
+            else:
+                their = [cp["id"] for cp in cps if cp["assigned_emp_id"] == aid]
+                st = "Done" if their and all((cid, pk) in done_set for cid in their) else "Pending"
+            statuses.append({"emp": emps.get(aid, "#%s" % aid), "emp_id": aid, "status": st})
+        rows.append({
+            "date": g["date"].isoformat() if g["date"] else "",
+            "category": _wo_category(g["cname"]), "machine_code": g["acode"] or "",
+            "machine_name": g["aname"] or "", "assigner": "Admin",
+            "statuses": statuses, "checklist_id": checklist_id, "period_key": pk,
+            "can_absent": is_daily, "kind": "pm"})
+
+    # ---- breakdown work orders ----
+    for b in await db.fetch(
+            "SELECT b.id, b.reported_by, b.assignee_emp_id, b.assignees, b.status, b.raised_at, "
+            "a.code AS acode, a.name AS aname FROM maint_breakdowns b "
+            "LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.raised_at::date >= $1 "
+            "ORDER BY b.raised_at DESC", cutoff):
+        aids = []
+        raw = b["assignees"]
+        if raw:
+            try:
+                raw = raw if isinstance(raw, list) else json.loads(raw)
+                aids = [int(x) for x in raw]
+            except Exception:
+                aids = []
+        if not aids and b["assignee_emp_id"]:
+            aids = [b["assignee_emp_id"]]
+        bstatus = (b["status"] or "open").title()
+        rows.append({
+            "date": b["raised_at"].astimezone(IST).date().isoformat()
+                    if isinstance(b["raised_at"], datetime) else "",
+            "category": "BM", "machine_code": b["acode"] or "", "machine_name": b["aname"] or "",
+            "assigner": b["reported_by"] or "—",
+            "statuses": [{"emp": emps.get(aid, "#%s" % aid), "emp_id": aid, "status": bstatus}
+                         for aid in aids],
+            "checklist_id": None, "period_key": None, "can_absent": False, "kind": "bm"})
+
+    rows.sort(key=lambda r: (r["date"], r["machine_code"]), reverse=True)
+    return _json({"ok": True, "rows": rows, "days": days})
+
+
+@router.post("/monitor/mark-absent")
+async def monitor_mark_absent(body: dict, emp: dict = Depends(require_employee)):
+    """Admin-only (Daily PM only): mark an assignee absent for a work order. If they
+    were the only assignee left, the day's report is skipped and the schedule advanced
+    so it won't show overdue; otherwise the report is saved now, excluding the absent
+    person's checkpoints."""
+    await ensure_tables()
+    await _ensure_absent_table()
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admins only")
+    try:
+        cid = int(body.get("checklist_id"))
+        aid = int(body.get("emp_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Bad checklist/emp id")
+    pk = (body.get("period_key") or "").strip()
+    if not pk:
+        raise HTTPException(400, "Missing period")
+    cname = await db.fetchval("SELECT name FROM maint_checklists WHERE id=$1", cid) or ""
+    if "quarter" in cname.lower():
+        raise HTTPException(400, "Mark absent is only for Daily PM.")
+    await db.execute(
+        "INSERT INTO maint_wo_absent (checklist_id, period_key, emp_id, marked_by) "
+        "VALUES ($1,$2,$3,$4) ON CONFLICT (checklist_id, period_key, emp_id) DO NOTHING",
+        cid, pk, aid, emp.get("name") or emp.get("emp_no"))
+    assignee_ids = [r["assigned_emp_id"] for r in await db.fetch(
+        "SELECT DISTINCT assigned_emp_id FROM maint_checkpoints "
+        "WHERE checklist_id=$1 AND assigned_emp_id IS NOT NULL", cid)]
+    absent = await _absent_emp_ids(cid, pk)
+    remaining = [x for x in assignee_ids if x not in absent]
+    sch = await db.fetchrow(
+        "SELECT s.id, s.asset_id, a.code AS acode, a.name AS aname, a.location AS loc "
+        "FROM maint_schedules s LEFT JOIN maint_assets a ON a.id=s.asset_id "
+        "WHERE s.checklist_id=$1 ORDER BY s.id LIMIT 1", cid)
+    try:
+        pdate = date.fromisoformat(pk[:10])
+    except ValueError:
+        pdate = _today()
+    if not remaining:
+        if sch:
+            await db.execute("UPDATE maint_schedules SET last_done=$1 WHERE id=$2", pdate, sch["id"])
+        return _json({"ok": True, "action": "skipped",
+                      "msg": "Only assignee was absent — no report saved; the day is marked done "
+                             "so it won't show overdue."})
+    when = datetime(pdate.year, pdate.month, pdate.day, 12, 0, tzinfo=IST)
+    p = await _file_pm_report(
+        asset_code=(sch["acode"] if sch else ""), asset_name=(sch["aname"] if sch else ""),
+        checklist=cname, doc_no="", done_by="(admin — absentee excluded)",
+        results=[], checklist_id=cid, location=(sch["loc"] if sch else ""), when=when)
+    return _json({"ok": True, "action": "saved",
+                  "msg": ("Marked absent. Report saved excluding the absent person's checkpoints."
+                          if p else "Marked absent; the report will file when OneDrive is reachable.")})
 
 
 @router.get("/version")
