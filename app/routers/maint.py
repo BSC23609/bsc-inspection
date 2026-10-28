@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-28-v17-cpdone-fast"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-28-v18-monitor-status"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3836,7 +3836,7 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
         g = wo.get(key)
         if g is None:
             wo[key] = {"date": dd, "pk": pk, "acode": l["acode"], "aname": l["aname"],
-                       "cname": cname, "checklist_id": l["checklist_id"]}
+                       "cname": cname, "checklist_id": l["checklist_id"], "has_log": True}
         elif dd and (g["date"] is None or dd > g["date"]):
             g["date"] = dd
 
@@ -3856,7 +3856,7 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
         key = (s["asset_id"], s["checklist_id"], pk)
         if key not in wo:
             wo[key] = {"date": today, "pk": pk, "acode": s["acode"], "aname": s["aname"],
-                       "cname": cname, "checklist_id": s["checklist_id"]}
+                       "cname": cname, "checklist_id": s["checklist_id"], "has_log": False}
 
     # checkpoints (with assignee) for the involved checklists
     cl_ids = list({k[1] for k in wo.keys() if k[1]})
@@ -3887,13 +3887,23 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
             if aid and aid not in seen:
                 seen.add(aid); assignee_ids.append(aid)
         is_daily = "quarter" not in (g["cname"] or "").lower()
+        # is there any precise per-checkpoint 'done' data for this work order's period?
+        has_cpdone = any((cp["id"], pk) in done_set for cp in cps)
         statuses = []
         for aid in assignee_ids:
             if (checklist_id, pk, aid) in absent_set:
                 st = "Absent"
             else:
                 their = [cp["id"] for cp in cps if cp["assigned_emp_id"] == aid]
-                st = "Done" if their and all((cid, pk) in done_set for cid in their) else "Pending"
+                if their and all((cid, pk) in done_set for cid in their):
+                    st = "Done"
+                elif g.get("has_log") and not has_cpdone:
+                    # the checklist was completed (a log + report exist) but no
+                    # per-checkpoint detail maps to the current checkpoints (older log,
+                    # or checkpoints re-created since) — treat as Done, not falsely Pending
+                    st = "Done"
+                else:
+                    st = "Pending"
             statuses.append({"emp": emps.get(aid, "#%s" % aid), "emp_id": aid, "status": st})
         rows.append({
             "date": g["date"].isoformat() if g["date"] else "",
