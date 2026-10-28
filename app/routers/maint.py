@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-28-v19-monitor-report"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-28-v20-reminder-fix"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -1921,6 +1921,33 @@ async def my_checklist_submit(body: dict, emp: dict = Depends(require_employee))
             status, json.dumps(results), (body.get("remarks") or "").strip())
     except Exception as e:
         print("[maint] my submit log skipped:", e)
+    # If the WHOLE checklist is now complete for this period (every checkpoint that is
+    # assigned and not marked absent has a result), advance the PM schedule's last_done
+    # so the task stops showing as due/overdue and no reminder is sent for it again.
+    # (For a checklist split across people this only advances once the last person submits.)
+    try:
+        all_cps = await db.fetch(
+            "SELECT id, assigned_emp_id FROM maint_checkpoints WHERE checklist_id=$1", cid)
+        absent = await _absent_emp_ids(cid, pk)
+        required = [r["id"] for r in all_cps
+                    if r["assigned_emp_id"] and r["assigned_emp_id"] not in absent]
+        if required:
+            done_ids = {d["checkpoint_id"] for d in await db.fetch(
+                "SELECT checkpoint_id FROM maint_checkpoint_done "
+                "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])",
+                pk, [r["id"] for r in all_cps])}
+            if all(cp_id in done_ids for cp_id in required):
+                today_d = _today()
+                for sr in await db.fetch(
+                        "SELECT id, asset_id FROM maint_schedules "
+                        "WHERE checklist_id=$1 AND COALESCE(active,true)=true", cid):
+                    ah = await db.fetchval(
+                        "SELECT running_hours FROM maint_assets WHERE id=$1", sr["asset_id"])
+                    await db.execute(
+                        "UPDATE maint_schedules SET last_done=$1, last_done_hours=$2 WHERE id=$3",
+                        today_d, ah, sr["id"])
+    except Exception as e:
+        print("[maint] my submit schedule-advance skipped:", e)
     # work-order PDF -> OneDrive/Maintenance/Preventive (in the background so the
     # save returns immediately; the nightly reconcile backstops any that don't finish)
     try:
@@ -3423,6 +3450,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
     today = _today()
     on_leave = await _on_leave_ids(today)
     tdisp = today.strftime("%d-%m-%Y")
+    # Overdue reminders must not go out late in the evening: after 19:00 IST no overdue
+    # item is added to anyone's digest and no overdue escalation is raised to supervisors.
+    allow_overdue = datetime.now(IST).hour < 19
+    overdue_suppressed = 0
 
     # each person's morning digest keeps preventive and breakdown lists separate
     due_by_assignee = {}   # emp_id -> {"name","mobile","pm":[],"bd":[]}
@@ -3448,6 +3479,9 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
         if info["overdue"]:
             if aid and aid in on_leave:
                 continue  # assignee on leave — don't flag their overdue work
+            if not allow_overdue:
+                overdue_suppressed += 1
+                continue  # past 19:00 IST — no overdue reminder/escalation
             sup_pm.append(f"{label} - {task} - {assignee}")   # 3pm escalation
             if aid and mobile:
                 _bucket(aid, assignee, mobile, "pm", f"{label} - {task} (overdue)")  # 9am
@@ -3525,7 +3559,11 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
             skipped.append({"kind": "overdue-digest",
                             "preventive": len(sup_pm), "breakdown": len(sup_bd),
                             "result": "skipped: no overdue recipient chosen (pick users on the Schedules page)"})
+    if overdue_suppressed:
+        skipped.append({"kind": "overdue", "result": "skipped: after 19:00 IST cutoff",
+                        "overdue_items": overdue_suppressed})
     return {"today": today.isoformat(), "sent": sent, "skipped": skipped,
+            "allow_overdue": allow_overdue,
             "counts": {"sent": len(sent), "skipped": len(skipped)}}
 
 
