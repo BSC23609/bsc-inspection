@@ -23,6 +23,9 @@ table.mon tr:nth-child(even) td{background:#f7f9fc}
 .st.done{background:#e3f6ee;color:#0a7d55}.st.pend{background:#fff3d6;color:#9a6a00}.st.absent{background:#eef1f4;color:#6b7280}
 .btn-abs{font-size:10.5px;font-weight:700;border:1px solid #e3b7b9;color:#c23438;background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer}
 .btn-abs:hover{background:#fdeaea}
+a.rp{display:inline-block;font-size:10.5px;font-weight:700;color:#1f3b5b;text-decoration:none;border:1px solid var(--line-2);border-radius:7px;padding:2px 8px;white-space:nowrap}
+a.rp:hover{background:#eef3fb;border-color:var(--acc)}
+.rp-cell{display:flex;gap:6px;flex-wrap:wrap}
 .mon-meta{font-size:12px;color:var(--muted);margin:2px 0 10px}
 </style>
 
@@ -47,8 +50,8 @@ table.mon tr:nth-child(even) td{background:#f7f9fc}
 <div class="panel-body">
   <div class="mon-meta" id="mon_meta"></div>
   <div class="mon-wrap"><table class="mon">
-    <thead><tr><th>Date</th><th>Category</th><th>M/C Code</th><th>Machine Name</th><th>Assigner</th><th>Assignee(s)</th><th>Status</th></tr></thead>
-    <tbody id="mon_rows"><tr><td colspan="7" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
+    <thead><tr><th>Date</th><th>Category</th><th>M/C Code</th><th>Machine Name</th><th>Assigner</th><th>Assignee(s)</th><th>Status</th><th>Report</th></tr></thead>
+    <tbody id="mon_rows"><tr><td colspan="8" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
   </table></div>
 </div></div>
 </div>
@@ -64,12 +67,12 @@ function catClass(c){return c==='Daily PM'?'d':(c==='Quarterly PM'?'q':'b');}
 function stClass(s){return s==='Done'?'done':(s==='Absent'?'absent':'pend');}
 async function reload(){
   var days=document.getElementById('f_days').value;
-  document.getElementById('mon_rows').innerHTML='<tr><td colspan="7" style="padding:18px;color:var(--muted)">Loading…</td></tr>';
+  document.getElementById('mon_rows').innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--muted)">Loading…</td></tr>';
   try{var r=await fetch('/maint/monitor/data?days='+days,{cache:'no-store'});
     if(r.status===401){location.href='/login';return;}
-    if(r.status===403){document.getElementById('mon_rows').innerHTML='<tr><td colspan="7" style="padding:18px;color:#c23438">Admins only.</td></tr>';return;}
+    if(r.status===403){document.getElementById('mon_rows').innerHTML='<tr><td colspan="8" style="padding:18px;color:#c23438">Admins only.</td></tr>';return;}
     var d=await r.json();ROWS=d.rows||[];}
-  catch(e){document.getElementById('mon_rows').innerHTML='<tr><td colspan="7" style="padding:18px;color:#c23438">Could not load.</td></tr>';return;}
+  catch(e){document.getElementById('mon_rows').innerHTML='<tr><td colspan="8" style="padding:18px;color:#c23438">Could not load.</td></tr>';return;}
   apply();
 }
 function apply(){
@@ -92,7 +95,7 @@ function apply(){
 }
 function render(list){
   document.getElementById('mon_meta').textContent=list.length+' work order'+(list.length===1?'':'s')+' shown';
-  if(!list.length){document.getElementById('mon_rows').innerHTML='<tr><td colspan="7" style="padding:18px;color:var(--muted)">No work orders match.</td></tr>';return;}
+  if(!list.length){document.getElementById('mon_rows').innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--muted)">No work orders match.</td></tr>';return;}
   document.getElementById('mon_rows').innerHTML=list.map(function(x){
     var sts=x.statuses||[];
     var names=sts.length?sts.map(function(s){return esc(s.emp);}).join('<br>'):'<span style="color:var(--muted)">—</span>';
@@ -106,8 +109,24 @@ function render(list){
     return '<tr><td>'+esc(x.date)+'</td>'
       +'<td><span class="cat '+catClass(x.category)+'">'+esc(x.category)+'</span></td>'
       +'<td>'+esc(x.machine_code)+'</td><td>'+esc(x.machine_name)+'</td>'
-      +'<td>'+esc(x.assigner)+'</td><td>'+names+'</td><td>'+stcells+'</td></tr>';
+      +'<td>'+esc(x.assigner)+'</td><td>'+names+'</td><td>'+stcells+'</td>'
+      +'<td>'+reportCell(x)+'</td></tr>';
   }).join('');
+}
+function reportUrl(x,dl){
+  var p='/maint/monitor/report?code='+encodeURIComponent(x.machine_code||'')
+    +'&name='+encodeURIComponent(x.machine_name||'')
+    +'&cat='+encodeURIComponent(x.category||'')
+    +'&date='+encodeURIComponent(x.date||'')
+    +'&dl='+(dl?1:0);
+  if(x.category==='BM'&&x.bd_id)p+='&bd='+encodeURIComponent(x.bd_id);
+  return p;
+}
+function reportCell(x){
+  if(!x.has_report)return '<span style="color:var(--muted)">—</span>';
+  return '<div class="rp-cell">'
+    +'<a class="rp" href="'+reportUrl(x,0)+'" target="_blank" rel="noopener">View</a>'
+    +'<a class="rp" href="'+reportUrl(x,1)+'">Download</a></div>';
 }
 async function markAbsent(cid,pk,eid,btn){
   if(!confirm('Mark this assignee absent for this Daily PM?\n\nIf they were the only assignee left, the day is skipped (no report). Otherwise the report is saved now without their checkpoints.'))return;

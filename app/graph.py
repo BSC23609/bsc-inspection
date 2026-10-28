@@ -121,6 +121,15 @@ async def read_text(token: str, path: str) -> str | None:
     return None
 
 
+async def download_item(token: str, item_id: str) -> bytes | None:
+    """Return a drive item's raw bytes by its id, or None if it can't be fetched.
+    Used by the Monitor's View / Download buttons to stream a report PDF."""
+    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/content"
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as c:
+        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+    return r.content if r.status_code == 200 else None
+
+
 # ---- Workbook table helpers (append rows to an existing OneDrive .xlsx) ----
 async def get_item_id(token: str, path: str) -> str | None:
     url = f"{_GRAPH}/users/{USER_ID}/drive/root:/{quote(path)}"

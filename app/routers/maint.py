@@ -19,7 +19,7 @@ from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 
 from .. import db, wati, graph
 from .. import config as _cfg
@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-28-v18-monitor-status"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-28-v19-monitor-report"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3910,7 +3910,7 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
             "category": _wo_category(g["cname"]), "machine_code": g["acode"] or "",
             "machine_name": g["aname"] or "", "assigner": "Admin",
             "statuses": statuses, "checklist_id": checklist_id, "period_key": pk,
-            "can_absent": is_daily, "kind": "pm"})
+            "can_absent": is_daily, "kind": "pm", "has_report": bool(g.get("has_log"))})
 
     # ---- breakdown work orders ----
     for b in await db.fetch(
@@ -3936,10 +3936,70 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
             "assigner": b["reported_by"] or "—",
             "statuses": [{"emp": emps.get(aid, "#%s" % aid), "emp_id": aid, "status": bstatus}
                          for aid in aids],
-            "checklist_id": None, "period_key": None, "can_absent": False, "kind": "bm"})
+            "checklist_id": None, "period_key": None, "can_absent": False, "kind": "bm",
+            "bd_id": b["id"], "has_report": True})
 
     rows.sort(key=lambda r: (r["date"], r["machine_code"]), reverse=True)
     return _json({"ok": True, "rows": rows, "days": days})
+
+
+@router.get("/monitor/report")
+async def monitor_report(code: str = Query(default=""), name: str = Query(default=""),
+                         cat: str = Query(default=""), date: str = Query(default=""),
+                         bd: int = Query(default=0), dl: int = Query(default=0),
+                         emp: dict = Depends(require_employee)):
+    """Admin-only: stream the generated report PDF for a Monitor row straight from
+    OneDrive — View (inline) or Download (attachment). It lists the machine's report
+    subfolder and matches the file by machine code + date (allowing a 1-day timezone
+    edge), or by breakdown id for a BM, so it works even if the saved filename's date
+    differs slightly from the row's date."""
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admins only")
+    folder = _machine_folder(code, name)
+    safe = _safe_code(code)
+    if cat == "BM":
+        sub = "Breakdown Maintenance"
+    elif cat == "Quarterly PM":
+        sub = "Quarterly Preventive Maintenance"
+    else:
+        sub = "Daily Preventive Maintenance"
+    path = f"{ONEDRIVE_BASE}/Maintenance/Reports/{folder}/{sub}"
+    try:
+        token = await graph.get_token()
+        children = await graph.list_children(token, path)
+    except Exception as e:
+        raise HTTPException(502, f"OneDrive error: {e}")
+    pdfs = [c for c in children
+            if not c.get("is_folder") and (c.get("name") or "").lower().endswith(".pdf")]
+    target = None
+    if cat == "BM":
+        suffix = f"_bm_{bd}.pdf".lower()
+        target = next((c for c in pdfs if (c.get("name") or "").lower().endswith(suffix)), None)
+    else:
+        want = f"_{safe}_pm.pdf".lower()
+        cand = [c for c in pdfs if (c.get("name") or "").lower().endswith(want)]
+        d0 = None
+        try:
+            d0 = datetime.strptime((date or "").strip(), "%Y-%m-%d").date()
+        except ValueError:
+            d0 = None
+        if d0:
+            for delta in (0, -1, 1):          # tolerate a 1-day tz edge in the filename
+                pref = (d0 + timedelta(days=delta)).strftime("%d-%m-%y").lower() + "_"
+                target = next((c for c in cand if (c.get("name") or "").lower().startswith(pref)), None)
+                if target:
+                    break
+        if not target and len(cand) == 1:
+            target = cand[0]
+    if not target:
+        raise HTTPException(404, "No report file found for this work order.")
+    data = await graph.download_item(token, target["id"])
+    if data is None:
+        raise HTTPException(404, "Report file could not be read.")
+    fn = target.get("name") or "report.pdf"
+    disp = "attachment" if dl else "inline"
+    return Response(content=data, media_type="application/pdf",
+                    headers={"Content-Disposition": f'{disp}; filename="{fn}"'})
 
 
 @router.post("/monitor/mark-absent")
