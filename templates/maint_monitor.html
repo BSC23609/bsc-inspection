@@ -29,6 +29,13 @@ a.rp:hover{background:#eef3fb;border-color:var(--acc)}
 button.rp{font-family:inherit;cursor:pointer}
 button.rp.rp-del{color:#c23438;border-color:#e3b7b9;background:#fff}
 button.rp.rp-del:hover{background:#fdeaea;border-color:#c23438}
+.rpt-ov{display:none;position:fixed;inset:0;z-index:1000;background:rgba(15,26,43,.55);padding:24px;align-items:center;justify-content:center}
+.rpt-ov.show{display:flex}
+.rpt-box{background:#fff;border-radius:12px;width:min(960px,96vw);height:min(90vh,100%);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)}
+.rpt-bar{display:flex;align-items:center;gap:8px;padding:10px 12px;background:#1f3b5b;color:#fff}
+.rpt-ti{font-weight:700;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:60%}
+.rpt-bar .rp{background:#fff}
+.rpt-frame{flex:1;width:100%;border:0;background:#f3f4f6}
 .mon-meta{font-size:12px;color:var(--muted);margin:2px 0 10px}
 </style>
 
@@ -57,6 +64,18 @@ button.rp.rp-del:hover{background:#fdeaea;border-color:#c23438}
     <tbody id="mon_rows"><tr><td colspan="8" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
   </table></div>
 </div></div>
+
+<div id="rpt_modal" class="rpt-ov" onclick="if(event.target===this)closeReport()">
+  <div class="rpt-box">
+    <div class="rpt-bar">
+      <span id="rpt_title" class="rpt-ti">Report</span>
+      <span style="flex:1"></span>
+      <a id="rpt_dl" class="rp" href="#">Download</a>
+      <button class="rp" onclick="closeReport()">Close ✕</button>
+    </div>
+    <iframe id="rpt_frame" class="rpt-frame" title="Report"></iframe>
+  </div>
+</div>
 </div>
 {% endblock %}
 {% block scripts %}
@@ -129,10 +148,22 @@ function reportUrl(x,dl){
 function reportCell(x,i){
   if(!x.has_report)return '<span style="color:var(--muted)">—</span>';
   return '<div class="rp-cell">'
-    +'<a class="rp" href="'+reportUrl(x,0)+'" target="_blank" rel="noopener">View</a>'
+    +'<button class="rp" onclick="openReport('+i+')">View</button>'
     +'<a class="rp" href="'+reportUrl(x,1)+'">Download</a>'
     +'<button class="rp rp-del" onclick="monDelete('+i+')">Delete</button></div>';
 }
+function openReport(i){
+  var x=(window.MON_LIST||[])[i]; if(!x)return;
+  document.getElementById('rpt_title').textContent=(x.machine_code||'')+' · '+(x.category||'')+' · '+(x.date||'');
+  document.getElementById('rpt_frame').src=reportUrl(x,0);
+  document.getElementById('rpt_dl').href=reportUrl(x,1);
+  document.getElementById('rpt_modal').classList.add('show');
+}
+function closeReport(){
+  document.getElementById('rpt_modal').classList.remove('show');
+  document.getElementById('rpt_frame').src='about:blank';
+}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')closeReport();});
 async function monDelete(i){
   var x=(window.MON_LIST||[])[i]; if(!x)return;
   var what=x.category==='BM'?'this breakdown ticket':'this work order (its completion log(s))';
