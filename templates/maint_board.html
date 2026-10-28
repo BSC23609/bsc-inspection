@@ -50,6 +50,7 @@
 <script>
 var CUR=null;
 var IS_ADMIN={{ 'true' if emp.is_admin else 'false' }};
+var CARD={};
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function cad(x){var p=[];if(x.freq_days)p.push('every '+x.freq_days+'d');if(x.hours_interval)p.push('every '+x.hours_interval+'h');return p.join(' · ');}
 async function load(){
@@ -80,6 +81,7 @@ function section(label,cls,items){if(!items.length)return '';
   var badge=cls==='over'?'b-over':(cls==='due'?'b-due':'b-up');
   var h='<div class="sect-h"><span class="badge '+badge+'">'+label+'</span> '+items.length+'</div>';
   h+=items.map(function(x){
+    CARD[x.id]={code:x.asset_code||'',name:x.asset_name||''};
     var due=x.next_due?('Next due '+esc(x.next_due)):(x.hours_due?'Hours reached':'');
     var who=x.assignee_name?('· '+esc(x.assignee_name)):'· unassigned';
     return '<div class="mcard '+cls+'"><div><div class="ti">'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+' — '+esc(x.title||'')+'</div>'
@@ -111,15 +113,15 @@ async function remindOne(sid,btn){
 }
 async function deleteLog(sid,btn){
   if(!IS_ADMIN)return;
-  if(!confirm('Delete the latest completion log for this task?\n\nThis removes the most recent recorded entry and the task will show as due again. The OneDrive PDF already saved is not affected.'))return;
-  var old=btn?btn.textContent:'';
+  if(!confirm('Delete this work order?\n\nThis permanently removes the latest completion record for this task AND its report PDF in OneDrive. The task will show as due again. This cannot be undone.'))return;
+  var old=btn?btn.textContent:'';var c=CARD[sid]||{};
   if(btn){btn.disabled=true;btn.textContent='Deleting…';}
   try{
-    var r=await fetch('/maint/log/delete-latest',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schedule_id:sid})});
+    var r=await fetch('/maint/workorder/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'pm',schedule_id:sid,code:c.code||'',name:c.name||''})});
     var d=await r.json();
-    toast(d.msg||(d.ok?'Log deleted.':'Could not delete log.'), !d.ok);
+    toast(d.msg||(d.ok?('Work order deleted'+(d.pdf_deleted?' (with PDF).':'.')):'Could not delete.'), !d.ok);
     if(d.ok)load();
-  }catch(e){toast('Could not delete log: '+e, true);}
+  }catch(e){toast('Could not delete: '+e, true);}
   if(btn){btn.disabled=false;btn.textContent=old||'Delete log';}
 }
 function recentHTML(rows){

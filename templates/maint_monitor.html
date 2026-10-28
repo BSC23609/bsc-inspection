@@ -23,9 +23,12 @@ table.mon tr:nth-child(even) td{background:#f7f9fc}
 .st.done{background:#e3f6ee;color:#0a7d55}.st.pend{background:#fff3d6;color:#9a6a00}.st.absent{background:#eef1f4;color:#6b7280}
 .btn-abs{font-size:10.5px;font-weight:700;border:1px solid #e3b7b9;color:#c23438;background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer}
 .btn-abs:hover{background:#fdeaea}
-a.rp{display:inline-block;font-size:10.5px;font-weight:700;color:#1f3b5b;text-decoration:none;border:1px solid var(--line-2);border-radius:7px;padding:2px 8px;white-space:nowrap}
+.rp{display:inline-block;font-size:10.5px;font-weight:700;color:#1f3b5b;text-decoration:none;border:1px solid var(--line-2);border-radius:7px;padding:2px 8px;white-space:nowrap;background:#fff}
 a.rp:hover{background:#eef3fb;border-color:var(--acc)}
 .rp-cell{display:flex;gap:6px;flex-wrap:wrap}
+button.rp{font-family:inherit;cursor:pointer}
+button.rp.rp-del{color:#c23438;border-color:#e3b7b9;background:#fff}
+button.rp.rp-del:hover{background:#fdeaea;border-color:#c23438}
 .mon-meta{font-size:12px;color:var(--muted);margin:2px 0 10px}
 </style>
 
@@ -96,7 +99,8 @@ function apply(){
 function render(list){
   document.getElementById('mon_meta').textContent=list.length+' work order'+(list.length===1?'':'s')+' shown';
   if(!list.length){document.getElementById('mon_rows').innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--muted)">No work orders match.</td></tr>';return;}
-  document.getElementById('mon_rows').innerHTML=list.map(function(x){
+  window.MON_LIST=list;
+  document.getElementById('mon_rows').innerHTML=list.map(function(x,i){
     var sts=x.statuses||[];
     var names=sts.length?sts.map(function(s){return esc(s.emp);}).join('<br>'):'<span style="color:var(--muted)">—</span>';
     var stcells=sts.length?sts.map(function(s){
@@ -110,7 +114,7 @@ function render(list){
       +'<td><span class="cat '+catClass(x.category)+'">'+esc(x.category)+'</span></td>'
       +'<td>'+esc(x.machine_code)+'</td><td>'+esc(x.machine_name)+'</td>'
       +'<td>'+esc(x.assigner)+'</td><td>'+names+'</td><td>'+stcells+'</td>'
-      +'<td>'+reportCell(x)+'</td></tr>';
+      +'<td>'+reportCell(x,i)+'</td></tr>';
   }).join('');
 }
 function reportUrl(x,dl){
@@ -122,11 +126,26 @@ function reportUrl(x,dl){
   if(x.category==='BM'&&x.bd_id)p+='&bd='+encodeURIComponent(x.bd_id);
   return p;
 }
-function reportCell(x){
+function reportCell(x,i){
   if(!x.has_report)return '<span style="color:var(--muted)">—</span>';
   return '<div class="rp-cell">'
     +'<a class="rp" href="'+reportUrl(x,0)+'" target="_blank" rel="noopener">View</a>'
-    +'<a class="rp" href="'+reportUrl(x,1)+'">Download</a></div>';
+    +'<a class="rp" href="'+reportUrl(x,1)+'">Download</a>'
+    +'<button class="rp rp-del" onclick="monDelete('+i+')">Delete</button></div>';
+}
+async function monDelete(i){
+  var x=(window.MON_LIST||[])[i]; if(!x)return;
+  var what=x.category==='BM'?'this breakdown ticket':'this work order (its completion log(s))';
+  if(!confirm('Delete '+what+' permanently?\n\nThis also deletes the report PDF in OneDrive and cannot be undone.'))return;
+  var body=x.category==='BM'
+    ?{kind:'bm',bd_id:x.bd_id,code:x.machine_code,name:x.machine_name,date:x.date}
+    :{kind:'pm',checklist_id:x.checklist_id,period_key:x.period_key,code:x.machine_code,name:x.machine_name,category:x.category,date:x.date};
+  try{
+    var r=await fetch('/maint/workorder/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    var d=await r.json();
+    toast(d.msg||(d.ok?('Deleted'+(d.pdf_deleted?' (with PDF).':'.')):'Could not delete.'), !d.ok);
+    if(d.ok)reload();
+  }catch(e){toast('Could not delete: '+e, true);}
 }
 async function markAbsent(cid,pk,eid,btn){
   if(!confirm('Mark this assignee absent for this Daily PM?\n\nIf they were the only assignee left, the day is skipped (no report). Otherwise the report is saved now without their checkpoints.'))return;

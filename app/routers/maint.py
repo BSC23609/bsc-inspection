@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-28-v20-reminder-fix"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-28-v21-delete-workorder"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4038,6 +4038,157 @@ async def monitor_report(code: str = Query(default=""), name: str = Query(defaul
     disp = "attachment" if dl else "inline"
     return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": f'{disp}; filename="{fn}"'})
+
+
+async def _locate_report_item(token, code, name, cat, date_iso, bd=0):
+    """Find the OneDrive report PDF for a work order (same matching as /monitor/report).
+    Returns the drive item dict {id,name} or None."""
+    folder = _machine_folder(code, name)
+    safe = _safe_code(code)
+    sub = ("Breakdown Maintenance" if cat == "BM"
+           else "Quarterly Preventive Maintenance" if cat == "Quarterly PM"
+           else "Daily Preventive Maintenance")
+    path = f"{ONEDRIVE_BASE}/Maintenance/Reports/{folder}/{sub}"
+    try:
+        children = await graph.list_children(token, path)
+    except Exception:
+        return None
+    pdfs = [c for c in children
+            if not c.get("is_folder") and (c.get("name") or "").lower().endswith(".pdf")]
+    if cat == "BM":
+        suf = f"_bm_{bd}.pdf".lower()
+        return next((c for c in pdfs if (c.get("name") or "").lower().endswith(suf)), None)
+    want = f"_{safe}_pm.pdf".lower()
+    cand = [c for c in pdfs if (c.get("name") or "").lower().endswith(want)]
+    d0 = None
+    try:
+        d0 = datetime.strptime((date_iso or "").strip(), "%Y-%m-%d").date()
+    except ValueError:
+        d0 = None
+    if d0:
+        for delta in (0, -1, 1):
+            pref = (d0 + timedelta(days=delta)).strftime("%d-%m-%y").lower() + "_"
+            t = next((c for c in cand if (c.get("name") or "").lower().startswith(pref)), None)
+            if t:
+                return t
+    return cand[0] if len(cand) == 1 else None
+
+
+async def _delete_pm_workorder(checklist_id, pk, cname, asset_id) -> int:
+    """Delete a PM work order for one period: every maint_log in that period, the
+    per-checkpoint 'done' rows, any absent marks, and revert the schedule's last_done
+    to the latest remaining completion (so the task shows due again). Returns how many
+    logs were removed."""
+    logs = await db.fetch(
+        "SELECT id, done_at FROM maint_logs WHERE checklist_id=$1 AND asset_id=$2 "
+        "AND done_at IS NOT NULL", checklist_id, asset_id)
+    del_ids = [l["id"] for l in logs
+               if _period_key(cname, l["done_at"].astimezone(IST).date()) == pk]
+    if del_ids:
+        await db.execute("DELETE FROM maint_logs WHERE id = ANY($1::int[])", del_ids)
+    cp_ids = [r["id"] for r in await db.fetch(
+        "SELECT id FROM maint_checkpoints WHERE checklist_id=$1", checklist_id)]
+    if cp_ids:
+        await db.execute(
+            "DELETE FROM maint_checkpoint_done WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])",
+            pk, cp_ids)
+    try:
+        await db.execute(
+            "DELETE FROM maint_wo_absent WHERE checklist_id=$1 AND period_key=$2", checklist_id, pk)
+    except Exception:
+        pass
+    remaining = await db.fetchval(
+        "SELECT MAX(done_at) FROM maint_logs WHERE checklist_id=$1 AND asset_id=$2",
+        checklist_id, asset_id)
+    last_d = remaining.astimezone(IST).date() if remaining else None
+    await db.execute(
+        "UPDATE maint_schedules SET last_done=$1 WHERE checklist_id=$2", last_d, checklist_id)
+    return len(del_ids)
+
+
+@router.post("/workorder/delete")
+async def workorder_delete(body: dict, emp: dict = Depends(require_employee)):
+    """Admin-only. Permanently delete a whole work order and its report PDF.
+      kind=pm  : by schedule_id (board = latest completion) OR checklist_id+period_key
+                 (monitor = that exact period). Removes the period's logs + per-checkpoint
+                 data + absent marks and reverts the schedule, then deletes the PDF.
+      kind=bm  : by bd_id. Removes the breakdown ticket, then deletes its PDF.
+    code/name/date are used to locate the OneDrive PDF."""
+    await ensure_tables()
+    await _ensure_absent_table()
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admins only")
+    kind = (body.get("kind") or "pm").lower()
+    code = body.get("code") or ""
+    name = body.get("name") or ""
+    date_iso = body.get("date") or ""
+    pdf_deleted = False
+    try:
+        token = await graph.get_token()
+    except Exception:
+        token = None
+
+    if kind == "bm":
+        try:
+            bd_id = int(body.get("bd_id") or 0)
+        except (TypeError, ValueError):
+            bd_id = 0
+        if not bd_id:
+            raise HTTPException(400, "Missing breakdown id")
+        row = await db.fetchrow(
+            "SELECT a.code AS acode, a.name AS aname FROM maint_breakdowns b "
+            "LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.id=$1", bd_id)
+        await db.execute("DELETE FROM maint_breakdowns WHERE id=$1", bd_id)
+        if token:
+            item = await _locate_report_item(
+                token, code or (row["acode"] if row else ""),
+                name or (row["aname"] if row else ""), "BM", date_iso, bd=bd_id)
+            if item:
+                pdf_deleted = await graph.delete_item(token, item["id"])
+        return _json({"ok": True, "deleted": "breakdown", "pdf_deleted": pdf_deleted})
+
+    # ---- PM ----
+    schedule_id = body.get("schedule_id")
+    checklist_id = body.get("checklist_id")
+    pk = body.get("period_key")
+    cname = ""
+    asset_id = None
+    if schedule_id and not (checklist_id and pk):
+        s = await db.fetchrow(
+            "SELECT s.checklist_id, s.asset_id, c.name AS cname FROM maint_schedules s "
+            "LEFT JOIN maint_checklists c ON c.id=s.checklist_id WHERE s.id=$1", schedule_id)
+        if not s:
+            raise HTTPException(404, "Schedule not found")
+        checklist_id, asset_id, cname = s["checklist_id"], s["asset_id"], s["cname"] or ""
+        latest = await db.fetchrow(
+            "SELECT done_at FROM maint_logs WHERE (schedule_id=$1 OR (checklist_id=$2 AND asset_id=$3)) "
+            "AND done_at IS NOT NULL ORDER BY done_at DESC LIMIT 1",
+            schedule_id, checklist_id, asset_id)
+        if not latest:
+            return _json({"ok": False, "msg": "No completed work order to delete for this task."})
+        d = latest["done_at"].astimezone(IST).date()
+        pk = _period_key(cname, d)
+        date_iso = d.isoformat()
+    else:
+        if not (checklist_id and pk):
+            raise HTTPException(400, "Missing checklist_id/period_key")
+        c = await db.fetchrow("SELECT name FROM maint_checklists WHERE id=$1", checklist_id)
+        cname = c["name"] if c else ""
+        asset_id = await db.fetchval(
+            "SELECT asset_id FROM maint_logs WHERE checklist_id=$1 AND done_at IS NOT NULL "
+            "ORDER BY done_at DESC LIMIT 1", checklist_id)
+        if asset_id is None:
+            asset_id = await db.fetchval(
+                "SELECT asset_id FROM maint_schedules WHERE checklist_id=$1 LIMIT 1", checklist_id)
+
+    n = await _delete_pm_workorder(checklist_id, pk, cname, asset_id)
+    if token:
+        cat = "Quarterly PM" if "quarter" in (cname or "").lower() else "Daily PM"
+        item = await _locate_report_item(token, code, name, cat, date_iso, bd=0)
+        if item:
+            pdf_deleted = await graph.delete_item(token, item["id"])
+    return _json({"ok": True, "deleted_logs": n, "pdf_deleted": pdf_deleted})
+
 
 
 @router.post("/monitor/mark-absent")

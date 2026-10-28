@@ -121,6 +121,16 @@ async def read_text(token: str, path: str) -> str | None:
     return None
 
 
+async def delete_item(token: str, item_id: str) -> bool:
+    """Delete a drive item (file or folder) by id. Returns True on success (204) or
+    if it was already gone (404). Used when an admin deletes a work order and its
+    report PDF together."""
+    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}"
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.delete(url, headers={"Authorization": f"Bearer {token}"})
+    return r.status_code in (204, 404)
+
+
 async def download_item(token: str, item_id: str) -> bytes | None:
     """Return a drive item's raw bytes by its id, or None if it can't be fetched.
     Used by the Monitor's View / Download buttons to stream a report PDF."""
