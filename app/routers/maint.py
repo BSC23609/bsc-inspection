@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-27-v15-monitor"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-28-v16-cp-done"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3180,12 +3180,33 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
     if hrs is not None:
         await db.execute("UPDATE maint_assets SET running_hours=$1, hours_updated_at=now() WHERE id=$2",
                          hrs, s["asset_id"])
-    # work-order PDF -> OneDrive/Maintenance/Preventive (background; see note above)
+    # checklist name (for the period key and the report title)
+    cl = None
+    if s.get("checklist_id"):
+        cl = await db.fetchval("SELECT name FROM maint_checklists WHERE id=$1", s["checklist_id"])
+    # record per-checkpoint done state so a board 'Complete' matches a My-Checklist
+    # submit — the combined report and the Monitor both read maint_checkpoint_done.
+    if s.get("checklist_id"):
+        try:
+            pk = _period_key(cl or s.get("title") or "", today)
+            await ensure_tables()
+            for r in results:
+                cpid = r.get("cp_id")
+                if not cpid:
+                    continue
+                res = (str(r.get("value") or "").strip()
+                       or ("OK" if r.get("ok", True) else "Not OK"))
+                note = (r.get("remark") or "").strip()
+                await db.execute(
+                    "INSERT INTO maint_checkpoint_done (checkpoint_id,emp_id,period_key,result,note) "
+                    "VALUES ($1,$2,$3,$4,$5) ON CONFLICT (checkpoint_id,period_key) "
+                    "DO UPDATE SET emp_id=$2, result=$4, note=$5, done_at=now()",
+                    int(cpid), emp.get("id"), pk, res, note)
+        except Exception as e:
+            print("[maint] complete checkpoint_done skipped:", e)
+    # work-order PDF -> OneDrive (background; see note above)
     try:
         a = await db.fetchrow("SELECT code, name, location FROM maint_assets WHERE id=$1", s["asset_id"])
-        cl = None
-        if s.get("checklist_id"):
-            cl = await db.fetchval("SELECT name FROM maint_checklists WHERE id=$1", s["checklist_id"])
         asyncio.create_task(_file_pm_report(
             asset_code=(a["code"] if a else ""), asset_name=(a["name"] if a else ""),
             checklist=cl or s.get("title") or "Checklist", doc_no=str(log_id or ""),
@@ -3963,6 +3984,66 @@ async def monitor_mark_absent(body: dict, emp: dict = Depends(require_employee))
     return _json({"ok": True, "action": "saved",
                   "msg": ("Marked absent. Report saved excluding the absent person's checkpoints."
                           if p else "Marked absent; the report will file when OneDrive is reachable.")})
+
+
+@router.get("/admin/backfill-checkpoint-done")
+async def backfill_checkpoint_done(token: str = Query(default=""), limit: int = Query(default=50),
+                                   skip: int = Query(default=0),
+                                   emp: dict = Depends(current_employee)):
+    """Populate maint_checkpoint_done from historical board 'Complete' logs (whose
+    per-checkpoint results were only kept in the log JSON). Fixes the Monitor's
+    Done/Pending and lets the combined PDFs regenerate correctly. Idempotent (never
+    overwrites a My-Checklist entry), paginated — follow next_url until remaining is 0."""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    limit = max(1, min(int(limit or 50), 200))
+    skip = max(0, int(skip or 0))
+    logs = await db.fetch(
+        "SELECT l.id, l.done_by_emp_id, l.done_at, l.results, c.name AS cname "
+        "FROM maint_logs l LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
+        "WHERE l.checklist_id IS NOT NULL AND l.done_at IS NOT NULL ORDER BY l.id")
+    total = len(logs)
+    written = 0
+    for l in logs[skip:skip + limit]:
+        res = l["results"]
+        if isinstance(res, str):
+            try:
+                res = json.loads(res or "[]")
+            except Exception:
+                res = []
+        if not isinstance(res, list) or not res:
+            continue
+        dd = l["done_at"].astimezone(IST).date() if isinstance(l["done_at"], datetime) else None
+        pk = _period_key(l["cname"] or "", dd)
+        for r in res:
+            if not isinstance(r, dict):
+                continue
+            cpid = r.get("cp_id")
+            if not cpid:
+                continue
+            resv = (str(r.get("value") or "").strip()
+                    or ("OK" if r.get("ok", True) else "Not OK"))
+            note = (r.get("remark") or "").strip()
+            try:
+                await db.execute(
+                    "INSERT INTO maint_checkpoint_done (checkpoint_id,emp_id,period_key,result,note) "
+                    "VALUES ($1,$2,$3,$4,$5) ON CONFLICT (checkpoint_id,period_key) DO NOTHING",
+                    int(cpid), l["done_by_emp_id"], pk, resv, note)
+                written += 1
+            except Exception as e:
+                print("[maint] cp-done backfill row skip:", e)
+    done_through = min(skip + limit, total)
+    remaining = max(0, total - done_through)
+    out = {"ok": True, "logs_total": total, "written_this_page": written,
+           "done_through": done_through, "remaining": remaining}
+    if remaining:
+        out["next_url"] = (f"https://qms.bharatsteels.in/maint/admin/backfill-checkpoint-done"
+                           f"?token={token}&limit={limit}&skip={done_through}")
+    else:
+        out["note"] = ("Per-checkpoint state filled from the logs. The Monitor now shows the "
+                       "right status; re-run backfill-reports if you also want the PDFs rebuilt.")
+    return _json(out)
 
 
 @router.get("/version")
