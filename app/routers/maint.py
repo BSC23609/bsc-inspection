@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-28-v16-cp-done"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-28-v17-cpdone-fast"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3997,14 +3997,15 @@ async def backfill_checkpoint_done(token: str = Query(default=""), limit: int = 
     await ensure_tables()
     if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
-    limit = max(1, min(int(limit or 50), 200))
+    limit = max(1, min(int(limit or 1000), 5000))
     skip = max(0, int(skip or 0))
     logs = await db.fetch(
         "SELECT l.id, l.done_by_emp_id, l.done_at, l.results, c.name AS cname "
         "FROM maint_logs l LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
         "WHERE l.checklist_id IS NOT NULL AND l.done_at IS NOT NULL ORDER BY l.id")
     total = len(logs)
-    written = 0
+    # collect all (checkpoint_id, emp_id, period_key, result, note) for this page
+    pending = []
     for l in logs[skip:skip + limit]:
         res = l["results"]
         if isinstance(res, str):
@@ -4022,17 +4023,32 @@ async def backfill_checkpoint_done(token: str = Query(default=""), limit: int = 
             cpid = r.get("cp_id")
             if not cpid:
                 continue
+            try:
+                cpid = int(cpid)
+            except (TypeError, ValueError):
+                continue
             resv = (str(r.get("value") or "").strip()
                     or ("OK" if r.get("ok", True) else "Not OK"))
             note = (r.get("remark") or "").strip()
-            try:
-                await db.execute(
-                    "INSERT INTO maint_checkpoint_done (checkpoint_id,emp_id,period_key,result,note) "
-                    "VALUES ($1,$2,$3,$4,$5) ON CONFLICT (checkpoint_id,period_key) DO NOTHING",
-                    int(cpid), l["done_by_emp_id"], pk, resv, note)
-                written += 1
-            except Exception as e:
-                print("[maint] cp-done backfill row skip:", e)
+            pending.append((cpid, l["done_by_emp_id"], pk, resv, note))
+    # bulk insert in chunks — one round-trip per chunk instead of one per row
+    written = 0
+    CH = 300
+    for i in range(0, len(pending), CH):
+        chunk = pending[i:i + CH]
+        vals, params = [], []
+        for j, row in enumerate(chunk):
+            b = j * 5
+            vals.append(f"(${b+1},${b+2},${b+3},${b+4},${b+5})")
+            params.extend(row)
+        try:
+            await db.execute(
+                "INSERT INTO maint_checkpoint_done (checkpoint_id,emp_id,period_key,result,note) "
+                "VALUES " + ",".join(vals) +
+                " ON CONFLICT (checkpoint_id,period_key) DO NOTHING", *params)
+            written += len(chunk)
+        except Exception as e:
+            print("[maint] cp-done bulk chunk skip:", e)
     done_through = min(skip + limit, total)
     remaining = max(0, total - done_through)
     out = {"ok": True, "logs_total": total, "written_this_page": written,
