@@ -25,6 +25,8 @@ table.ia tr:nth-child(even) td{background:#f7f9fc}
 .warn{color:#9a6a00;font-weight:700}
 .ia-meta{font-size:12px;color:var(--muted);margin:2px 0 10px}
 .ia-sub{font-size:12px;color:var(--muted);margin:0 0 10px}
+.ia-cv{position:relative;height:260px;margin:4px 0 16px}
+@media(max-width:600px){.ia-cv{height:230px}}
 </style>
 
 <div class="page-head"><h1>Inspection Analysis</h1><p>Quality across the four stages — Inward, CTL, Shearing and PDI. One batch flows Inward&nbsp;→&nbsp;CTL/Shearing&nbsp;→&nbsp;PDI; use the filters to focus by period, supplier, grade or customer.</p></div>
@@ -42,25 +44,25 @@ table.ia tr:nth-child(even) td{background:#f7f9fc}
 </div></div>
 
 <div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('gauge',17) }}</span>Per-stage summary</div>
-<div class="panel-body"><div class="ia-wrap"><table class="ia">
+<div class="panel-body"><div class="ia-cv"><canvas id="ch_kpi"></canvas></div><div class="ia-wrap"><table class="ia">
   <thead><tr><th>Stage</th><th class="num">Records</th><th class="num">Sheets / Coils</th><th class="num">Rejection / Damage %</th><th class="num">OOT %</th><th class="num">Rework %</th><th class="num">First-pass %</th></tr></thead>
   <tbody id="kpi_rows"><tr><td colspan="7" style="padding:16px;color:var(--muted)">Loading…</td></tr></tbody>
 </table></div></div></div>
 
 <div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('cube',17) }}</span>Supplier (make) scorecard</div>
-<div class="panel-body"><div class="ia-sub">Ranked worst&nbsp;→&nbsp;best by overall downstream rejection rate.</div><div class="ia-wrap"><table class="ia">
+<div class="panel-body"><div class="ia-sub">Ranked worst&nbsp;→&nbsp;best by overall downstream rejection rate.</div><div class="ia-cv"><canvas id="ch_sup"></canvas></div><div class="ia-wrap"><table class="ia">
   <thead><tr><th>Make</th><th class="num">Coils</th><th class="num">Inward damage %</th><th class="num">Avg thk dev (mm)</th><th class="num">CTL reject %</th><th class="num">Shearing reject %</th><th class="num">Overall reject %</th></tr></thead>
   <tbody id="sup_rows"><tr><td colspan="7" style="padding:16px;color:var(--muted)">—</td></tr></tbody>
 </table></div></div></div>
 
 <div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('warn',17) }}</span>Defect / rejection Pareto</div>
-<div class="panel-body"><div class="ia-wrap"><table class="ia">
+<div class="panel-body"><div class="ia-cv"><canvas id="ch_par"></canvas></div><div class="ia-wrap"><table class="ia">
   <thead><tr><th>Defect type</th><th>Stage</th><th class="num">Count</th><th class="num">Qty (pcs)</th><th style="width:34%">Share</th></tr></thead>
   <tbody id="par_rows"><tr><td colspan="5" style="padding:16px;color:var(--muted)">—</td></tr></tbody>
 </table></div></div></div>
 
 <div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('calendar',17) }}</span>Monthly trend</div>
-<div class="panel-body"><div class="ia-sub">Share of records with a rejection / damage / out-of-spec, by month and stage.</div><div class="ia-wrap"><table class="ia">
+<div class="panel-body"><div class="ia-sub">Share of records with a rejection / damage / out-of-spec, by month and stage.</div><div class="ia-cv"><canvas id="ch_trend"></canvas></div><div class="ia-wrap"><table class="ia">
   <thead><tr><th>Month</th><th>Stage</th><th class="num">Records</th><th class="num">With defect</th><th class="num">Defect %</th></tr></thead>
   <tbody id="trend_rows"><tr><td colspan="5" style="padding:16px;color:var(--muted)">—</td></tr></tbody>
 </table></div></div></div>
@@ -80,8 +82,51 @@ table.ia tr:nth-child(even) td{background:#f7f9fc}
 </div>
 {% endblock %}
 {% block scripts %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <script>
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+var CH={};
+function kill(id){if(CH[id]){CH[id].destroy();delete CH[id];}}
+var STG_COLOR={Inward:'#44515f',CTL:'#1f3b5b',Shearing:'#5b3b7d',PDI:'#0a7d55'};
+function pctAxis(v){return v+'%';}
+function drawCharts(d){
+  if(typeof Chart==='undefined')return;   // CDN blocked — tables still show
+  // 1) per-stage rejection / damage %
+  var ks=d.kpis||[];
+  kill('ch_kpi');CH.ch_kpi=new Chart(document.getElementById('ch_kpi'),{type:'bar',
+    data:{labels:ks.map(function(k){return k.stage;}),
+      datasets:[{label:'Rejection / damage %',data:ks.map(function(k){return k.reject_pct||0;}),
+        backgroundColor:ks.map(function(k){return STG_COLOR[k.stage]||'#1f3b5b';}),borderRadius:4}]},
+    options:{plugins:{legend:{display:false},title:{display:true,text:'Rejection / damage % by stage'}},
+      scales:{y:{beginAtZero:true,ticks:{callback:pctAxis}}},responsive:true,maintainAspectRatio:false}});
+  // 2) supplier overall reject %
+  var sp=(d.suppliers||[]).filter(function(s){return (s.coils||0)>0||(s.overall_reject_pct||0)>0;}).slice(0,10);
+  kill('ch_sup');CH.ch_sup=new Chart(document.getElementById('ch_sup'),{type:'bar',
+    data:{labels:sp.map(function(s){return s.make;}),
+      datasets:[{label:'Overall reject %',data:sp.map(function(s){return s.overall_reject_pct||0;}),backgroundColor:'#c23438',borderRadius:4}]},
+    options:{indexAxis:'y',plugins:{legend:{display:false},title:{display:true,text:'Overall downstream reject % by supplier'}},
+      scales:{x:{beginAtZero:true,ticks:{callback:pctAxis}}},responsive:true,maintainAspectRatio:false}});
+  // 3) defect Pareto (top 10 by count)
+  var pk=(d.pareto||[]).slice(0,10);
+  kill('ch_par');CH.ch_par=new Chart(document.getElementById('ch_par'),{type:'bar',
+    data:{labels:pk.map(function(p){return p.type;}),
+      datasets:[{label:'Count',data:pk.map(function(p){return p.count||0;}),
+        backgroundColor:pk.map(function(p){return STG_COLOR[p.stage]||'#1f3b5b';}),borderRadius:4}]},
+    options:{plugins:{legend:{display:false},title:{display:true,text:'Top defects by count'}},
+      scales:{y:{beginAtZero:true,ticks:{precision:0}}},responsive:true,maintainAspectRatio:false}});
+  // 4) monthly trend — one line per stage
+  var tr=d.trend||[],months=[];
+  tr.forEach(function(t){if(months.indexOf(t.month)<0)months.push(t.month);});
+  months.sort();
+  var ds=['Inward','CTL','Shearing','PDI'].map(function(st){
+    return {label:st,borderColor:STG_COLOR[st],backgroundColor:STG_COLOR[st],tension:0.25,spanGaps:true,
+      data:months.map(function(m){var row=tr.filter(function(t){return t.month===m&&t.stage===st;})[0];return row?row.bad_pct:null;})};
+  });
+  kill('ch_trend');CH.ch_trend=new Chart(document.getElementById('ch_trend'),{type:'line',
+    data:{labels:months,datasets:ds},
+    options:{plugins:{legend:{position:'bottom'},title:{display:true,text:'Defect % trend by month'}},
+      scales:{y:{beginAtZero:true,ticks:{callback:pctAxis}}},responsive:true,maintainAspectRatio:false}});
+}
 function v(id){var e=document.getElementById(id);return e?e.value:'';}
 function stgClass(s){return s==='Inward'?'inw':(s==='CTL'?'ctl':(s==='Shearing'?'shr':'pdi'));}
 function pctCell(x){if(x==null)return '<td class="num" style="color:var(--muted)">—</td>';
@@ -129,6 +174,7 @@ async function load(){
     return '<tr><td>'+esc(t.month)+'</td><td><span class="stg '+stgClass(t.stage)+'">'+esc(t.stage)+'</span></td>'
       +'<td class="num">'+t.records+'</td><td class="num">'+t.bad+'</td>'+pctCell(t.bad_pct)+'</tr>';
   }).join('')||'<tr><td colspan="5" style="padding:16px;color:var(--muted)">No data.</td></tr>';
+  try{drawCharts(d);}catch(e){}
 }
 async function batchGo(){
   var q=v('b_q').trim();if(!q)return;
