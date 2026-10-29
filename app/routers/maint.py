@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-28-v21-delete-workorder"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-29-v23-breakdown-close-fix"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -2830,7 +2830,9 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
 @router.post("/breakdown/close")
 async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
-    if not body.get("id"):
+    try:
+        bid = int(body.get("id"))
+    except (TypeError, ValueError):
         raise HTTPException(400, "Missing id")
     action = (body.get("action") or "").strip()        # what was done to fix it
     note = (body.get("remarks") or "").strip()          # optional extra remark
@@ -2847,7 +2849,7 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
         "closed_by=$2, resolution=$5, "
         "remarks = CASE WHEN $3='' THEN remarks "
         "WHEN COALESCE(remarks,'')='' THEN $3 ELSE remarks || ' | closed: ' || $3 END "
-        "WHERE id=$1", body.get("id"),
+        "WHERE id=$1", bid,
         emp.get("name") or emp.get("emp_no") or "staff", note, closed, action)
     return {"ok": True}
 
