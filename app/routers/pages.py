@@ -130,6 +130,50 @@ async def login_submit(request: Request, identifier: str = Form(...), password: 
     return resp
 
 
+# ---- Group single sign-on (app.thebharatsteelgroup.com) ----
+# The group portal signs the person in once, then sends them here with a one-minute token
+# signed with GROUP_SSO_SECRET (shared only by the portal and this app). We check it, find the
+# employee by emp_no (then email) and start the normal session. The normal login still works.
+def _sso_page(msg: str, status: int = 401):
+    from html import escape
+    return HTMLResponse(
+        "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
+        "<body style='font-family:system-ui,sans-serif;max-width:440px;margin:15vh auto;padding:0 16px;color:#112532'>"
+        f"<h2>Could not sign you in</h2><p style='color:#5b6b7b'>{escape(msg)}</p>"
+        "<p><a href='/login'>Sign in with your employee code</a></p>", status_code=status)
+
+
+@router.get("/auth/sso")
+async def group_sso(request: Request, token: str = "", next: str = ""):
+    import jwt as _jwt
+    from .. import db as _db
+    secret = os.getenv("GROUP_SSO_SECRET", "")
+    if not secret:
+        return _sso_page("Group sign-in is not set up on this app yet.")
+    try:
+        claims = _jwt.decode(token, secret, algorithms=["HS256"], issuer="bsg-hub",
+                             audience=os.getenv("GROUP_SSO_APP_KEY", "qms"), leeway=10)
+    except _jwt.ExpiredSignatureError:
+        return _sso_page("That sign-in link expired. Open QMS again from the group portal.")
+    except Exception:
+        return _sso_page("Group sign-in could not be verified.")
+    ident = str(claims.get("sub") or "").strip()
+    email = str(claims.get("email") or "").strip().lower()
+    row = None
+    if ident and "@" not in ident:
+        row = await _db.fetchrow("SELECT * FROM employees WHERE lower(emp_no)=lower($1) ORDER BY active DESC LIMIT 1", ident)
+    if not row and (email or "@" in ident):
+        row = await _db.fetchrow("SELECT * FROM employees WHERE lower(email)=$1 ORDER BY active DESC LIMIT 1", email or ident.lower())
+    emp = dict(row) if row else None
+    if not emp or not emp.get("active"):
+        return _sso_page("Your group account is not linked to a QMS employee. Ask IT to set your QMS employee code in the group portal.")
+    target = next if (next.startswith("/") and not next.startswith("//")) else "/"
+    resp = RedirectResponse(target, status_code=303)
+    resp.headers["Referrer-Policy"] = "no-referrer"
+    set_cookie(resp, make_token(emp, "employee"))
+    return resp
+
+
 @router.get("/forgot", response_class=HTMLResponse)
 async def forgot_page(request: Request):
     if await current_employee(request):
