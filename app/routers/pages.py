@@ -23,6 +23,8 @@ NAV_GROUPS = [
           "href": "/shearing", "active_key": "shearing"},
          {"name": "Pre-Delivery Inspection", "icon": "truck", "desc": "PDI against each sales order.",
           "href": "/pdi", "active_key": "pdi"},
+         {"name": "Inspection Analysis", "icon": "gauge", "desc": "Quality across Inward, CTL, Shearing and PDI — supplier scorecard, defect Pareto, batch trace.",
+          "href": "/analysis/inspection", "active_key": "analysis_inspection", "admin_only": True},
      ]},
     {"key": "complaints", "title": "Complaints", "accent": "navy", "icon": "complaints",
      "blurb": "Raise, investigate and close quality issues.",
@@ -89,10 +91,13 @@ def _nav_groups_for(emp):
         return NAV_GROUPS
     out = []
     for g in NAV_GROUPS:
+        g = dict(g)
+        items = g["items"]
         if g.get("key") == "maintenance":
-            g = dict(g)
-            g["items"] = [it for it in g["items"]
-                          if it.get("active_key") in MAINT_PUBLIC_KEYS]
+            items = [it for it in items if it.get("active_key") in MAINT_PUBLIC_KEYS]
+        # hide any admin-only item (e.g. Inspection Analysis) from non-admins
+        items = [it for it in items if not it.get("admin_only")]
+        g["items"] = items
         out.append(g)
     return out
 
@@ -121,50 +126,6 @@ async def login_submit(request: Request, identifier: str = Form(...), password: 
                            "error": "That employee code or password didn't match. Try again."},
             status_code=401)
     resp = RedirectResponse("/", status_code=303)
-    set_cookie(resp, make_token(emp, "employee"))
-    return resp
-
-
-# ---- Group single sign-on (app.thebharatsteelgroup.com) ----
-# The group portal signs the person in once, then sends them here with a one-minute token
-# signed with GROUP_SSO_SECRET (shared only by the portal and this app). We check it, find the
-# employee by emp_no (then email) and start the normal session. The normal login still works.
-def _sso_page(msg: str, status: int = 401):
-    from html import escape
-    return HTMLResponse(
-        "<!doctype html><meta name=viewport content='width=device-width,initial-scale=1'>"
-        "<body style='font-family:system-ui,sans-serif;max-width:440px;margin:15vh auto;padding:0 16px;color:#112532'>"
-        f"<h2>Could not sign you in</h2><p style='color:#5b6b7b'>{escape(msg)}</p>"
-        "<p><a href='/login'>Sign in with your employee code</a></p>", status_code=status)
-
-
-@router.get("/auth/sso")
-async def group_sso(request: Request, token: str = "", next: str = ""):
-    import jwt as _jwt
-    from .. import db as _db
-    secret = os.getenv("GROUP_SSO_SECRET", "")
-    if not secret:
-        return _sso_page("Group sign-in is not set up on this app yet.")
-    try:
-        claims = _jwt.decode(token, secret, algorithms=["HS256"], issuer="bsg-hub",
-                             audience=os.getenv("GROUP_SSO_APP_KEY", "qms"), leeway=10)
-    except _jwt.ExpiredSignatureError:
-        return _sso_page("That sign-in link expired. Open QMS again from the group portal.")
-    except Exception:
-        return _sso_page("Group sign-in could not be verified.")
-    ident = str(claims.get("sub") or "").strip()
-    email = str(claims.get("email") or "").strip().lower()
-    row = None
-    if ident and "@" not in ident:
-        row = await _db.fetchrow("SELECT * FROM employees WHERE lower(emp_no)=lower($1) ORDER BY active DESC LIMIT 1", ident)
-    if not row and (email or "@" in ident):
-        row = await _db.fetchrow("SELECT * FROM employees WHERE lower(email)=$1 ORDER BY active DESC LIMIT 1", email or ident.lower())
-    emp = dict(row) if row else None
-    if not emp or not emp.get("active"):
-        return _sso_page("Your group account is not linked to a QMS employee. Ask IT to set your QMS employee code in the group portal.")
-    target = next if (next.startswith("/") and not next.startswith("//")) else "/"
-    resp = RedirectResponse(target, status_code=303)
-    resp.headers["Referrer-Policy"] = "no-referrer"
     set_cookie(resp, make_token(emp, "employee"))
     return resp
 
@@ -229,6 +190,17 @@ async def pdi_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("pdi.html", _ctx(request, emp, "pdi", section="Pre-Delivery Inspection"))
+
+
+@router.get("/analysis/inspection", response_class=HTMLResponse)
+async def inspection_analysis_page(request: Request):
+    emp = await current_employee(request)
+    if not emp:
+        return RedirectResponse("/login", status_code=303)
+    if not _is_admin(emp):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("analysis_inspection.html",
+                                      _ctx(request, emp, "analysis_inspection", section="Inspection Analysis"))
 
 
 @router.get("/eightd", response_class=HTMLResponse)

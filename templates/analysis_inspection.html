@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Inspection Analysis · {{ app_name }}{% endblock %}
+{% block tb_title %}Inspection Analysis{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.ia-filters{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+@media(max-width:980px){.ia-filters{grid-template-columns:1fr 1fr}}
+.ia-filters label{display:block;font-size:10.5px;font-weight:700;color:var(--ink-2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
+.ia-filters input,.ia-filters select{width:100%;padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;font-family:inherit;font-size:12.5px;background:#fff;outline:none}
+.ia-filters input:focus,.ia-filters select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+table.ia{width:100%;border-collapse:collapse;font-size:12.5px;min-width:620px}
+table.ia th{text-align:left;padding:9px 10px;background:#1f3b5b;color:#fff;font-weight:600;font-size:11.5px;white-space:nowrap}
+table.ia td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:middle}
+table.ia tr:nth-child(even) td{background:#f7f9fc}
+.ia-wrap{overflow-x:auto}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.stg{display:inline-block;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px}
+.stg.inw{background:#eef1f4;color:#44515f}.stg.ctl{background:#e7f0fb;color:#1f3b5b}
+.stg.shr{background:#efe7fb;color:#5b3b7d}.stg.pdi{background:#e3f6ee;color:#0a7d55}
+.bar{position:relative;background:#eef1f4;border-radius:6px;height:16px;min-width:60px}
+.bar>span{position:absolute;left:0;top:0;bottom:0;background:#1f3b5b;border-radius:6px}
+.hot{color:#c23438;font-weight:700}
+.warn{color:#9a6a00;font-weight:700}
+.ia-meta{font-size:12px;color:var(--muted);margin:2px 0 10px}
+.ia-sub{font-size:12px;color:var(--muted);margin:0 0 10px}
+</style>
+
+<div class="page-head"><h1>Inspection Analysis</h1><p>Quality across the four stages — Inward, CTL, Shearing and PDI. One batch flows Inward&nbsp;→&nbsp;CTL/Shearing&nbsp;→&nbsp;PDI; use the filters to focus by period, supplier, grade or customer.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('clipboard',17) }}</span>Filters</div>
+<div class="panel-body">
+  <div class="ia-filters">
+    <div><label>From</label><input id="f_from" type="date" onchange="load()"></div>
+    <div><label>To</label><input id="f_to" type="date" onchange="load()"></div>
+    <div><label>Make / supplier</label><input id="f_make" oninput="deb()" placeholder="e.g. SAIL"></div>
+    <div><label>Grade</label><input id="f_grade" oninput="deb()" placeholder="e.g. E250"></div>
+    <div><label>Customer</label><input id="f_cust" oninput="deb()" placeholder="name contains…"></div>
+  </div>
+  <div class="ia-meta" id="ia_meta" style="margin-top:10px"></div>
+</div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('gauge',17) }}</span>Per-stage summary</div>
+<div class="panel-body"><div class="ia-wrap"><table class="ia">
+  <thead><tr><th>Stage</th><th class="num">Records</th><th class="num">Sheets / Coils</th><th class="num">Rejection / Damage %</th><th class="num">OOT %</th><th class="num">Rework %</th><th class="num">First-pass %</th></tr></thead>
+  <tbody id="kpi_rows"><tr><td colspan="7" style="padding:16px;color:var(--muted)">Loading…</td></tr></tbody>
+</table></div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('cube',17) }}</span>Supplier (make) scorecard</div>
+<div class="panel-body"><div class="ia-sub">Ranked worst&nbsp;→&nbsp;best by overall downstream rejection rate.</div><div class="ia-wrap"><table class="ia">
+  <thead><tr><th>Make</th><th class="num">Coils</th><th class="num">Inward damage %</th><th class="num">Avg thk dev (mm)</th><th class="num">CTL reject %</th><th class="num">Shearing reject %</th><th class="num">Overall reject %</th></tr></thead>
+  <tbody id="sup_rows"><tr><td colspan="7" style="padding:16px;color:var(--muted)">—</td></tr></tbody>
+</table></div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('warn',17) }}</span>Defect / rejection Pareto</div>
+<div class="panel-body"><div class="ia-wrap"><table class="ia">
+  <thead><tr><th>Defect type</th><th>Stage</th><th class="num">Count</th><th class="num">Qty (pcs)</th><th style="width:34%">Share</th></tr></thead>
+  <tbody id="par_rows"><tr><td colspan="5" style="padding:16px;color:var(--muted)">—</td></tr></tbody>
+</table></div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('calendar',17) }}</span>Monthly trend</div>
+<div class="panel-body"><div class="ia-sub">Share of records with a rejection / damage / out-of-spec, by month and stage.</div><div class="ia-wrap"><table class="ia">
+  <thead><tr><th>Month</th><th>Stage</th><th class="num">Records</th><th class="num">With defect</th><th class="num">Defect %</th></tr></thead>
+  <tbody id="trend_rows"><tr><td colspan="5" style="padding:16px;color:var(--muted)">—</td></tr></tbody>
+</table></div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('ruler',17) }}</span>Batch traceability</div>
+<div class="panel-body">
+  <div style="display:flex;gap:8px;max-width:420px;margin-bottom:12px">
+    <input id="b_q" placeholder="Batch or coil number…" style="flex:1;padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px" onkeydown="if(event.key==='Enter')batchGo()">
+    <button class="btn btn-primary" onclick="batchGo()">Trace</button>
+  </div>
+  <div class="ia-wrap"><table class="ia">
+    <thead><tr><th>Stage</th><th>Date</th><th>Make</th><th>Grade</th><th>Ref</th><th>Result</th><th>By</th></tr></thead>
+    <tbody id="batch_rows"><tr><td colspan="7" style="padding:16px;color:var(--muted)">Enter a batch or coil number to trace it across stages.</td></tr></tbody>
+  </table></div>
+  <div class="ia-sub" id="batch_note" style="margin-top:8px"></div>
+</div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function stgClass(s){return s==='Inward'?'inw':(s==='CTL'?'ctl':(s==='Shearing'?'shr':'pdi'));}
+function pctCell(x){if(x==null)return '<td class="num" style="color:var(--muted)">—</td>';
+  var cls=x>=10?'hot':(x>=3?'warn':'');return '<td class="num '+cls+'">'+x+'%</td>';}
+function ymd(d){return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+var T;
+function deb(){clearTimeout(T);T=setTimeout(load,350);}
+async function load(){
+  var qs='from='+encodeURIComponent(v('f_from'))+'&to='+encodeURIComponent(v('f_to'))
+    +'&make='+encodeURIComponent(v('f_make'))+'&grade='+encodeURIComponent(v('f_grade'))
+    +'&customer='+encodeURIComponent(v('f_cust'));
+  document.getElementById('kpi_rows').innerHTML='<tr><td colspan="7" style="padding:16px;color:var(--muted)">Loading…</td></tr>';
+  try{var r=await fetch('/analysis/inspection/data?'+qs,{cache:'no-store'});
+    if(r.status===401){location.href='/login';return;}
+    if(r.status===403){document.getElementById('kpi_rows').innerHTML='<tr><td colspan="7" style="padding:16px;color:#c23438">Admins only.</td></tr>';return;}
+    var d=await r.json();}
+  catch(e){document.getElementById('kpi_rows').innerHTML='<tr><td colspan="7" style="padding:16px;color:#c23438">Could not load.</td></tr>';return;}
+  var c=d.counts||{};
+  document.getElementById('ia_meta').textContent=d.from+' to '+d.to+'  ·  Inward '+(c.inward||0)+' · CTL '+(c.ctl||0)+' · Shearing '+(c.shearing||0)+' · PDI '+(c.pdi||0);
+  // KPIs
+  document.getElementById('kpi_rows').innerHTML=(d.kpis||[]).map(function(k){
+    return '<tr><td><span class="stg '+stgClass(k.stage)+'">'+esc(k.stage)+'</span></td>'
+      +'<td class="num">'+(k.records||0)+'</td>'
+      +'<td class="num">'+(k.units||0)+' <span style="color:var(--muted);font-size:10px">'+esc(k.units_label||'')+'</span></td>'
+      +'<td class="num"><b>'+(k.reject_pct||0)+'%</b> <span style="color:var(--muted);font-size:10px">'+esc(k.reject_label||'')+'</span></td>'
+      +pctCell(k.oot_pct)+pctCell(k.rework_pct)+pctCell(k.first_pass_pct==null?null:k.first_pass_pct)+'</tr>';
+  }).join('')||'<tr><td colspan="7" style="padding:16px;color:var(--muted)">No data in range.</td></tr>';
+  // suppliers
+  document.getElementById('sup_rows').innerHTML=(d.suppliers||[]).map(function(s){
+    return '<tr><td><b>'+esc(s.make)+'</b></td><td class="num">'+(s.coils||0)+'</td>'
+      +pctCell(s.inward_damage_pct)
+      +'<td class="num">'+(s.avg_thk_dev==null?'<span style="color:var(--muted)">—</span>':s.avg_thk_dev)+'</td>'
+      +pctCell(s.ctl_reject_pct)+pctCell(s.shr_reject_pct)+pctCell(s.overall_reject_pct)+'</tr>';
+  }).join('')||'<tr><td colspan="7" style="padding:16px;color:var(--muted)">No data.</td></tr>';
+  // pareto
+  var pk=d.pareto||[];var maxc=pk.length?pk[0].count:1;
+  document.getElementById('par_rows').innerHTML=pk.map(function(p){
+    var w=Math.round(100*p.count/(maxc||1));
+    return '<tr><td>'+esc(p.type)+'</td><td><span class="stg '+stgClass(p.stage)+'">'+esc(p.stage)+'</span></td>'
+      +'<td class="num">'+p.count+'</td><td class="num">'+(p.qty||0)+'</td>'
+      +'<td><div class="bar"><span style="width:'+w+'%"></span></div></td></tr>';
+  }).join('')||'<tr><td colspan="5" style="padding:16px;color:var(--muted)">No defects recorded in range. ✅</td></tr>';
+  // trend
+  document.getElementById('trend_rows').innerHTML=(d.trend||[]).map(function(t){
+    return '<tr><td>'+esc(t.month)+'</td><td><span class="stg '+stgClass(t.stage)+'">'+esc(t.stage)+'</span></td>'
+      +'<td class="num">'+t.records+'</td><td class="num">'+t.bad+'</td>'+pctCell(t.bad_pct)+'</tr>';
+  }).join('')||'<tr><td colspan="5" style="padding:16px;color:var(--muted)">No data.</td></tr>';
+}
+async function batchGo(){
+  var q=v('b_q').trim();if(!q)return;
+  document.getElementById('batch_rows').innerHTML='<tr><td colspan="7" style="padding:16px;color:var(--muted)">Searching…</td></tr>';
+  document.getElementById('batch_note').textContent='';
+  try{var r=await fetch('/analysis/inspection/batch?q='+encodeURIComponent(q),{cache:'no-store'});var d=await r.json();}
+  catch(e){document.getElementById('batch_rows').innerHTML='<tr><td colspan="7" style="padding:16px;color:#c23438">Could not search.</td></tr>';return;}
+  var rows=d.rows||[];
+  document.getElementById('batch_rows').innerHTML=rows.length?rows.map(function(x){
+    return '<tr><td><span class="stg '+stgClass(x.stage)+'">'+esc(x.stage)+'</span></td><td>'+esc(x.date)+'</td>'
+      +'<td>'+esc(x.make)+'</td><td>'+esc(x.grade)+'</td><td>'+esc(x.ref)+'</td><td>'+esc(x.detail)+'</td><td>'+esc(x.by)+'</td></tr>';
+  }).join(''):'<tr><td colspan="7" style="padding:16px;color:var(--muted)">No records for "'+esc(q)+'".</td></tr>';
+  document.getElementById('batch_note').textContent=d.note||'';
+}
+(function init(){
+  var to=new Date();var frm=new Date();frm.setDate(frm.getDate()-180);
+  document.getElementById('f_to').value=ymd(to);
+  document.getElementById('f_from').value=ymd(frm);
+  load();
+})();
+</script>
+{% endblock %}
