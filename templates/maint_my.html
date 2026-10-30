@@ -131,7 +131,13 @@ async function openForm(cid){
       +ctrl
       +'<textarea class="qnote" data-id="'+p.id+'" placeholder="Add a note / remark (optional)">'+esc(p.note||'')+'</textarea></div>';
   }).join('');
+  body.innerHTML+='<div class="qcard" style="display:flex;gap:10px">'
+    +'<div style="flex:1"><div class="qt">Start time</div><input id="my_start" type="datetime-local" style="width:100%"></div>'
+    +'<div style="flex:1"><div class="qt">End time</div><input id="my_end" type="datetime-local" style="width:100%"></div></div>';
+  var dv=nowLocalDT();var ms=document.getElementById('my_start'),me=document.getElementById('my_end');
+  if(ms)ms.value=dv;if(me)me.value=dv;
 }
+function nowLocalDT(){var d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16);}
 function mark(el,id,ok){var c=document.getElementById('qc'+id);if(!c)return;
   c.classList.toggle('ok',!!ok);c.classList.toggle('notok',!ok);
   var labs=c.querySelectorAll('.opt');labs.forEach(function(l){l.classList.remove('sel-ok','sel-no');});
@@ -150,7 +156,8 @@ async function submitForm(){
   if(!results.length){toast&&toast('err','Mark at least one point');return;}
   var b=document.getElementById('f_save');b.disabled=true;var l=b.textContent;b.textContent='Saving…';
   try{var r=await fetch('/maint/my/submit',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({checklist_id:CUR.checklist_id,schedule_id:CUR.schedule_id,results:results})});
+      body:JSON.stringify({checklist_id:CUR.checklist_id,schedule_id:CUR.schedule_id,results:results,
+        start_time:(document.getElementById('my_start')||{}).value||'',end_time:(document.getElementById('my_end')||{}).value||''})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
     toast&&toast('ok','Saved '+(d.saved||0)+' point(s)');closeForm();boot();
   }catch(e){toast&&toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}

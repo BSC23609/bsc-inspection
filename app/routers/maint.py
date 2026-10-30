@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-20d"
-MAINT_BUILD = "2026-10-29-v23-breakdown-close-fix"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-30-v24-pm-start-end-time"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -606,6 +606,10 @@ async def ensure_tables():
         for col, typ in (("btype", "TEXT"), ("photos", "JSONB"), ("assignees", "JSONB"),
                          ("resolution", "TEXT")):
             await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
+        # PM completions can carry a work start/end time (entered on the Complete form),
+        # so the Machine History Card shows a span and total hours like a breakdown does.
+        for col in ("started_at", "ended_at"):
+            await db.execute(f"ALTER TABLE maint_logs ADD COLUMN IF NOT EXISTS {col} TIMESTAMPTZ")
         await db.execute("CREATE INDEX IF NOT EXISTS ix_m_bd ON maint_breakdowns (status, raised_at DESC)")
         # maintenance staff per breakdown type — now MANY per type (auto-pick on the form)
         await db.execute("""CREATE TABLE IF NOT EXISTS maint_type_staff (
@@ -870,6 +874,18 @@ async def _ensure_daily_plans():
 
 def _today() -> date:
     return datetime.now(IST).date()
+
+
+def _parse_local_dt(v):
+    """Parse a datetime-local form value ('YYYY-MM-DDTHH:MM', local IST) into a
+    tz-aware datetime, or None when blank/invalid."""
+    v = (v or "").strip().replace("T", " ")
+    if not v:
+        return None
+    try:
+        return datetime.fromisoformat(v[:16]).replace(tzinfo=IST)
+    except Exception:
+        return None
 
 
 def _num(v, default=None):
@@ -1912,13 +1928,15 @@ async def my_checklist_submit(body: dict, emp: dict = Depends(require_employee))
     status = "issues" if any((r.get("ok") is False or r.get("result") == "Not OK") for r in results) else "done"
     sid = body.get("schedule_id")
     done_by = emp.get("name") or emp.get("emp_no")
+    started = _parse_local_dt(body.get("start_time"))
+    ended = _parse_local_dt(body.get("end_time"))
     log_id = None
     try:
         log_id = await db.fetchval(
             "INSERT INTO maint_logs (asset_id,schedule_id,checklist_id,done_by,done_by_emp_id,"
-            "status,results,remarks) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
+            "status,results,remarks,started_at,ended_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id",
             c["asset_id"], sid, cid, done_by, eid,
-            status, json.dumps(results), (body.get("remarks") or "").strip())
+            status, json.dumps(results), (body.get("remarks") or "").strip(), started, ended)
     except Exception as e:
         print("[maint] my submit log skipped:", e)
     # If the WHOLE checklist is now complete for this period (every checkpoint that is
@@ -3198,12 +3216,16 @@ async def complete(body: dict, emp: dict = Depends(require_employee)):
     today = _today()
     next_due = next_due_date({**s, "last_done": today}, today)
     done_by = emp.get("name") or emp.get("emp_no")
+    started = _parse_local_dt(body.get("start_time"))
+    ended = _parse_local_dt(body.get("end_time"))
     log_id = await db.fetchval(
         "INSERT INTO maint_logs (asset_id,schedule_id,checklist_id,done_by,done_by_emp_id,"
-        "running_hours,status,results,remarks,next_due) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id",
+        "running_hours,status,results,remarks,next_due,started_at,ended_at) "
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id",
         s["asset_id"], sid, s.get("checklist_id"),
         done_by, emp.get("id"),
-        hrs, status, json.dumps(results), (body.get("remarks") or "").strip(), next_due)
+        hrs, status, json.dumps(results), (body.get("remarks") or "").strip(), next_due,
+        started, ended)
     await db.execute("UPDATE maint_schedules SET last_done=$1, last_done_hours=$2 WHERE id=$3",
                      today, hrs, sid)
     if hrs is not None:

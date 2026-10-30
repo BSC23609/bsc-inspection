@@ -125,11 +125,13 @@ def _events(logs, breakdowns, assets, employees):
         a = a_by.get(l.get("asset_id")) or {}
         st = (l.get("status") or "").strip()
         key = (l.get("asset_id"), done.date())
+        sa = _d(l.get("started_at"))
+        ea = _d(l.get("ended_at"))
         rec = {
             "dt": done, "code": a.get("code", ""), "name": a.get("name", ""),
             "asset_id": l.get("asset_id"),
             "desc": "Preventive maintenance checklist",
-            "start": "", "end": "", "hrs": None,
+            "start": _timepart(sa), "end": _timepart(ea), "hrs": _hrs(sa, ea),
             "category": "Scheduled Preventive Maintenance",
             "by": emp_by.get(l.get("done_by_emp_id")) or (l.get("done_by") or ""),
             "action": (l.get("remarks") or "").strip() or "Checklist completed",

@@ -140,6 +140,9 @@ async function openComplete(sid){
   document.getElementById('m_title').textContent=(d.schedule.asset_code?d.schedule.asset_code+' ':'')+(d.schedule.asset_name||'')+' — '+(d.schedule.title||'');
   var html='';
   html+='<div class="lab">Running hours now</div><div class="wf"><input id="m_hours" type="number" step="0.1" placeholder="'+(d.schedule.asset_hours!=null?esc(d.schedule.asset_hours):'current hours')+'" style="margin-bottom:12px"></div>';
+  html+='<div style="display:flex;gap:10px;margin-bottom:12px">'
+    +'<div style="flex:1"><div class="lab">Start time</div><input id="m_start" type="datetime-local" style="width:100%"></div>'
+    +'<div style="flex:1"><div class="lab">End time</div><input id="m_end" type="datetime-local" style="width:100%"></div></div>';
   if(CUR.checkpoints.length){
     html+=CUR.checkpoints.map(function(p,i){
       var ctl='';
@@ -154,8 +157,11 @@ async function openComplete(sid){
   } else { html+='<div class="muted" style="font-size:12.5px;margin-bottom:10px">No checklist attached — record hours and a remark.</div>'; }
   html+='<div class="lab" style="margin-top:6px">Overall remarks</div><textarea id="m_rem" rows="2" style="width:100%"></textarea>';
   document.getElementById('m_body').innerHTML=html;
+  var dv=nowLocalDT();var ms=document.getElementById('m_start'),me=document.getElementById('m_end');
+  if(ms)ms.value=dv;if(me)me.value=dv;
   document.getElementById('scrim').style.display='flex';
 }
+function nowLocalDT(){var d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16);}
 function tgl(b){var ok=b.getAttribute('data-ok')==='1';if(ok){b.setAttribute('data-ok','0');b.className='okbtn bad';b.textContent='Not OK';}
   else{b.setAttribute('data-ok','1');b.className='okbtn ok';b.textContent='OK';}}
 function isBad(v){v=(v||'').toLowerCase();if(/no leakage/.test(v))return false;return /not ok|not done|\bnot\b|leakage|\bbad\b|\bfail/.test(v);}
@@ -175,7 +181,8 @@ async function saveComplete(){
       results.push({cp_id:p.id,text:p.text,category:p.category,ok:ok,remark:remv});}
   });
   var hv=document.getElementById('m_hours');var payload={schedule_id:CUR.schedule.id,running_hours:hv?hv.value:'',
-    results:results,remarks:(document.getElementById('m_rem')||{}).value||''};
+    results:results,remarks:(document.getElementById('m_rem')||{}).value||'',
+    start_time:(document.getElementById('m_start')||{}).value||'',end_time:(document.getElementById('m_end')||{}).value||''};
   var b=document.getElementById('m_save');b.disabled=true;var l=b.textContent;b.textContent='Saving…';
   try{var r=await fetch('/maint/complete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Save failed');
