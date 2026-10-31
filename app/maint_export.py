@@ -5,7 +5,7 @@ Machines and Lists. Returns .xlsx bytes. Pure openpyxl, values computed in Pytho
 (no Excel formulas) so the saved file is correct the moment it opens."""
 import io
 import re
-from datetime import datetime, date
+from datetime import datetime, date, time, timedelta
 from collections import defaultdict
 
 import openpyxl
@@ -47,6 +47,32 @@ def _hrs(start, end):
         return None
 
 
+def _work_hrs(start, end, holidays):
+    """Breakdown downtime counting only the plant working window (09:00–19:00) on
+    working days — Sundays and dates in `holidays` (ISO strings) contribute 0."""
+    if not start or not end:
+        return None
+    try:
+        if end <= start:
+            return 0.0
+    except Exception:
+        return None
+    holidays = holidays or set()
+    total = 0.0
+    day = start.date()
+    last = end.date()
+    while day <= last:
+        if not (day.weekday() == 6 or day.isoformat() in holidays):
+            ws = datetime.combine(day, time(9, 0), tzinfo=start.tzinfo)
+            we = datetime.combine(day, time(19, 0), tzinfo=start.tzinfo)
+            s = start if start > ws else ws
+            e = end if end < we else we
+            if e > s:
+                total += (e - s).total_seconds() / 3600.0
+        day = day + timedelta(days=1)
+    return round(total, 2)
+
+
 def _d(v):
     if isinstance(v, datetime):
         return v
@@ -84,7 +110,7 @@ def _sheet_name(code, name):
 
 
 # ------------------------------------------------------------------ events
-def _events(logs, breakdowns, assets, employees):
+def _events(logs, breakdowns, assets, employees, holidays=None):
     """Normalise PM completions + breakdowns into one list of log dicts."""
     a_by = {a["id"]: a for a in assets}
     emp_by = {e["id"]: (e.get("name") or e.get("emp_no") or f"#{e['id']}") for e in employees}
@@ -107,7 +133,7 @@ def _events(logs, breakdowns, assets, employees):
             "asset_id": b.get("asset_id"),
             "desc": (b.get("problem") or "").strip() or "Breakdown",
             "start": _timepart(raised), "end": _timepart(closed),
-            "hrs": _hrs(raised, closed),
+            "hrs": _work_hrs(raised, closed, holidays),   # working-window downtime (09:00–19:00, skip Sun/holidays)
             "category": ("Unscheduled Preventive Maintenance"
                          if str(b.get("wo_type") or "").strip().lower().startswith("unscheduled")
                          else "Breakdown Maintenance"),
@@ -346,12 +372,12 @@ def _readme(ws):
 
 
 # ------------------------------------------------------------------ main
-def build(logs, breakdowns, assets, employees) -> bytes:
+def build(logs, breakdowns, assets, employees, holidays=None) -> bytes:
     assets = [dict(a) for a in assets]
     logs = [dict(l) for l in logs]
     breakdowns = [dict(b) for b in breakdowns]
     employees = [dict(e) for e in employees]
-    events = _events(logs, breakdowns, assets, employees)
+    events = _events(logs, breakdowns, assets, employees, holidays)
 
     wb = openpyxl.Workbook()
     _readme(wb.active); wb.active.title = "README"

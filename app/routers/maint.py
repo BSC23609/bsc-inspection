@@ -15,7 +15,7 @@ import re
 import base64
 import calendar
 import asyncio
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, time
 from zoneinfo import ZoneInfo
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-10-31-v28-board-workorders"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-31-v30-overdue-all-admins"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -974,26 +974,100 @@ async def _overdue_recipient_mobiles() -> list:
 
 
 async def _overdue_recipients() -> list:
-    """The chosen overdue-digest recipients as {name, mobile}, so the delivery log
-    shows the actual person's name instead of a generic 'Supervisor' label."""
+    """Recipients of the overdue (bsc_pm_overdue) digest as {name, mobile}. This is
+    EVERY admin user (with a mobile), merged with any recipients chosen on the
+    Schedules page, de-duplicated by phone number."""
+    out, seen = [], set()
+
+    def _add(name, mobile):
+        mob = (mobile or "").strip()
+        if not mob:
+            return
+        key = wati.normalize_number(mob) or mob
+        if key in seen:
+            return
+        seen.add(key)
+        out.append({"name": (name or "").strip(), "mobile": mob})
+
+    # recipients explicitly chosen on the Schedules page
     try:
         raw = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey='overdue_recipients'")
         ids = [int(x) for x in (raw or "").split(",") if x.strip().isdigit()]
         if ids:
-            rows = await db.fetch(
-                "SELECT COALESCE(name,'') AS name, COALESCE(mobile,'') AS mobile "
-                "FROM employees WHERE id = ANY($1::int[])", ids)
-            out = [{"name": (r["name"] or "").strip(), "mobile": (r["mobile"] or "").strip()}
-                   for r in rows if (r["mobile"] or "").strip()]
-            if out:
-                return out
+            for r in await db.fetch(
+                    "SELECT COALESCE(name,'') AS name, COALESCE(mobile,'') AS mobile "
+                    "FROM employees WHERE id = ANY($1::int[])", ids):
+                _add(r["name"], r["mobile"])
     except Exception:
         pass
+
+    # ALL admins — the overdue digest must reach every admin
+    try:
+        for r in await db.fetch(
+                "SELECT COALESCE(name,'') AS name, COALESCE(mobile,'') AS mobile FROM employees "
+                "WHERE COALESCE(is_admin,false)=true AND COALESCE(active,true)=true "
+                "AND COALESCE(mobile,'')<>''"):
+            _add(r["name"], r["mobile"])
+    except Exception:
+        pass
+
+    if out:
+        return out
     return [{"name": "", "mobile": m} for m in _supervisor_mobiles()]
 
 
 def _is_offday(d):
     return d.weekday() == 6 or d.isoformat() in HOLIDAYS   # Sunday (6) or a holiday
+
+
+# Plant working window for breakdown-hour (downtime) calculation.
+WORK_START_H = 9      # 09:00
+WORK_END_H = 19       # 19:00 (7 PM)
+
+
+def _working_hours(start, end):
+    """Hours between start and end counting ONLY the plant working window
+    (09:00–19:00) on working days — Sundays and configured holidays contribute 0.
+    start/end are tz-aware IST datetimes. Returns a float (0 if end<=start)."""
+    if not start or not end:
+        return None
+    try:
+        if end <= start:
+            return 0.0
+        start = start.astimezone(IST)
+        end = end.astimezone(IST)
+    except Exception:
+        return None
+    total = 0.0
+    day = start.date()
+    last = end.date()
+    while day <= last:
+        if not _is_offday(day):
+            ws = datetime.combine(day, time(WORK_START_H, 0), tzinfo=IST)
+            we = datetime.combine(day, time(WORK_END_H, 0), tzinfo=IST)
+            s = max(start, ws)
+            e = min(end, we)
+            if e > s:
+                total += (e - s).total_seconds() / 3600.0
+        day = day + timedelta(days=1)
+    return round(total, 2)
+
+
+async def _downtime_working(frm_dt, to_dt, aid=0):
+    """(total working-window downtime hours, closed count) for breakdowns CLOSED in
+    [frm_dt, to_dt], using the 09:00–19:00 window and skipping Sundays/holidays."""
+    await _refresh_holidays()
+    rows = await db.fetch(
+        "SELECT raised_at, closed_at FROM maint_breakdowns WHERE status='closed' "
+        "AND closed_at IS NOT NULL AND closed_at>=$1 AND closed_at<=$2 AND ($3=0 OR asset_id=$3)",
+        frm_dt, to_dt, aid)
+    tot, n = 0.0, 0
+    for r in rows:
+        h = _working_hours(r["raised_at"], r["closed_at"])
+        if h is not None:
+            tot += h
+            n += 1
+    return round(tot, 2), n
 
 
 def _roll_working(d):
@@ -2950,11 +3024,10 @@ async def dashboard_data(emp: dict = Depends(require_employee)):
         "SELECT COUNT(*) FROM maint_assets WHERE COALESCE(active,true)"))
     out["active_schedules"] = int(await _dash_val(
         "SELECT COUNT(*) FROM maint_schedules WHERE COALESCE(active,true)"))
-    mttr = await _dash_val(
-        "SELECT ROUND(AVG(EXTRACT(EPOCH FROM (closed_at - raised_at))/3600.0)::numeric,1) "
-        "FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
-        "AND closed_at > now() - interval '180 days'", default=0)
-    out["mttr_hours"] = float(mttr or 0)
+    # MTTR = average working-window downtime per closed breakdown (last 180 days)
+    _mto = datetime.now(IST)
+    _mdt, _mn = await _downtime_working(_mto - timedelta(days=180), _mto, 0)
+    out["mttr_hours"] = round(_mdt / _mn, 1) if _mn else 0.0
     # oldest open breakdown age (days)
     out["oldest_open_days"] = int(await _dash_val(
         "SELECT COALESCE(MAX(EXTRACT(DAY FROM (now()-raised_at))),0) "
@@ -3049,10 +3122,7 @@ async def analytics_data(days: int = 90, asset: int = 0, frm: str = "", to: str 
     closed = int(await _dash_val(
         "SELECT COUNT(*) FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
         "AND closed_at>=$1 AND closed_at<=$2 AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid))
-    downtime = float(await _dash_val(
-        "SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (closed_at-raised_at))/3600.0),0) FROM maint_breakdowns "
-        "WHERE status='closed' AND closed_at IS NOT NULL AND closed_at>=$1 AND closed_at<=$2 "
-        "AND ($3=0 OR asset_id=$3)", frm_dt, to_dt, aid) or 0)
+    downtime, _dt_n = await _downtime_working(frm_dt, to_dt, aid)
     open_now = int(await _dash_val(
         "SELECT COUNT(*) FROM maint_breakdowns WHERE status='open' AND ($1=0 OR asset_id=$1)", aid))
     pm_done = int(await _dash_val(
@@ -3094,15 +3164,16 @@ async def analytics_data(days: int = 90, asset: int = 0, frm: str = "", to: str 
             f = await _dash_val(
                 "SELECT COUNT(*) FROM maint_breakdowns WHERE date_trunc('month',raised_at)"
                 "=date_trunc('month',now())-make_interval(months=>$1) AND ($2=0 OR asset_id=$2)", i, aid)
-            d = await _dash_val(
-                "SELECT COALESCE(SUM(EXTRACT(EPOCH FROM (closed_at-raised_at))/3600.0),0) FROM maint_breakdowns "
-                "WHERE status='closed' AND closed_at IS NOT NULL AND date_trunc('month',closed_at)"
-                "=date_trunc('month',now())-make_interval(months=>$1) AND ($2=0 OR asset_id=$2)", i, aid)
-            cc = await _dash_val(
-                "SELECT COUNT(*) FROM maint_breakdowns WHERE status='closed' AND closed_at IS NOT NULL "
-                "AND date_trunc('month',closed_at)=date_trunc('month',now())-make_interval(months=>$1) "
-                "AND ($2=0 OR asset_id=$2)", i, aid)
-            months.append(lbl); fl.append(int(f)); dv = round(float(d or 0), 1)
+            # month window [mstart, mend) in IST, then working-window downtime
+            _b = datetime.now(IST).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            _my, _mm = _b.year, _b.month - i
+            while _mm <= 0:
+                _mm += 12; _my -= 1
+            mstart = _b.replace(year=_my, month=_mm)
+            _ny, _nm = (_my + 1, 1) if _mm == 12 else (_my, _mm + 1)
+            mend = _b.replace(year=_ny, month=_nm)
+            dsum, cc = await _downtime_working(mstart, mend, aid)
+            months.append(lbl); fl.append(int(f)); dv = round(float(dsum or 0), 1)
             dt.append(dv); mt.append(round(dv / int(cc), 1) if cc else 0)
     except Exception as e:
         print("[maint-an trend]", e)
@@ -3692,11 +3763,12 @@ async def export_onedrive(token: str = Query(default=""), emp: dict = Depends(cu
     if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
     from .. import maint_export
+    await _refresh_holidays()
     logs = await db.fetch("SELECT * FROM maint_logs ORDER BY done_at")
     bds = await db.fetch("SELECT * FROM maint_breakdowns ORDER BY raised_at")
     assets = await db.fetch("SELECT * FROM maint_assets ORDER BY code")
     emps = await db.fetch("SELECT id, name, emp_no FROM employees")
-    content = maint_export.build(logs, bds, assets, emps)
+    content = maint_export.build(logs, bds, assets, emps, holidays=HOLIDAYS)
     path = f"{ONEDRIVE_BASE}/Maintenance/Maintenance_Log_Machine_History_Card.xlsx"
     try:
         gtoken = await graph.get_token()
