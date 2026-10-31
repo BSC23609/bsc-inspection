@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-10-31-v33-board-daily-overdue"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-31-v34-board-debug"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3613,6 +3613,73 @@ async def board(emp: dict = Depends(require_employee)):
                   # kept for backward compatibility with any older client
                   "overdue": periodic["overdue"], "due": periodic["due"],
                   "upcoming": periodic["upcoming"], "recent": p_recent[:12]})
+
+
+@router.get("/board-debug")
+async def board_debug(token: str = Query(default="")):
+    """Read-only diagnostic for the daily-overdue classification. Open
+    /maint/board-debug?token=<AGENT_TOKEN>. Shows, per active DAILY schedule, how the
+    board classifies it and why (due day, checklist, last_done, per-checkpoint state)."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(403, "Bad token")
+    await ensure_tables()
+    await _refresh_holidays()
+    await _ensure_absent_table()
+    today = _today()
+    on_leave = await _on_leave_ids(today)
+
+    def _is_daily(s):
+        ft = (s.get("freq_type") or "").lower()
+        return ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
+
+    due_day = None
+    _d_scan = today
+    for _ in range(60):
+        if not _is_offday(_d_scan):
+            due_day = _d_scan; break
+        _d_scan = _d_scan - timedelta(days=1)
+    due_iso = due_day.isoformat() if due_day else None
+
+    sched_all = await _schedule_rows()
+    daily_cl_ids = sorted({s["checklist_id"] for s in sched_all
+                           if s.get("active") and s.get("checklist_id") and _is_daily(s)})
+    cps_by_cl = {}
+    if daily_cl_ids:
+        for cp in await db.fetch(
+                "SELECT id, checklist_id, assigned_emp_id FROM maint_checkpoints "
+                "WHERE checklist_id = ANY($1::int[])", daily_cl_ids):
+            cps_by_cl.setdefault(cp["checklist_id"], []).append(dict(cp))
+    all_cp_ids = [cp["id"] for lst in cps_by_cl.values() for cp in lst]
+    done_cp = set()
+    if all_cp_ids and due_iso:
+        for d in await db.fetch(
+                "SELECT checkpoint_id FROM maint_checkpoint_done "
+                "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])", due_iso, all_cp_ids):
+            done_cp.add(d["checkpoint_id"])
+
+    rows = []
+    for s in sched_all:
+        if not s.get("active") or not _is_daily(s):
+            continue
+        clid = s.get("checklist_id")
+        cps = cps_by_cl.get(clid) or []
+        cp_detail = [{"cp": cp["id"], "emp": cp.get("assigned_emp_id"),
+                      "done": cp["id"] in done_cp} for cp in cps]
+        n_done = sum(1 for c in cp_detail if c["done"])
+        rows.append({
+            "sched_id": s.get("id"), "code": s.get("asset_code"), "name": s.get("asset_name"),
+            "checklist_id": clid, "n_checkpoints": len(cps),
+            "n_done_on_due_day": n_done, "n_pending": len(cps) - n_done,
+            "last_done": str(s.get("last_done")), "start_date": str(s.get("start_date")),
+            "end_date": str(s.get("end_date")), "cp_detail": cp_detail})
+    rows.sort(key=lambda r: str(r.get("code")))
+    return _json({"today": today.isoformat(), "due_day": due_iso,
+                  "is_today_offday": _is_offday(today),
+                  "holidays_count": len(HOLIDAYS),
+                  "today_in_holidays": today.isoformat() in HOLIDAYS,
+                  "due_day_in_holidays": (due_iso in HOLIDAYS) if due_iso else None,
+                  "on_leave_today": sorted(list(on_leave)),
+                  "daily_schedule_count": len(rows), "schedules": rows})
 
 
 # =======================================================================
