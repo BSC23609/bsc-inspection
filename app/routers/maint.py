@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-10-31-v32-board-daily-overdue"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-10-31-v33-board-daily-overdue"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3482,42 +3482,119 @@ async def board(emp: dict = Depends(require_employee)):
     # two independent boards: Daily and Periodic (quarterly/interval)
     daily = {"overdue": [], "due": [], "upcoming": []}
     periodic = {"overdue": [], "due": [], "upcoming": []}
-    for s in await _schedule_rows():
+    sched_all = await _schedule_rows()
+
+    # ---- per-person completion of each DAILY checklist for the LAST DUE DAY -------
+    # A daily machine is OVERDUE while ANY assignee is still pending on the most
+    # recent working day it was due — today if today is a working day, otherwise the
+    # last working day before today (so a holiday/Sunday doesn't hide yesterday's
+    # still-pending work). It leaves Overdue only when EVERYONE has completed that
+    # day. One person finishing advances the schedule's last_done, so the board reads
+    # the real per-checkpoint state for the due day, not last_done.
+    await _ensure_absent_table()
+
+    def _is_daily(s):
+        ft = (s.get("freq_type") or "").lower()
+        return ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
+
+    # most recent working day on/"before" today (skips Sundays + holidays)
+    due_day = None
+    _d_scan = today
+    for _ in range(60):
+        if not _is_offday(_d_scan):
+            due_day = _d_scan
+            break
+        _d_scan = _d_scan - timedelta(days=1)
+    due_iso = due_day.isoformat() if due_day else None
+
+    daily_cl_ids = sorted({s["checklist_id"] for s in sched_all
+                           if s.get("active") and s.get("checklist_id") and _is_daily(s)})
+    cps_by_cl = {}
+    if daily_cl_ids:
+        for cp in await db.fetch(
+                "SELECT id, checklist_id, assigned_emp_id FROM maint_checkpoints "
+                "WHERE checklist_id = ANY($1::int[])", daily_cl_ids):
+            cps_by_cl.setdefault(cp["checklist_id"], []).append(dict(cp))
+    all_cp_ids = [cp["id"] for lst in cps_by_cl.values() for cp in lst]
+    done_cp = set()
+    if all_cp_ids and due_iso:
+        for d in await db.fetch(
+                "SELECT checkpoint_id FROM maint_checkpoint_done "
+                "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])", due_iso, all_cp_ids):
+            done_cp.add(d["checkpoint_id"])
+    absent_due = set()
+    if due_iso:
+        absent_due = {(a["checklist_id"], a["emp_id"])
+                      for a in await db.fetch(
+                          "SELECT checklist_id, emp_id FROM maint_wo_absent WHERE period_key=$1", due_iso)}
+    apply_leave = (due_day == today)   # leave is "today"; only applies when the due day is today
+
+    def _daily_done_due(checklist_id):
+        """True  = every non-absent / non-leave assigned checkpoint is done for the due day.
+        False = at least one assignee still pending.
+        None  = no checkpoints to track (fall back to the date model)."""
+        cps = cps_by_cl.get(checklist_id) or []
+        if not cps:
+            return None
+        counted = pending = 0
+        for cp in cps:
+            aid = cp.get("assigned_emp_id")
+            if aid and ((checklist_id, aid) in absent_due or (apply_leave and aid in on_leave)):
+                continue   # absent (that day) or on leave today -> doesn't block completion
+            counted += 1
+            if cp["id"] not in done_cp:
+                pending += 1
+        if counted == 0:
+            return True    # everyone who had work is absent/on leave
+        return pending == 0
+
+    for s in sched_all:
         if not s.get("active"):
             continue
-        ft = (s.get("freq_type") or "").lower()
-        is_daily = ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
+        is_daily = _is_daily(s)
         info = compute_due(s, s.get("asset_hours"), today)
         s.update(info)
-        bucket = daily if is_daily else periodic
         if is_daily:
-            # Daily maintenance: a machine shows OVERDUE while ANY assignee is still
-            # pending — whether nobody has started, or one person finished but the
-            # others haven't. The schedule's last_done only advances once the whole
-            # checklist is completed by everyone, so a daily schedule that is still
-            # "due today" or "overdue" means at least one person is still pending;
-            # that is exactly what we flag as overdue. It leaves Overdue only when
-            # everyone has completed (last_done advances -> next due tomorrow).
-            # If the assignee is on leave today, skip it (don't pile up as overdue).
-            if info["overdue"] or info["due"]:
-                aid = s.get("assignee_emp_id")
-                if aid and aid in on_leave:
-                    continue
-                bucket["overdue"].append(s)
-            elif info["next_due"]:
+            overdue_flag = False
+            keep_upcoming = True
+            start_d = s.get("start_date")
+            end_d = s.get("end_date")
+            if due_day is None:
+                pass
+            elif start_d and start_d > due_day:
+                pass  # schedule hadn't started by the due day — upcoming only
+            elif end_d and due_day > end_d:
+                keep_upcoming = False  # schedule ended — show nothing
+            else:
+                dt = _daily_done_due(s["checklist_id"]) if s.get("checklist_id") else None
+                if dt is False:
+                    overdue_flag = True; keep_upcoming = False
+                elif dt is True:
+                    overdue_flag = False  # fully done on the due day -> upcoming
+                else:
+                    # no checklist to track per-person: overdue if it wasn't completed
+                    # on the due day (last_done is before it)
+                    aid = s.get("assignee_emp_id")
+                    last_done = s.get("last_done")
+                    if (not last_done or last_done < due_day) and not (aid and aid in on_leave):
+                        overdue_flag = True; keep_upcoming = False
+            if overdue_flag:
+                s["next_due"] = due_iso   # show the day it was due (and still pending)
+                daily["overdue"].append(s)
+            elif keep_upcoming and info["next_due"]:
                 nd = _d(info["next_due"])
                 if nd and nd <= today + timedelta(days=7):
-                    bucket["upcoming"].append(s)
+                    daily["upcoming"].append(s)
         else:
             # Periodic (quarterly / interval): keep the overdue / due / upcoming split.
             if info["overdue"]:
-                bucket["overdue"].append(s)
+                periodic["overdue"].append(s)
             elif info["due"]:
-                bucket["due"].append(s)
+                periodic["due"].append(s)
             elif info["next_due"]:
                 nd = _d(info["next_due"])
                 if nd and nd <= today + timedelta(days=7):
-                    bucket["upcoming"].append(s)
+                    periodic["upcoming"].append(s)
     # recent activity, split by the schedule's frequency
     rows = await db.fetch(
         "SELECT l.*, a.name AS asset_name, a.code AS asset_code, s.title AS sched_title, "
