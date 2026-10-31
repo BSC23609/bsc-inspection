@@ -58,8 +58,8 @@ async function load(){
   try{var r=await fetch('/maint/board',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();}
   catch(e){document.getElementById('b_sub').textContent='Couldn’t load the board.';return;}
   document.getElementById('b_sub').textContent='Today '+d.today+' — what needs attention, by frequency.';
-  document.getElementById('b_daily').innerHTML=boardBlock('Daily Maintenance',d.daily||{});
-  document.getElementById('b_periodic').innerHTML=boardBlock('Quarterly / Periodic Maintenance',d.periodic||{});
+  document.getElementById('b_daily').innerHTML=boardBlock('Daily Maintenance',d.daily||{},true);
+  document.getElementById('b_periodic').innerHTML=boardBlock('Quarterly / Periodic Maintenance',d.periodic||{},false);
   loadBreakdowns();
 }
 function fmtWhen(s){if(!s)return '—';var d=new Date(s);if(isNaN(d))return esc(String(s).slice(0,16));
@@ -86,17 +86,19 @@ async function loadBreakdowns(){
   host.innerHTML=h;
 }
 function cnt(data,k){return (data[k]||[]).length;}
-function boardBlock(title,data){
+function boardBlock(title,data,isDaily){
   var h='<div class="panel" style="margin-bottom:20px"><div class="panel-head">'+esc(title)+'</div><div class="panel-body">';
+  // Daily: anything pending is overdue (no separate "Due today"). Periodic keeps the split.
   h+='<div class="stat">'
     +'<div class="s over"><div class="n">'+cnt(data,'overdue')+'</div><div class="l">Overdue</div></div>'
-    +'<div class="s due"><div class="n">'+cnt(data,'due')+'</div><div class="l">Due today</div></div>'
+    +(isDaily?'':'<div class="s due"><div class="n">'+cnt(data,'due')+'</div><div class="l">Due today</div></div>')
     +'<div class="s up"><div class="n">'+cnt(data,'upcoming')+'</div><div class="l">Upcoming (7 days)</div></div></div>';
   var body='';
   body+=section('Overdue','over',data.overdue||[]);
-  body+=section('Due now','due',data.due||[]);
+  if(!isDaily)body+=section('Due now','due',data.due||[]);
   body+=section('Upcoming','up',data.upcoming||[]);
-  if(!cnt(data,'overdue')&&!cnt(data,'due')&&!cnt(data,'upcoming'))body='<div class="empty">Nothing due. All up to date. ✅</div>';
+  var nDue=isDaily?0:cnt(data,'due');
+  if(!cnt(data,'overdue')&&!nDue&&!cnt(data,'upcoming'))body='<div class="empty">Nothing due. All up to date. ✅</div>';
   h+=body;
   h+='<div class="sect-h" style="margin-top:20px">Recent activity</div>'+recentHTML(data.recent||[]);
   h+='</div></div>';

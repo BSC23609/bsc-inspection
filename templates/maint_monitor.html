@@ -21,11 +21,6 @@ table.mon tr:nth-child(even) td{background:#f7f9fc}
 .asg-line .nm{min-width:120px}
 .st{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px}
 .st.done{background:#e3f6ee;color:#0a7d55}.st.pend{background:#fff3d6;color:#9a6a00}.st.absent{background:#eef1f4;color:#6b7280}
-.ov-badge{display:inline-block;margin-top:5px;font-size:10px;font-weight:800;border-radius:20px;padding:2px 9px;letter-spacing:.3px}
-.ov-badge.overdue{background:#fdeaea;color:#c23438}
-.ov-badge.completed{background:#e3f6ee;color:#0a7d55}
-table.mon tr.ov-row td,table.mon tr.ov-row:nth-child(even) td{background:#fff6f6}
-table.mon tr.ov-row td:first-child{box-shadow:inset 3px 0 0 #c23438}
 .btn-abs{font-size:10.5px;font-weight:700;border:1px solid #e3b7b9;color:#c23438;background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer}
 .btn-abs:hover{background:#fdeaea}
 .rp{display:inline-block;font-size:10.5px;font-weight:700;color:#1f3b5b;text-decoration:none;border:1px solid var(--line-2);border-radius:7px;padding:2px 8px;white-space:nowrap;background:#fff}
@@ -57,7 +52,7 @@ button.rp.rp-del:hover{background:#fdeaea;border-color:#c23438}
     <div><label>Machine name</label><input id="f_name" oninput="apply()" placeholder="name contains…"></div>
     <div><label>Assigner</label><input id="f_asgr" oninput="apply()" placeholder="assigner contains…"></div>
     <div><label>Assignee</label><input id="f_asg" oninput="apply()" placeholder="assignee contains…"></div>
-    <div><label>Status</label><select id="f_st" onchange="apply()"><option value="">All</option><option>Overdue</option><option>Completed</option><option>Done</option><option>Pending</option><option>Absent</option></select></div>
+    <div><label>Status</label><select id="f_st" onchange="apply()"><option value="">All</option><option>Done</option><option>Pending</option><option>Absent</option></select></div>
   </div>
 </div></div>
 
@@ -92,22 +87,6 @@ function toast(msg,bad){var t=document.createElement('div');t.textContent=msg;
   document.body.appendChild(t);setTimeout(function(){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove();},400);},3400);}
 function catClass(c){return c==='Daily PM'?'d':(c==='Quarterly PM'?'q':'b');}
 function stClass(s){return s==='Done'?'done':(s==='Absent'?'absent':'pend');}
-function todayIST(){try{return new Date().toLocaleDateString('en-CA',{timeZone:'Asia/Kolkata'});}catch(e){return new Date().toISOString().slice(0,10);}}
-// Row-level state for a preventive work order:
-//  completed = every (non-absent) assignee has done their work
-//  overdue   = work order not fully done — at least one assignee still pending
-//              (one did it, others didn't; or a past day nobody finished)
-//  pending   = today's work order nobody has started yet (not overdue yet)
-function rowState(x){
-  if(x.kind!=='pm')return '';
-  var sts=(x.statuses||[]).filter(function(s){return s.status!=='Absent';});
-  if(!sts.length)return '';                         // all absent / day skipped
-  var done=sts.filter(function(s){return s.status==='Done';}).length;
-  if(done===sts.length)return 'completed';          // everyone done
-  if(done>0)return 'overdue';                        // partial — some done, some pending
-  if(x.date===todayIST()&&!x.has_report)return 'pending'; // today, not started yet
-  return 'overdue';                                  // past day, fully missed
-}
 async function reload(){
   var days=document.getElementById('f_days').value;
   document.getElementById('mon_rows').innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--muted)">Loading…</td></tr>';
@@ -131,29 +110,17 @@ function apply(){
     if(name&&(x.machine_name||'').toLowerCase().indexOf(name)<0)return false;
     if(asgr&&(x.assigner||'').toLowerCase().indexOf(asgr)<0)return false;
     if(asg&&!(x.statuses||[]).some(function(s){return (s.emp||'').toLowerCase().indexOf(asg)>=0;}))return false;
-    if(st){
-      if(st==='Overdue'||st==='Completed'){ if(rowState(x)!==st.toLowerCase())return false; }
-      else if(!(x.statuses||[]).some(function(s){return s.status===st;}))return false;
-    }
+    if(st&&!(x.statuses||[]).some(function(s){return s.status===st;}))return false;
     return true;
   });
   render(out);
 }
-function ovBadge(state){
-  if(state==='overdue')return '<br><span class="ov-badge overdue">⚠ OVERDUE</span>';
-  if(state==='completed')return '<br><span class="ov-badge completed">✓ COMPLETED</span>';
-  return '';
-}
 function render(list){
-  window.MON_LIST=list;
-  var nOv=list.filter(function(x){return rowState(x)==='overdue';}).length;
-  var meta=list.length+' work order'+(list.length===1?'':'s')+' shown';
-  if(nOv)meta+=' · '+nOv+' overdue';
-  document.getElementById('mon_meta').textContent=meta;
+  document.getElementById('mon_meta').textContent=list.length+' work order'+(list.length===1?'':'s')+' shown';
   if(!list.length){document.getElementById('mon_rows').innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--muted)">No work orders match.</td></tr>';return;}
+  window.MON_LIST=list;
   document.getElementById('mon_rows').innerHTML=list.map(function(x,i){
     var sts=x.statuses||[];
-    var state=rowState(x);
     var names=sts.length?sts.map(function(s){return esc(s.emp);}).join('<br>'):'<span style="color:var(--muted)">—</span>';
     var stcells=sts.length?sts.map(function(s){
       var b='<span class="st '+stClass(s.status)+'">'+esc(s.status)+'</span>';
@@ -162,8 +129,8 @@ function render(list){
       }
       return '<div class="asg-line"><span class="nm">'+b+'</span></div>';
     }).join(''):'<span style="color:var(--muted)">—</span>';
-    return '<tr class="'+(state==='overdue'?'ov-row':'')+'"><td>'+esc(x.date)+'</td>'
-      +'<td><span class="cat '+catClass(x.category)+'">'+esc(x.category)+'</span>'+ovBadge(state)+'</td>'
+    return '<tr><td>'+esc(x.date)+'</td>'
+      +'<td><span class="cat '+catClass(x.category)+'">'+esc(x.category)+'</span></td>'
       +'<td>'+esc(x.machine_code)+'</td><td>'+esc(x.machine_name)+'</td>'
       +'<td>'+esc(x.assigner)+'</td><td>'+names+'</td><td>'+stcells+'</td>'
       +'<td>'+reportCell(x,i)+'</td></tr>';
