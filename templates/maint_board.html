@@ -110,6 +110,7 @@ function section(label,cls,items){if(!items.length)return '';
   h+=items.map(function(x){
     CARD[x.id]={code:x.asset_code||'',name:x.asset_name||''};
     var due=x.next_due?((cls==='over'?'Due ':'Next due ')+esc(x.next_due)):(x.hours_due?'Hours reached':'');
+    if(cls==='over'&&x.pending_days>1)due+=' ('+x.pending_days+' days pending)';
     var who=x.assignee_name?('· '+esc(x.assignee_name)):'· unassigned';
     return '<div class="mcard '+cls+'"><div><div class="ti">'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+' — '+esc(x.title||'')+'</div>'
       +'<div class="meta">'+esc(cad(x))+' '+(due?('· '+due):'')+' '+who+'</div></div><div class="sp" style="flex:1"></div>'
