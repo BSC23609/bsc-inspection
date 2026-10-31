@@ -42,8 +42,8 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-10-31f"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-10-31-v26-work-order-type"   # bump on each deploy to confirm Vercel updated
+SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
+MAINT_BUILD = "2026-10-31-v27-close-type-cause"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -604,7 +604,8 @@ async def ensure_tables():
         remarks TEXT)""")
     try:
         for col, typ in (("btype", "TEXT"), ("photos", "JSONB"), ("assignees", "JSONB"),
-                         ("resolution", "TEXT"), ("wo_type", "TEXT")):
+                         ("resolution", "TEXT"), ("wo_type", "TEXT"),
+                         ("close_types", "JSONB"), ("close_causes", "JSONB")):
             await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
         # PM completions can carry a work start/end time (entered on the Complete form),
         # so the Machine History Card shows a span and total hours like a breakdown does.
@@ -2518,6 +2519,7 @@ async def breakdowns_list(emp: dict = Depends(require_employee)):
     rows = await db.fetch(
         "SELECT b.id, b.asset_id, b.btype, b.wo_type, b.problem, b.reported_by, b.assignee_emp_id, b.assignees, "
         "b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, b.resolution, b.photos, "
+        "b.close_types, b.close_causes, "
         "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
         "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
         "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
@@ -2872,13 +2874,22 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
             closed = datetime.fromisoformat(ct[:16]).replace(tzinfo=IST)
         except Exception:
             closed = None
+    # fault classification captured at close (both multi-select) — kept as lists
+    def _slist(x):
+        if isinstance(x, list):
+            return [str(i).strip() for i in x if str(i).strip()]
+        s = str(x or "").strip()
+        return [s] if s else []
+    ctypes = _slist(body.get("types"))
+    ccauses = _slist(body.get("causes"))
     await db.execute(
         "UPDATE maint_breakdowns SET status='closed', closed_at=COALESCE($4, now()), "
-        "closed_by=$2, resolution=$5, "
+        "closed_by=$2, resolution=$5, close_types=$6, close_causes=$7, "
         "remarks = CASE WHEN $3='' THEN remarks "
         "WHEN COALESCE(remarks,'')='' THEN $3 ELSE remarks || ' | closed: ' || $3 END "
         "WHERE id=$1", bid,
-        emp.get("name") or emp.get("emp_no") or "staff", note, closed, action)
+        emp.get("name") or emp.get("emp_no") or "staff", note, closed, action,
+        json.dumps(ctypes), json.dumps(ccauses))
     return {"ok": True}
 
 
