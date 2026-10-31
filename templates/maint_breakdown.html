@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% from "_icons.html" import icon %}
-{% block title %}Raise Breakdown · {{ app_name }}{% endblock %}
-{% block tb_title %}Raise Breakdown{% endblock %}
+{% block title %}Work Order · {{ app_name }}{% endblock %}
+{% block tb_title %}Work Order{% endblock %}
 {% block content %}
 <div class="acc-teal">
 <style>
@@ -54,7 +54,7 @@
 .ds-grp>.lab{font-size:12.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
 </style>
 
-<div class="page-head"><h1>Raise Breakdown</h1><p>Log an unplanned machine stoppage. The assigned maintenance user and the supervisor get a WhatsApp alert immediately, and the breakdown stays on the daily reminder until it is closed.</p></div>
+<div class="page-head"><h1>Work Order</h1><p>Raise a work order — a <b>breakdown</b> or an <b>unscheduled preventive maintenance</b> job (type is chosen by maintenance users; others raise a breakdown). The assigned maintenance user and the supervisor get a WhatsApp alert immediately, and it stays on the daily reminder until it is closed.</p></div>
 
 <div class="panel">
   <div class="toolbar">
@@ -255,7 +255,9 @@ async function bdLoad(){var box=document.getElementById('bd_list');box.innerHTML
       +(isOpen?('<a class="act-close" onclick="openClose('+b.id+')">Close</a>'):'')
       +(IS_ADMIN?('<a class="act-del" onclick="bdDelete('+b.id+')">Delete</a>'):'')
       +'</div>';
+    var woLbl=(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0)?'Unscheduled PM':'Breakdown';
     return '<div class="bd-item" id="bd-row-'+b.id+'"><div class="mac">'+esc(mac)+'<div><span class="chip '+(isOpen?'open':'closed')+'">'+(isOpen?'OPEN':'CLOSED')+'</span>'
+      +'<span class="tchip" style="background:#e7f0fb;color:#1f3b5b">'+esc(woLbl)+'</span>'
       +(b.btype?('<span class="tchip">'+esc(b.btype)+'</span>'):'')+'</div></div>'
       +'<div class="pr">'+esc(b.problem||'—')+'<div class="meta">'+meta+'</div></div>'
       +acts

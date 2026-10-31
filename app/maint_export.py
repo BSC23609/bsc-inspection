@@ -108,7 +108,9 @@ def _events(logs, breakdowns, assets, employees):
             "desc": (b.get("problem") or "").strip() or "Breakdown",
             "start": _timepart(raised), "end": _timepart(closed),
             "hrs": _hrs(raised, closed),
-            "category": "Breakdown Maintenance",
+            "category": ("Unscheduled Preventive Maintenance"
+                         if str(b.get("wo_type") or "").strip().lower().startswith("unscheduled")
+                         else "Breakdown Maintenance"),
             "by": who, "action": (b.get("resolution") or b.get("remarks") or "").strip(),
             "status": "Completed" if (b.get("status") == "closed" or closed) else "Pending",
             "is_breakdown": True,
@@ -337,7 +339,7 @@ def _readme(ws):
         "Machines   — the machine master with a record count for each.",
         "",
         "Source of truth: the maintenance database. To add a record, complete the job in the app",
-        "(Maintenance Board → Complete, or Raise Breakdown) — it will appear here on the next refresh.",
+        "(Maintenance Board → Complete, or a Work Order) — it will appear here on the next refresh.",
     ]
     for i, t in enumerate(lines, 3):
         ws.cell(i, 1, t).font = Font(size=10) if t else BODY_FONT

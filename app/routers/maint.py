@@ -42,8 +42,8 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-10-31e"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-10-31-v25-pm-times-schema"   # bump on each deploy to confirm Vercel updated
+SCHEMA_VER = "2026-10-31f"   # bump when adding/altering a table so ensure_tables re-runs the DDL
+MAINT_BUILD = "2026-10-31-v26-work-order-type"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -604,7 +604,7 @@ async def ensure_tables():
         remarks TEXT)""")
     try:
         for col, typ in (("btype", "TEXT"), ("photos", "JSONB"), ("assignees", "JSONB"),
-                         ("resolution", "TEXT")):
+                         ("resolution", "TEXT"), ("wo_type", "TEXT")):
             await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
         # PM completions can carry a work start/end time (entered on the Complete form),
         # so the Machine History Card shows a span and total hours like a breakdown does.
@@ -2516,7 +2516,7 @@ async def _send_breakdown_alert(bd: dict):
 async def breakdowns_list(emp: dict = Depends(require_employee)):
     await ensure_tables()
     rows = await db.fetch(
-        "SELECT b.id, b.asset_id, b.btype, b.problem, b.reported_by, b.assignee_emp_id, b.assignees, "
+        "SELECT b.id, b.asset_id, b.btype, b.wo_type, b.problem, b.reported_by, b.assignee_emp_id, b.assignees, "
         "b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, b.resolution, b.photos, "
         "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
         "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
@@ -2774,6 +2774,14 @@ async def asset_elec_save(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True}
 
 
+def _wo_type(v):
+    """Work-order type: 'Breakdown' or 'Unscheduled PM'. Anything unknown -> Breakdown."""
+    s = (v or "").strip().lower()
+    if s in ("unscheduled pm", "unscheduled preventive maintenance", "unscheduled", "upm", "pm"):
+        return "Unscheduled PM"
+    return "Breakdown"
+
+
 @router.post("/breakdown/raise")
 async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
     await ensure_tables()
@@ -2781,6 +2789,8 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
         aid = int(body.get("asset_id"))          # column is INT — coerce the form's string
     except (TypeError, ValueError):
         aid = None
+    # Work-order type — only maintenance users / admins may choose; everyone else is Breakdown.
+    wo_type = _wo_type(body.get("wo_type")) if (emp.get("is_maint") or emp.get("is_admin")) else "Breakdown"
     btype = _norm_type(body.get("btype"))
     problem = (body.get("problem") or "").strip()
     # one or many maintenance users
@@ -2809,9 +2819,9 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
     remarks = (body.get("remarks") or "").strip()
     bid = await db.fetchval(
         "INSERT INTO maint_breakdowns (asset_id,btype,problem,reported_by,reported_by_emp_id,"
-        "assignee_emp_id,assignees,status,remarks,raised_at) "
-        "VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8,COALESCE($9,now())) RETURNING id",
-        aid, btype, problem, reporter, emp.get("id"), primary, aids, remarks, raised_at)
+        "assignee_emp_id,assignees,status,remarks,raised_at,wo_type) "
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,'open',$8,COALESCE($9,now()),$10) RETURNING id",
+        aid, btype, problem, reporter, emp.get("id"), primary, aids, remarks, raised_at, wo_type)
     # photos -> OneDrive (optional)
     paths = []
     try:
