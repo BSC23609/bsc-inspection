@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-02-v39-quarterly-cleanup"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-02-v42-overdue-window-all"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3906,15 +3906,27 @@ def _numbered(items, cap=1000):
     return SEP.join(out) if out else "—"
 
 
+async def _overdue_reminder_enabled() -> bool:
+    """Master on/off for the bsc_pm_overdue supervisor digest (default ON). Stored in
+    maint_meta['overdue_reminder_enabled'] = 'on' | 'off'. The morning due digest is
+    unaffected — only the overdue/cover digest is gated."""
+    try:
+        v = await db.fetchval("SELECT mval FROM maint_meta WHERE mkey='overdue_reminder_enabled'")
+    except Exception:
+        return True
+    return (v or "on").strip().lower() != "off"
+
+
 async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
     await ensure_tables()
     await _refresh_holidays()
     today = _today()
     on_leave = await _on_leave_ids(today)
     tdisp = today.strftime("%d-%m-%Y")
-    # Overdue reminders must not go out late in the evening: after 19:00 IST no overdue
-    # item is added to anyone's digest and no overdue escalation is raised to supervisors.
-    allow_overdue = datetime.now(IST).hour < 19
+    # The bsc_pm_overdue supervisor digest only goes out within the working window
+    # 09:00–before 19:00 IST. Outside that window no overdue item is added to the
+    # supervisor escalation.
+    allow_overdue = 9 <= datetime.now(IST).hour < 19
     overdue_suppressed = 0
 
     # each person's morning digest keeps preventive and breakdown lists separate
@@ -3927,6 +3939,9 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
         g[kind].append(text)
 
     # ---- preventive maintenance: each person's PM list = pending (overdue + due) ----
+    # The bsc_pm_overdue supervisor digest (sup_pm) covers overdue DAILY and QUARTERLY PM
+    # (plus unassigned-due cover); open breakdowns go in sup_bd. It is sent only inside the
+    # 09:00–before 19:00 IST window. Each assignee also gets their own morning due digest.
     for s in await _schedule_rows():
         if not s.get("active"):
             continue
@@ -3943,17 +3958,17 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                 continue  # assignee on leave — don't flag their overdue work
             if not allow_overdue:
                 overdue_suppressed += 1
-                continue  # past 19:00 IST — no overdue reminder/escalation
-            sup_pm.append(f"{label} - {task} - {assignee}")   # 3pm escalation
+                continue  # outside 09:00–19:00 IST — no overdue escalation
+            sup_pm.append(f"{label} - {task} - {assignee}")   # overdue daily + quarterly -> supervisor digest
             if aid and mobile:
-                _bucket(aid, assignee, mobile, "pm", f"{label} - {task} (overdue)")  # 9am
+                _bucket(aid, assignee, mobile, "pm", f"{label} - {task} (overdue)")  # personal digest
         else:  # due today
             if aid and aid in on_leave:
                 continue  # on leave — not flagged to the supervisor's overdue alert
             elif aid and mobile:
                 _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
             else:
-                sup_pm.append(f"{label} - {task} - unassigned")
+                sup_pm.append(f"{label} - {task} - unassigned")   # unassigned-due cover (daily + quarterly)
 
     # ---- open breakdowns: to EACH assigned maintenance user; else to supervisors ----
     emap = await _emp_map()
@@ -4004,8 +4019,19 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                             {"kind": "due-digest", "assignee": g["name"],
                              "preventive": len(g["pm"]), "breakdown": len(g["bd"])})
 
-    # overdue/cover digest to every supervisor (afternoon run) — preventive + breakdown apart
-    if kind in ("overdue", "all") and (sup_pm or sup_bd):
+    # overdue/cover digest to every supervisor — overdue daily + quarterly PM and open
+    # breakdowns. It goes out ONLY inside the plant window 09:00–before 19:00 IST; outside
+    # that the whole digest is held, even if the only items are unassigned-due or breakdowns.
+    _want_overdue = kind in ("overdue", "all") and (sup_pm or sup_bd)
+    if _want_overdue and not allow_overdue:
+        skipped.append({"kind": "overdue-digest", "preventive": len(sup_pm),
+                        "breakdown": len(sup_bd),
+                        "result": "skipped: outside 09:00–19:00 IST window"})
+    elif _want_overdue and not await _overdue_reminder_enabled():
+        skipped.append({"kind": "overdue-digest", "preventive": len(sup_pm),
+                        "breakdown": len(sup_bd),
+                        "result": "skipped: overdue reminder is turned OFF"})
+    elif _want_overdue:
         pm_num = _numbered(sup_pm)
         bd_num = _numbered(sup_bd)
         # body vars: 1 date, 2 preventive list, 3 breakdown list
@@ -4022,7 +4048,7 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                             "preventive": len(sup_pm), "breakdown": len(sup_bd),
                             "result": "skipped: no overdue recipient chosen (pick users on the Schedules page)"})
     if overdue_suppressed:
-        skipped.append({"kind": "overdue", "result": "skipped: after 19:00 IST cutoff",
+        skipped.append({"kind": "overdue", "result": "skipped: outside 09:00–19:00 IST window",
                         "overdue_items": overdue_suppressed})
     return {"today": today.isoformat(), "sent": sent, "skipped": skipped,
             "allow_overdue": allow_overdue,
@@ -4040,6 +4066,26 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
         raise HTTPException(401, "bad token")
     k = kind if kind in ("due", "overdue", "all") else "all"
     return _json(await _run_reminders(dry=bool(dry), kind=k))
+
+
+@router.get("/overdue-reminder")
+async def overdue_reminder_switch(token: str = Query(default=""), state: str = Query(default="")):
+    """Turn the bsc_pm_overdue supervisor digest ON or OFF (the morning due digest is
+    not affected). Open /maint/overdue-reminder?token=<AGENT_TOKEN> to see the current
+    state, add &state=off to stop it sending, &state=on to resume."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(403, "Bad token")
+    await ensure_tables()
+    st = (state or "").strip().lower()
+    if st in ("off", "on"):
+        await db.execute(
+            "INSERT INTO maint_meta (mkey,mval) VALUES ('overdue_reminder_enabled',$1) "
+            "ON CONFLICT (mkey) DO UPDATE SET mval=$1", st)
+    cur = (await db.fetchval("SELECT mval FROM maint_meta WHERE mkey='overdue_reminder_enabled'")
+           or "on").strip().lower()
+    return _json({"overdue_reminder": cur,
+                  "sends_overdue_digest": cur != "off",
+                  "note": "add &state=off to stop the bsc_pm_overdue digest, &state=on to resume"})
 
 
 @router.get("/admin/clear-overdue")
