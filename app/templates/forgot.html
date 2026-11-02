@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Forgot password{% endblock %}
+{% block body %}
+<div class="auth">
+  {% include "_auth_side.html" %}
+  <main class="auth-main">
+    <div class="auth-card">
+      <h2>Forgot password</h2>
+      {% if step == 'verify' %}
+      <p class="sub">We sent a 6-digit code to {{ sent_to|join(' and ') }}. Enter it below with your new password. The code works for 10 minutes.</p>
+      {% if note %}<div class="alert warn" role="status">{{ note }}</div>{% endif %}
+      {% if err %}<div class="alert bad" role="alert">{{ err }}</div>{% endif %}
+      <form method="post" action="/forgot/verify" autocomplete="off">
+        <input type="hidden" name="identifier" value="{{ identifier }}">
+        <div class="field">
+          <label class="lbl" for="code">Code</label>
+          <input id="code" name="code" type="text" inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" required autofocus autocomplete="one-time-code" placeholder="6-digit code">
+        </div>
+        <div class="field">
+          <label class="lbl" for="new_password">New password</label>
+          <input id="new_password" name="new_password" type="password" required minlength="8" autocomplete="new-password">
+          <div class="hint">At least 8 characters, letters and numbers.</div>
+        </div>
+        <div class="field">
+          <label class="lbl" for="confirm">Confirm new password</label>
+          <input id="confirm" name="confirm" type="password" required minlength="8" autocomplete="new-password">
+        </div>
+        <button class="btn block" type="submit">Save password and sign in</button>
+      </form>
+      <form method="post" action="/forgot" style="margin-top:12px;text-align:center">
+        <input type="hidden" name="identifier" value="{{ identifier }}">
+        <button class="linkbtn" type="submit">Didn't get it? Send a new code</button>
+      </form>
+      {% else %}
+      <p class="sub">Enter your work email or employee code. We'll send a code to your WhatsApp and email to set a new password.</p>
+      {% if err %}<div class="alert bad" role="alert">{{ err }}</div>{% endif %}
+      <form method="post" action="/forgot">
+        <div class="field">
+          <label class="lbl" for="identifier">Email or employee code</label>
+          <input id="identifier" name="identifier" type="text" required autofocus autocapitalize="none" spellcheck="false" value="{{ identifier or '' }}" placeholder="name@bharatsteels.in">
+        </div>
+        <button class="btn block" type="submit">Send code</button>
+      </form>
+      {% endif %}
+      <p class="auth-foot"><a href="/login">← Back to sign in</a></p>
+    </div>
+  </main>
+</div>
+{% endblock %}

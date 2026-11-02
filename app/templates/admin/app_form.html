@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon as ico %}
+{% block title %}{{ app.name if app else 'Add app' }}{% endblock %}
+{% block content %}
+{% set f = form %}
+{% macro val(name, default='') -%}{{ f.get(name, (app[name] if app and app[name] is not none else default)) }}{%- endmacro %}
+<main class="wrap page">
+  <div class="page-head"><div><div class="small"><a href="/admin/apps">← Apps</a></div>
+    <h1>{{ app.name if app else 'Add app' }}</h1></div></div>
+  {% include "admin/_tabs.html" %}
+  {% if err %}<div class="alert bad" role="alert">{{ err }}</div>{% endif %}
+  {% if saved %}<div class="alert ok">Saved.</div>{% endif %}
+
+  <form method="post" action="{{ '/admin/apps/%d' % app.id if app else '/admin/apps/new' }}">
+  <div class="layout">
+    <section class="panel panel-pad">
+      <h3>Tile</h3>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="name">Name</label><input id="name" name="name" type="text" required value="{{ val('name') }}"></div>
+        <div class="field"><label class="lbl" for="key">Key</label><input id="key" name="key" type="text" required value="{{ val('key') }}" placeholder="metfraa-portal">
+          <div class="hint">Short ID used in links and the CSV import.</div></div>
+      </div>
+      <div class="field"><label class="lbl" for="description">Short description</label><input id="description" name="description" type="text" value="{{ val('description') }}"></div>
+      <div class="grid3">
+        <div class="field"><label class="lbl" for="company">Company</label>
+          {% set cur = val('company', 'GROUP') %}
+          <select id="company" name="company">{% for code, label in COMPANIES %}<option value="{{ code }}" {% if cur == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="icon">Icon</label>
+          {% set curi = val('icon', 'grid') %}
+          <select id="icon" name="icon">{% for i in icons %}<option {% if curi == i %}selected{% endif %}>{{ i }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="sort_order">Order</label><input id="sort_order" name="sort_order" type="number" min="0" value="{{ val('sort_order', 100) }}"></div>
+      </div>
+      <div class="field"><label class="lbl" for="url">App address</label><input id="url" name="url" type="url" required value="{{ val('url') }}" placeholder="https://"></div>
+      <label class="check" style="margin-bottom:8px"><input type="checkbox" name="open_to_all" {% if (app and app.open_to_all) or f.get('open_to_all') %}checked{% endif %}> Open to everyone in the group</label>
+      <label class="check"><input type="checkbox" name="is_active" {% if not app or app.is_active or f.get('is_active') %}checked{% endif %}> Show on the launcher</label>
+    </section>
+
+    <section class="panel panel-pad">
+      <h3>Signing in</h3>
+      {% set mode = val('launch_mode', 'link') %}
+      <div class="field">
+        <label class="check" style="margin-top:10px"><input type="radio" name="launch_mode" value="link" {% if mode != 'sso' %}checked{% endif %}> <span><b>Link only</b> — opens the app; it shows its own sign-in.</span></label>
+        <label class="check" style="margin-top:8px"><input type="radio" name="launch_mode" value="sso" {% if mode == 'sso' %}checked{% endif %}> <span><b>Single sign-on</b> — the person lands inside, already signed in.</span></label>
+      </div>
+      <div class="field"><label class="lbl" for="sso_url">App's sign-on address</label><input id="sso_url" name="sso_url" type="url" value="{{ val('sso_url') }}" placeholder="https://app.example.com/auth/sso">
+        <div class="hint">The address in that app which receives the hub's hand-off.</div></div>
+      {% set idf = val('identity_field', 'employee_code') %}
+      <div class="field"><label class="lbl" for="identity_field">The app recognises people by</label>
+        <select id="identity_field" name="identity_field">
+          <option value="employee_code" {% if idf == 'employee_code' %}selected{% endif %}>Employee code / ID in that app</option>
+          <option value="email" {% if idf == 'email' %}selected{% endif %}>Email address</option>
+        </select></div>
+      {% if app %}
+      <div class="field"><span class="lbl">Automatic ID lookup</span>
+        <div class="alert {{ 'ok' if lookup_state == 'ok' else ('bad' if lookup_state == 'error' else 'warn') }} small" style="margin:0">{{ lookup_msg }}</div>
+        {% if lookup_state != 'ok' %}<div class="hint">In Vercel → <b>bsg-hub</b> → Environment Variables, add <code>{{ lookup_env }}</code> = this app's Neon connection string, then redeploy. The hub only reads it, never changes it.</div>{% endif %}
+      </div>
+      {% endif %}
+      {% if app and app.sso_secret %}
+      <div class="field"><span class="lbl">Shared secret</span>
+        <details><summary class="small" style="cursor:pointer;color:var(--blue)">Show the secret to paste into this app's settings</summary>
+          <div class="secret" style="margin-top:8px"><input type="text" readonly value="{{ app.sso_secret }}" onclick="this.select()" aria-label="Shared secret"></div>
+          <div class="hint">Set it as <code>GROUP_SSO_SECRET</code> in the app's Vercel environment, then redeploy that app.</div>
+        </details>
+      </div>
+      {% endif %}
+    </section>
+  </div>
+  <div class="actions" style="margin-top:18px"><button class="btn" type="submit">{{ 'Save changes' if app else 'Add app' }}</button><a class="btn ghost" href="/admin/apps">Cancel</a></div>
+  </form>
+
+  {% if app %}
+  <section class="panel panel-pad" style="margin-top:24px">
+    <div class="split"><div><h3>Rotate secret</h3><div class="small muted">Makes a new secret. Single sign-on into this app stops until you paste the new one into the app and redeploy it.</div></div>
+      <form method="post" action="/admin/apps/{{ app.id }}/rotate-secret" onsubmit="return confirm('Make a new secret for {{ app.name }}?')"><button class="btn danger sm">Rotate</button></form></div>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}

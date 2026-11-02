@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Matched with apps{% endblock %}
+{% block content %}
+<main class="wrap page">
+  {% include "admin/_tabs.html" %}
+  <div class="panel panel-pad" style="max-width:620px">
+    <h1 style="font-size:24px">Matched with apps</h1>
+    <p class="muted">Everyone was looked up by email and employee code in each connected app.</p>
+    <table class="grid" style="margin:12px 0 18px"><thead><tr><th>App</th><th>People linked now</th></tr></thead><tbody>
+      {% for a in apps %}<tr><td>{{ a.name }}</td><td>{{ per_app.get(a.id, 0) }}</td></tr>{% endfor %}
+    </tbody></table>
+    <p class="small">{{ granted }} new app access{{ '' if granted == 1 else 'es' }} given, {{ filled }} blank ID{{ '' if filled == 1 else 's' }} filled in. People who weren't found keep their access as it was.</p>
+    <div class="actions"><a class="btn" href="/admin/users">Back to people</a></div>
+  </div>
+</main>
+{% endblock %}
