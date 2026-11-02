@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Import people{% endblock %}
+{% block content %}
+<main class="wrap page">
+  <div class="page-head"><div><div class="small"><a href="/admin/users">← People</a></div><h1>Import people</h1>
+    <div class="sub">Add many people at once from a spreadsheet saved as CSV.</div></div></div>
+  {% include "admin/_tabs.html" %}
+  <div class="layout">
+    <section class="panel panel-pad">
+      <h3>Upload</h3>
+      <p class="muted small">New emails become accounts with a temporary password. Emails already here only get the listed apps added; their password is never touched.</p>
+      <form method="post" action="/admin/users-import" enctype="multipart/form-data">
+        <div class="field"><input type="file" name="file" accept=".csv,text/csv" required></div>
+        <div class="actions"><button class="btn" type="submit">Import and download results</button>
+          <a class="btn ghost" href="/admin/users-import/template.csv">Download template</a></div>
+      </form>
+      <div class="alert warn small" style="margin-top:18px">The results file holds the temporary passwords. Share each one privately, then delete the file.</div>
+    </section>
+    <section class="panel panel-pad">
+      <h3>Columns</h3>
+      <p class="small"><code>{{ columns|join(',') }}</code></p>
+      <p class="small muted">Only <b>email</b> and <b>name</b> are required. <b>company</b> is one of BSC, METFRAA, CRAYON, GROUP.
+        <b>apps</b> is a list of app keys separated by <code>;</code>. Add <code>=ID</code> when the person's ID in that app differs from their employee code, e.g. <code>bsc-portal=1042;qms</code>.</p>
+      <table class="grid" style="margin-top:10px"><thead><tr><th>App key</th><th>App</th></tr></thead><tbody>
+        {% for a in apps %}<tr><td class="mono">{{ a.key }}</td><td>{{ a.name }}</td></tr>{% endfor %}
+      </tbody></table>
+    </section>
+  </div>
+</main>
+{% endblock %}

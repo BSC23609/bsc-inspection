@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+{% block title %}People{% endblock %}
+{% block content %}
+<main class="wrap page">
+  <div class="page-head">
+    <div><h1>Admin</h1><div class="sub">Who can sign in, and which apps each person sees.</div></div>
+    <div class="actions">
+      {% if matchable %}<form method="post" action="/admin/users-match" onsubmit="return confirm('Look up every person in {{ matchable|join(', ') }} and give them access where they have an account?')"><button class="btn ghost" type="submit">Match everyone with apps</button></form>{% endif %}
+      <a class="btn ghost" href="/admin/users-import">Import from CSV</a>
+      <a class="btn" href="/admin/users/new">Add person</a>
+    </div>
+  </div>
+  {% include "admin/_tabs.html" %}
+  {% if err == 'pw' %}<div class="alert bad" role="alert">Password not reset: a temporary password needs at least 8 characters with letters and numbers.</div>{% endif %}
+  <div class="panel">
+    <form class="toolbar" method="get">
+      <input type="search" name="q" value="{{ q }}" placeholder="Search name, email or code" aria-label="Search">
+      <select name="company" aria-label="Company">
+        <option value="">All companies</option>
+        {% for code, label in COMPANIES %}<option value="{{ code }}" {% if company == code %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <select name="status" aria-label="Status">
+        <option value="">All statuses</option>
+        <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
+        <option value="inactive" {% if status == 'inactive' %}selected{% endif %}>Inactive</option>
+      </select>
+      <button class="btn ghost sm" type="submit">Filter</button>
+      <span class="muted small" style="margin-left:auto">{{ users|length }} {{ 'person' if users|length == 1 else 'people' }}</span>
+    </form>
+    <div class="table-scroll"><table class="grid">
+      <thead><tr><th>Name</th><th class="hide-sm">Email</th><th>Code</th><th class="hide-sm">Company</th><th>Apps</th><th>Status</th><th><span class="sr-only">Change status</span></th></tr></thead>
+      <tbody>
+      {% for u in users %}
+        <tr class="{% if not u.is_active %}off{% endif %}">
+          <td><a href="/admin/users/{{ u.id }}"><b>{{ u.name }}</b></a>
+            {% if u.is_superadmin %} <span class="pill admin">Admin</span>{% endif %}</td>
+          <td class="hide-sm">{{ u.email }}</td>
+          <td class="mono">{{ u.employee_code or '—' }}</td>
+          <td class="hide-sm">{{ COMPANY_NAMES.get(u.company, u.company) }}</td>
+          <td>{% if u.is_superadmin %}All{% else %}{{ counts.get(u.id, 0) }}{% endif %}</td>
+          <td>{% if not u.is_active %}<span class="pill off">Inactive</span>
+              {% elif u.must_reset_password %}<span class="pill warn">Not set up</span>
+              {% else %}<span class="pill ok">Active</span>{% endif %}</td>
+          <td style="text-align:right;white-space:nowrap">{% if u.id != user.id %}
+            <form method="post" action="/admin/users/{{ u.id }}/reset-password" style="display:inline" data-name="{{ u.name }}" data-pw="{{ common_pw }}"
+                  onsubmit="var p=prompt('Set a temporary password for ' + this.dataset.name + ' (they must change it at next sign-in):', this.dataset.pw); if (p === null) return false; this.password.value = p; return true;">
+              <input type="hidden" name="password" value="">
+              <button class="btn ghost sm" type="submit">Reset PW</button>
+            </form>
+            <form method="post" action="/admin/users/{{ u.id }}/toggle-active" style="display:inline"
+                  data-msg="{{ ('Make ' ~ u.name ~ ' inactive? They are signed out and can no longer sign in.') if u.is_active else ('Make ' ~ u.name ~ ' active again?') }}"
+                  onsubmit="return confirm(this.dataset.msg)">
+              <input type="hidden" name="back" value="{{ back }}">
+              {% if u.is_active %}<button class="btn ghost sm" type="submit">Make inactive</button>
+              {% else %}<button class="btn dark sm" type="submit">Make active</button>{% endif %}
+            </form>{% else %}<span class="muted small">You</span>{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" class="muted" style="text-align:center;padding:30px">No one matches.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  </div>
+</main>
+{% endblock %}

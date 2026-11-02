@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Apps{% endblock %}
+{% block content %}
+<main class="wrap page">
+  <div class="page-head">
+    <div><h1>Admin</h1><div class="sub">The app catalogue shown on the launcher.</div></div>
+    <a class="btn" href="/admin/apps/new">Add app</a>
+  </div>
+  {% include "admin/_tabs.html" %}
+  <div class="panel">
+    <table class="grid">
+      <thead><tr><th></th><th>App</th><th class="hide-sm">Company</th><th>Sign-in</th><th class="hide-sm">People</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for a in apps %}
+        <tr class="{% if not a.is_active %}off{% endif %}">
+          <td style="width:52px"><span class="icon-chip" style="width:34px;height:34px">{{ icon(a.icon, 18) }}</span></td>
+          <td><a href="/admin/apps/{{ a.id }}"><b>{{ a.name }}</b></a><div class="small muted mono">{{ a.key }}</div></td>
+          <td class="hide-sm">{{ COMPANY_NAMES.get(a.company) }}</td>
+          <td>{% if a.launch_mode == 'sso' %}<span class="pill ok">Single sign-on</span>{% else %}<span class="pill off">Link only</span>{% endif %}</td>
+          <td class="hide-sm">{% if a.open_to_all %}Everyone{% else %}{{ counts.get(a.id, 0) }}{% endif %}</td>
+          <td>{% if a.is_active %}<span class="pill ok">Shown</span>{% else %}<span class="pill off">Hidden</span>{% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+{% endblock %}

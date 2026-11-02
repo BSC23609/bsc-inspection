@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}My apps{% endblock %}
+{% block content %}
+<section class="hero">
+  <div class="wrap">
+    <div class="eyebrow">Bharat Steel Group · {{ count }} app{{ '' if count == 1 else 's' }}</div>
+    <h1>Hello, {{ user.name.split(' ')[0] }}</h1>
+    <p>Pick an app to open it. Apps marked <b>signed in</b> open straight into your account.</p>
+    <div class="rule"></div>
+    {% if count > 6 %}
+    <div class="search">
+      {{ icon('search', 16) }}
+      <input id="q" type="search" placeholder="Find an app" aria-label="Find an app" autocomplete="off">
+    </div>
+    {% endif %}
+  </div>
+</section>
+
+<main class="wrap launcher">
+  {% if not groups %}
+    <div class="company"><div class="company-head"><h2>Your apps</h2><span class="bar"></span></div></div>
+    <div class="empty">No apps have been added to your account yet. Ask the IT team to give you access.</div>
+  {% endif %}
+  {% for g in groups %}
+  <section class="company" data-company>
+    <div class="company-head">
+      <h2>{{ g.label }}</h2><span class="bar"></span><span class="tag">{{ g.apps|length }}</span>
+    </div>
+    <div class="tiles">
+      {% for a in g.apps %}
+      <a class="tile co-{{ a.company }}" href="/launch/{{ a.key }}" data-name="{{ (a.name ~ ' ' ~ (a.description or ''))|lower }}">
+        <span class="icon-chip">{{ icon(a.icon) }}</span>
+        <span>
+          <h3>{{ a.name }}</h3>
+          {% if a.description %}<p>{{ a.description }}</p>{% endif %}
+          {% if a.launch_mode == 'sso' %}<span class="badge sso">Signed in</span>{% else %}<span class="badge link">Opens app</span>{% endif %}
+        </span>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+  <div class="empty no-match" id="nomatch">No app matches that search.</div>
+</main>
+
+<script>
+(function () {
+  var q = document.getElementById('q');
+  if (!q) return;
+  q.addEventListener('input', function () {
+    var t = q.value.trim().toLowerCase(), any = false;
+    document.querySelectorAll('[data-company]').forEach(function (sec) {
+      var shown = 0;
+      sec.querySelectorAll('.tile').forEach(function (el) {
+        var hit = !t || el.dataset.name.indexOf(t) !== -1;
+        el.style.display = hit ? '' : 'none';
+        if (hit) shown++;
+      });
+      sec.style.display = shown ? '' : 'none';
+      if (shown) any = true;
+    });
+    document.getElementById('nomatch').style.display = any ? 'none' : 'block';
+  });
+})();
+</script>
+{% endblock %}

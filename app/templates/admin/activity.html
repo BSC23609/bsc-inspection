@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Activity{% endblock %}
+{% block content %}
+<main class="wrap page">
+  <div class="page-head"><div><h1>Admin</h1><div class="sub">The latest 300 sign-ins, app opens and admin changes (times in UTC).</div></div></div>
+  {% include "admin/_tabs.html" %}
+  <div class="panel">
+    <table class="grid">
+      <thead><tr><th>When</th><th>Who</th><th>What</th><th>App</th><th class="hide-sm">IP</th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+        <tr>
+          <td class="mono small">{{ r.at.strftime('%d %b %H:%M') }}</td>
+          <td>{{ r.email or '—' }}</td>
+          <td>{% if r.action == 'login_failed' %}<span class="pill warn">failed sign-in</span>{% else %}{{ r.action.replace('admin_', 'admin: ').replace('_', ' ') }}{% endif %}
+            {% if r.details and r.details.get('target') %}<span class="muted small"> · {{ r.details.target }}</span>{% endif %}{% if r.details and r.details.get('reason') %}<div class="muted small mono" style="white-space:normal">{{ r.details.reason }}</div>{% endif %}</td>
+          <td class="mono small">{{ r.app_key or '' }}</td>
+          <td class="hide-sm mono small">{{ r.ip or '' }}</td>
+        </tr>
+      {% else %}<tr><td colspan="5" class="muted" style="text-align:center;padding:30px">Nothing yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</main>
+{% endblock %}

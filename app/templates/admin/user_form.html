@@ -1,0 +1,135 @@
+{% extends "base.html" %}
+{% block title %}{{ target.name if target else 'Add person' }}{% endblock %}
+{% block content %}
+{% set f = form %}
+<main class="wrap page">
+  <div class="page-head">
+    <div>
+      <div class="small"><a href="/admin/users">← People</a></div>
+      <h1>{{ target.name if target else 'Add person' }}</h1>
+      {% if target %}<div class="sub">{{ target.email }}{% if target.last_login_at %} · last signed in {{ target.last_login_at.strftime('%d %b %Y') }}{% endif %}</div>{% endif %}
+    </div>
+  </div>
+  {% include "admin/_tabs.html" %}
+  {% if err %}<div class="alert bad" role="alert">{{ err }}</div>{% endif %}
+  {% if saved %}<div class="alert ok">Saved.</div>{% endif %}
+
+  <form method="post" action="{{ '/admin/users/%d' % target.id if target else '/admin/users/new' }}">
+  <div class="layout">
+    <section class="panel panel-pad">
+      <h3>Details</h3>
+      <p class="muted small" style="margin:0 0 16px">{% if target %}Email or employee code is what they sign in with.{% else %}A temporary password is created and shown once; they change it at first sign-in.{% endif %}</p>
+      <div class="field"><label class="lbl" for="name">Full name</label>
+        <input id="name" name="name" type="text" required value="{{ f.get('name', target.name if target else '') }}"></div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="email">Work email</label>
+          <input id="email" name="email" type="email" required value="{{ f.get('email', target.email if target else '') }}"></div>
+        <div class="field"><label class="lbl" for="employee_code">Employee code</label>
+          <input id="employee_code" name="employee_code" type="text" value="{{ f.get('employee_code', (target.employee_code or '') if target else '') }}" placeholder="e.g. MET66"></div>
+      </div>
+      <div class="grid2">
+        <div class="field"><label class="lbl" for="company">Company</label>
+          {% set cur = f.get('company', target.company if target else 'GROUP') %}
+          <select id="company" name="company">{% for code, label in COMPANIES %}<option value="{{ code }}" {% if cur == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+        <div class="field"><label class="lbl" for="department">Department</label>
+          <input id="department" name="department" type="text" value="{{ f.get('department', (target.department or '') if target else '') }}"></div>
+      </div>
+      <div class="field"><label class="lbl" for="phone">Mobile</label>
+        <input id="phone" name="phone" type="text" value="{{ f.get('phone', (target.phone or '') if target else '') }}"></div>
+      <label class="check"><input type="checkbox" name="is_superadmin" {% if (target and target.is_superadmin) or f.get('is_superadmin') %}checked{% endif %}> Group admin (manages people and apps, sees every app)</label>
+    </section>
+
+    <section class="panel panel-pad">
+      <div class="split">
+        <h3>App access</h3>
+        {% if lookup_on %}<button type="button" class="btn ghost sm" id="findBtn">Find in apps</button>{% endif %}
+      </div>
+      {% if lookup_on %}
+      <p class="muted small" style="margin:4px 0 4px">Fill in the details on the left, then press <b>Find in apps</b>: every app where this person already has an account is ticked and their ID is filled in for you. IDs left blank are also looked up when you save.</p>
+      <div class="alert ok small" id="findMsg" style="display:none;margin:10px 0 0"></div>
+      {% else %}
+      <p class="muted small" style="margin:0 0 4px">Tick the apps this person can open. "ID in that app" is how that app knows them — leave blank to use their employee code{% if target and target.employee_code %} (<span class="mono">{{ target.employee_code }}</span>){% endif %}.</p>
+      <div class="alert warn small" style="margin:10px 0 0">Want these ticked and filled in automatically? Connect the apps' databases: in Vercel → <b>bsg-hub</b> → Environment Variables add <code>APPDB_BSC_PORTAL</code>, <code>APPDB_METFRAA_PORTAL</code> etc. (each app's <code>DATABASE_URL</code>), then redeploy. A <b>Find in apps</b> button then appears here.</div>
+      {% endif %}
+      <div class="access-list">
+        {% set ns = namespace(co=None) %}
+        {% for a in apps %}
+          {% if a.company != ns.co %}{% set ns.co = a.company %}<div class="access-co">{{ COMPANY_NAMES.get(a.company) }}</div>{% endif %}
+          {% set g = grants.get(a.id) %}
+          <div class="access-row">
+            <input type="checkbox" id="app_{{ a.id }}" name="app_{{ a.id }}" {% if g %}checked{% endif %} aria-label="Give access to {{ a.name }}">
+            <label for="app_{{ a.id }}"><span class="name">{{ a.name }}</span>
+              <div class="co">{% if a.open_to_all %}Open to everyone · {% endif %}{{ 'Signs in automatically' if a.launch_mode == 'sso' else 'Link only' }}{% if not a.is_active %} · hidden{% endif %}{% if a.id in lookup_on %} · auto ID{% endif %}</div>
+              <div class="co found" id="found_{{ a.id }}"></div></label>
+            <input type="text" name="ext_{{ a.id }}" value="{{ g.external_id or '' if g else '' }}" placeholder="ID in that app" aria-label="{{ a.name }} login ID">
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  </div>
+  {% if lookup_on %}
+  <script>
+  (function () {
+    var btn = document.getElementById('findBtn'), msg = document.getElementById('findMsg');
+    btn.addEventListener('click', function () {
+      var f = btn.form, body = new FormData();
+      ['name', 'email', 'employee_code', 'phone'].forEach(function (k) { body.append(k, (f.elements[k] || {}).value || ''); });
+      if (!body.get('email') && !body.get('employee_code') && !body.get('name') && !body.get('phone')) {
+        msg.className = 'alert warn small'; msg.textContent = 'Enter a name, email, employee code or mobile first.'; msg.style.display = 'block'; return;
+      }
+      btn.disabled = true; btn.textContent = 'Searching…';
+      fetch('/admin/lookup-ids', { method: 'POST', body: body, credentials: 'same-origin' })
+        .then(function (r) { if (!r.ok) throw new Error(); return r.json(); })
+        .then(function (res) {
+          var hits = 0, misses = [];
+          Object.keys(res).forEach(function (id) {
+            var r = res[id], note = document.getElementById('found_' + id);
+            if (!note || r.state === 'off') return;
+            var name = note.parentNode.querySelector('.name').textContent;
+            if (r.state === 'found') {
+              hits++;
+              f.elements['app_' + id].checked = true;
+              f.elements['ext_' + id].value = r.id;
+              note.textContent = 'Found: ' + r.id + (r.name ? ' · ' + r.name : '') + ' (matched by ' + r.how + ')';
+              note.style.color = 'var(--ok)';
+            } else {
+              misses.push(name);
+              note.textContent = 'Not found in this app' + (r.note ? ' (' + r.note + ')' : '');
+              note.style.color = 'var(--warn)';
+            }
+          });
+          msg.className = hits ? 'alert ok small' : 'alert warn small';
+          msg.textContent = hits
+            ? 'Found in ' + hits + ' app' + (hits > 1 ? 's' : '') + ' — ticked and filled in. Check, then save.' + (misses.length ? ' Not found in: ' + misses.join(', ') + '.' : '')
+            : 'Not found in any connected app. Check the email, employee code or mobile.';
+          msg.style.display = 'block';
+        })
+        .catch(function () { msg.className = 'alert bad small'; msg.textContent = 'Search failed. Try again.'; msg.style.display = 'block'; })
+        .then(function () { btn.disabled = false; btn.textContent = 'Find in apps'; });
+    });
+  })();
+  </script>
+  {% endif %}
+  <div class="actions" style="margin-top:18px">
+    <button class="btn" type="submit">{{ 'Save changes' if target else 'Create account' }}</button>
+    <a class="btn ghost" href="/admin/users">Cancel</a>
+  </div>
+  </form>
+
+  {% if target and target.id != user.id %}
+  <section class="panel panel-pad" style="margin-top:24px">
+    <h3>Account</h3>
+    <div class="split" style="margin-top:10px">
+      <div class="small muted">Reset gives a new temporary password and signs them out everywhere.</div>
+      <div class="actions">
+        <form method="post" action="/admin/users/{{ target.id }}/reset-password" onsubmit="return confirm('Reset {{ target.name }}\'s password?')"><button class="btn ghost sm">Reset password</button></form>
+        <form method="post" action="/admin/users/{{ target.id }}/toggle-active">
+          {% if target.is_active %}<button class="btn danger sm" onclick="return confirm('Make {{ target.name }} inactive? They will be signed out of the hub.')">Make inactive</button>
+          {% else %}<button class="btn dark sm">Make active</button>{% endif %}
+        </form>
+      </div>
+    </div>
+  </section>
+  {% endif %}
+</main>
+{% endblock %}

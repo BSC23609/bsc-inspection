@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block body %}
+<div class="auth">
+  {% include "_auth_side.html" %}
+  <main class="auth-main">
+    <div class="auth-card">
+      <h2>Sign in</h2>
+      <p class="sub">Sign in to Bharat Steel Group with your work email or employee code.</p>
+      {% if err %}<div class="alert bad" role="alert">{{ err }}</div>{% endif %}
+      <form method="post" action="/login" autocomplete="on">
+        <input type="hidden" name="next" value="{{ next }}">
+        <div class="field">
+          <label class="lbl" for="identifier">Email or employee code</label>
+          <input id="identifier" name="identifier" type="text" required autofocus autocomplete="username"
+                 autocapitalize="none" spellcheck="false" value="{{ identifier or '' }}" placeholder="name@bharatsteels.in">
+        </div>
+        <div class="field">
+          <label class="lbl" for="password">Password</label>
+          <div class="pw-wrap">
+            <input id="password" name="password" type="password" required autocomplete="current-password">
+            <button type="button" class="pw-eye" aria-label="Show password"
+                    onclick="var i=document.getElementById('password');var s=i.type==='password';i.type=s?'text':'password';this.textContent=s?'Hide':'Show';this.setAttribute('aria-label',s?'Hide password':'Show password')">Show</button>
+          </div>
+        </div>
+        <button class="btn block" type="submit">Sign in</button>
+      </form>
+      <p class="auth-foot"><a href="/forgot{% if identifier %}?identifier={{ identifier|urlencode }}{% endif %}">Forgot password?</a></p>
+    </div>
+  </main>
+</div>
+{% endblock %}

@@ -1,47 +1,40 @@
-"""Environment configuration. Reuses the SAME variables as the current Node QMS,
-so the FastAPI app shares its database, auth cookie and OneDrive integration."""
+"""Settings for the Bharat Steel Group app hub — all from environment variables."""
 import os
+from functools import lru_cache
 
-DATABASE_URL  = os.environ.get("DATABASE_URL", "")
-JWT_SECRET    = os.environ.get("JWT_SECRET", "dev-insecure-change-me")
-COOKIE_NAME   = "bsc_qms_token"          # identical to the Node app -> sessions are shared
-COOKIE_TTL    = 365 * 24 * 60 * 60       # 1 year, matches the current app
 
-# Microsoft Graph (OneDrive uploads + Excel/CSV logs) — same app registration
-TENANT_ID     = os.environ.get("TENANT_ID", "")
-CLIENT_ID     = os.environ.get("CLIENT_ID", "")
-CLIENT_SECRET = os.environ.get("CLIENT_SECRET", "")
-USER_ID       = os.environ.get("USER_ID", "")   # OneDrive owner (UPN or object id)
+class Settings:
+    def __init__(self) -> None:
+        self.database_url: str = os.getenv("DATABASE_URL", "sqlite:///./hub.db")
+        # Neon gives postgres:// or postgresql:// — SQLAlchemy 2 + psycopg3 wants postgresql+psycopg://
+        if self.database_url.startswith("postgres://"):
+            self.database_url = "postgresql+psycopg://" + self.database_url[len("postgres://"):]
+        elif self.database_url.startswith("postgresql://"):
+            self.database_url = "postgresql+psycopg://" + self.database_url[len("postgresql://"):]
 
-# OneDrive base folder (keep in step with the Node app's "BSC Inspections/...")
-ONEDRIVE_BASE = "BSC Inspections"
+        self.session_secret: str = os.getenv("SESSION_SECRET", "dev-only-change-me")
+        self.session_days: int = int(os.getenv("SESSION_DAYS", "30"))
+        # Cookies must be Secure in production; tests/local http set COOKIE_SECURE=false.
+        self.cookie_secure: bool = os.getenv("COOKIE_SECURE", "true").lower() != "false"
+        self.public_url: str = os.getenv("PUBLIC_URL", "https://app.thebharatsteelgroup.com").rstrip("/")
+        # Hand-off tokens live for this many seconds — long enough for one redirect.
+        self.handoff_ttl: int = int(os.getenv("HANDOFF_TTL_SECONDS", "60"))
+        self.issuer: str = "bsg-hub"
 
-APP_NAME      = "Bharat Steel QMS"
+        # First-run superadmin (only used when the users table is empty).
+        self.bootstrap_email: str = os.getenv("BOOTSTRAP_ADMIN_EMAIL", "").strip().lower()
+        self.bootstrap_password: str = os.getenv("BOOTSTRAP_ADMIN_PASSWORD", "")
+        self.bootstrap_name: str = os.getenv("BOOTSTRAP_ADMIN_NAME", "Group Admin")
 
-# Admin panel password — same default as the Node app; override with env in prod
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "Bsc@123")
-SETTINGS_PATH  = f"{ONEDRIVE_BASE}/Config/settings.json"
+        # Starting password for every new or reset account. Each person must change it at first sign-in.
+        # Change it any time with COMMON_PASSWORD in Vercel (then redeploy).
+        self.common_password: str = os.getenv("COMMON_PASSWORD", "").strip() or "Bsg@1234"
 
-# WATI (WhatsApp) — used to send password-reset OTPs to staff mobiles.
-# Reuses the SAME variables the legacy app already set on Vercel
-# (WATI_API_ENDPOINT / WATI_ACCESS_TOKEN / WATI_TEMPLATE_NAME), with the
-# newer names as optional overrides.
-WATI_BASE_URL      = (os.environ.get("WATI_API_ENDPOINT")
-                      or os.environ.get("WATI_BASE_URL", "")).rstrip("/")
-WATI_TOKEN         = (os.environ.get("WATI_ACCESS_TOKEN")
-                      or os.environ.get("WATI_TOKEN", ""))
-# Prefer a dedicated OTP template if set; otherwise fall back to the existing one.
-WATI_OTP_TEMPLATE  = (os.environ.get("WATI_OTP_TEMPLATE")
-                      or os.environ.get("WATI_TEMPLATE_NAME", ""))
-WATI_OTP_BROADCAST = os.environ.get("WATI_OTP_BROADCAST", "") or "bsc_qms_otp"
-WATI_OTP_PARAM     = os.environ.get("WATI_OTP_PARAM", "1")   # template body param name
+        # Sign-in lock after this many wrong passwords in a row. 0 = never lock (the default).
+        self.max_failed_logins: int = int(os.getenv("MAX_FAILED_LOGINS", "0") or 0)
+        self.lockout_minutes: int = 15
 
-# Maintenance WhatsApp reminders (approved WATI templates; set when ready)
-WATI_MAINT_DUE_TEMPLATE      = os.environ.get("WATI_MAINT_DUE_TEMPLATE", "")
-WATI_MAINT_OVERDUE_TEMPLATE  = os.environ.get("WATI_MAINT_OVERDUE_TEMPLATE", "")
-WATI_MAINT_BREAKDOWN_TEMPLATE = (os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE")
-                                 or "bsc_breakdown_alert")
-MAINT_SUPERVISOR_MOBILE      = os.environ.get("MAINT_SUPERVISOR_MOBILE", "")  # overdue escalation
 
-# Shared agent token for protected cron endpoints (reminders) — matches the Node app
-AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "BSC@123")
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
