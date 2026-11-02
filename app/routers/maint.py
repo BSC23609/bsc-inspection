@@ -16,6 +16,7 @@ import base64
 import calendar
 import asyncio
 from datetime import date, datetime, timedelta, time
+from datetime import date as _dt_date   # alias for use where a param named `date` shadows it
 from zoneinfo import ZoneInfo
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, HTTPException
@@ -43,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-02-v38-quarterly-audit"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-02-v39-quarterly-cleanup"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3702,6 +3703,83 @@ async def quarterly_audit(token: str = Query(default="")):
                   "quarterly_schedule_count": len(scheds), "schedules": scheds,
                   "quarterly_log_dates": {d: len(v) for d, v in by_date.items()},
                   "logs_by_date": by_date})
+
+
+@router.get("/cleanup-quarterly")
+async def cleanup_quarterly(token: str = Query(default=""),
+                            date: str = Query(default="2026-10-31"),
+                            confirm: int = Query(default=0)):
+    """Remove QUARTERLY PM work orders recorded on a given date (default 31-Oct), which
+    were never part of the annual plan. Open /maint/cleanup-quarterly?token=<AGENT_TOKEN>
+    to PREVIEW (nothing deleted). Add &confirm=1 to actually delete the records and their
+    report PDFs. Only touches quarterly checklists (name contains 'quarter')."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(403, "Bad token")
+    await ensure_tables()
+    await _ensure_absent_table()
+    await _refresh_holidays()
+    try:
+        target = date.strip()[:10]
+        tdate = _dt_date.fromisoformat(target)
+    except Exception:
+        raise HTTPException(400, "Bad date (use YYYY-MM-DD)")
+
+    # quarterly completion logs recorded on the target IST date
+    logrows = await db.fetch(
+        "SELECT l.id, l.done_at, l.checklist_id, l.asset_id, a.code AS code, a.name AS name, "
+        "c.name AS cname FROM maint_logs l "
+        "LEFT JOIN maint_assets a ON a.id=l.asset_id "
+        "LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
+        "WHERE c.name ILIKE '%quarter%' AND l.done_at IS NOT NULL")
+    groups = {}   # (checklist_id, asset_id) -> {code,name,cname,pk,log_ids}
+    for r in logrows:
+        if not isinstance(r["done_at"], datetime):
+            continue
+        if r["done_at"].astimezone(IST).date() != tdate:
+            continue
+        key = (r["checklist_id"], r["asset_id"])
+        g = groups.get(key)
+        if g is None:
+            g = groups[key] = {"checklist_id": r["checklist_id"], "asset_id": r["asset_id"],
+                               "code": r["code"] or "", "name": r["name"] or "",
+                               "cname": r["cname"] or "",
+                               "pk": _period_key(r["cname"] or "", tdate), "log_ids": []}
+        g["log_ids"].append(r["id"])
+
+    items = sorted(groups.values(), key=lambda g: str(g["code"]))
+    preview = [{"code": g["code"], "name": g["name"], "checklist": g["cname"],
+                "checklist_id": g["checklist_id"], "period": g["pk"],
+                "logs": len(g["log_ids"])} for g in items]
+
+    if not confirm:
+        return _json({"date": target, "mode": "preview (nothing deleted)",
+                      "work_orders_found": len(items), "total_logs": sum(len(g["log_ids"]) for g in items),
+                      "note": "add &confirm=1 to delete these records and their PDFs",
+                      "work_orders": preview})
+
+    # confirm=1 -> delete
+    try:
+        gtoken = await graph.get_token()
+    except Exception:
+        gtoken = None
+    results = []
+    for g in items:
+        n = await _delete_pm_workorder(g["checklist_id"], g["pk"], g["cname"], g["asset_id"])
+        pdf_deleted = False
+        if gtoken:
+            try:
+                itm = await _locate_report_item(gtoken, g["code"], g["name"], "Quarterly PM",
+                                                target, bd=0)
+                if itm:
+                    pdf_deleted = await graph.delete_item(gtoken, itm["id"])
+            except Exception:
+                pdf_deleted = False
+        results.append({"code": g["code"], "name": g["name"], "deleted_logs": n,
+                        "pdf_deleted": pdf_deleted})
+    return _json({"date": target, "mode": "DELETED",
+                  "work_orders_deleted": len(results),
+                  "total_logs_deleted": sum(r["deleted_logs"] for r in results),
+                  "results": results})
 
 
 @router.get("/board-debug")
