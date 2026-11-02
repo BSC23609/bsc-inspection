@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-02-v37-board-due-today"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-02-v38-quarterly-audit"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3660,6 +3660,48 @@ async def board(emp: dict = Depends(require_employee)):
                   # kept for backward compatibility with any older client
                   "overdue": periodic["overdue"], "due": periodic["due"],
                   "upcoming": periodic["upcoming"], "recent": p_recent[:12]})
+
+
+@router.get("/quarterly-audit")
+async def quarterly_audit(token: str = Query(default="")):
+    """Read-only audit of QUARTERLY PM. Open /maint/quarterly-audit?token=<AGENT_TOKEN>.
+    Shows every quarterly schedule (day-of-month, start, last_done, computed next due) and
+    every quarterly completion log grouped by the date it was recorded — so a wrong date
+    (e.g. 31-Oct) can be seen and removed precisely."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(403, "Bad token")
+    await ensure_tables()
+    await _refresh_holidays()
+    today = _today()
+    scheds = []
+    for s in await _schedule_rows():
+        if (s.get("freq_type") or "").lower() != "quarterly":
+            continue
+        info = compute_due(s, s.get("asset_hours"), today)
+        scheds.append({
+            "sched_id": s.get("id"), "code": s.get("asset_code"), "name": s.get("asset_name"),
+            "title": s.get("title"), "checklist_id": s.get("checklist_id"),
+            "day_of_month": s.get("day_of_month"), "start_date": str(s.get("start_date")),
+            "last_done": str(s.get("last_done")), "next_due": info.get("next_due"),
+            "active": s.get("active")})
+    scheds.sort(key=lambda r: str(r.get("code")))
+    # quarterly completion logs (checklist name contains "quarter"), grouped by IST date
+    logrows = await db.fetch(
+        "SELECT l.id, l.done_at, l.checklist_id, l.schedule_id, a.code AS code, "
+        "a.name AS name, c.name AS cname FROM maint_logs l "
+        "LEFT JOIN maint_assets a ON a.id=l.asset_id "
+        "LEFT JOIN maint_checklists c ON c.id=l.checklist_id "
+        "WHERE c.name ILIKE '%quarter%' AND l.done_at IS NOT NULL ORDER BY l.done_at DESC")
+    by_date = {}
+    for r in logrows:
+        diso = r["done_at"].astimezone(IST).date().isoformat() if isinstance(r["done_at"], datetime) else "?"
+        by_date.setdefault(diso, []).append(
+            {"code": r["code"], "name": r["name"], "checklist_id": r["checklist_id"],
+             "schedule_id": r["schedule_id"], "cname": r["cname"], "log_id": r["id"]})
+    return _json({"today": today.isoformat(),
+                  "quarterly_schedule_count": len(scheds), "schedules": scheds,
+                  "quarterly_log_dates": {d: len(v) for d, v in by_date.items()},
+                  "logs_by_date": by_date})
 
 
 @router.get("/board-debug")
