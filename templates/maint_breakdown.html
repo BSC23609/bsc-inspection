@@ -119,9 +119,9 @@
   <div class="mb"><div class="mf">
     <input type="hidden" id="cl_id" value="">
     <div id="cl_ctx" class="note" style="margin-bottom:12px"></div>
-    <div style="margin-bottom:14px"><label>Type <span class="opt">(select all that apply)</span></label>
+    <div style="margin-bottom:14px"><label>Type <span class="req">*</span> <span class="opt">(select all that apply)</span></label>
       <div id="cl_types" class="cl-chk"></div></div>
-    <div style="margin-bottom:14px"><label>Cause <span class="opt">(select all that apply)</span></label>
+    <div style="margin-bottom:14px"><label>Cause <span class="req">*</span> <span class="opt">(select all that apply)</span></label>
       <div id="cl_causes" class="cl-chk"><div class="cl-none">Select a type above to see causes.</div></div></div>
     <div style="margin-bottom:14px"><label>Action taken <span class="req">*</span></label>
       <textarea id="cl_action" placeholder="What was done to fix it?"></textarea></div>
@@ -298,11 +298,14 @@ function openClose(id){document.getElementById('cl_id').value=id;sv('cl_action',
   document.getElementById('cl_scrim').style.display='flex';}
 function closeCloseModal(){document.getElementById('cl_scrim').style.display='none';}
 async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl_remarks').trim(),when=v('cl_when');
+  var types=clCheckedTypes(),causes=clCheckedCauses();
+  if(!types.length){toast('err','Select at least one Type');return;}
+  if(!causes.length){toast('err','Select at least one Cause');return;}
   if(!action){toast('err','Enter the action taken');return;}
   if(!when){toast('err','Pick the completion date & time');return;}
   var b=document.getElementById('cl_save');b.disabled=true;var l=b.textContent;b.textContent='Closing…';
   try{var r=await fetch('/maint/breakdown/close',{method:'POST',headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({id:id,action:action,remarks:rm,closed_at:when,types:clCheckedTypes(),causes:clCheckedCauses()})});
+      body:JSON.stringify({id:id,action:action,remarks:rm,closed_at:when,types:types,causes:causes})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
     toast('ok','Work order closed');closeCloseModal();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}

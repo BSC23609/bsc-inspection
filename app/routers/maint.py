@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-02-v43-overdue-dates"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-02-v44-close-type-cause-required"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -2957,6 +2957,11 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
         return [s] if s else []
     ctypes = _slist(body.get("types"))
     ccauses = _slist(body.get("causes"))
+    # Type and Cause are mandatory to close a work order
+    if not ctypes:
+        raise HTTPException(400, "Select at least one Type")
+    if not ccauses:
+        raise HTTPException(400, "Select at least one Cause")
     await db.execute(
         "UPDATE maint_breakdowns SET status='closed', closed_at=COALESCE($4, now()), "
         "closed_by=$2, resolution=$5, close_types=$6, close_causes=$7, "
