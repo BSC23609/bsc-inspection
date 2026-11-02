@@ -43,7 +43,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-10-31-v36-board-lookback"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-02-v37-board-due-today"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3618,10 +3618,16 @@ async def board(emp: dict = Depends(require_employee)):
                         and (not ld or ld < cur_due) and not (aid and aid in on_leave)):
                     incomplete.append(cur_due)
             if incomplete:
-                oldest = min(incomplete)
-                s["next_due"] = oldest.isoformat()      # show the oldest pending day
-                s["pending_days"] = len(incomplete)
-                daily["overdue"].append(s)
+                past = [d for d in incomplete if d < today]
+                if past:
+                    # a PAST working day was left pending -> OVERDUE (show oldest day)
+                    s["next_due"] = min(past).isoformat()
+                    s["pending_days"] = len(past)
+                    daily["overdue"].append(s)
+                else:
+                    # only today's work is still pending -> DUE TODAY (not overdue)
+                    s["next_due"] = today.isoformat()
+                    daily["due"].append(s)
             elif info["next_due"]:
                 nd = _d(info["next_due"])
                 if nd and nd <= today + timedelta(days=7):
