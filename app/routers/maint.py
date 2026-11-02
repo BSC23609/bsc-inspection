@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-02-v42-overdue-window-all"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-02-v43-overdue-dates"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3923,6 +3923,16 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
     today = _today()
     on_leave = await _on_leave_ids(today)
     tdisp = today.strftime("%d-%m-%Y")
+
+    def _due_disp(nd):
+        """Format a schedule's due/pending date (ISO) as DD-MM-YYYY for the digest."""
+        if not nd:
+            return ""
+        try:
+            return _dt_date.fromisoformat(str(nd)[:10]).strftime("%d-%m-%Y")
+        except Exception:
+            return str(nd)
+
     # The bsc_pm_overdue supervisor digest only goes out within the working window
     # 09:00–before 19:00 IST. Outside that window no overdue item is added to the
     # supervisor escalation.
@@ -3959,16 +3969,18 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
             if not allow_overdue:
                 overdue_suppressed += 1
                 continue  # outside 09:00–19:00 IST — no overdue escalation
-            sup_pm.append(f"{label} - {task} - {assignee}")   # overdue daily + quarterly -> supervisor digest
+            od = _due_disp(info.get("next_due"))
+            sup_pm.append(f"{label} - {task} - {assignee}" + (f" - overdue since {od}" if od else ""))
             if aid and mobile:
-                _bucket(aid, assignee, mobile, "pm", f"{label} - {task} (overdue)")  # personal digest
+                _bucket(aid, assignee, mobile, "pm",
+                        f"{label} - {task} (overdue" + (f" since {od}" if od else "") + ")")  # personal digest
         else:  # due today
             if aid and aid in on_leave:
                 continue  # on leave — not flagged to the supervisor's overdue alert
             elif aid and mobile:
                 _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
             else:
-                sup_pm.append(f"{label} - {task} - unassigned")   # unassigned-due cover (daily + quarterly)
+                sup_pm.append(f"{label} - {task} - unassigned - due {tdisp}")   # unassigned-due cover
 
     # ---- open breakdowns: to EACH assigned maintenance user; else to supervisors ----
     emap = await _emp_map()
