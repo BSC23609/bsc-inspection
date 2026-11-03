@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-03-v54-mark-daily-done"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-03-v56-daily-done-ok-report"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4086,55 +4086,46 @@ async def cleanup_quarterly(token: str = Query(default=""),
 
 
 def _daily_done_pdf(target, tdate, items):
-    """Build a PDF of the daily PM rows marked completed on the given date."""
+    """One inspection report PER MACHINE (the app's own PM-report layout, #235 style),
+    every checkpoint shown OK / status Completed, merged into a single PDF."""
     import io
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.lib.units import mm
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-    buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=16 * mm, bottomMargin=14 * mm,
-                            leftMargin=12 * mm, rightMargin=12 * mm)
-    styles = getSampleStyleSheet()
-    h = ParagraphStyle("h", parent=styles["Title"], fontSize=15, spaceAfter=2)
-    sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9,
-                         textColor=colors.HexColor("#51607a"))
-    cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=9, leading=11)
-    disp = tdate.strftime("%d-%b-%Y")
-    story = [Paragraph("Daily Maintenance - Marked Completed", h),
-             Paragraph("Bharat Steel (Chennai) Pvt. Ltd.  |  Date: %s  |  Status: DONE" % disp, sub),
-             Spacer(1, 8)]
-    data = [["S.No", "Date", "Machine Name", "Category", "Assigned To", "Status"]]
-    for i, it in enumerate(items, 1):
-        machine = (str(it.get("asset_code") or "") + " " + str(it.get("asset_name") or "")).strip()
+    from .. import maint_pdf
+    from pypdf import PdfReader, PdfWriter
+    when = datetime.combine(tdate, time(17, 0)).replace(tzinfo=IST)
+    when_s = when.strftime("%d %b %H:%M")
+    writer = PdfWriter()
+
+    def _add(meta, rows):
+        b = maint_pdf.build_pm_report(meta, rows)
+        for p in PdfReader(io.BytesIO(b)).pages:
+            writer.add_page(p)
+
+    if not items:
+        _add({"doc_no": target, "asset_code": "", "asset_name": "", "checklist": "Daily Checklist",
+              "started": None, "completed": when, "due": None, "raised_by": "-", "completed_by": "-",
+              "status": "No daily overdue on this date", "category": "Scheduled Preventive Maintenance",
+              "location": "--", "qr_url": "https://qms.bharatsteels.in/maint"}, [])
+    for it in items:
         who = ", ".join(it.get("assignees") or []) or "-"
-        data.append([str(i), disp, Paragraph(machine, cell), "Daily Maintenance",
-                     Paragraph(who, cell), "DONE"])
-    if len(data) == 1:
-        data.append(["-", "-", "No daily overdue on this date", "-", "-", "-"])
-    t = Table(data, colWidths=[12 * mm, 22 * mm, 60 * mm, 30 * mm, 44 * mm, 16 * mm], repeatRows=1)
-    t.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f1b2d")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d7dee7")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f6f9")]),
-        ("TEXTCOLOR", (5, 1), (5, -1), colors.HexColor("#0a7d55")),
-        ("FONTNAME", (5, 1), (5, -1), "Helvetica-Bold"),
-        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-    ]))
-    story.append(t)
-    story.append(Spacer(1, 10))
-    story.append(Paragraph(
-        "The daily preventive maintenance for the machines listed above was recorded as "
-        "completed on %s. Generated %s." % (disp, datetime.now(IST).strftime("%d-%b-%Y %H:%M")), sub))
-    doc.build(story)
-    pdf = buf.getvalue()
-    buf.close()
-    return Response(content=pdf, media_type="application/pdf",
+        rows = []
+        for i, cp in enumerate(it.get("checkpoints") or [], 1):
+            rec = ("%s · %s" % (when_s, cp.get("assignee") or "-")).strip(" ·")
+            rows.append((str(cp.get("seq") or i), cp.get("text") or "-", "OK", rec))
+        meta = {"doc_no": it.get("checklist_id") or target,
+                "asset_code": it.get("asset_code") or "", "asset_name": it.get("asset_name") or "",
+                "checklist": it.get("checklist") or "Daily Checklist",
+                "started": None, "completed": when, "due": None,
+                "raised_by": (it.get("assignees") or ["-"])[0], "completed_by": who,
+                "status": "Completed", "category": "Scheduled Preventive Maintenance",
+                "location": it.get("asset_location") or "--",
+                "qr_url": "https://qms.bharatsteels.in/maint"}
+        _add(meta, rows)
+
+    out = io.BytesIO()
+    writer.write(out)
+    data = out.getvalue()
+    out.close()
+    return Response(content=data, media_type="application/pdf",
                     headers={"Content-Disposition": 'inline; filename="daily_maint_done_%s.pdf"' % target,
                              "Cache-Control": "no-store"})
 
@@ -4171,14 +4162,16 @@ async def mark_daily_done(token: str = Query(default=""),
         if is_daily and clid and clid not in daily:
             daily[clid] = {"asset_code": s.get("asset_code") or "",
                            "asset_name": s.get("asset_name") or "",
-                           "checklist_name": s.get("checklist_name") or ""}
+                           "checklist_name": s.get("checklist_name") or "",
+                           "asset_location": s.get("asset_location") or ""}
     clids = list(daily.keys())
     cps = {}
     if clids:
-        for cp in await db.fetch("SELECT id, checklist_id, assigned_emp_id FROM maint_checkpoints "
-                                 "WHERE checklist_id = ANY($1::int[])", clids):
+        for cp in await db.fetch("SELECT id, checklist_id, assigned_emp_id, seq, text FROM maint_checkpoints "
+                                 "WHERE checklist_id = ANY($1::int[]) ORDER BY checklist_id, seq NULLS LAST, id", clids):
             cps.setdefault(cp["checklist_id"], []).append(
-                {"id": cp["id"], "emp": cp["assigned_emp_id"]})
+                {"id": cp["id"], "emp": cp["assigned_emp_id"],
+                 "seq": cp.get("seq"), "text": cp.get("text")})
     all_cp_ids = [c["id"] for lst in cps.values() for c in lst]
     done = set()
     if all_cp_ids:
@@ -4205,10 +4198,13 @@ async def mark_daily_done(token: str = Query(default=""),
         if not pending:
             continue   # already fully done
         names = sorted({emp_name.get(c["emp"], "") for c in lst if c["emp"]} - {""})
+        cp_detail = [{"seq": c.get("seq"), "text": c.get("text") or "",
+                      "assignee": emp_name.get(c["emp"], "") or "-", "status": "DONE"} for c in lst]
         items.append({"asset_code": daily[clid]["asset_code"], "asset_name": daily[clid]["asset_name"],
                       "checklist": daily[clid]["checklist_name"], "checklist_id": clid,
+                      "asset_location": daily[clid].get("asset_location") or "",
                       "total_cps": len(lst), "already_done": len(done_cps),
-                      "pending": len(pending), "assignees": names})
+                      "pending": len(pending), "assignees": names, "checkpoints": cp_detail})
         for c in pending:
             to_insert.append((c["id"], c["emp"]))
     items.sort(key=lambda x: str(x["asset_code"]))
@@ -4221,22 +4217,34 @@ async def mark_daily_done(token: str = Query(default=""),
         for cp_id, emp in to_insert:
             res = await db.execute(
                 "INSERT INTO maint_checkpoint_done (checkpoint_id, emp_id, period_key, done_at, result, note) "
-                "VALUES ($1,$2,$3,$4,'done','marked complete (admin)') "
+                "VALUES ($1,$2,$3,$4,'OK','marked complete (admin)') "
                 "ON CONFLICT (checkpoint_id, period_key) DO NOTHING",
                 cp_id, emp, target, done_at)
             if str(res).strip().endswith("1"):
                 marked += 1
+        # Regenerate each machine's stored OneDrive PM report so it now shows every
+        # checkpoint OK / status Completed (overwrites the same per-day file). Best-effort.
+        for it in items:
+            try:
+                await _file_pm_report(it.get("asset_code"), it.get("asset_name"),
+                                      it.get("checklist"), None,
+                                      (it.get("assignees") or ["—"])[0], [],
+                                      it.get("checklist_id"),
+                                      location=it.get("asset_location") or "", when=done_at)
+            except Exception:
+                pass
     if pdf:
         return _daily_done_pdf(target, tdate, items)
+    slim = [{k: v for k, v in it.items() if k != "checkpoints"} for it in items]
     if not confirm:
         return _json({"date": target, "mode": "preview (nothing written)",
                       "machines_overdue": len(items),
                       "checkpoints_to_mark_done": len(to_insert),
                       "note": "add &confirm=1 to record as completed; add &confirm=1&pdf=1 for the PDF",
-                      "items": items})
+                      "items": slim})
     return _json({"date": target, "mode": "APPLIED - recorded as completed",
                   "machines": len(items), "checkpoints_marked_done": marked,
-                  "items": items})
+                  "items": slim})
 
 
 @router.get("/board-debug")
