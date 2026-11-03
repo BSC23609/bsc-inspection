@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-03-v46-board-reminder-perperson"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-03-v47-board-single-list"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3732,6 +3732,123 @@ async def board(emp: dict = Depends(require_employee)):
                   # kept for backward compatibility with any older client
                   "overdue": periodic["overdue"], "due": periodic["due"],
                   "upcoming": periodic["upcoming"], "recent": p_recent[:12]})
+
+
+@router.get("/board/matrix")
+async def board_matrix(emp: dict = Depends(require_employee)):
+    """One row per machine for the single-list board: each machine's Daily PM, Quarterly PM
+    and Breakdown status in its own column. Status uses the SAME per-person logic as the
+    board (daily look-back, quarterly current-quarter completion)."""
+    await ensure_tables()
+    await _refresh_holidays()
+    await _ensure_absent_table()
+    today = _today()
+    on_leave = await _on_leave_ids(today)
+    sched_all = await _schedule_rows()
+
+    def _is_daily(s):
+        ft = (s.get("freq_type") or "").lower()
+        return ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
+
+    def _is_q(s):
+        return (s.get("freq_type") or "").lower() == "quarterly"
+
+    daily_cl_ids = sorted({s["checklist_id"] for s in sched_all
+                           if s.get("active") and s.get("checklist_id") and _is_daily(s)})
+    cps_by_cl, done_set, absent_set, log_set, window_days = await _daily_window_state(
+        sched_all, daily_cl_ids, today)
+    cur_due = window_days[0] if window_days else today
+    q_cps, q_pk, q_done, q_absent = await _quarterly_state(sched_all, today)
+
+    def _day_overdue(clid, piso, cps, is_cur):
+        if not cps:
+            return False
+        has_cpdone = any((cp["id"], piso) in done_set for cp in cps)
+        has_log = (clid, piso) in log_set
+        pending = 0
+        for cp in cps:
+            aid = cp.get("assigned_emp_id")
+            if aid and ((clid, aid, piso) in absent_set or (piso == today.isoformat() and aid in on_leave)):
+                continue
+            if (cp["id"], piso) not in done_set:
+                pending += 1
+        if pending == 0:
+            return False
+        if not has_cpdone and has_log:
+            return False
+        return bool(has_cpdone or has_log or is_cur)
+
+    def _daily_state(s):
+        clid = s.get("checklist_id"); cps = cps_by_cl.get(clid) or []
+        start_d = s.get("start_date"); end_d = s.get("end_date")
+        inc = []
+        if clid and cps:
+            for d in window_days:
+                if (start_d and d < start_d) or (end_d and d > end_d):
+                    continue
+                if _day_overdue(clid, d.isoformat(), cps, d == cur_due):
+                    inc.append(d)
+        else:
+            ld = s.get("last_done"); aid = s.get("assignee_emp_id")
+            if (not (start_d and start_d > cur_due) and not (end_d and cur_due > end_d)
+                    and (not ld or ld < cur_due) and not (aid and aid in on_leave)):
+                inc.append(cur_due)
+        info = compute_due(s, s.get("asset_hours"), today)
+        if inc:
+            past = [d for d in inc if d < today]
+            if past:
+                return {"state": "overdue", "due": min(past).isoformat()}
+            return {"state": "due", "due": today.isoformat()}
+        nd = _d(info["next_due"]) if info.get("next_due") else None
+        if nd and nd <= today + timedelta(days=7):
+            return {"state": "upcoming", "due": info.get("next_due")}
+        return {"state": "ok", "due": info.get("next_due")}
+
+    def _q_state(s):
+        clid = s.get("checklist_id")
+        info = compute_due(s, s.get("asset_hours"), today)
+        fully, started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent) if clid else (None, None)
+        if fully:
+            return {"state": "ok", "due": info.get("next_due")}
+        if info["overdue"]:
+            return {"state": "overdue", "due": info.get("next_due")}
+        if info["due"]:
+            return {"state": "due", "due": info.get("next_due")}
+        if started:
+            return {"state": "overdue", "due": q_pk.get(clid)}
+        nd = _d(info["next_due"]) if info.get("next_due") else None
+        if nd and nd <= today + timedelta(days=7):
+            return {"state": "upcoming", "due": info.get("next_due")}
+        return {"state": "ok", "due": info.get("next_due")}
+
+    by_asset = {}
+    for s in sched_all:
+        if not s.get("active"):
+            continue
+        aid = s.get("asset_id")
+        g = by_asset.get(aid)
+        if g is None:
+            g = by_asset[aid] = {"asset_id": aid, "code": s.get("asset_code") or "",
+                                 "name": s.get("asset_name") or "",
+                                 "daily": None, "daily_sched": None,
+                                 "quarterly": None, "quarterly_sched": None, "breakdowns": []}
+        if _is_daily(s) and g["daily"] is None:
+            g["daily"] = _daily_state(s); g["daily_sched"] = s.get("id")
+        elif _is_q(s) and g["quarterly"] is None:
+            g["quarterly"] = _q_state(s); g["quarterly_sched"] = s.get("id")
+
+    for b in await _open_breakdowns():
+        aid = b.get("asset_id")
+        g = by_asset.get(aid)
+        if g is None:
+            g = by_asset[aid] = {"asset_id": aid, "code": b.get("asset_code") or "",
+                                 "name": b.get("asset_name") or "",
+                                 "daily": None, "daily_sched": None,
+                                 "quarterly": None, "quarterly_sched": None, "breakdowns": []}
+        g["breakdowns"].append({"id": b.get("id"), "problem": (b.get("problem") or "")})
+
+    rows = sorted(by_asset.values(), key=lambda r: str(r.get("code")))
+    return _json({"today": today.isoformat(), "rows": rows})
 
 
 @router.get("/quarterly-audit")

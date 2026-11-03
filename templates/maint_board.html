@@ -28,14 +28,40 @@
 .okbtn.ok{background:#e3f6ee;border-color:#bfe6d2;color:#0a7d55}.okbtn.bad{background:#fdecec;border-color:#f3c7c7;color:#c23438}
 .lab{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
 .wf input{width:100%}
+.mtx-wrap{overflow-x:auto}
+table.mtx{width:100%;border-collapse:collapse;font-size:12.5px;min-width:720px}
+table.mtx th{text-align:left;padding:10px 12px;background:#1f3b5b;color:#fff;font-weight:600;font-size:11.5px;white-space:nowrap}
+table.mtx td{padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+table.mtx tr:nth-child(even) td{background:#f7f9fc}
+.mtx .mc{font-weight:700;font-size:12.5px}
+.mtx .dt{font-size:11px;color:var(--muted);margin-left:6px}
+.b-ok{background:#e3f6ee;color:#0a7d55}.b-none{background:#eef1f4;color:#8a94a0}
+.cellbtn{display:inline-block;font-size:10.5px;font-weight:700;border:1px solid var(--line-2);background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer;margin-left:8px;color:#1f3b5b;font-family:inherit}
+.cellbtn:hover{background:#eef3fb;border-color:var(--acc)}
+a.cellbtn{text-decoration:none}
+.flt{display:flex;gap:10px;align-items:center;margin-bottom:14px;flex-wrap:wrap}
+.flt input,.flt select{padding:7px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;font-family:inherit;background:#fff}
 </style>
 
 <div class="page-head"><h1>Maintenance Board</h1><p id="b_sub">Loading…</p>
   <p style="margin-top:6px;font-size:12.5px"><a href="#" onclick="previewWA();return false" style="color:var(--acc-ink);font-weight:600">Preview WhatsApp reminders</a></p></div>
 
-<div id="b_daily"></div>
-<div id="b_periodic"></div>
-<div id="b_breakdowns"></div>
+<div class="panel"><div class="panel-body">
+  <div class="flt">
+    <input id="f_q" oninput="apply()" placeholder="Search machine…" style="min-width:200px">
+    <select id="f_st" onchange="apply()">
+      <option value="">All statuses</option>
+      <option value="overdue">Overdue</option>
+      <option value="due">Due today</option>
+      <option value="upcoming">Upcoming</option>
+    </select>
+    <span id="b_count" style="font-size:12px;color:var(--muted)"></span>
+  </div>
+  <div class="mtx-wrap"><table class="mtx">
+    <thead><tr><th>Machine</th><th>Daily Maintenance</th><th>Quarterly Maintenance</th><th>Breakdown</th></tr></thead>
+    <tbody id="mtx_rows"><tr><td colspan="4" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
+  </table></div>
+</div></div>
 </div>
 
 <!-- complete modal -->
@@ -50,75 +76,61 @@
 {% block scripts %}
 <script>
 var CUR=null;
+var MTX=[];
 var IS_ADMIN={{ 'true' if emp.is_admin else 'false' }};
-var CARD={};
+var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
-function cad(x){var p=[];if(x.freq_days)p.push('every '+x.freq_days+'d');if(x.hours_interval)p.push('every '+x.hours_interval+'h');return p.join(' · ');}
+function fmtDue(s){
+  if(!s)return '';
+  if(/^\d{4}-Q\d$/.test(String(s)))return String(s).replace('-',' ');
+  var d=new Date(s);if(isNaN(d))return esc(String(s).slice(0,10));
+  return ('0'+d.getDate()).slice(-2)+'-'+MON[d.getMonth()]+'-'+d.getFullYear();
+}
 async function load(){
-  try{var r=await fetch('/maint/board',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();}
+  try{var r=await fetch('/maint/board/matrix',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();}
   catch(e){document.getElementById('b_sub').textContent='Couldn’t load the board.';return;}
-  document.getElementById('b_sub').textContent='Today '+d.today+' — what needs attention, by frequency.';
-  document.getElementById('b_daily').innerHTML=boardBlock('Daily Maintenance',d.daily||{},true);
-  document.getElementById('b_periodic').innerHTML=boardBlock('Quarterly / Periodic Maintenance',d.periodic||{},false);
-  loadBreakdowns();
+  MTX=d.rows||[];
+  document.getElementById('b_sub').textContent='Today '+d.today+' — every machine, with daily, quarterly and breakdown status.';
+  apply();
 }
-function fmtWhen(s){if(!s)return '—';var d=new Date(s);if(isNaN(d))return esc(String(s).slice(0,16));
-  return ('0'+d.getDate()).slice(-2)+'-'+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
-async function loadBreakdowns(){
-  var host=document.getElementById('b_breakdowns');if(!host)return;
-  try{var ls=await (await fetch('/maint/breakdowns/list',{cache:'no-store'})).json();}catch(e){host.innerHTML='';return;}
-  var open=(ls||[]).filter(function(b){return b.status==='open';});
-  var h='<div class="panel" style="margin-bottom:20px"><div class="panel-head">Breakdowns / Work Orders</div><div class="panel-body">';
-  if(!open.length){h+='<div class="empty">No open work orders. ✅</div>';}
-  else{
-    h+='<div class="sect-h"><span class="badge b-over">Open</span> '+open.length+'</div>';
-    h+=open.map(function(b){
-      var mac=((b.asset_code?b.asset_code+' ':'')+(b.asset_name||'')).trim()||'—';
-      var wt=(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0)?'Unscheduled PM':'Breakdown';
-      var who=b.assignee_name||'unassigned';
-      var meta=wt+(b.btype?(' · '+b.btype):'')+' · raised '+fmtWhen(b.raised_at)+' · '+who;
-      return '<div class="mcard over"><div><div class="ti">'+esc(mac)+' — '+esc(b.problem||'—')+'</div>'
-        +'<div class="meta">'+esc(meta)+'</div></div><div class="sp" style="flex:1"></div>'
-        +'<a class="btn btn-primary" href="/maint/breakdown">Close</a></div>';
-    }).join('');
-  }
-  h+='</div></div>';
-  host.innerHTML=h;
+function cellState(c){return (c&&c.state)?c.state:'none';}
+function apply(){
+  var q=(document.getElementById('f_q').value||'').trim().toLowerCase();
+  var st=document.getElementById('f_st').value;
+  var out=MTX.filter(function(m){
+    if(q){var t=((m.code||'')+' '+(m.name||'')).toLowerCase();if(t.indexOf(q)<0)return false;}
+    if(st){
+      var has=cellState(m.daily)===st||cellState(m.quarterly)===st
+              ||(st==='overdue'&&m.breakdowns&&m.breakdowns.length);
+      if(!has)return false;
+    }
+    return true;
+  });
+  render(out);
 }
-function cnt(data,k){return (data[k]||[]).length;}
-function boardBlock(title,data,isDaily){
-  var h='<div class="panel" style="margin-bottom:20px"><div class="panel-head">'+esc(title)+'</div><div class="panel-body">';
-  // Overdue = pending from a past day; Due today = due today and not yet done.
-  h+='<div class="stat">'
-    +'<div class="s over"><div class="n">'+cnt(data,'overdue')+'</div><div class="l">Overdue</div></div>'
-    +'<div class="s due"><div class="n">'+cnt(data,'due')+'</div><div class="l">Due today</div></div>'
-    +'<div class="s up"><div class="n">'+cnt(data,'upcoming')+'</div><div class="l">Upcoming (7 days)</div></div></div>';
-  var body='';
-  body+=section('Overdue','over',data.overdue||[]);
-  body+=section('Due today','due',data.due||[]);
-  body+=section('Upcoming','up',data.upcoming||[]);
-  if(!cnt(data,'overdue')&&!cnt(data,'due')&&!cnt(data,'upcoming'))body='<div class="empty">Nothing due. All up to date. ✅</div>';
-  h+=body;
-  h+='<div class="sect-h" style="margin-top:20px">Recent activity</div>'+recentHTML(data.recent||[]);
-  h+='</div></div>';
-  return h;
+function chip(cell,schedId){
+  var s=cellState(cell);
+  var map={overdue:['b-over','Overdue'],due:['b-due','Due today'],upcoming:['b-up','Upcoming'],ok:['b-ok','OK'],none:['b-none','—']};
+  var m=map[s]||map.none;
+  var html='<span class="badge '+m[0]+'">'+m[1]+'</span>';
+  if((s==='overdue'||s==='due'||s==='upcoming')&&cell&&cell.due)html+='<span class="dt">'+fmtDue(cell.due)+'</span>';
+  if((s==='overdue'||s==='due')&&schedId)html+='<button class="cellbtn" onclick="openComplete('+schedId+')">Complete</button>';
+  return html;
 }
-function section(label,cls,items){if(!items.length)return '';
-  var badge=cls==='over'?'b-over':(cls==='due'?'b-due':'b-up');
-  var h='<div class="sect-h"><span class="badge '+badge+'">'+label+'</span> '+items.length+'</div>';
-  h+=items.map(function(x){
-    CARD[x.id]={code:x.asset_code||'',name:x.asset_name||''};
-    var due=x.next_due?((cls==='over'?'Due ':'Next due ')+esc(x.next_due)):(x.hours_due?'Hours reached':'');
-    if(cls==='over'&&x.pending_days>1)due+=' ('+x.pending_days+' days pending)';
-    var who=x.assignee_name?('· '+esc(x.assignee_name)):'· unassigned';
-    return '<div class="mcard '+cls+'"><div><div class="ti">'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+' — '+esc(x.title||'')+'</div>'
-      +'<div class="meta">'+esc(cad(x))+' '+(due?('· '+due):'')+' '+who+'</div></div><div class="sp" style="flex:1"></div>'
-      +'<button class="btn btn-primary" onclick="openComplete('+x.id+')">Complete</button>'
-      +'<button class="btn btn-ghost" style="margin-left:6px" onclick="remindOne('+x.id+',this)">Send reminder</button>'
-      +(IS_ADMIN?'<button class="btn btn-ghost" style="margin-left:6px;color:#c23438;border-color:#e3b7b9" onclick="deleteLog('+x.id+',this)">Delete log</button>':'')
-      +'</div>';
+function bdCell(bds){
+  if(!bds||!bds.length)return '<span class="badge b-none">—</span>';
+  return '<span class="badge b-over">Open ('+bds.length+')</span><a class="cellbtn" href="/maint/breakdown">Close</a>';
+}
+function render(list){
+  document.getElementById('b_count').textContent=list.length+' machine'+(list.length===1?'':'s')+' shown';
+  if(!list.length){document.getElementById('mtx_rows').innerHTML='<tr><td colspan="4" style="padding:18px;color:var(--muted)">No machines match.</td></tr>';return;}
+  document.getElementById('mtx_rows').innerHTML=list.map(function(m){
+    var nm=((m.code?m.code+' ':'')+(m.name||'')).trim()||'—';
+    return '<tr><td><span class="mc">'+esc(nm)+'</span></td>'
+      +'<td>'+chip(m.daily,m.daily_sched)+'</td>'
+      +'<td>'+chip(m.quarterly,m.quarterly_sched)+'</td>'
+      +'<td>'+bdCell(m.breakdowns)+'</td></tr>';
   }).join('');
-  return h;
 }
 function toast(msg,bad){
   var t=document.createElement('div');t.textContent=msg;
@@ -127,39 +139,6 @@ function toast(msg,bad){
     +'font-size:13px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:90%;text-align:center';
   document.body.appendChild(t);
   setTimeout(function(){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove();},400);},3600);
-}
-async function remindOne(sid,btn){
-  var old=btn?btn.textContent:'';
-  if(btn){btn.disabled=true;btn.textContent='Sending…';}
-  try{
-    var r=await fetch('/maint/remind-one',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({schedule_id:sid})});
-    var d=await r.json();
-    toast(d.msg||(d.ok?'Reminder sent.':'Could not send reminder.'), !d.ok);
-  }catch(e){toast('Could not send reminder: '+e, true);}
-  if(btn){btn.disabled=false;btn.textContent=old||'Send reminder';}
-}
-async function deleteLog(sid,btn){
-  if(!IS_ADMIN)return;
-  if(!confirm('Delete this work order?\n\nThis permanently removes the latest completion record for this task AND its report PDF in OneDrive. The task will show as due again. This cannot be undone.'))return;
-  var old=btn?btn.textContent:'';var c=CARD[sid]||{};
-  if(btn){btn.disabled=true;btn.textContent='Deleting…';}
-  try{
-    var r=await fetch('/maint/workorder/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({kind:'pm',schedule_id:sid,code:c.code||'',name:c.name||''})});
-    var d=await r.json();
-    toast(d.msg||(d.ok?('Work order deleted'+(d.pdf_deleted?' (with PDF).':'.')):'Could not delete.'), !d.ok);
-    if(d.ok)load();
-  }catch(e){toast('Could not delete: '+e, true);}
-  if(btn){btn.disabled=false;btn.textContent=old||'Delete log';}
-}
-function recentHTML(rows){
-  if(!rows.length)return '<div class="empty">No maintenance recorded yet.</div>';
-  var cols=[['When','16%'],['Asset','24%'],['Task','22%'],['By','16%'],['Hrs','9%'],['Result','13%']];
-  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
-  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
-  var body=rows.map(function(l){var st=l.status==='issues'?'<span class="badge b-due">Issues</span>':'<span class="badge b-up">Done</span>';
-    return '<tr><td>'+esc(String(l.done_at||'').slice(0,16).replace('T',' '))+'</td><td>'+esc((l.asset_code?l.asset_code+' ':'')+(l.asset_name||''))+'</td>'
-      +'<td>'+esc(l.sched_title||'')+'</td><td>'+esc(l.done_by||'')+'</td><td class="c">'+(l.running_hours!=null?esc(l.running_hours):'—')+'</td><td class="c">'+st+'</td></tr>';}).join('');
-  return '<div class="dgrid-wrap"><table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table></div>';
 }
 async function openComplete(sid){
   try{var d=await (await fetch('/maint/do/get?schedule='+sid,{cache:'no-store'})).json();}catch(e){toast('err','Could not open');return;}
