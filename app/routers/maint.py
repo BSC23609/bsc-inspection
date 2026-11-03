@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-03-v47-board-single-list"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-03-v48-board-overdue-list"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3821,6 +3821,18 @@ async def board_matrix(emp: dict = Depends(require_employee)):
             return {"state": "upcoming", "due": info.get("next_due")}
         return {"state": "ok", "due": info.get("next_due")}
 
+    emp_name = {e["id"]: (e["name"] or e["emp_no"])
+                for e in await db.fetch("SELECT id, name, emp_no FROM employees")}
+
+    def _assignees(clid):
+        """Distinct assignee names on a checklist's checkpoints."""
+        seen, names = [], []
+        for cp in (cps_by_cl.get(clid) or []) + (q_cps.get(clid) or []):
+            a = cp.get("assigned_emp_id")
+            if a and a not in seen:
+                seen.append(a); names.append(emp_name.get(a, "#%s" % a))
+        return names
+
     by_asset = {}
     for s in sched_all:
         if not s.get("active"):
@@ -3834,8 +3846,12 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                                  "quarterly": None, "quarterly_sched": None, "breakdowns": []}
         if _is_daily(s) and g["daily"] is None:
             g["daily"] = _daily_state(s); g["daily_sched"] = s.get("id")
+            g["daily"]["assignees"] = _assignees(s.get("checklist_id")) or (
+                [s.get("assignee_name")] if s.get("assignee_name") else [])
         elif _is_q(s) and g["quarterly"] is None:
             g["quarterly"] = _q_state(s); g["quarterly_sched"] = s.get("id")
+            g["quarterly"]["assignees"] = _assignees(s.get("checklist_id")) or (
+                [s.get("assignee_name")] if s.get("assignee_name") else [])
 
     for b in await _open_breakdowns():
         aid = b.get("asset_id")
@@ -3845,7 +3861,17 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                                  "name": b.get("asset_name") or "",
                                  "daily": None, "daily_sched": None,
                                  "quarterly": None, "quarterly_sched": None, "breakdowns": []}
-        g["breakdowns"].append({"id": b.get("id"), "problem": (b.get("problem") or "")})
+        bnames = []
+        for a in (b.get("assignees") or ([b.get("assignee_emp_id")] if b.get("assignee_emp_id") else [])):
+            nm = emp_name.get(a)
+            if nm:
+                bnames.append(nm)
+        if not bnames and b.get("assignee_name"):
+            bnames = [b.get("assignee_name")]
+        raised = b.get("raised_at")
+        raised_iso = raised.astimezone(IST).date().isoformat() if isinstance(raised, datetime) else ""
+        g["breakdowns"].append({"id": b.get("id"), "problem": (b.get("problem") or ""),
+                                "date": raised_iso, "assignees": bnames})
 
     rows = sorted(by_asset.values(), key=lambda r: str(r.get("code")))
     return _json({"today": today.isoformat(), "rows": rows})

@@ -36,6 +36,9 @@ table.mtx tr:nth-child(even) td{background:#f7f9fc}
 .mtx .mc{font-weight:700;font-size:12.5px}
 .mtx .dt{font-size:11px;color:var(--muted);margin-left:6px}
 .b-ok{background:#e3f6ee;color:#0a7d55}.b-none{background:#eef1f4;color:#8a94a0}
+.cat-d{background:#e7f0fb;color:#1f3b5b}.cat-q{background:#efe7fb;color:#5b3b7d}
+table.mtx tr.rowact{cursor:pointer}
+table.mtx tr.rowact:hover td{background:#eef3fb}
 .cellbtn{display:inline-block;font-size:10.5px;font-weight:700;border:1px solid var(--line-2);background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer;margin-left:8px;color:#1f3b5b;font-family:inherit}
 .cellbtn:hover{background:#eef3fb;border-color:var(--acc)}
 a.cellbtn{text-decoration:none}
@@ -49,17 +52,17 @@ a.cellbtn{text-decoration:none}
 <div class="panel"><div class="panel-body">
   <div class="flt">
     <input id="f_q" oninput="apply()" placeholder="Search machine…" style="min-width:200px">
-    <select id="f_st" onchange="apply()">
-      <option value="">All statuses</option>
-      <option value="overdue">Overdue</option>
-      <option value="due">Due today</option>
-      <option value="upcoming">Upcoming</option>
+    <select id="f_cat" onchange="apply()">
+      <option value="">All categories</option>
+      <option value="Daily Maintenance">Daily Maintenance</option>
+      <option value="Quarterly Maintenance">Quarterly Maintenance</option>
+      <option value="Breakdown">Breakdown</option>
     </select>
     <span id="b_count" style="font-size:12px;color:var(--muted)"></span>
   </div>
   <div class="mtx-wrap"><table class="mtx">
-    <thead><tr><th>Machine</th><th>Daily Maintenance</th><th>Quarterly Maintenance</th><th>Breakdown</th></tr></thead>
-    <tbody id="mtx_rows"><tr><td colspan="4" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
+    <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Assigned To</th></tr></thead>
+    <tbody id="mtx_rows"><tr><td colspan="5" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
   </table></div>
 </div></div>
 </div>
@@ -76,12 +79,12 @@ a.cellbtn{text-decoration:none}
 {% block scripts %}
 <script>
 var CUR=null;
-var MTX=[];
+var OV=[];
 var IS_ADMIN={{ 'true' if emp.is_admin else 'false' }};
 var MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function fmtDue(s){
-  if(!s)return '';
+  if(!s)return '—';
   if(/^\d{4}-Q\d$/.test(String(s)))return String(s).replace('-',' ');
   var d=new Date(s);if(isNaN(d))return esc(String(s).slice(0,10));
   return ('0'+d.getDate()).slice(-2)+'-'+MON[d.getMonth()]+'-'+d.getFullYear();
@@ -89,47 +92,47 @@ function fmtDue(s){
 async function load(){
   try{var r=await fetch('/maint/board/matrix',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();}
   catch(e){document.getElementById('b_sub').textContent='Couldn’t load the board.';return;}
-  MTX=d.rows||[];
-  document.getElementById('b_sub').textContent='Today '+d.today+' — every machine, with daily, quarterly and breakdown status.';
+  OV=[];
+  (d.rows||[]).forEach(function(m){
+    var mac=((m.code?m.code+' ':'')+(m.name||'')).trim()||'—';
+    if(m.daily&&m.daily.state==='overdue')
+      OV.push({date:m.daily.due,machine:mac,category:'Daily Maintenance',assigned:(m.daily.assignees||[]),sched:m.daily_sched});
+    if(m.quarterly&&m.quarterly.state==='overdue')
+      OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',assigned:(m.quarterly.assignees||[]),sched:m.quarterly_sched});
+    (m.breakdowns||[]).forEach(function(b){
+      OV.push({date:b.date,machine:mac,category:'Breakdown',assigned:(b.assignees||[]),bd:b.id});
+    });
+  });
+  OV.sort(function(a,b){return (String(a.date||'')).localeCompare(String(b.date||''))||a.machine.localeCompare(b.machine);});
+  document.getElementById('b_sub').textContent='Today '+d.today+' — overdue maintenance only.';
   apply();
 }
-function cellState(c){return (c&&c.state)?c.state:'none';}
 function apply(){
   var q=(document.getElementById('f_q').value||'').trim().toLowerCase();
-  var st=document.getElementById('f_st').value;
-  var out=MTX.filter(function(m){
-    if(q){var t=((m.code||'')+' '+(m.name||'')).toLowerCase();if(t.indexOf(q)<0)return false;}
-    if(st){
-      var has=cellState(m.daily)===st||cellState(m.quarterly)===st
-              ||(st==='overdue'&&m.breakdowns&&m.breakdowns.length);
-      if(!has)return false;
-    }
+  var cat=document.getElementById('f_cat').value;
+  var out=OV.filter(function(r){
+    if(cat&&r.category!==cat)return false;
+    if(q&&r.machine.toLowerCase().indexOf(q)<0)return false;
     return true;
   });
   render(out);
 }
-function chip(cell,schedId){
-  var s=cellState(cell);
-  var map={overdue:['b-over','Overdue'],due:['b-due','Due today'],upcoming:['b-up','Upcoming'],ok:['b-ok','OK'],none:['b-none','—']};
-  var m=map[s]||map.none;
-  var html='<span class="badge '+m[0]+'">'+m[1]+'</span>';
-  if((s==='overdue'||s==='due'||s==='upcoming')&&cell&&cell.due)html+='<span class="dt">'+fmtDue(cell.due)+'</span>';
-  if((s==='overdue'||s==='due')&&schedId)html+='<button class="cellbtn" onclick="openComplete('+schedId+')">Complete</button>';
-  return html;
-}
-function bdCell(bds){
-  if(!bds||!bds.length)return '<span class="badge b-none">—</span>';
-  return '<span class="badge b-over">Open ('+bds.length+')</span><a class="cellbtn" href="/maint/breakdown">Close</a>';
+function catBadge(c){
+  if(c==='Breakdown')return '<span class="badge b-over">Breakdown</span>';
+  if(c==='Quarterly Maintenance')return '<span class="badge cat-q">Quarterly Maintenance</span>';
+  return '<span class="badge cat-d">Daily Maintenance</span>';
 }
 function render(list){
-  document.getElementById('b_count').textContent=list.length+' machine'+(list.length===1?'':'s')+' shown';
-  if(!list.length){document.getElementById('mtx_rows').innerHTML='<tr><td colspan="4" style="padding:18px;color:var(--muted)">No machines match.</td></tr>';return;}
-  document.getElementById('mtx_rows').innerHTML=list.map(function(m){
-    var nm=((m.code?m.code+' ':'')+(m.name||'')).trim()||'—';
-    return '<tr><td><span class="mc">'+esc(nm)+'</span></td>'
-      +'<td>'+chip(m.daily,m.daily_sched)+'</td>'
-      +'<td>'+chip(m.quarterly,m.quarterly_sched)+'</td>'
-      +'<td>'+bdCell(m.breakdowns)+'</td></tr>';
+  document.getElementById('b_count').textContent=list.length+' overdue';
+  if(!list.length){document.getElementById('mtx_rows').innerHTML='<tr><td colspan="5" style="padding:18px;color:var(--muted)">No overdue maintenance. ✅</td></tr>';return;}
+  document.getElementById('mtx_rows').innerHTML=list.map(function(r,i){
+    var click = r.sched?(' class="rowact" onclick="openComplete('+r.sched+')" title="Complete this work order"')
+             : (r.bd?(' class="rowact" onclick="location.href=\'/maint/breakdown\'" title="Close this work order"'):'');
+    var asg=(r.assigned&&r.assigned.length)?esc(r.assigned.join(', ')):'<span style="color:var(--muted)">—</span>';
+    return '<tr'+click+'><td>'+(i+1)+'</td><td>'+fmtDue(r.date)+'</td>'
+      +'<td><span class="mc">'+esc(r.machine)+'</span></td>'
+      +'<td>'+catBadge(r.category)+'</td>'
+      +'<td>'+asg+'</td></tr>';
   }).join('');
 }
 function toast(msg,bad){
