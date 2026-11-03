@@ -175,7 +175,7 @@ async function prSubmit(){
     var r=await fetch('/purchase/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
     var d=await r.json().catch(function(){return{};});
     if(!r.ok||!d.ok)throw new Error(d.detail||'Submit failed');
-    toast('ok','Purchase request submitted');
+    toast('ok','Request '+(d.ref||'')+' submitted'+(d.approver_notified?' · approver notified on WhatsApp':''));
     prReset();await prLoad();window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
   }catch(e){toast('err','Couldn’t submit: '+((e&&e.message)||e));}
   finally{b.disabled=false;b.textContent=lbl;}

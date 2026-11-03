@@ -9,22 +9,40 @@ One submission = one row in purchase_requests. The three on-screen sections
 (Requester / Item details / Priority & cost) are just a grouping of that row's
 fields, not separate tables.
 """
+import os
 import json
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from .. import db
+from .. import db, wati
 from ..auth import require_employee
 
 router = APIRouter(prefix="/purchase")
 IST = ZoneInfo("Asia/Kolkata")
 
 # bump on each deploy to confirm the new build is live  (GET /purchase/version)
-PURCHASE_BUILD = "2026-11-03-v3-location"
+PURCHASE_BUILD = "2026-11-03-v4-approval-wa"
 
 STATUSES = ("Pending", "Approved", "Rejected", "Purchased")
+
+# --- WhatsApp approval wiring (all env-driven; set in Vercel, no redeploy of code) ---
+# The single approver who receives every new request and taps Approve/Reject in WhatsApp.
+APPROVER_NUMBER  = (os.environ.get("PURCHASE_APPROVER_NUMBER") or "").strip()
+# The store/purchase desk that is auto-notified when a request is Approved.
+STORE_NUMBER     = (os.environ.get("PURCHASE_STORE_NUMBER") or "").strip()
+# Approved WATI template names (create these in WATI; see the setup notes).
+REQ_TEMPLATE     = (os.environ.get("PURCHASE_REQUEST_TEMPLATE") or "bsc_purchase_request").strip()
+STORE_TEMPLATE   = (os.environ.get("PURCHASE_STORE_TEMPLATE") or "bsc_purchase_approved").strip()
+# Optional shared secret appended to the WATI webhook URL (?token=...), checked on inbound.
+HOOK_TOKEN       = (os.environ.get("PURCHASE_HOOK_TOKEN") or "").strip()
+
+# Which button text maps to which status. WATI sends the button's label as the
+# reply text; we match case-insensitively on a keyword so small wording changes
+# in the template still resolve.
+_BTN_STATUS = [("approve", "Approved"), ("reject", "Rejected"),
+               ("purchas", "Purchased")]
 
 _READY = False
 
@@ -72,6 +90,10 @@ async def ensure_tables():
         """)
     # Added after v1 shipped — safe on an existing table.
     await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS location TEXT")
+    # v4: WhatsApp approval workflow bookkeeping.
+    await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS approver_notified BOOLEAN DEFAULT FALSE")
+    await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS store_notified BOOLEAN DEFAULT FALSE")
+    await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS wa_detail TEXT")
     await db.execute(
         "CREATE INDEX IF NOT EXISTS ix_pr_requester ON purchase_requests (requester_emp_id)")
     await db.execute(
@@ -109,6 +131,105 @@ def _date(v):
         return datetime.strptime(s, "%Y-%m-%d").date()
     except ValueError:
         return None
+
+
+def _ref(rid) -> str:
+    return "PR-%s" % rid
+
+
+def _tidy(v) -> str:
+    """WhatsApp rejects a template parameter containing a newline/tab or 4+ spaces."""
+    s = " ".join(str(v if v is not None else "").split())
+    return s or "-"
+
+
+def _req_params(r: dict) -> list:
+    """Ordered template parameters for the approver message. The WATI template body
+    must use {{1}}..{{9}} in THIS order (see the setup notes)."""
+    qty = r.get("quantity")
+    qty_s = ("%g %s" % (float(qty), r.get("unit") or "")).strip() if qty not in (None, "") else "-"
+    who = _tidy(r.get("req_name") or r.get("requester_name") or "")
+    dept = _tidy(r.get("department") or "")
+    cost = r.get("est_cost")
+    cost_s = ("Rs %g" % float(cost)) if cost not in (None, "") else "-"
+    return [
+        _ref(r.get("id")),                                   # {{1}} reference
+        (who + (" (" + dept + ")" if dept and dept != "-" else "")),  # {{2}} requester
+        _tidy(r.get("item_name")),                           # {{3}} item
+        _tidy(qty_s),                                        # {{4}} qty + unit
+        _tidy(r.get("category") or "-"),                     # {{5}} category
+        _tidy(r.get("location") or "-"),                     # {{6}} location
+        _tidy(r.get("urgency") or "Normal"),                 # {{7}} urgency
+        _tidy(r.get("purpose") or "-"),                      # {{8}} purpose / machine
+        _tidy(cost_s),                                       # {{9}} estimated cost
+    ]
+
+
+async def _get_row(pid) -> dict:
+    r = await db.fetchrow(
+        "SELECT p.*, e.name AS requester_name, e.emp_no AS requester_emp_no "
+        "FROM purchase_requests p LEFT JOIN employees e ON e.id=p.requester_emp_id "
+        "WHERE p.id=$1", int(pid))
+    return dict(r) if r else None
+
+
+async def _notify_approver(pid):
+    """Send the new request to the single approver's WhatsApp (Approve/Reject buttons
+    live on the approved WATI template). Never raises — a WATI failure must not fail
+    the submit; the detail is stored for the diagnostics endpoint."""
+    if not APPROVER_NUMBER:
+        return False, "no approver number configured (set PURCHASE_APPROVER_NUMBER)"
+    row = await _get_row(pid)
+    if not row:
+        return False, "row not found"
+    try:
+        ok, detail = await wati.send_template(REQ_TEMPLATE, APPROVER_NUMBER, _req_params(row))
+    except Exception as e:  # noqa: BLE001
+        ok, detail = False, "send error: %s" % e
+    try:
+        await db.execute(
+            "UPDATE purchase_requests SET approver_notified=$1, wa_detail=$2 WHERE id=$3",
+            bool(ok), str(detail)[:500], int(pid))
+    except Exception:
+        pass
+    return ok, detail
+
+
+async def _notify_store(pid):
+    """Auto-send an approved request's details to the store/purchase desk. Guarded by
+    store_notified so it fires once per request."""
+    if not STORE_NUMBER:
+        return False, "no store number configured (set PURCHASE_STORE_NUMBER)"
+    row = await _get_row(pid)
+    if not row:
+        return False, "row not found"
+    if row.get("store_notified"):
+        return True, "already notified"
+    try:
+        ok, detail = await wati.send_template(STORE_TEMPLATE, STORE_NUMBER, _req_params(row))
+    except Exception as e:  # noqa: BLE001
+        ok, detail = False, "send error: %s" % e
+    if ok:
+        try:
+            await db.execute("UPDATE purchase_requests SET store_notified=TRUE WHERE id=$1", int(pid))
+        except Exception:
+            pass
+    return ok, detail
+
+
+async def _apply_status(pid, status, decided_by=None):
+    """Set a request's status; on Approved, auto-notify the store exactly once.
+    Returns (ok, detail). Shared by the admin dropdown and the WhatsApp webhook."""
+    res = await db.execute(
+        "UPDATE purchase_requests SET status=$1, decided_by=$2, decided_at=now() WHERE id=$3",
+        status, decided_by, int(pid))
+    if res.endswith("0"):
+        return False, "not found"
+    store = ""
+    if status == "Approved":
+        sok, sdetail = await _notify_store(pid)
+        store = ("store: " + ("sent" if sok else sdetail))
+    return True, store
 
 
 @router.get("/version")
@@ -174,7 +295,10 @@ async def pr_create(body: dict, emp: dict = Depends(require_employee)):
         _s(body.get("in_stock"), 10),
         _s(body.get("remarks"), 1000),
     )
-    return _json({"ok": True, "id": rid})
+    # Fire the approver's WhatsApp. Never blocks or fails the submit.
+    wa_ok, wa_detail = await _notify_approver(rid)
+    return _json({"ok": True, "id": rid, "ref": _ref(rid),
+                  "approver_notified": bool(wa_ok), "wa_detail": wa_detail})
 
 
 @router.post("/status")
@@ -187,9 +311,98 @@ async def pr_status(body: dict, emp: dict = Depends(require_employee)):
     status = _s(body.get("status"), 20)
     if not pid or status not in STATUSES:
         raise HTTPException(400, "Bad id or status")
-    res = await db.execute(
-        "UPDATE purchase_requests SET status=$1, decided_by=$2, decided_at=now() WHERE id=$3",
-        status, emp.get("id"), int(pid))
-    if res.endswith("0"):
+    ok, detail = await _apply_status(pid, status, emp.get("id"))
+    if not ok:
         raise HTTPException(404, "Request not found")
-    return _json({"ok": True, "id": pid, "status": status})
+    return _json({"ok": True, "id": pid, "status": status, "detail": detail})
+
+
+# ---------------------------------------------------------------------------
+# WhatsApp webhook — WATI posts here when the approver taps an Approve / Reject /
+# Purchased button on the request message. Configure this URL in WATI:
+#   https://qms.bharatsteels.in/purchase/wati-hook?token=<PURCHASE_HOOK_TOKEN>
+# ---------------------------------------------------------------------------
+def _hook_sender(payload: dict) -> str:
+    for k in ("waId", "whatsappNumber", "senderNumber", "number", "wa_id", "from"):
+        v = payload.get(k)
+        if v:
+            return wati.normalize_number(v)
+    return ""
+
+
+def _hook_button_text(payload: dict) -> str:
+    # WATI shapes vary by account/version — check the common places.
+    for k in ("text", "buttonText", "body"):
+        v = payload.get(k)
+        if v:
+            return str(v)
+    for parent in ("buttonReply", "interactive", "button", "listReply"):
+        node = payload.get(parent)
+        if isinstance(node, dict):
+            for k in ("text", "title", "payload", "body"):
+                if node.get(k):
+                    return str(node[k])
+    return ""
+
+
+def _status_from_text(text: str) -> str:
+    t = (text or "").strip().lower()
+    for key, st in _BTN_STATUS:
+        if key in t:
+            return st
+    for st in STATUSES:          # also accept the plain status word
+        if st.lower() in t:
+            return st
+    return ""
+
+
+@router.post("/wati-hook")
+async def wati_hook(request: Request):
+    """Receive the approver's button tap. Tolerant of WATI's payload shapes."""
+    await ensure_tables()
+    if HOOK_TOKEN and request.query_params.get("token") != HOOK_TOKEN:
+        raise HTTPException(403, "bad token")
+    try:
+        payload = await request.json()
+    except Exception:
+        payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
+    sender = _hook_sender(payload)
+    status = _status_from_text(_hook_button_text(payload))
+    # Only the configured approver may decide; ignore anything else (delivery
+    # receipts, other inbound messages) quietly so WATI doesn't keep retrying.
+    if not status or (APPROVER_NUMBER and sender and
+                      wati.normalize_number(APPROVER_NUMBER) != sender):
+        return _json({"ok": True, "ignored": True})
+    # Correlate to a request: the most recent one still Pending that was sent to
+    # the approver. (Single approver + prompt action makes this reliable; the web
+    # register remains the source of truth and an admin can correct any mismatch.)
+    row = await db.fetchrow(
+        "SELECT id FROM purchase_requests WHERE status='Pending' AND approver_notified=TRUE "
+        "ORDER BY created_at DESC, id DESC LIMIT 1")
+    if not row:
+        row = await db.fetchrow(
+            "SELECT id FROM purchase_requests WHERE status='Pending' ORDER BY created_at DESC, id DESC LIMIT 1")
+    if not row:
+        return _json({"ok": True, "no_pending": True})
+    ok, detail = await _apply_status(row["id"], status, None)
+    return _json({"ok": ok, "id": row["id"], "status": status, "detail": detail})
+
+
+@router.get("/wati-config")
+async def wati_config(emp: dict = Depends(require_employee)):
+    """Admin diagnostics: is the approval wiring configured? Numbers are masked."""
+    if not _is_admin(emp):
+        raise HTTPException(403, "Admins only")
+    def _mask(n):
+        d = wati.normalize_number(n)
+        return (d[:4] + "***" + d[-2:]) if len(d) >= 6 else ("set" if d else "")
+    return _json({
+        "wati": wati.status().get("configured", False),
+        "approver_number_set": bool(APPROVER_NUMBER), "approver_number": _mask(APPROVER_NUMBER),
+        "store_number_set": bool(STORE_NUMBER), "store_number": _mask(STORE_NUMBER),
+        "request_template": REQ_TEMPLATE, "store_template": STORE_TEMPLATE,
+        "hook_token_set": bool(HOOK_TOKEN),
+        "webhook_url": "/purchase/wati-hook" + ("?token=<set>" if HOOK_TOKEN else ""),
+    })
