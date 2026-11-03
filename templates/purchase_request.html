@@ -38,7 +38,11 @@
     <div class="sh"><span class="n">1</span> Requester</div>
     <div class="row r2">
       <div class="field"><label>Name <span class="rq">*</span></label><input id="pr_name" placeholder="Your name"></div>
-      <div class="field"><label>Department</label><input id="pr_dept" placeholder="e.g. Maintenance, Production"></div>
+      <div class="field"><label>Department</label>
+        <select id="pr_dept">
+          <option value="">— Select —</option>
+          <option>Maintenance</option><option>Production</option><option>Stores</option>
+        </select></div>
     </div>
     <div class="row r2">
       <div class="field"><label>Request Date <span class="rq">*</span></label><input type="date" id="pr_reqdate"></div>
@@ -49,13 +53,13 @@
   <!-- Section 2: Item details -->
   <div class="pr-sec">
     <div class="sh"><span class="n">2</span> Item Details</div>
-    <div class="field" style="margin-bottom:12px"><label>Item Name / Description <span class="rq">*</span></label>
-      <textarea id="pr_item" placeholder="What do you need?"></textarea></div>
+    <div class="field" style="margin-bottom:12px"><label>Item Name <span class="rq">*</span></label>
+      <input id="pr_item" placeholder="Name of the item you need"></div>
     <div class="row r2">
       <div class="field"><label>Category</label>
         <select id="pr_cat">
           <option>Spare parts</option><option>Tools</option><option>Electrical</option>
-          <option>Mechanical</option><option>Raw material</option><option>Other</option>
+          <option>Mechanical</option><option>Hydraulic</option><option>Raw material</option><option>Other</option>
         </select></div>
       <div class="field"><label>Purpose / Machine or Job</label><input id="pr_purpose" placeholder="e.g. M/C-014 spindle, Line 2"></div>
     </div>
