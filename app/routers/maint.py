@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-03-v52-board-datewise-sort"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-03-v53-board-role-scope"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3745,6 +3745,17 @@ async def board_matrix(emp: dict = Depends(require_employee)):
     today = _today()
     on_leave = await _on_leave_ids(today)
     sched_all = await _schedule_rows()
+    # Visibility: admins see every machine's overdues; a normal user sees only the
+    # work that is assigned to them (their checkpoint on a daily/quarterly checklist,
+    # or a breakdown assigned to them).
+    uid = emp.get("id")
+    is_admin = bool(emp.get("is_admin"))
+
+    def _mine_cl(clid, cps_map):
+        """Is the current user an assignee on this checklist (or an admin)?"""
+        if is_admin:
+            return True
+        return any(cp.get("assigned_emp_id") == uid for cp in (cps_map.get(clid) or []))
 
     def _is_daily(s):
         ft = (s.get("freq_type") or "").lower()
@@ -3845,15 +3856,20 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                                  "daily": None, "daily_sched": None,
                                  "quarterly": None, "quarterly_sched": None, "breakdowns": []}
         if _is_daily(s) and g["daily"] is None:
-            g["daily"] = _daily_state(s); g["daily_sched"] = s.get("id")
-            g["daily"]["assignees"] = _assignees(s.get("checklist_id")) or (
-                [s.get("assignee_name")] if s.get("assignee_name") else [])
+            if is_admin or _mine_cl(s.get("checklist_id"), cps_by_cl) or s.get("assignee_emp_id") == uid:
+                g["daily"] = _daily_state(s); g["daily_sched"] = s.get("id")
+                g["daily"]["assignees"] = _assignees(s.get("checklist_id")) or (
+                    [s.get("assignee_name")] if s.get("assignee_name") else [])
         elif _is_q(s) and g["quarterly"] is None:
-            g["quarterly"] = _q_state(s); g["quarterly_sched"] = s.get("id")
-            g["quarterly"]["assignees"] = _assignees(s.get("checklist_id")) or (
-                [s.get("assignee_name")] if s.get("assignee_name") else [])
+            if is_admin or _mine_cl(s.get("checklist_id"), q_cps) or s.get("assignee_emp_id") == uid:
+                g["quarterly"] = _q_state(s); g["quarterly_sched"] = s.get("id")
+                g["quarterly"]["assignees"] = _assignees(s.get("checklist_id")) or (
+                    [s.get("assignee_name")] if s.get("assignee_name") else [])
 
     for b in await _open_breakdowns():
+        b_aids = b.get("assignees") or ([b.get("assignee_emp_id")] if b.get("assignee_emp_id") else [])
+        if not is_admin and uid not in b_aids:
+            continue
         aid = b.get("asset_id")
         g = by_asset.get(aid)
         if g is None:
@@ -3912,6 +3928,8 @@ async def board_matrix(emp: dict = Depends(require_employee)):
     for r in qcl_rows:
         clid = r["clid"]; cps = qcps2.get(clid) or []
         if not cps:
+            continue
+        if not is_admin and not any(cp.get("assigned_emp_id") == uid for cp in cps):
             continue
         pk = qpk2.get(clid)
         started = any((cp["id"], pk) in qdone2 for cp in cps)
