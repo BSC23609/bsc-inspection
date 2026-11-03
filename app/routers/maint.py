@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-03-v49-board-quarterly-activity"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-03-v50-quarterly-real-date"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3890,12 +3890,19 @@ async def board_matrix(emp: dict = Depends(require_employee)):
     qpk2 = {r["clid"]: _period_key(r["cname"] or "", today) for r in qcl_rows}
     qallcp = [cp["id"] for lst in qcps2.values() for cp in lst]
     qpks = sorted(set(qpk2.values()))
+    cp2cl = {cp["id"]: clid for clid, lst in qcps2.items() for cp in lst}
     qdone2 = set()
+    qdate = {}   # checklist_id -> earliest completion date this quarter (iso) for display
     if qallcp and qpks:
         for d in await db.fetch(
-                "SELECT checkpoint_id, period_key FROM maint_checkpoint_done "
+                "SELECT checkpoint_id, period_key, done_at FROM maint_checkpoint_done "
                 "WHERE period_key = ANY($1::text[]) AND checkpoint_id = ANY($2::int[])", qpks, qallcp):
             qdone2.add((d["checkpoint_id"], d["period_key"]))
+            cl = cp2cl.get(d["checkpoint_id"]); da = d.get("done_at")
+            if cl and isinstance(da, datetime):
+                diso = da.astimezone(IST).date().isoformat()
+                if cl not in qdate or diso < qdate[cl]:
+                    qdate[cl] = diso
     qabsent2 = set()
     if qpks:
         for a in await db.fetch(
@@ -3934,7 +3941,8 @@ async def board_matrix(emp: dict = Depends(require_employee)):
             their = [c["id"] for c in cps if c.get("assigned_emp_id") == a2]
             if any((cid, pk) not in qdone2 for cid in their):
                 seen.add(a2); names.append(emp_name.get(a2, "#%s" % a2))
-        g["quarterly"] = {"state": "overdue", "due": pk, "assignees": [n for n in names if n]}
+        g["quarterly"] = {"state": "overdue", "due": qdate.get(clid) or pk,
+                           "assignees": [n for n in names if n]}
 
     rows = sorted(by_asset.values(), key=lambda r: str(r.get("code")))
     return _json({"today": today.isoformat(), "rows": rows})
