@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-03-v48-board-overdue-list"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-03-v49-board-quarterly-activity"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3872,6 +3872,69 @@ async def board_matrix(emp: dict = Depends(require_employee)):
         raised_iso = raised.astimezone(IST).date().isoformat() if isinstance(raised, datetime) else ""
         g["breakdowns"].append({"id": b.get("id"), "problem": (b.get("problem") or ""),
                                 "date": raised_iso, "assignees": bnames})
+
+    # --- quarterly from ACTIVITY (covers quarterly checklists with NO schedule, like a
+    # machine whose quarterly was recorded but never scheduled). A quarterly checklist that
+    # is started this quarter but not fully done shows as overdue, mapped to its machine.
+    qcl_rows = await db.fetch(
+        "SELECT c.id AS clid, c.asset_id, c.name AS cname, a.code AS acode, a.name AS aname "
+        "FROM maint_checklists c LEFT JOIN maint_assets a ON a.id=c.asset_id "
+        "WHERE c.name ILIKE '%quarter%'")
+    qcl_ids = [r["clid"] for r in qcl_rows]
+    qcps2 = {}
+    if qcl_ids:
+        for cp in await db.fetch(
+                "SELECT id, checklist_id, assigned_emp_id FROM maint_checkpoints "
+                "WHERE checklist_id = ANY($1::int[])", qcl_ids):
+            qcps2.setdefault(cp["checklist_id"], []).append(dict(cp))
+    qpk2 = {r["clid"]: _period_key(r["cname"] or "", today) for r in qcl_rows}
+    qallcp = [cp["id"] for lst in qcps2.values() for cp in lst]
+    qpks = sorted(set(qpk2.values()))
+    qdone2 = set()
+    if qallcp and qpks:
+        for d in await db.fetch(
+                "SELECT checkpoint_id, period_key FROM maint_checkpoint_done "
+                "WHERE period_key = ANY($1::text[]) AND checkpoint_id = ANY($2::int[])", qpks, qallcp):
+            qdone2.add((d["checkpoint_id"], d["period_key"]))
+    qabsent2 = set()
+    if qpks:
+        for a in await db.fetch(
+                "SELECT checklist_id, emp_id, period_key FROM maint_wo_absent "
+                "WHERE period_key = ANY($1::text[])", qpks):
+            qabsent2.add((a["checklist_id"], a["emp_id"], a["period_key"]))
+    for r in qcl_rows:
+        clid = r["clid"]; cps = qcps2.get(clid) or []
+        if not cps:
+            continue
+        pk = qpk2.get(clid)
+        started = any((cp["id"], pk) in qdone2 for cp in cps)
+        eff = don = 0
+        for cp in cps:
+            aid = cp.get("assigned_emp_id")
+            if aid and (clid, aid, pk) in qabsent2:
+                continue
+            eff += 1
+            if (cp["id"], pk) in qdone2:
+                don += 1
+        fully = (eff > 0 and don >= eff)
+        if not (started and not fully):
+            continue
+        g = by_asset.get(r["asset_id"])
+        if g is None:
+            g = by_asset[r["asset_id"]] = {"asset_id": r["asset_id"], "code": r["acode"] or "",
+                                           "name": r["aname"] or "", "daily": None, "daily_sched": None,
+                                           "quarterly": None, "quarterly_sched": None, "breakdowns": []}
+        if g.get("quarterly") and g["quarterly"].get("state") == "overdue":
+            continue  # already flagged by its schedule
+        names, seen = [], set()
+        for cp in cps:
+            a2 = cp.get("assigned_emp_id")
+            if not a2 or a2 in seen or (clid, a2, pk) in qabsent2:
+                continue
+            their = [c["id"] for c in cps if c.get("assigned_emp_id") == a2]
+            if any((cid, pk) not in qdone2 for cid in their):
+                seen.add(a2); names.append(emp_name.get(a2, "#%s" % a2))
+        g["quarterly"] = {"state": "overdue", "due": pk, "assignees": [n for n in names if n]}
 
     rows = sorted(by_asset.values(), key=lambda r: str(r.get("code")))
     return _json({"today": today.isoformat(), "rows": rows})
