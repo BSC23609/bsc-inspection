@@ -61,7 +61,17 @@
           <option>Spare parts</option><option>Tools</option><option>Electrical</option>
           <option>Mechanical</option><option>Hydraulic</option><option>Raw material</option><option>Other</option>
         </select></div>
-      <div class="field"><label>Purpose / Machine or Job</label><input id="pr_purpose" placeholder="e.g. M/C-014 spindle, Line 2"></div>
+      <div class="field"><label>Purpose / Machine or Job</label>
+        <select id="pr_ptype" onchange="prTogglePurpose()">
+          <option value="">— Select —</option>
+          <option value="Asset">Asset</option>
+          <option value="General">General</option>
+          <option value="Other">Other</option>
+        </select></div>
+    </div>
+    <div class="field" id="pr_asset_wrap" style="display:none;margin-bottom:12px">
+      <label>Machine</label>
+      <select id="pr_asset"><option value="">Loading machines…</option></select>
     </div>
     <div class="field" style="margin-bottom:12px"><label>Specification / Size / Make / Model / Part Number</label>
       <textarea id="pr_spec" placeholder="Technical specs, brand, model, part no."></textarea></div>
@@ -128,11 +138,14 @@ function stockVal(){var r=document.querySelector('input[name="pr_stock"]:checked
 
 function prReset(){
   sv('pr_name','{{ (emp.name or "")|e }}');
-  sv('pr_dept','');sv('pr_wa','');sv('pr_item','');sv('pr_purpose','');sv('pr_spec','');
+  sv('pr_dept','');sv('pr_wa','');sv('pr_item','');sv('pr_spec','');
   sv('pr_qty','');sv('pr_cost','');sv('pr_sup','');sv('pr_remarks','');sv('pr_reqby','');
   document.getElementById('pr_cat').selectedIndex=0;
   document.getElementById('pr_unit').selectedIndex=0;
   document.getElementById('pr_urg').value='Normal';
+  document.getElementById('pr_ptype').selectedIndex=0;
+  var _aw=document.getElementById('pr_asset_wrap');if(_aw)_aw.style.display='none';
+  var _as=document.getElementById('pr_asset');if(_as)_as.selectedIndex=0;
   var no=document.querySelector('input[name="pr_stock"][value="No"]');if(no)no.checked=true;
   sv('pr_reqdate',today());
 }
@@ -141,7 +154,8 @@ async function prSubmit(){
   var p={
     req_name:v('pr_name').trim(), department:v('pr_dept').trim(), request_date:v('pr_reqdate'),
     whatsapp:v('pr_wa').trim(), item_name:v('pr_item').trim(), category:v('pr_cat'),
-    specification:v('pr_spec').trim(), quantity:v('pr_qty'), unit:v('pr_unit'), purpose:v('pr_purpose').trim(),
+    specification:v('pr_spec').trim(), quantity:v('pr_qty'), unit:v('pr_unit'),
+    purpose:(v('pr_ptype')==='Asset'?v('pr_asset'):v('pr_ptype')),
     urgency:v('pr_urg'), required_by:v('pr_reqby'), est_cost:v('pr_cost'),
     preferred_supplier:v('pr_sup').trim(), in_stock:stockVal(), remarks:v('pr_remarks').trim()
   };
@@ -213,6 +227,25 @@ async function prSetStatus(id,status){
     toast('ok','Marked '+status);prRender();
   }catch(e){toast('err','Couldn’t update: '+((e&&e.message)||e));prLoad();}
 }
-(function(){prReset();prLoad();})();
+var PR_ASSETS_LOADED=false;
+async function prLoadAssets(){
+  if(PR_ASSETS_LOADED)return;
+  var sel=document.getElementById('pr_asset');if(!sel)return;
+  try{var r=await fetch('/maint/assets/list',{cache:'no-store'});
+    if(!r.ok){sel.innerHTML='<option value="">— no machines —</option>';return;}
+    var list=await r.json();if(!Array.isArray(list))list=[];
+    var act=list.filter(function(x){return x.active!==false;});
+    act.sort(function(a,b){return String(a.code||a.name||'').localeCompare(String(b.code||b.name||''),undefined,{numeric:true});});
+    sel.innerHTML='<option value="">— Select machine —</option>'+act.map(function(x){
+      var lbl=(x.code?x.code+' — ':'')+(x.name||'');return '<option value="'+esc(lbl)+'">'+esc(lbl)+'</option>';}).join('');
+    PR_ASSETS_LOADED=true;
+  }catch(e){sel.innerHTML='<option value="">— couldn’t load —</option>';}
+}
+function prTogglePurpose(){
+  var on=document.getElementById('pr_ptype').value==='Asset';
+  document.getElementById('pr_asset_wrap').style.display=on?'':'none';
+  if(on)prLoadAssets();
+}
+(function(){prReset();prLoadAssets();prLoad();})();
 </script>
 {% endblock %}
