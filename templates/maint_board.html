@@ -95,16 +95,16 @@ async function load(){
   OV=[];
   (d.rows||[]).forEach(function(m){
     var mac=((m.code?m.code+' ':'')+(m.name||'')).trim()||'—';
-    if(m.daily&&m.daily.state==='overdue')
+    if(m.daily&&(m.daily.state==='overdue'||m.daily.state==='due'))
       OV.push({date:m.daily.due,machine:mac,category:'Daily Maintenance',assigned:(m.daily.assignees||[]),sched:m.daily_sched});
-    if(m.quarterly&&m.quarterly.state==='overdue')
+    if(m.quarterly&&(m.quarterly.state==='overdue'||m.quarterly.state==='due'))
       OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',assigned:(m.quarterly.assignees||[]),sched:m.quarterly_sched});
     (m.breakdowns||[]).forEach(function(b){
       OV.push({date:b.date,machine:mac,category:'Breakdown',assigned:(b.assignees||[]),bd:b.id});
     });
   });
   OV.sort(function(a,b){return (String(a.date||'')).localeCompare(String(b.date||''))||a.machine.localeCompare(b.machine);});
-  document.getElementById('b_sub').textContent='Today '+d.today+' — overdue maintenance only.';
+  document.getElementById('b_sub').textContent='Today '+d.today+' — overdue and today’s pending maintenance.';
   apply();
 }
 function apply(){
@@ -123,8 +123,8 @@ function catBadge(c){
   return '<span class="badge cat-d">Daily Maintenance</span>';
 }
 function render(list){
-  document.getElementById('b_count').textContent=list.length+' overdue';
-  if(!list.length){document.getElementById('mtx_rows').innerHTML='<tr><td colspan="5" style="padding:18px;color:var(--muted)">No overdue maintenance. ✅</td></tr>';return;}
+  document.getElementById('b_count').textContent=list.length+' pending';
+  if(!list.length){document.getElementById('mtx_rows').innerHTML='<tr><td colspan="5" style="padding:18px;color:var(--muted)">Nothing overdue or pending today. ✅</td></tr>';return;}
   document.getElementById('mtx_rows').innerHTML=list.map(function(r,i){
     var click = r.sched?(' class="rowact" onclick="openComplete('+r.sched+')" title="Complete this work order"')
              : (r.bd?(' class="rowact" onclick="location.href=\'/maint/breakdown\'" title="Close this work order"'):'');
