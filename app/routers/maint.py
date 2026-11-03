@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-03-v53-board-role-scope"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-03-v54-mark-daily-done"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4083,6 +4083,160 @@ async def cleanup_quarterly(token: str = Query(default=""),
                   "work_orders_deleted": len(results),
                   "total_logs_deleted": sum(r["deleted_logs"] for r in results),
                   "results": results})
+
+
+def _daily_done_pdf(target, tdate, items):
+    """Build a PDF of the daily PM rows marked completed on the given date."""
+    import io
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import mm
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=16 * mm, bottomMargin=14 * mm,
+                            leftMargin=12 * mm, rightMargin=12 * mm)
+    styles = getSampleStyleSheet()
+    h = ParagraphStyle("h", parent=styles["Title"], fontSize=15, spaceAfter=2)
+    sub = ParagraphStyle("sub", parent=styles["Normal"], fontSize=9,
+                         textColor=colors.HexColor("#51607a"))
+    cell = ParagraphStyle("cell", parent=styles["Normal"], fontSize=9, leading=11)
+    disp = tdate.strftime("%d-%b-%Y")
+    story = [Paragraph("Daily Maintenance - Marked Completed", h),
+             Paragraph("Bharat Steel (Chennai) Pvt. Ltd.  |  Date: %s  |  Status: DONE" % disp, sub),
+             Spacer(1, 8)]
+    data = [["S.No", "Date", "Machine Name", "Category", "Assigned To", "Status"]]
+    for i, it in enumerate(items, 1):
+        machine = (str(it.get("asset_code") or "") + " " + str(it.get("asset_name") or "")).strip()
+        who = ", ".join(it.get("assignees") or []) or "-"
+        data.append([str(i), disp, Paragraph(machine, cell), "Daily Maintenance",
+                     Paragraph(who, cell), "DONE"])
+    if len(data) == 1:
+        data.append(["-", "-", "No daily overdue on this date", "-", "-", "-"])
+    t = Table(data, colWidths=[12 * mm, 22 * mm, 60 * mm, 30 * mm, 44 * mm, 16 * mm], repeatRows=1)
+    t.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#0f1b2d")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#d7dee7")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f4f6f9")]),
+        ("TEXTCOLOR", (5, 1), (5, -1), colors.HexColor("#0a7d55")),
+        ("FONTNAME", (5, 1), (5, -1), "Helvetica-Bold"),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(t)
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(
+        "The daily preventive maintenance for the machines listed above was recorded as "
+        "completed on %s. Generated %s." % (disp, datetime.now(IST).strftime("%d-%b-%Y %H:%M")), sub))
+    doc.build(story)
+    pdf = buf.getvalue()
+    buf.close()
+    return Response(content=pdf, media_type="application/pdf",
+                    headers={"Content-Disposition": 'inline; filename="daily_maint_done_%s.pdf"' % target,
+                             "Cache-Control": "no-store"})
+
+
+@router.get("/mark-daily-done")
+async def mark_daily_done(token: str = Query(default=""),
+                          date: str = Query(default="2026-10-30"),
+                          confirm: int = Query(default=0),
+                          pdf: int = Query(default=0)):
+    """Record the DAILY PM that is overdue on a given date (default 30-Oct) as COMPLETED
+    on that date, clearing it from the overdue board. Open
+    /maint/mark-daily-done?token=<AGENT_TOKEN> to PREVIEW (nothing written). Add &confirm=1
+    to write the completion records. Add &pdf=1 for a PDF of the rows marked done.
+    Only targets daily checklists that already have partial completion on that date (i.e.
+    the ones the board shows as overdue)."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(403, "Bad token")
+    await ensure_tables()
+    await _ensure_absent_table()
+    try:
+        target = date.strip()[:10]
+        tdate = _dt_date.fromisoformat(target)
+    except Exception:
+        raise HTTPException(400, "Bad date (use YYYY-MM-DD)")
+
+    sched = await _schedule_rows()
+    daily = {}
+    for s in sched:
+        if not s.get("active"):
+            continue
+        ft = (s.get("freq_type") or "").lower()
+        is_daily = ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
+        clid = s.get("checklist_id")
+        if is_daily and clid and clid not in daily:
+            daily[clid] = {"asset_code": s.get("asset_code") or "",
+                           "asset_name": s.get("asset_name") or "",
+                           "checklist_name": s.get("checklist_name") or ""}
+    clids = list(daily.keys())
+    cps = {}
+    if clids:
+        for cp in await db.fetch("SELECT id, checklist_id, assigned_emp_id FROM maint_checkpoints "
+                                 "WHERE checklist_id = ANY($1::int[])", clids):
+            cps.setdefault(cp["checklist_id"], []).append(
+                {"id": cp["id"], "emp": cp["assigned_emp_id"]})
+    all_cp_ids = [c["id"] for lst in cps.values() for c in lst]
+    done = set()
+    if all_cp_ids:
+        for d in await db.fetch("SELECT checkpoint_id FROM maint_checkpoint_done "
+                                "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])",
+                                target, all_cp_ids):
+            done.add(d["checkpoint_id"])
+    absent = set()
+    for a in await db.fetch("SELECT checklist_id, emp_id FROM maint_wo_absent WHERE period_key=$1", target):
+        absent.add((a["checklist_id"], a["emp_id"]))
+    emp_name = {e["id"]: (e["name"] or e["emp_no"])
+                for e in await db.fetch("SELECT id, name, emp_no FROM employees")}
+
+    items, to_insert = [], []
+    for clid in clids:
+        lst = cps.get(clid) or []
+        if not lst:
+            continue
+        done_cps = [c for c in lst if c["id"] in done]
+        if not done_cps:
+            continue   # a past day is overdue only when there is partial completion
+        pending = [c for c in lst if c["id"] not in done
+                   and not (c["emp"] and (clid, c["emp"]) in absent)]
+        if not pending:
+            continue   # already fully done
+        names = sorted({emp_name.get(c["emp"], "") for c in lst if c["emp"]} - {""})
+        items.append({"asset_code": daily[clid]["asset_code"], "asset_name": daily[clid]["asset_name"],
+                      "checklist": daily[clid]["checklist_name"], "checklist_id": clid,
+                      "total_cps": len(lst), "already_done": len(done_cps),
+                      "pending": len(pending), "assignees": names})
+        for c in pending:
+            to_insert.append((c["id"], c["emp"]))
+    items.sort(key=lambda x: str(x["asset_code"]))
+
+    # Mark complete first (if confirmed), so a combined &confirm=1&pdf=1 returns the
+    # PDF of exactly the rows just marked. `items` is captured before the write.
+    marked = 0
+    if confirm:
+        done_at = datetime.combine(tdate, time(17, 0)).replace(tzinfo=IST)
+        for cp_id, emp in to_insert:
+            res = await db.execute(
+                "INSERT INTO maint_checkpoint_done (checkpoint_id, emp_id, period_key, done_at, result, note) "
+                "VALUES ($1,$2,$3,$4,'done','marked complete (admin)') "
+                "ON CONFLICT (checkpoint_id, period_key) DO NOTHING",
+                cp_id, emp, target, done_at)
+            if str(res).strip().endswith("1"):
+                marked += 1
+    if pdf:
+        return _daily_done_pdf(target, tdate, items)
+    if not confirm:
+        return _json({"date": target, "mode": "preview (nothing written)",
+                      "machines_overdue": len(items),
+                      "checkpoints_to_mark_done": len(to_insert),
+                      "note": "add &confirm=1 to record as completed; add &confirm=1&pdf=1 for the PDF",
+                      "items": items})
+    return _json({"date": target, "mode": "APPLIED - recorded as completed",
+                  "machines": len(items), "checkpoints_marked_done": marked,
+                  "items": items})
 
 
 @router.get("/board-debug")
