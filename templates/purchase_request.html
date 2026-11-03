@@ -75,11 +75,18 @@
     </div>
     <div class="field" style="margin-bottom:12px"><label>Specification / Size / Make / Model / Part Number</label>
       <textarea id="pr_spec" placeholder="Technical specs, brand, model, part no."></textarea></div>
-    <div class="row r2">
+    <div class="row r3">
       <div class="field"><label>Quantity <span class="rq">*</span></label><input type="number" min="0" step="any" id="pr_qty" placeholder="0"></div>
       <div class="field"><label>Unit</label>
         <select id="pr_unit">
           <option>Nos</option><option>Kg</option><option>Meter</option><option>Litre</option><option>Other</option>
+        </select></div>
+      <div class="field"><label>Location</label>
+        <select id="pr_loc">
+          <option value="">— Select —</option>
+          <option>SHED A</option><option>SHED B</option><option>SHED C</option>
+          <option>SHED E</option><option>SHED F</option><option>EB ROOM</option>
+          <option>RO PLANT</option><option>WAYBRIDGE</option><option>OTHER</option>
         </select></div>
     </div>
   </div>
@@ -142,6 +149,7 @@ function prReset(){
   sv('pr_qty','');sv('pr_cost','');sv('pr_sup','');sv('pr_remarks','');sv('pr_reqby','');
   document.getElementById('pr_cat').selectedIndex=0;
   document.getElementById('pr_unit').selectedIndex=0;
+  document.getElementById('pr_loc').selectedIndex=0;
   document.getElementById('pr_urg').value='Normal';
   document.getElementById('pr_ptype').selectedIndex=0;
   var _aw=document.getElementById('pr_asset_wrap');if(_aw)_aw.style.display='none';
@@ -154,7 +162,7 @@ async function prSubmit(){
   var p={
     req_name:v('pr_name').trim(), department:v('pr_dept').trim(), request_date:v('pr_reqdate'),
     whatsapp:v('pr_wa').trim(), item_name:v('pr_item').trim(), category:v('pr_cat'),
-    specification:v('pr_spec').trim(), quantity:v('pr_qty'), unit:v('pr_unit'),
+    specification:v('pr_spec').trim(), quantity:v('pr_qty'), unit:v('pr_unit'), location:v('pr_loc'),
     purpose:(v('pr_ptype')==='Asset'?v('pr_asset'):v('pr_ptype')),
     urgency:v('pr_urg'), required_by:v('pr_reqby'), est_cost:v('pr_cost'),
     preferred_supplier:v('pr_sup').trim(), in_stock:stockVal(), remarks:v('pr_remarks').trim()
@@ -208,7 +216,8 @@ function prRender(){
     var cost=(x.est_cost!=null&&x.est_cost!=='')?('₹'+g(x.est_cost)):'';
     var tr='<tr><td>'+g(x.id)+'</td><td>'+g(dt)+'</td>';
     if(PR_ADMIN)tr+='<td>'+g(x.requester_name||x.req_name)+'</td>';
-    tr+='<td><b>'+g(x.item_name)+'</b>'+(x.category?('<br><span class="muted" style="font-size:11px">'+g(x.category)+(x.purpose?(' · '+g(x.purpose)):'')+'</span>'):'')+'</td>'
+    var sub=[g(x.category),g(x.purpose),g(x.location)].filter(function(s){return s;}).join(' · ');
+    tr+='<td><b>'+g(x.item_name)+'</b>'+(sub?('<br><span class="muted" style="font-size:11px">'+sub+'</span>'):'')+'</td>'
       +'<td class="c">'+qty+'</td><td class="c">'+urgBadge(x.urgency)+'</td><td class="c">'+cost+'</td>'
       +'<td class="c">'+stBadge(x.status)+'</td>';
     if(PR_ADMIN){

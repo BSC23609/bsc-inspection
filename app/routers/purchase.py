@@ -22,7 +22,7 @@ router = APIRouter(prefix="/purchase")
 IST = ZoneInfo("Asia/Kolkata")
 
 # bump on each deploy to confirm the new build is live  (GET /purchase/version)
-PURCHASE_BUILD = "2026-11-03-v2-form-dropdowns"
+PURCHASE_BUILD = "2026-11-03-v3-location"
 
 STATUSES = ("Pending", "Approved", "Rejected", "Purchased")
 
@@ -70,6 +70,8 @@ async def ensure_tables():
             decided_at      TIMESTAMPTZ
         )
         """)
+    # Added after v1 shipped — safe on an existing table.
+    await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS location TEXT")
     await db.execute(
         "CREATE INDEX IF NOT EXISTS ix_pr_requester ON purchase_requests (requester_emp_id)")
     await db.execute(
@@ -147,10 +149,10 @@ async def pr_create(body: dict, emp: dict = Depends(require_employee)):
         """
         INSERT INTO purchase_requests
             (requester_emp_id, req_name, department, request_date, whatsapp,
-             item_name, category, specification, quantity, unit, purpose,
+             item_name, category, specification, quantity, unit, purpose, location,
              urgency, required_by, est_cost, preferred_supplier, in_stock, remarks,
              status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,'Pending')
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'Pending')
         RETURNING id
         """,
         emp.get("id"),
@@ -164,6 +166,7 @@ async def pr_create(body: dict, emp: dict = Depends(require_employee)):
         _num(body.get("quantity")),
         _s(body.get("unit"), 40),
         _s(body.get("purpose"), 600),
+        _s(body.get("location"), 60),
         _s(body.get("urgency"), 120),
         _date(body.get("required_by")),
         _num(body.get("est_cost")),
