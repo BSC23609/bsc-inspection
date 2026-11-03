@@ -22,7 +22,7 @@ router = APIRouter(prefix="/purchase")
 IST = ZoneInfo("Asia/Kolkata")
 
 # bump on each deploy to confirm the new build is live  (GET /purchase/version)
-PURCHASE_BUILD = "2026-11-03-v1-purchase-request"
+PURCHASE_BUILD = "2026-11-03-v2-form-dropdowns"
 
 STATUSES = ("Pending", "Approved", "Rejected", "Purchased")
 
