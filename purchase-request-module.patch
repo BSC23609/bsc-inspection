@@ -1,0 +1,801 @@
+diff --git a/app/main.py b/app/main.py
+index 10a904a..dbde4d6 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -29,6 +29,7 @@ from .routes import gatepass as gatepass_routes
+ from .routes import plant as plant_routes
+ from .routes import project_ops as project_ops_routes
+ from .routes import maint as maint_routes
++from .routes import purchase as purchase_routes
+ from .routes import gatepass_public as gatepass_public_routes
+ from .routes import tgt26 as tgt26_routes
+ from .routes import ehs as ehs_routes
+@@ -121,6 +122,7 @@ app.include_router(gatepass_routes.router)
+ app.include_router(plant_routes.router)
+ app.include_router(project_ops_routes.router)
+ app.include_router(maint_routes.router)
++app.include_router(purchase_routes.router)
+ # Root-mounted: WhatsApp button URLs may only vary in the last path segment.
+ app.include_router(gatepass_public_routes.router)
+ app.include_router(tgt26_routes.router)   # Team Get Together 2026 passes (same rationale)
+diff --git a/app/models.py b/app/models.py
+index f07fd86..231faac 100644
+--- a/app/models.py
++++ b/app/models.py
+@@ -1306,3 +1306,50 @@ class MaintEbReading(Base):
+     entered_by = Column(String(255), nullable=True)
+     created_at = Column(DateTime, default=datetime.utcnow)
+     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
++
++
++class PurchaseRequest(Base):
++    """A procurement request raised by any employee (spares, tools, materials).
++
++    One request = one item line (matches the form: a single category, quantity
++    and unit). Admins see every request and move it through the status flow;
++    an ordinary user sees only the requests they raised.
++    """
++    __tablename__ = "purchase_requests"
++
++    id = Column(Integer, primary_key=True)
++
++    # --- Section 1: Requester ---
++    requester_name = Column(String(255), nullable=False)
++    department = Column(String(255), nullable=True)
++    request_date = Column(Date, nullable=True)
++    whatsapp = Column(String(32), nullable=True)
++
++    # --- Section 2: Item details ---
++    item_name = Column(Text, nullable=False)                 # name / description
++    category = Column(String(32), nullable=True)             # spare_parts/tools/electrical/mechanical/raw_material/other
++    specification = Column(Text, nullable=True)              # spec / size / make / model / part no.
++    quantity = Column(Float, nullable=True)
++    unit = Column(String(16), nullable=True)                 # nos/kg/meter/litre/other
++    purpose = Column(String(255), nullable=True)             # purpose / machine or job
++
++    # --- Section 3: Priority & cost ---
++    urgency = Column(String(16), nullable=True)              # urgent/normal/low
++    required_by = Column(Date, nullable=True)
++    estimated_cost = Column(Float, nullable=True)            # INR
++    preferred_supplier = Column(String(255), nullable=True)
++    in_stock = Column(String(8), nullable=True)              # yes/no
++    remarks = Column(Text, nullable=True)
++
++    # --- Status flow ---
++    status = Column(String(16), nullable=False, default="Pending")  # Pending/Approved/Rejected/Purchased
++    admin_note = Column(Text, nullable=True)                 # reason on reject / note on action
++
++    # --- Ownership / audit ---
++    created_by_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
++    created_at = Column(DateTime, default=datetime.utcnow)
++    decided_by_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
++    decided_at = Column(DateTime, nullable=True)
++
++    created_by = relationship("Employee", foreign_keys=[created_by_id])
++    decided_by = relationship("Employee", foreign_keys=[decided_by_id])
+diff --git a/app/routes/purchase.py b/app/routes/purchase.py
+new file mode 100644
+index 0000000..08b4558
+--- /dev/null
++++ b/app/routes/purchase.py
+@@ -0,0 +1,201 @@
++"""Purchase Request module — raise and track procurement requests.
++
++Any logged-in employee can raise a request (spares, tools, materials) and see
++the requests they raised. Admins (any portal admin role) see every request and
++move it through the status flow: Pending → Approved / Rejected / Purchased.
++"""
++import logging
++from datetime import date, datetime
++
++from fastapi import APIRouter, Depends, HTTPException, Request
++from fastapi.responses import HTMLResponse
++from fastapi.templating import Jinja2Templates
++from sqlalchemy.orm import Session
++
++from ..access import get_access
++from ..database import get_db
++from ..deps import get_current_user_ready
++from ..models import Employee, PurchaseRequest
++
++router = APIRouter(prefix="/purchase-requests", tags=["purchase"])
++log = logging.getLogger("purchase")
++templates = Jinja2Templates(directory="app/templates")
++
++STATUSES = ("Pending", "Approved", "Rejected", "Purchased")
++
++
++def _is_admin(db: Session, user: Employee) -> bool:
++    """Who may see all requests and change status. Any portal admin role."""
++    return get_access(db, user).any_admin
++
++
++def _parse_date(v):
++    """ISO 'YYYY-MM-DD' (or '') -> date | None."""
++    if not v:
++        return None
++    try:
++        return date.fromisoformat(str(v)[:10])
++    except (ValueError, TypeError):
++        return None
++
++
++def _num(v):
++    if v in (None, ""):
++        return None
++    try:
++        return float(v)
++    except (ValueError, TypeError):
++        return None
++
++
++def _iso(d):
++    return d.isoformat() if d else None
++
++
++def _serialize(pr: PurchaseRequest) -> dict:
++    return {
++        "id": pr.id,
++        "requester_name": pr.requester_name,
++        "department": pr.department,
++        "request_date": _iso(pr.request_date),
++        "whatsapp": pr.whatsapp,
++        "item_name": pr.item_name,
++        "category": pr.category,
++        "specification": pr.specification,
++        "quantity": pr.quantity,
++        "unit": pr.unit,
++        "purpose": pr.purpose,
++        "urgency": pr.urgency,
++        "required_by": _iso(pr.required_by),
++        "estimated_cost": pr.estimated_cost,
++        "preferred_supplier": pr.preferred_supplier,
++        "in_stock": pr.in_stock,
++        "remarks": pr.remarks,
++        "status": pr.status,
++        "admin_note": pr.admin_note,
++        "created_by_id": pr.created_by_id,
++        "created_by_name": pr.created_by.name if pr.created_by else pr.requester_name,
++        "created_at": pr.created_at.isoformat() if pr.created_at else None,
++        "decided_by_name": pr.decided_by.name if pr.decided_by else None,
++        "decided_at": pr.decided_at.isoformat() if pr.decided_at else None,
++    }
++
++
++@router.get("/", response_class=HTMLResponse)
++def purchase_page(
++    request: Request,
++    db: Session = Depends(get_db),
++    user: Employee = Depends(get_current_user_ready),
++):
++    """Module page — New Request form + Requests tab."""
++    return templates.TemplateResponse(
++        request,
++        "purchase.html",
++        {"user": user, "is_admin": _is_admin(db, user)},
++    )
++
++
++@router.get("/api/context")
++def api_context(
++    db: Session = Depends(get_db),
++    user: Employee = Depends(get_current_user_ready),
++):
++    """Identity + whether this user is an admin for the module (prefills the
++    form and decides whether the Requests tab shows everyone's rows)."""
++    return {
++        "me": {
++            "id": user.id,
++            "name": user.name,
++            "department": user.department or user.designation or "",
++            "whatsapp": user.phone or "",
++        },
++        "is_admin": _is_admin(db, user),
++    }
++
++
++@router.get("/api/requests")
++def api_list(
++    db: Session = Depends(get_db),
++    user: Employee = Depends(get_current_user_ready),
++):
++    """Admin -> every request; ordinary user -> only their own."""
++    q = db.query(PurchaseRequest)
++    if not _is_admin(db, user):
++        q = q.filter(PurchaseRequest.created_by_id == user.id)
++    rows = q.order_by(PurchaseRequest.id.desc()).all()
++    return {"requests": [_serialize(r) for r in rows], "is_admin": _is_admin(db, user)}
++
++
++@router.post("/api/requests")
++def api_create(
++    body: dict,
++    db: Session = Depends(get_db),
++    user: Employee = Depends(get_current_user_ready),
++):
++    """Create a request. created_by is always the signed-in user."""
++    name = (body.get("requester_name") or user.name or "").strip()
++    item = (body.get("item_name") or "").strip()
++    if not name:
++        raise HTTPException(status_code=400, detail="Requester name is required")
++    if not item:
++        raise HTTPException(status_code=400, detail="Item name / description is required")
++
++    cat = (body.get("category") or "").strip() or None
++    urg = (body.get("urgency") or "").strip() or "normal"
++    unit = (body.get("unit") or "").strip() or None
++    in_stock = (body.get("in_stock") or "").strip().lower()
++    if in_stock not in ("yes", "no"):
++        in_stock = None
++
++    pr = PurchaseRequest(
++        requester_name=name,
++        department=(body.get("department") or "").strip() or None,
++        request_date=_parse_date(body.get("request_date")) or date.today(),
++        whatsapp=(body.get("whatsapp") or "").strip() or None,
++        item_name=item,
++        category=cat,
++        specification=(body.get("specification") or "").strip() or None,
++        quantity=_num(body.get("quantity")),
++        unit=unit,
++        purpose=(body.get("purpose") or "").strip() or None,
++        urgency=urg,
++        required_by=_parse_date(body.get("required_by")),
++        estimated_cost=_num(body.get("estimated_cost")),
++        preferred_supplier=(body.get("preferred_supplier") or "").strip() or None,
++        in_stock=in_stock,
++        remarks=(body.get("remarks") or "").strip() or None,
++        status="Pending",
++        created_by_id=user.id,
++        created_at=datetime.utcnow(),
++    )
++    db.add(pr)
++    db.commit()
++    db.refresh(pr)
++    return {"ok": True, "request": _serialize(pr)}
++
++
++@router.post("/api/requests/{req_id}/status")
++def api_set_status(
++    req_id: int,
++    body: dict,
++    db: Session = Depends(get_db),
++    user: Employee = Depends(get_current_user_ready),
++):
++    """Admin-only: move a request through the status flow."""
++    if not _is_admin(db, user):
++        raise HTTPException(status_code=403, detail="Admin access only")
++    status = (body.get("status") or "").strip().title()
++    if status not in STATUSES:
++        raise HTTPException(status_code=400, detail="Invalid status")
++    pr = db.query(PurchaseRequest).filter(PurchaseRequest.id == req_id).first()
++    if not pr:
++        raise HTTPException(status_code=404, detail="Request not found")
++    pr.status = status
++    note = (body.get("note") or "").strip()
++    if note:
++        pr.admin_note = note
++    pr.decided_by_id = user.id
++    pr.decided_at = datetime.utcnow()
++    db.commit()
++    db.refresh(pr)
++    return {"ok": True, "request": _serialize(pr)}
+diff --git a/app/startup_migrations.py b/app/startup_migrations.py
+index ceb113b..306c6b2 100644
+--- a/app/startup_migrations.py
++++ b/app/startup_migrations.py
+@@ -174,6 +174,39 @@ OTP_MIGRATIONS = [
+ ]
+ STARTUP_MIGRATIONS = STARTUP_MIGRATIONS + OTP_MIGRATIONS
+ 
++# --- Purchase Request module ---
++# CREATE TABLE IF NOT EXISTS so the table self-heals on every boot without the
++# INIT_DB dance. Types mirror models.PurchaseRequest.
++PURCHASE_MIGRATIONS = [
++    "CREATE TABLE IF NOT EXISTS purchase_requests ("
++    " id SERIAL PRIMARY KEY,"
++    " requester_name VARCHAR(255) NOT NULL,"
++    " department VARCHAR(255),"
++    " request_date DATE,"
++    " whatsapp VARCHAR(32),"
++    " item_name TEXT NOT NULL,"
++    " category VARCHAR(32),"
++    " specification TEXT,"
++    " quantity DOUBLE PRECISION,"
++    " unit VARCHAR(16),"
++    " purpose VARCHAR(255),"
++    " urgency VARCHAR(16),"
++    " required_by DATE,"
++    " estimated_cost DOUBLE PRECISION,"
++    " preferred_supplier VARCHAR(255),"
++    " in_stock VARCHAR(8),"
++    " remarks TEXT,"
++    " status VARCHAR(16) NOT NULL DEFAULT 'Pending',"
++    " admin_note TEXT,"
++    " created_by_id INTEGER REFERENCES employees(id),"
++    " created_at TIMESTAMP,"
++    " decided_by_id INTEGER REFERENCES employees(id),"
++    " decided_at TIMESTAMP)",
++    "CREATE INDEX IF NOT EXISTS idx_purchase_requests_creator ON purchase_requests(created_by_id)",
++    "CREATE INDEX IF NOT EXISTS idx_purchase_requests_status ON purchase_requests(status)",
++]
++STARTUP_MIGRATIONS = STARTUP_MIGRATIONS + PURCHASE_MIGRATIONS
++
+ 
+ def run_startup_migrations() -> None:
+     """Apply pending column additions. Runs on every startup — safe.
+diff --git a/app/templates/dashboard.html b/app/templates/dashboard.html
+index af56668..55cae63 100644
+--- a/app/templates/dashboard.html
++++ b/app/templates/dashboard.html
+@@ -60,6 +60,21 @@
+       <div class="mt-4 text-xs font-semibold text-metfraa-blue group-hover:underline">Open →</div>
+     </a>
+ 
++    <!-- Purchase Request -->
++    <a href="/purchase-requests/" class="card-hover block bg-white rounded-xl shadow-sm border border-metfraa-gray-200 p-6 group">
++      <div class="flex items-start justify-between mb-4">
++        <div class="icon-tile"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h2l2.4 12.3a1 1 0 0 0 1 .7h8.2a1 1 0 0 0 1-.8L21 8H7"/><circle cx="10" cy="20" r="1.3"/><circle cx="18" cy="20" r="1.3"/></svg></div>
++        <span class="text-[10px] font-bold uppercase tracking-widest px-2 py-1 rounded bg-metfraa-blue/10 text-metfraa-blue"
++              x-show="prPending > 0" x-text="prPending + ' pending'"></span>
++      </div>
++      <h2 class="display text-lg font-bold text-metfraa-black group-hover:text-metfraa-blue">Purchase Request</h2>
++      <p class="text-sm text-metfraa-gray-500 mt-1">
++        Raise a request for spares, tools or materials and track it through
++        Approved / Rejected / Purchased.
++      </p>
++      <div class="mt-4 text-xs font-semibold text-metfraa-blue group-hover:underline">Open →</div>
++    </a>
++
+     {% if user.is_admin %}
+     <!-- Admin Panel (only if admin) -->
+     <a href="/admin" class="card-hover block bg-gradient-to-br from-metfraa-black to-metfraa-ink text-white rounded-xl shadow-sm p-6 group relative overflow-hidden">
+@@ -98,15 +113,26 @@ function homeApp() {
+     dailyStatus: 'loading',  // submitted | pending | locked | loading
+     monthlyWindowOpen: false,
+     pendingBadge: 0,
++    prPending: 0,
+ 
+     async init() {
+       await Promise.all([
+         this.checkDailyStatus(),
+         this.checkMonthlyWindow(),
++        this.checkPurchasePending(),
+         {% if user.is_admin %}this.checkAdminPending(),{% endif %}
+       ]);
+     },
+ 
++    async checkPurchasePending() {
++      try {
++        const r = await fetch('/purchase-requests/api/requests');
++        if (!r.ok) return;
++        const data = await r.json();
++        this.prPending = (data.requests || []).filter(x => x.status === 'Pending').length;
++      } catch (e) {}
++    },
++
+     async checkDailyStatus() {
+       try {
+         const today = new Date().toISOString().slice(0, 10);
+diff --git a/app/templates/purchase.html b/app/templates/purchase.html
+new file mode 100644
+index 0000000..940c8e1
+--- /dev/null
++++ b/app/templates/purchase.html
+@@ -0,0 +1,416 @@
++{% extends "base.html" %}
++{% block title %}Purchase Request — Metfraa{% endblock %}
++
++{% block content %}
++<div class="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8" x-data="purchaseApp()" x-init="init()" x-cloak>
++
++  <!-- Header -->
++  <div class="mb-6">
++    <div class="lbl mb-2">Metfraa Portal · Procurement</div>
++    <h1 class="display display-xl text-4xl text-metfraa-ink leading-none">Purchase Request</h1>
++    <div class="flex items-center gap-3 mt-3">
++      <span class="h-px w-10 bg-metfraa-blue"></span>
++      <p class="text-sm text-metfraa-gray-500">Raise a request for spares, tools or materials — then track its status.</p>
++    </div>
++  </div>
++
++  <!-- Tabs -->
++  <div class="flex gap-1 mb-6 border-b border-metfraa-gray-200 flex-wrap">
++    <button @click="tab='new'"
++            :class="tab==='new' ? 'border-metfraa-blue text-metfraa-ink' : 'border-transparent text-metfraa-gray-500 hover:text-metfraa-ink'"
++            class="px-4 py-2 text-sm font-bold border-b-2">New Request</button>
++    <button @click="tab='list'; loadRequests()"
++            :class="tab==='list' ? 'border-metfraa-blue text-metfraa-ink' : 'border-transparent text-metfraa-gray-500 hover:text-metfraa-ink'"
++            class="px-4 py-2 text-sm font-bold border-b-2">
++      Requests
++      <span x-show="isAdmin" class="ml-1 text-[10px] font-bold uppercase tracking-wider text-metfraa-gray-400">(all)</span>
++    </button>
++  </div>
++
++  <!-- ============ TAB: NEW REQUEST ============ -->
++  <div x-show="tab==='new'">
++
++    <!-- Section 1: Requester -->
++    <div class="bg-white rounded-xl shadow-sm border border-metfraa-gray-200 p-5 mb-5">
++      <div class="flex items-center gap-2 mb-4">
++        <span class="w-6 h-6 rounded-full bg-metfraa-blue text-white text-xs font-bold flex items-center justify-center">1</span>
++        <h4 class="display font-bold text-metfraa-black">Requester</h4>
++      </div>
++      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
++        <div>
++          <label class="lbl block mb-1">Name <span class="text-red-500">*</span></label>
++          <input type="text" x-model="pr.requester_name"
++                 class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue" />
++        </div>
++        <div>
++          <label class="lbl block mb-1">Department</label>
++          <input type="text" x-model="pr.department" placeholder="e.g. Maintenance, Production"
++                 class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue" />
++        </div>
++        <div>
++          <label class="lbl block mb-1">Request Date <span class="text-red-500">*</span></label>
++          <input type="date" x-model="pr.request_date" :max="todayISO"
++                 class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue" />
++        </div>
++        <div>
++          <label class="lbl block mb-1">WhatsApp Number</label>
++          <input type="tel" x-model="pr.whatsapp" inputmode="numeric" placeholder="10-digit mobile"
++                 class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue" />
++        </div>
++      </div>
++    </div>
++
++    <!-- Section 2: Item details -->
++    <div class="bg-white rounded-xl shadow-sm border border-metfraa-gray-200 p-5 mb-5">
++      <div class="flex items-center gap-2 mb-4">
++        <span class="w-6 h-6 rounded-full bg-metfraa-blue text-white text-xs font-bold flex items-center justify-center">2</span>
++        <h4 class="display font-bold text-metfraa-black">Item Details</h4>
++      </div>
++      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
++        <div class="sm:col-span-2">
++          <label class="lbl block mb-1">Item Name / Description <span class="text-red-500">*</span></label>
++          <textarea x-model="pr.item_name" rows="2" placeholder="What do you need?"
++                    class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue"></textarea>
++        </div>
++        <div>
++          <label class="lbl block mb-1">Category</label>
++          <select x-model="pr.category"
++                  class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue">
++            <option value="spare_parts">Spare parts</option>
++            <option value="tools">Tools</option>
++            <option value="electrical">Electrical</option>
++            <option value="mechanical">Mechanical</option>
++            <option value="raw_material">Raw material</option>
++            <option value="other">Other</option>
++          </select>
++        </div>
++        <div>
++          <label class="lbl block mb-1">Purpose / Machine or Job</label>
++          <input type="text" x-model="pr.purpose" placeholder="e.g. M/C-014 spindle, Line 2"
++                 class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue" />
++        </div>
++        <div class="sm:col-span-2">
++          <label class="lbl block mb-1">Specification / Size / Make / Model / Part Number</label>
++          <textarea x-model="pr.specification" rows="2" placeholder="Technical specs, brand, model, part no."
++                    class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue"></textarea>
++        </div>
++        <div>
++          <label class="lbl block mb-1">Quantity <span class="text-red-500">*</span></label>
++          <input type="number" min="0" step="any" x-model.number="pr.quantity" placeholder="0"
++                 class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue" />
++        </div>
++        <div>
++          <label class="lbl block mb-1">Unit</label>
++          <select x-model="pr.unit"
++                  class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue">
++            <option value="nos">Nos</option>
++            <option value="kg">Kg</option>
++            <option value="meter">Meter</option>
++            <option value="litre">Litre</option>
++            <option value="other">Other</option>
++          </select>
++        </div>
++      </div>
++    </div>
++
++    <!-- Section 3: Priority and cost -->
++    <div class="bg-white rounded-xl shadow-sm border border-metfraa-gray-200 p-5 mb-5">
++      <div class="flex items-center gap-2 mb-4">
++        <span class="w-6 h-6 rounded-full bg-metfraa-blue text-white text-xs font-bold flex items-center justify-center">3</span>
++        <h4 class="display font-bold text-metfraa-black">Priority &amp; Cost</h4>
++      </div>
++      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
++        <div>
++          <label class="lbl block mb-1">Urgency</label>
++          <select x-model="pr.urgency"
++                  class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue">
++            <option value="urgent">Urgent — machine breakdown / production stopped</option>
++            <option value="normal">Normal</option>
++            <option value="low">Low</option>
++          </select>
++        </div>
++        <div>
++          <label class="lbl block mb-1">Required By</label>
++          <input type="date" x-model="pr.required_by" :min="todayISO"
++                 class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue" />
++        </div>
++        <div>
++          <label class="lbl block mb-1">Estimated Cost (₹)</label>
++          <input type="number" min="0" step="any" x-model.number="pr.estimated_cost" placeholder="0"
++                 class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue" />
++        </div>
++        <div>
++          <label class="lbl block mb-1">Preferred Supplier</label>
++          <input type="text" x-model="pr.preferred_supplier" placeholder="Optional"
++                 class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue" />
++        </div>
++        <div>
++          <label class="lbl block mb-2">In Stock?</label>
++          <div class="flex items-center gap-4 mt-1">
++            <label class="flex items-center gap-2 text-sm">
++              <input type="radio" value="yes" x-model="pr.in_stock" class="text-metfraa-blue focus:ring-metfraa-blue" />
++              <span>Yes</span>
++            </label>
++            <label class="flex items-center gap-2 text-sm">
++              <input type="radio" value="no" x-model="pr.in_stock" class="text-metfraa-blue focus:ring-metfraa-blue" />
++              <span>No</span>
++            </label>
++          </div>
++        </div>
++        <div class="sm:col-span-2">
++          <label class="lbl block mb-1">Remarks</label>
++          <textarea x-model="pr.remarks" rows="2" placeholder="Anything else the purchase team should know..."
++                    class="w-full text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue"></textarea>
++        </div>
++      </div>
++    </div>
++
++    <!-- Submit -->
++    <div class="flex justify-end items-center gap-3">
++      <button @click="resetForm()"
++              class="text-sm font-semibold px-4 py-3 rounded-lg border border-metfraa-gray-300 text-metfraa-gray-700 hover:bg-metfraa-gray-50">
++        Clear
++      </button>
++      <button @click="submitRequest()" :disabled="submitting"
++              class="bg-metfraa-blue hover:bg-metfraa-blue-dark text-white font-semibold px-6 py-3 rounded-lg shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed">
++        <span x-show="!submitting">Submit Request</span>
++        <span x-show="submitting">Submitting...</span>
++      </button>
++    </div>
++  </div>
++
++  <!-- ============ TAB: REQUESTS ============ -->
++  <div x-show="tab==='list'">
++    <div class="bg-white rounded-xl shadow-sm border border-metfraa-gray-200 p-5">
++      <div class="flex items-center justify-between mb-4 flex-wrap gap-3">
++        <div>
++          <div class="lbl">Submitted Requests</div>
++          <h3 class="display font-bold text-metfraa-black" x-text="isAdmin ? 'All requests' : 'My requests'"></h3>
++        </div>
++        <div class="flex items-center gap-2">
++          <select x-model="filterStatus"
++                  class="text-sm rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue">
++            <option value="">All statuses</option>
++            <option value="Pending">Pending</option>
++            <option value="Approved">Approved</option>
++            <option value="Rejected">Rejected</option>
++            <option value="Purchased">Purchased</option>
++          </select>
++          <button @click="loadRequests()" class="text-xs font-semibold px-3 py-2 rounded-lg border border-metfraa-gray-300 hover:bg-metfraa-gray-50">Refresh</button>
++        </div>
++      </div>
++
++      <div x-show="loading" class="text-center py-10 text-metfraa-gray-500 text-sm">Loading…</div>
++
++      <div x-show="!loading && filtered.length === 0" class="text-center py-12 text-metfraa-gray-500 text-sm">
++        No requests to show.
++      </div>
++
++      <div x-show="!loading && filtered.length > 0" class="overflow-x-auto">
++        <table class="w-full text-sm">
++          <thead>
++            <tr class="text-left border-b border-metfraa-gray-200">
++              <th class="pb-2 pr-3 lbl">#</th>
++              <th class="pb-2 pr-3 lbl">Date</th>
++              <th class="pb-2 pr-3 lbl">Item</th>
++              <th class="pb-2 pr-3 lbl">Category</th>
++              <th class="pb-2 pr-3 lbl text-right">Qty</th>
++              <th class="pb-2 pr-3 lbl">Urgency</th>
++              <th x-show="isAdmin" class="pb-2 pr-3 lbl">Requester</th>
++              <th class="pb-2 pr-3 lbl">Status</th>
++              <th x-show="isAdmin" class="pb-2 lbl">Action</th>
++            </tr>
++          </thead>
++          <tbody>
++            <template x-for="r in filtered" :key="r.id">
++              <tr class="border-b border-metfraa-gray-100 align-top hover:bg-metfraa-gray-50">
++                <td class="py-3 pr-3 mono text-metfraa-gray-400" x-text="r.id"></td>
++                <td class="py-3 pr-3 whitespace-nowrap" x-text="fmtDate(r.request_date)"></td>
++                <td class="py-3 pr-3">
++                  <div class="font-semibold text-metfraa-ink" x-text="r.item_name"></div>
++                  <div class="text-[11px] text-metfraa-gray-500" x-show="r.purpose" x-text="r.purpose"></div>
++                  <div class="text-[11px] text-metfraa-gray-500" x-show="r.specification" x-text="r.specification"></div>
++                </td>
++                <td class="py-3 pr-3" x-text="catLabel(r.category)"></td>
++                <td class="py-3 pr-3 text-right mono">
++                  <span x-text="r.quantity ?? ''"></span> <span class="text-metfraa-gray-400" x-text="unitLabel(r.unit)"></span>
++                </td>
++                <td class="py-3 pr-3">
++                  <span class="text-xs font-semibold px-2 py-0.5 rounded"
++                        :class="({urgent:'bg-red-100 text-red-800', normal:'bg-metfraa-gray-100 text-metfraa-gray-700', low:'bg-metfraa-gray-100 text-metfraa-gray-500'})[r.urgency] || 'bg-metfraa-gray-100'"
++                        x-text="urgLabel(r.urgency)"></span>
++                </td>
++                <td x-show="isAdmin" class="py-3 pr-3">
++                  <div class="text-metfraa-ink" x-text="r.created_by_name || r.requester_name"></div>
++                  <div class="text-[11px] text-metfraa-gray-500" x-show="r.department" x-text="r.department"></div>
++                </td>
++                <td class="py-3 pr-3">
++                  <span class="text-xs font-bold px-2 py-1 rounded"
++                        :class="statusClass(r.status)" x-text="r.status"></span>
++                  <div class="text-[11px] text-metfraa-gray-500 mt-1" x-show="r.admin_note" x-text="r.admin_note"></div>
++                </td>
++                <td x-show="isAdmin" class="py-3">
++                  <select @change="setStatus(r, $event.target.value); $event.target.value=''"
++                          class="text-xs rounded-lg border-metfraa-gray-300 focus:border-metfraa-blue focus:ring-metfraa-blue">
++                    <option value="">Set…</option>
++                    <option value="Pending">Pending</option>
++                    <option value="Approved">Approved</option>
++                    <option value="Rejected">Rejected</option>
++                    <option value="Purchased">Purchased</option>
++                  </select>
++                </td>
++              </tr>
++            </template>
++          </tbody>
++        </table>
++      </div>
++    </div>
++  </div>
++
++</div>
++
++<script>
++function purchaseApp() {
++  return {
++    tab: 'new',
++    isAdmin: {{ 'true' if is_admin else 'false' }},
++    todayISO: new Date().toISOString().slice(0, 10),
++    submitting: false,
++    loading: false,
++    requests: [],
++    filterStatus: '',
++
++    pr: {},
++
++    get filtered() {
++      if (!this.filterStatus) return this.requests;
++      return this.requests.filter(r => r.status === this.filterStatus);
++    },
++
++    init() {
++      this.resetForm();
++      fetch('/purchase-requests/api/context')
++        .then(r => r.ok ? r.json() : null)
++        .then(d => {
++          if (!d) return;
++          this.isAdmin = !!d.is_admin;
++          if (d.me) {
++            if (!this.pr.requester_name) this.pr.requester_name = d.me.name || '';
++            if (!this.pr.department) this.pr.department = d.me.department || '';
++            if (!this.pr.whatsapp) this.pr.whatsapp = d.me.whatsapp || '';
++          }
++        })
++        .catch(() => {});
++    },
++
++    resetForm() {
++      this.pr = {
++        requester_name: '',
++        department: '',
++        request_date: this.todayISO,
++        whatsapp: '',
++        item_name: '',
++        category: 'spare_parts',
++        specification: '',
++        quantity: null,
++        unit: 'nos',
++        purpose: '',
++        urgency: 'normal',
++        required_by: '',
++        estimated_cost: null,
++        preferred_supplier: '',
++        in_stock: 'no',
++        remarks: '',
++      };
++    },
++
++    async submitRequest() {
++      if (!this.pr.requester_name || !this.pr.requester_name.trim()) { toast('Enter the requester name', 'error'); return; }
++      if (!this.pr.item_name || !this.pr.item_name.trim()) { toast('Enter the item name / description', 'error'); return; }
++      if (!this.pr.quantity || this.pr.quantity <= 0) { toast('Enter a quantity', 'error'); return; }
++      this.submitting = true;
++      try {
++        const res = await fetch('/purchase-requests/api/requests', {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json' },
++          body: JSON.stringify(this.pr),
++        });
++        const data = await res.json();
++        if (!res.ok) throw new Error(data.detail || 'Submit failed');
++        toast('Purchase request submitted', 'success');
++        this.resetForm();
++        this.tab = 'list';
++        this.loadRequests();
++      } catch (e) {
++        toast(e.message, 'error');
++      } finally {
++        this.submitting = false;
++      }
++    },
++
++    async loadRequests() {
++      this.loading = true;
++      try {
++        const res = await fetch('/purchase-requests/api/requests');
++        const data = await res.json();
++        if (!res.ok) throw new Error(data.detail || 'Load failed');
++        this.requests = data.requests || [];
++        this.isAdmin = !!data.is_admin;
++      } catch (e) {
++        toast(e.message, 'error');
++      } finally {
++        this.loading = false;
++      }
++    },
++
++    async setStatus(row, status) {
++      if (!status || status === row.status) return;
++      let note = '';
++      if (status === 'Rejected') {
++        note = window.prompt('Reason for rejection (optional):', row.admin_note || '') || '';
++      }
++      try {
++        const res = await fetch(`/purchase-requests/api/requests/${row.id}/status`, {
++          method: 'POST',
++          headers: { 'Content-Type': 'application/json' },
++          body: JSON.stringify({ status, note }),
++        });
++        const data = await res.json();
++        if (!res.ok) throw new Error(data.detail || 'Update failed');
++        const i = this.requests.findIndex(x => x.id === row.id);
++        if (i >= 0) this.requests[i] = data.request;
++        toast('Status updated to ' + status, 'success');
++      } catch (e) {
++        toast(e.message, 'error');
++      }
++    },
++
++    statusClass(s) {
++      return ({
++        Pending: 'bg-amber-100 text-amber-800',
++        Approved: 'bg-emerald-100 text-emerald-800',
++        Rejected: 'bg-red-100 text-red-800',
++        Purchased: 'bg-blue-100 text-blue-800',
++      })[s] || 'bg-metfraa-gray-100 text-metfraa-gray-700';
++    },
++    catLabel(c) {
++      return ({
++        spare_parts: 'Spare parts', tools: 'Tools', electrical: 'Electrical',
++        mechanical: 'Mechanical', raw_material: 'Raw material', other: 'Other',
++      })[c] || (c || '—');
++    },
++    unitLabel(u) {
++      return ({ nos: 'Nos', kg: 'Kg', meter: 'Meter', litre: 'Litre', other: '' })[u] || (u || '');
++    },
++    urgLabel(u) {
++      return ({ urgent: 'Urgent', normal: 'Normal', low: 'Low' })[u] || (u || '—');
++    },
++    fmtDate(iso) {
++      if (!iso) return '';
++      const p = iso.split('-');
++      return p.length === 3 ? `${p[2]}-${p[1]}-${p[0]}` : iso;
++    },
++  };
++}
++</script>
++{% endblock %}
