@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-02-v44-close-type-cause-required"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-03-v46-board-reminder-perperson"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3537,6 +3537,59 @@ async def _daily_window_state(sched_all, daily_cl_ids, today):
     return cps_by_cl, done_set, absent_set, log_set, window_days
 
 
+async def _quarterly_state(sched_all, today):
+    """Per-person completion of each QUARTERLY checklist for the CURRENT quarter period,
+    so a quarterly that one person finished but another hasn't still counts as pending —
+    exactly like the daily look-back. Returns (cps_by_cl, pk_by_cl, done_set, absent_set)."""
+    q = [s for s in sched_all if s.get("active") and s.get("checklist_id")
+         and (s.get("freq_type") or "").lower() == "quarterly"]
+    cl_ids = sorted({s["checklist_id"] for s in q})
+    pk_by_cl = {s["checklist_id"]: _period_key(s.get("checklist_name") or "", today) for s in q}
+    cps_by_cl = {}
+    if cl_ids:
+        for cp in await db.fetch(
+                "SELECT id, checklist_id, assigned_emp_id FROM maint_checkpoints "
+                "WHERE checklist_id = ANY($1::int[])", cl_ids):
+            cps_by_cl.setdefault(cp["checklist_id"], []).append(dict(cp))
+    all_cp = [cp["id"] for lst in cps_by_cl.values() for cp in lst]
+    pks = sorted(set(pk_by_cl.values()))
+    done_set = set()
+    if all_cp and pks:
+        for d in await db.fetch(
+                "SELECT checkpoint_id, period_key FROM maint_checkpoint_done "
+                "WHERE period_key = ANY($1::text[]) AND checkpoint_id = ANY($2::int[])", pks, all_cp):
+            done_set.add((d["checkpoint_id"], d["period_key"]))
+    absent_set = set()
+    if pks:
+        for a in await db.fetch(
+                "SELECT checklist_id, emp_id, period_key FROM maint_wo_absent "
+                "WHERE period_key = ANY($1::text[])", pks):
+            absent_set.add((a["checklist_id"], a["emp_id"], a["period_key"]))
+    return cps_by_cl, pk_by_cl, done_set, absent_set
+
+
+def _quarterly_progress(clid, cps_by_cl, pk_by_cl, done_set, absent_set):
+    """(fully_done, started) for a quarterly checklist's current period, or (None, None)
+    when there are no checkpoints to track (fall back to the date model)."""
+    cps = cps_by_cl.get(clid) or []
+    if not cps:
+        return None, None
+    pk = pk_by_cl.get(clid)
+    effective = done_n = 0
+    started = False
+    for cp in cps:
+        aid = cp.get("assigned_emp_id")
+        if (cp["id"], pk) in done_set:
+            started = True
+        if aid and (clid, aid, pk) in absent_set:
+            continue
+        effective += 1
+        if (cp["id"], pk) in done_set:
+            done_n += 1
+    fully_done = (effective > 0 and done_n >= effective)
+    return fully_done, started
+
+
 @router.get("/board")
 async def board(emp: dict = Depends(require_employee)):
     await ensure_tables()
@@ -3566,6 +3619,8 @@ async def board(emp: dict = Depends(require_employee)):
                            if s.get("active") and s.get("checklist_id") and _is_daily(s)})
     cps_by_cl, done_set, absent_set, log_set, window_days = await _daily_window_state(
         sched_all, daily_cl_ids, today)
+    # quarterly per-person completion for the current quarter (so a part-done quarterly shows)
+    q_cps, q_pk, q_done, q_absent = await _quarterly_state(sched_all, today)
 
     cur_due = window_days[0] if window_days else today   # the current due working day
 
@@ -3639,11 +3694,22 @@ async def board(emp: dict = Depends(require_employee)):
                 if nd and nd <= today + timedelta(days=7):
                     daily["upcoming"].append(s)
         else:
-            # Periodic (quarterly / interval): keep the overdue / due / upcoming split.
-            if info["overdue"]:
+            # Periodic (quarterly / interval). Quarterly reads per-person completion for
+            # the current quarter, so a part-done one (someone finished, someone didn't)
+            # shows as OVERDUE even though last_done advanced. Fully done -> not shown.
+            clid = s.get("checklist_id")
+            fully_done, started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent) \
+                if ((s.get("freq_type") or "").lower() == "quarterly" and clid) else (None, None)
+            if fully_done:
+                pass  # completed this quarter -> drop off the board
+            elif info["overdue"]:
                 periodic["overdue"].append(s)
             elif info["due"]:
                 periodic["due"].append(s)
+            elif started:
+                # part-done but the date model thinks it's done (last_done advanced) -> overdue
+                s["next_due"] = q_pk.get(clid) or info.get("next_due")
+                periodic["overdue"].append(s)
             elif info["next_due"]:
                 nd = _d(info["next_due"])
                 if nd and nd <= today + timedelta(days=7):
@@ -3954,27 +4020,112 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
         g[kind].append(text)
 
     # ---- preventive maintenance: each person's PM list = pending (overdue + due) ----
-    # The bsc_pm_overdue supervisor digest (sup_pm) covers overdue DAILY and QUARTERLY PM
-    # (plus unassigned-due cover); open breakdowns go in sup_bd. It is sent only inside the
+    # DAILY PM overdue is decided EXACTLY like the Maintenance Board: per-person checkpoint
+    # completion over a 7-day look-back, so a day where some people never finished counts as
+    # overdue even though last_done advanced. QUARTERLY / periodic PM uses the date model.
+    # The bsc_pm_overdue supervisor digest (sup_pm) carries whatever is overdue (daily past
+    # miss + quarterly past due) plus unassigned-due cover; it is sent only inside the
     # 09:00–before 19:00 IST window. Each assignee also gets their own morning due digest.
-    for s in await _schedule_rows():
+    sched_all = await _schedule_rows()
+
+    def _is_daily_s(s):
+        ft = (s.get("freq_type") or "").lower()
+        return ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
+
+    daily_cl_ids = sorted({s["checklist_id"] for s in sched_all
+                           if s.get("active") and s.get("checklist_id") and _is_daily_s(s)})
+    cps_by_cl, done_set, absent_set, log_set, window_days = await _daily_window_state(
+        sched_all, daily_cl_ids, today)
+    q_cps, q_pk, q_done, q_absent = await _quarterly_state(sched_all, today)
+    cur_due = window_days[0] if window_days else today
+
+    def _day_pending(checklist_id, period_iso, cps, is_current):
+        """Mirror of the board's _day_overdue: a day is pending if a non-excused assignee
+        checkpoint is not done; a PAST day counts only if it has completion evidence."""
+        if not cps:
+            return False
+        has_cpdone = any((cp["id"], period_iso) in done_set for cp in cps)
+        has_log = (checklist_id, period_iso) in log_set
+        pending = 0
+        for cp in cps:
+            aidc = cp.get("assigned_emp_id")
+            excused = aidc and ((checklist_id, aidc, period_iso) in absent_set
+                                or (period_iso == today.isoformat() and aidc in on_leave))
+            if excused:
+                continue
+            if (cp["id"], period_iso) not in done_set:
+                pending += 1
+        if pending == 0:
+            return False
+        if not has_cpdone and has_log:
+            return False
+        return bool(has_cpdone or has_log or is_current)
+
+    for s in sched_all:
         if not s.get("active"):
-            continue
-        info = compute_due(s, s.get("asset_hours"), today)
-        if not info["due"] and not info["overdue"]:
             continue
         label = _asset_label(s)
         task = s.get("title") or "PM"
         assignee = s.get("assignee_name") or "unassigned"
         aid = s.get("assignee_emp_id")
         mobile = s.get("assignee_mobile")
-        if info["overdue"]:
+
+        if _is_daily_s(s):
+            clid = s.get("checklist_id")
+            cps = cps_by_cl.get(clid) or []
+            start_d = s.get("start_date"); end_d = s.get("end_date")
+            incomplete = []
+            if clid and cps:
+                for d in window_days:
+                    if (start_d and d < start_d) or (end_d and d > end_d):
+                        continue
+                    if _day_pending(clid, d.isoformat(), cps, d == cur_due):
+                        incomplete.append(d)
+            else:
+                ld = s.get("last_done")
+                if (not (start_d and start_d > cur_due) and not (end_d and cur_due > end_d)
+                        and (not ld or ld < cur_due) and not (aid and aid in on_leave)):
+                    incomplete.append(cur_due)
+            if not incomplete:
+                continue
+            past = [d for d in incomplete if d < today]
+            if past:  # a past working day was left pending -> OVERDUE
+                if aid and aid in on_leave:
+                    continue
+                if not allow_overdue:
+                    overdue_suppressed += 1
+                    continue
+                od = min(past).strftime("%d-%m-%Y")
+                sup_pm.append(f"{label} - {task} - {assignee} - overdue since {od}")
+                if aid and mobile:
+                    _bucket(aid, assignee, mobile, "pm", f"{label} - {task} (overdue since {od})")
+            else:  # only today's work pending -> DUE TODAY
+                if aid and aid in on_leave:
+                    continue
+                elif aid and mobile:
+                    _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
+                else:
+                    sup_pm.append(f"{label} - {task} - unassigned - due {tdisp}")
+            continue
+
+        # quarterly / periodic -> date model, plus per-person completion for quarterly
+        info = compute_due(s, s.get("asset_hours"), today)
+        clid = s.get("checklist_id")
+        q_fully, q_started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent) \
+            if ((s.get("freq_type") or "").lower() == "quarterly" and clid) else (None, None)
+        if q_fully:
+            continue  # quarterly fully done this quarter
+        is_overdue = bool(info["overdue"] or (q_started and not info["due"]))
+        is_due = bool(info["due"] and not is_overdue)
+        if not (is_overdue or is_due):
+            continue
+        if is_overdue:
             if aid and aid in on_leave:
                 continue  # assignee on leave — don't flag their overdue work
             if not allow_overdue:
                 overdue_suppressed += 1
                 continue  # outside 09:00–19:00 IST — no overdue escalation
-            od = _due_disp(info.get("next_due"))
+            od = _due_disp(info.get("next_due")) if info["overdue"] else _due_disp(q_pk.get(clid))
             sup_pm.append(f"{label} - {task} - {assignee}" + (f" - overdue since {od}" if od else ""))
             if aid and mobile:
                 _bucket(aid, assignee, mobile, "pm",
