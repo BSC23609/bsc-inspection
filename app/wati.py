@@ -89,21 +89,62 @@ async def fetch_templates():
     return j, "ok"
 
 
+_tmpl_map = {}   # lower(display name or elementName) -> sendable elementName
+
+
+async def _resolve_template(name: str) -> str:
+    """Map a template's display name to the sendable `elementName` WATI expects
+    (they can differ, e.g. a typo kept in the registered name). Cached; falls back
+    to the given name if the lookup can't be done."""
+    global _tmpl_map
+    key = (name or "").strip().lower()
+    if not key:
+        return name
+    if key in _tmpl_map:
+        return _tmpl_map[key]
+    try:
+        j, _ = await fetch_templates()
+        items = []
+        if isinstance(j, dict):
+            items = (j.get("messageTemplates") or j.get("templates")
+                     or j.get("data") or j.get("result") or [])
+        elif isinstance(j, list):
+            items = j
+        for t in (items or []):
+            if not isinstance(t, dict):
+                continue
+            en = t.get("elementName") or t.get("templateName") or t.get("name")
+            if not en:
+                continue
+            for alias in (t.get("name"), t.get("elementName"), t.get("templateName")):
+                if alias:
+                    _tmpl_map[str(alias).strip().lower()] = en
+    except Exception:
+        pass
+    return _tmpl_map.get(key, name)
+
+
 async def send_template(template: str, number: str, params, broadcast: str = ""):
-    """Send any approved WATI template. `params` is an ordered list of values,
-    mapped to WATI's positional parameter names ("1","2",...). Returns (ok, detail)."""
+    """Send any approved WATI template. `params` may be an ordered list (mapped to
+    WATI's positional names "1","2",...) OR a dict of named parameters (mapped to
+    the template's named variables, e.g. {{ref}}, {{token}}). Returns (ok, detail)."""
     if not (WATI_BASE_URL and WATI_TOKEN):
         return False, "WATI is not configured (need endpoint and token)."
     if not template:
         return False, "No WATI template name set."
+    template = await _resolve_template(template) or template
     num = normalize_number(number)
     if not num:
         return False, "No valid mobile number."
-    vals = params if isinstance(params, (list, tuple)) else [params]
+    if isinstance(params, dict):
+        parameters = [{"name": str(k), "value": str(v)} for k, v in params.items()]
+    else:
+        vals = params if isinstance(params, (list, tuple)) else [params]
+        parameters = [{"name": str(i + 1), "value": str(v)} for i, v in enumerate(vals)]
     body = {
         "template_name": template,
         "broadcast_name": broadcast or template,
-        "parameters": [{"name": str(i + 1), "value": str(v)} for i, v in enumerate(vals)],
+        "parameters": parameters,
     }
     try:
         async with httpx.AsyncClient(timeout=20) as c:

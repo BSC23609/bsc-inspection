@@ -11,10 +11,11 @@ fields, not separate tables.
 """
 import os
 import json
+import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 
 from .. import db, wati
 from ..auth import require_employee
@@ -23,7 +24,7 @@ router = APIRouter(prefix="/purchase")
 IST = ZoneInfo("Asia/Kolkata")
 
 # bump on each deploy to confirm the new build is live  (GET /purchase/version)
-PURCHASE_BUILD = "2026-11-03-v4-approval-wa"
+PURCHASE_BUILD = "2026-11-03-v7-named-vars"
 
 STATUSES = ("Pending", "Approved", "Rejected", "Purchased")
 
@@ -94,6 +95,9 @@ async def ensure_tables():
     await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS approver_notified BOOLEAN DEFAULT FALSE")
     await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS store_notified BOOLEAN DEFAULT FALSE")
     await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS wa_detail TEXT")
+    # v5: per-request token for the WhatsApp Approve/Reject URL buttons.
+    await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS act_token TEXT")
+    await db.execute("CREATE INDEX IF NOT EXISTS ix_pr_token ON purchase_requests (act_token)")
     await db.execute(
         "CREATE INDEX IF NOT EXISTS ix_pr_requester ON purchase_requests (requester_emp_id)")
     await db.execute(
@@ -143,26 +147,28 @@ def _tidy(v) -> str:
     return s or "-"
 
 
-def _req_params(r: dict) -> list:
-    """Ordered template parameters for the approver message. The WATI template body
-    must use {{1}}..{{9}} in THIS order (see the setup notes)."""
+def _req_params(r: dict) -> dict:
+    """NAMED template parameters (gatepass style). The WATI template body must use
+    these variable names: {{ref}} {{requester}} {{item}} {{qty}} {{category}}
+    {{location}} {{urgency}} {{purpose}} {{cost}}. The two URL buttons use {{token}},
+    which the caller adds for the approver message only."""
     qty = r.get("quantity")
     qty_s = ("%g %s" % (float(qty), r.get("unit") or "")).strip() if qty not in (None, "") else "-"
     who = _tidy(r.get("req_name") or r.get("requester_name") or "")
     dept = _tidy(r.get("department") or "")
     cost = r.get("est_cost")
     cost_s = ("Rs %g" % float(cost)) if cost not in (None, "") else "-"
-    return [
-        _ref(r.get("id")),                                   # {{1}} reference
-        (who + (" (" + dept + ")" if dept and dept != "-" else "")),  # {{2}} requester
-        _tidy(r.get("item_name")),                           # {{3}} item
-        _tidy(qty_s),                                        # {{4}} qty + unit
-        _tidy(r.get("category") or "-"),                     # {{5}} category
-        _tidy(r.get("location") or "-"),                     # {{6}} location
-        _tidy(r.get("urgency") or "Normal"),                 # {{7}} urgency
-        _tidy(r.get("purpose") or "-"),                      # {{8}} purpose / machine
-        _tidy(cost_s),                                       # {{9}} estimated cost
-    ]
+    return {
+        "ref": _ref(r.get("id")),
+        "requester": who + (" (" + dept + ")" if dept and dept != "-" else ""),
+        "item": _tidy(r.get("item_name")),
+        "qty": _tidy(qty_s),
+        "category": _tidy(r.get("category") or "-"),
+        "location": _tidy(r.get("location") or "-"),
+        "urgency": _tidy(r.get("urgency") or "Normal"),
+        "purpose": _tidy(r.get("purpose") or "-"),
+        "cost": _tidy(cost_s),
+    }
 
 
 async def _get_row(pid) -> dict:
@@ -182,8 +188,14 @@ async def _notify_approver(pid):
     row = await _get_row(pid)
     if not row:
         return False, "row not found"
+    # Named body params + {{token}} for the two dynamic URL buttons (Approve,
+    # Reject) — both buttons reference the same {{token}}, gatepass style.
+    params = _req_params(row)
+    tok = row.get("act_token")
+    if tok:
+        params["token"] = tok
     try:
-        ok, detail = await wati.send_template(REQ_TEMPLATE, APPROVER_NUMBER, _req_params(row))
+        ok, detail = await wati.send_template(REQ_TEMPLATE, APPROVER_NUMBER, params)
     except Exception as e:  # noqa: BLE001
         ok, detail = False, "send error: %s" % e
     try:
@@ -230,6 +242,132 @@ async def _apply_status(pid, status, decided_by=None):
         sok, sdetail = await _notify_store(pid)
         store = ("store: " + ("sent" if sok else sdetail))
     return True, store
+
+
+def _result_page(title: str, msg: str, ok: bool = True) -> str:
+    colour = "#0a7d55" if ok else "#c23438"
+    return (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>%s</title></head>"
+        "<body style='font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;"
+        "background:#f4f6f9;margin:0;padding:0'>"
+        "<div style='max-width:460px;margin:12vh auto;background:#fff;border-radius:16px;"
+        "box-shadow:0 10px 30px rgba(8,24,40,.12);padding:28px 24px;text-align:center'>"
+        "<div style='width:56px;height:56px;border-radius:50%%;margin:0 auto 14px;"
+        "background:%s;color:#fff;font-size:30px;line-height:56px'>%s</div>"
+        "<h2 style='margin:0 0 8px;color:#0f1b2d'>%s</h2>"
+        "<p style='margin:0 0 18px;color:#51607a;font-size:14px'>%s</p>"
+        "<a href='/purchase' style='display:inline-block;background:#0f1b2d;color:#fff;"
+        "text-decoration:none;padding:10px 18px;border-radius:9px;font-weight:600;font-size:14px'>"
+        "Open Purchase Requests</a></div></body></html>"
+        % (title, colour, "✓" if ok else "!", title, msg))
+
+
+async def _act_by_token(token: str, status: str):
+    """Apply a decision from a WhatsApp URL button (token identifies the exact
+    request, so correlation is precise and no login is needed)."""
+    await ensure_tables()
+    row = await db.fetchrow(
+        "SELECT id, status FROM purchase_requests WHERE act_token=$1", (token or "").strip())
+    if not row:
+        return HTMLResponse(_result_page("Link not valid",
+                            "This approval link is invalid or has expired.", ok=False),
+                            status_code=404)
+    ref = _ref(row["id"])
+    if row["status"] == status:
+        extra = " The store was already notified." if status == "Approved" else ""
+        return HTMLResponse(_result_page("Already " + status,
+                            "%s is already marked %s.%s" % (ref, status, extra)))
+    ok, detail = await _apply_status(row["id"], status, None)
+    if not ok:
+        return HTMLResponse(_result_page("Not found", "That request no longer exists.", ok=False),
+                            status_code=404)
+    note = " The store has been notified on WhatsApp." if status == "Approved" else ""
+    return HTMLResponse(_result_page(status, "%s has been marked %s.%s" % (ref, status, note)))
+
+
+def _decide_page(row: dict) -> str:
+    ref = _ref(row.get("id"))
+    tok = row.get("act_token")
+    qty = row.get("quantity")
+    qty_s = ("%g %s" % (float(qty), row.get("unit") or "")).strip() if qty not in (None, "") else "-"
+    cost = row.get("est_cost")
+    cost_s = ("Rs %g" % float(cost)) if cost not in (None, "") else "-"
+    rowsdef = [
+        ("Requested by", (row.get("req_name") or row.get("requester_name") or "-")),
+        ("Item", row.get("item_name") or "-"),
+        ("Quantity", qty_s),
+        ("Category", row.get("category") or "-"),
+        ("Location", row.get("location") or "-"),
+        ("Urgency", row.get("urgency") or "Normal"),
+        ("Purpose / machine", row.get("purpose") or "-"),
+        ("Estimated cost", cost_s),
+        ("Specification", row.get("specification") or "-"),
+    ]
+    import html as _h
+    cells = "".join(
+        "<tr><td style='padding:7px 10px;color:#8a93a3;font-size:12px;white-space:nowrap;"
+        "vertical-align:top'>%s</td><td style='padding:7px 10px;color:#0f1b2d;font-size:13px;"
+        "font-weight:600'>%s</td></tr>" % (_h.escape(str(k)), _h.escape(str(v)))
+        for k, v in rowsdef)
+    status = row.get("status") or "Pending"
+    pill = ("<span style='font-size:12px;font-weight:700;padding:3px 10px;border-radius:20px;"
+            "background:#fff3e0;color:#9a6a1a'>%s</span>" % _h.escape(status))
+
+    def btn(action, label, bg):
+        return ("<a href='/purchase/%s/%s' style='flex:1;text-align:center;background:%s;color:#fff;"
+                "text-decoration:none;padding:13px 10px;border-radius:10px;font-weight:700;"
+                "font-size:14px'>%s</a>" % (action, tok, bg, label))
+
+    return (
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<meta name='viewport' content='width=device-width, initial-scale=1'>"
+        "<title>%s</title></head>"
+        "<body style='font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#f4f6f9;margin:0'>"
+        "<div style='max-width:480px;margin:5vh auto;background:#fff;border-radius:16px;"
+        "box-shadow:0 10px 30px rgba(8,24,40,.12);overflow:hidden'>"
+        "<div style='padding:18px 20px;border-bottom:1px solid #eef1f5;display:flex;align-items:center;"
+        "justify-content:space-between'><div><div style='font-size:12px;color:#8a93a3;font-weight:700;"
+        "text-transform:uppercase;letter-spacing:.4px'>Purchase Request</div>"
+        "<div style='font-size:18px;font-weight:800;color:#0f1b2d'>%s</div></div>%s</div>"
+        "<table style='width:100%%;border-collapse:collapse'>%s</table>"
+        "<div style='padding:16px 20px;border-top:1px solid #eef1f5'>"
+        "<div style='font-size:12px;color:#8a93a3;margin-bottom:10px'>Choose a decision:</div>"
+        "<div style='display:flex;gap:10px'>%s%s%s</div></div></div></body></html>"
+        % (ref, ref, pill, cells,
+           btn("approve", "Approve", "#0a7d55"),
+           btn("reject", "Reject", "#c23438"),
+           btn("purchased", "Purchased", "#1d4e74")))
+
+
+@router.get("/decide/{token}")
+async def decide(token: str):
+    """Page opened by the single dynamic URL button in WhatsApp — shows the exact
+    request and its Approve / Reject / Purchased actions."""
+    await ensure_tables()
+    row = await db.fetchrow(
+        "SELECT p.*, e.name AS requester_name FROM purchase_requests p "
+        "LEFT JOIN employees e ON e.id=p.requester_emp_id WHERE p.act_token=$1", (token or "").strip())
+    if not row:
+        return HTMLResponse(_result_page("Link not valid",
+                            "This request link is invalid or has expired.", ok=False), status_code=404)
+    return HTMLResponse(_decide_page(dict(row)))
+
+
+@router.get("/approve/{token}")
+async def act_approve(token: str):
+    return await _act_by_token(token, "Approved")
+
+
+@router.get("/reject/{token}")
+async def act_reject(token: str):
+    return await _act_by_token(token, "Rejected")
+
+
+@router.get("/purchased/{token}")
+async def act_purchased(token: str):
+    return await _act_by_token(token, "Purchased")
 
 
 @router.get("/version")
@@ -295,6 +433,9 @@ async def pr_create(body: dict, emp: dict = Depends(require_employee)):
         _s(body.get("in_stock"), 10),
         _s(body.get("remarks"), 1000),
     )
+    # Unique token that the WhatsApp Approve/Reject URL buttons carry.
+    await db.execute("UPDATE purchase_requests SET act_token=$1 WHERE id=$2",
+                     uuid.uuid4().hex, int(rid))
     # Fire the approver's WhatsApp. Never blocks or fails the submit.
     wa_ok, wa_detail = await _notify_approver(rid)
     return _json({"ok": True, "id": rid, "ref": _ref(rid),
