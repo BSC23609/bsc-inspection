@@ -24,7 +24,7 @@ router = APIRouter(prefix="/purchase")
 IST = ZoneInfo("Asia/Kolkata")
 
 # bump on each deploy to confirm the new build is live  (GET /purchase/version)
-PURCHASE_BUILD = "2026-11-03-v7-named-vars"
+PURCHASE_BUILD = "2026-11-03-v8-spec-partmake"
 
 STATUSES = ("Pending", "Approved", "Rejected", "Purchased")
 
@@ -97,6 +97,8 @@ async def ensure_tables():
     await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS wa_detail TEXT")
     # v5: per-request token for the WhatsApp Approve/Reject URL buttons.
     await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS act_token TEXT")
+    # v8: part number / make kept separate from specification.
+    await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS part_make TEXT")
     await db.execute("CREATE INDEX IF NOT EXISTS ix_pr_token ON purchase_requests (act_token)")
     await db.execute(
         "CREATE INDEX IF NOT EXISTS ix_pr_requester ON purchase_requests (requester_emp_id)")
@@ -404,14 +406,17 @@ async def pr_create(body: dict, emp: dict = Depends(require_employee)):
     item = _s(body.get("item_name"), 400)
     if not item:
         raise HTTPException(400, "Item name / description is required")
+    spec = _s(body.get("specification"), 1000)
+    if not spec:
+        raise HTTPException(400, "Specification / model is required")
     rid = await db.fetchval(
         """
         INSERT INTO purchase_requests
             (requester_emp_id, req_name, department, request_date, whatsapp,
-             item_name, category, specification, quantity, unit, purpose, location,
+             item_name, category, specification, part_make, quantity, unit, purpose, location,
              urgency, required_by, est_cost, preferred_supplier, in_stock, remarks,
              status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'Pending')
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'Pending')
         RETURNING id
         """,
         emp.get("id"),
@@ -421,7 +426,8 @@ async def pr_create(body: dict, emp: dict = Depends(require_employee)):
         _s(body.get("whatsapp"), 40),
         item,
         _s(body.get("category"), 60),
-        _s(body.get("specification"), 1000),
+        spec,
+        _s(body.get("part_make"), 400),
         _num(body.get("quantity")),
         _s(body.get("unit"), 40),
         _s(body.get("purpose"), 600),

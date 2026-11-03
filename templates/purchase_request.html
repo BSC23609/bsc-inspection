@@ -73,8 +73,12 @@
       <label>Machine</label>
       <select id="pr_asset"><option value="">Loading machines…</option></select>
     </div>
-    <div class="field" style="margin-bottom:12px"><label>Specification / Size / Make / Model / Part Number</label>
-      <textarea id="pr_spec" placeholder="Technical specs, brand, model, part no."></textarea></div>
+    <div class="row r2">
+      <div class="field"><label>Specification / Model <span class="rq">*</span></label>
+        <textarea id="pr_spec" placeholder="Specification / size / model"></textarea></div>
+      <div class="field"><label>Part Number / Make <span class="opt">(optional)</span></label>
+        <textarea id="pr_partmake" placeholder="Part number / make / brand"></textarea></div>
+    </div>
     <div class="row r3">
       <div class="field"><label>Quantity <span class="rq">*</span></label><input type="number" min="0" step="any" id="pr_qty" placeholder="0"></div>
       <div class="field"><label>Unit</label>
@@ -145,7 +149,7 @@ function stockVal(){var r=document.querySelector('input[name="pr_stock"]:checked
 
 function prReset(){
   sv('pr_name','{{ (emp.name or "")|e }}');
-  sv('pr_dept','');sv('pr_wa','');sv('pr_item','');sv('pr_spec','');
+  sv('pr_dept','');sv('pr_wa','');sv('pr_item','');sv('pr_spec','');sv('pr_partmake','');
   sv('pr_qty','');sv('pr_cost','');sv('pr_sup','');sv('pr_remarks','');sv('pr_reqby','');
   document.getElementById('pr_cat').selectedIndex=0;
   document.getElementById('pr_unit').selectedIndex=0;
@@ -162,13 +166,15 @@ async function prSubmit(){
   var p={
     req_name:v('pr_name').trim(), department:v('pr_dept').trim(), request_date:v('pr_reqdate'),
     whatsapp:v('pr_wa').trim(), item_name:v('pr_item').trim(), category:v('pr_cat'),
-    specification:v('pr_spec').trim(), quantity:v('pr_qty'), unit:v('pr_unit'), location:v('pr_loc'),
+    specification:v('pr_spec').trim(), part_make:v('pr_partmake').trim(),
+    quantity:v('pr_qty'), unit:v('pr_unit'), location:v('pr_loc'),
     purpose:(v('pr_ptype')==='Asset'?v('pr_asset'):v('pr_ptype')),
     urgency:v('pr_urg'), required_by:v('pr_reqby'), est_cost:v('pr_cost'),
     preferred_supplier:v('pr_sup').trim(), in_stock:stockVal(), remarks:v('pr_remarks').trim()
   };
   if(!p.req_name){toast('err','Enter the requester name');return;}
   if(!p.item_name){toast('err','Enter the item name / description');return;}
+  if(!p.specification){toast('err','Enter the specification / model');return;}
   if(!p.quantity||Number(p.quantity)<=0){toast('err','Enter a quantity');return;}
   var b=document.getElementById('pr_save');b.disabled=true;var lbl=b.textContent;b.textContent='Submitting…';
   try{
