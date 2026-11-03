@@ -10,7 +10,7 @@ from fastapi.responses import RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import APP_NAME
-from app.routers import pages, dg, coil, quality, shearing, pdi, eightd, complaint, admin, customer, pwa, forgot, maint, analysis
+from app.routers import pages, dg, coil, quality, shearing, pdi, eightd, complaint, admin, customer, pwa, forgot, maint, analysis, purchase
 
 _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -35,6 +35,7 @@ app.include_router(pwa.router)
 app.include_router(forgot.router)
 app.include_router(maint.router)
 app.include_router(analysis.router)
+app.include_router(purchase.router)
 
 
 @app.get("/healthz")

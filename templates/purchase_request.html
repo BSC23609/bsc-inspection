@@ -1,0 +1,214 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Purchase Request · {{ app_name }}{% endblock %}
+{% block tb_title %}Purchase Request{% endblock %}
+{% block content %}
+<div class="acc-navy">
+<style>
+.pr .field label{display:block;font-size:12px;font-weight:500;color:var(--ink-2);margin-bottom:6px}
+.pr .field .rq{color:#e5484d}
+.pr .field .opt{color:var(--muted);font-weight:400}
+.pr input,.pr textarea,.pr select{width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;color:var(--ink);background:#fff;outline:none;transition:border-color .12s,box-shadow .12s;box-sizing:border-box}
+.pr textarea{min-height:64px;resize:vertical;line-height:1.5}
+.pr input:focus,.pr textarea:focus,.pr select:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.pr .row{display:grid;gap:12px;margin-bottom:12px}
+.pr .r2{grid-template-columns:1fr 1fr}.pr .r3{grid-template-columns:1fr 1fr 1fr}
+@media(max-width:620px){.pr .r2,.pr .r3{grid-template-columns:1fr}}
+.pr-sec{border:1px solid var(--line);border-radius:var(--r);padding:16px;margin-bottom:14px;background:var(--surface-2)}
+.pr-sec .sh{display:flex;align-items:center;gap:8px;font-weight:600;font-size:13px;color:var(--acc-ink);margin:-2px 0 14px;padding-bottom:9px;border-bottom:1px solid var(--line)}
+.pr-sec .sh .n{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--acc);color:#fff;font-size:11px;font-weight:700}
+.pr .yn{display:flex;gap:16px;align-items:center;padding-top:4px}
+.pr .yn label{display:inline-flex;align-items:center;gap:7px;font-size:13px;color:var(--ink-2);font-weight:500;cursor:pointer;margin:0}
+.pr .yn input{width:auto}
+.badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px;white-space:nowrap}
+.badge.pending{background:#fff3e0;color:#9a6a1a}.badge.approved{background:#e3f6ee;color:#0a7d55}
+.badge.rejected{background:#fdecec;color:#c23438}.badge.purchased{background:#e7eefb;color:#1d4e74}
+.badge.urg{background:#fdecec;color:#c23438}.badge.norm{background:#eef1f5;color:#51607a}.badge.low{background:#eef1f5;color:#8a93a3}
+.pr-stsel{padding:5px 8px;border:1px solid var(--line-2);border-radius:7px;font-size:12px;background:#fff}
+</style>
+
+<div class="page-head"><h1>Purchase Request</h1>
+<p>Raise a request for spares, tools, electrical or mechanical items and raw material. Fill each section, then submit — the purchase team picks it up and moves it through Pending → Approved → Purchased.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('plus',17) }}</span>New request</div>
+<div class="panel-body"><div class="pr">
+
+  <!-- Section 1: Requester -->
+  <div class="pr-sec">
+    <div class="sh"><span class="n">1</span> Requester</div>
+    <div class="row r2">
+      <div class="field"><label>Name <span class="rq">*</span></label><input id="pr_name" placeholder="Your name"></div>
+      <div class="field"><label>Department</label><input id="pr_dept" placeholder="e.g. Maintenance, Production"></div>
+    </div>
+    <div class="row r2">
+      <div class="field"><label>Request Date <span class="rq">*</span></label><input type="date" id="pr_reqdate"></div>
+      <div class="field"><label>WhatsApp Number</label><input id="pr_wa" inputmode="numeric" placeholder="10-digit mobile"></div>
+    </div>
+  </div>
+
+  <!-- Section 2: Item details -->
+  <div class="pr-sec">
+    <div class="sh"><span class="n">2</span> Item Details</div>
+    <div class="field" style="margin-bottom:12px"><label>Item Name / Description <span class="rq">*</span></label>
+      <textarea id="pr_item" placeholder="What do you need?"></textarea></div>
+    <div class="row r2">
+      <div class="field"><label>Category</label>
+        <select id="pr_cat">
+          <option>Spare parts</option><option>Tools</option><option>Electrical</option>
+          <option>Mechanical</option><option>Raw material</option><option>Other</option>
+        </select></div>
+      <div class="field"><label>Purpose / Machine or Job</label><input id="pr_purpose" placeholder="e.g. M/C-014 spindle, Line 2"></div>
+    </div>
+    <div class="field" style="margin-bottom:12px"><label>Specification / Size / Make / Model / Part Number</label>
+      <textarea id="pr_spec" placeholder="Technical specs, brand, model, part no."></textarea></div>
+    <div class="row r2">
+      <div class="field"><label>Quantity <span class="rq">*</span></label><input type="number" min="0" step="any" id="pr_qty" placeholder="0"></div>
+      <div class="field"><label>Unit</label>
+        <select id="pr_unit">
+          <option>Nos</option><option>Kg</option><option>Meter</option><option>Litre</option><option>Other</option>
+        </select></div>
+    </div>
+  </div>
+
+  <!-- Section 3: Priority and cost -->
+  <div class="pr-sec">
+    <div class="sh"><span class="n">3</span> Priority &amp; Cost</div>
+    <div class="row r2">
+      <div class="field"><label>Urgency</label>
+        <select id="pr_urg">
+          <option value="Urgent">Urgent — machine breakdown / production stopped</option>
+          <option value="Normal" selected>Normal</option>
+          <option value="Low">Low</option>
+        </select></div>
+      <div class="field"><label>Required By</label><input type="date" id="pr_reqby"></div>
+    </div>
+    <div class="row r2">
+      <div class="field"><label>Estimated Cost (₹)</label><input type="number" min="0" step="any" id="pr_cost" placeholder="0"></div>
+      <div class="field"><label>Preferred Supplier <span class="opt">(optional)</span></label><input id="pr_sup" placeholder="Supplier name"></div>
+    </div>
+    <div class="row r2">
+      <div class="field"><label>In Stock?</label>
+        <div class="yn">
+          <label><input type="radio" name="pr_stock" value="Yes"> Yes</label>
+          <label><input type="radio" name="pr_stock" value="No" checked> No</label>
+        </div>
+      </div>
+      <div class="field"><label>Remarks <span class="opt">(optional)</span></label><input id="pr_remarks" placeholder="Anything else the purchase team should know"></div>
+    </div>
+  </div>
+
+  <div style="position:sticky;bottom:0;display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);border-top:1px solid var(--line);padding:14px 2px">
+    <button class="btn btn-ghost" id="pr_clear" onclick="prReset()">Clear</button>
+    <div style="flex:1"></div>
+    <button class="btn btn-primary" id="pr_save" onclick="prSubmit()">Submit Request</button>
+  </div>
+</div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('bars',17) }}</span><span id="pr_reg_title">My requests</span><span class="sub" id="pr_cnt"></span></div>
+<div class="panel-body">
+  <input id="pr_search" oninput="prRender()" placeholder="Search item / category / supplier / status…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
+  <div class="dgrid-wrap" id="pr_rows"><div class="empty">Loading…</div></div>
+</div></div>
+
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+var PR=[], PR_ADMIN=false, PR_STATUSES=['Pending','Approved','Rejected','Purchased'];
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function sv(id,val){var e=document.getElementById(id);if(e)e.value=(val==null?'':val);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function pad(n){return('0'+n).slice(-2);}
+function today(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());}
+function stockVal(){var r=document.querySelector('input[name="pr_stock"]:checked');return r?r.value:'';}
+
+function prReset(){
+  sv('pr_name','{{ (emp.name or "")|e }}');
+  sv('pr_dept','');sv('pr_wa','');sv('pr_item','');sv('pr_purpose','');sv('pr_spec','');
+  sv('pr_qty','');sv('pr_cost','');sv('pr_sup','');sv('pr_remarks','');sv('pr_reqby','');
+  document.getElementById('pr_cat').selectedIndex=0;
+  document.getElementById('pr_unit').selectedIndex=0;
+  document.getElementById('pr_urg').value='Normal';
+  var no=document.querySelector('input[name="pr_stock"][value="No"]');if(no)no.checked=true;
+  sv('pr_reqdate',today());
+}
+
+async function prSubmit(){
+  var p={
+    req_name:v('pr_name').trim(), department:v('pr_dept').trim(), request_date:v('pr_reqdate'),
+    whatsapp:v('pr_wa').trim(), item_name:v('pr_item').trim(), category:v('pr_cat'),
+    specification:v('pr_spec').trim(), quantity:v('pr_qty'), unit:v('pr_unit'), purpose:v('pr_purpose').trim(),
+    urgency:v('pr_urg'), required_by:v('pr_reqby'), est_cost:v('pr_cost'),
+    preferred_supplier:v('pr_sup').trim(), in_stock:stockVal(), remarks:v('pr_remarks').trim()
+  };
+  if(!p.req_name){toast('err','Enter the requester name');return;}
+  if(!p.item_name){toast('err','Enter the item name / description');return;}
+  if(!p.quantity||Number(p.quantity)<=0){toast('err','Enter a quantity');return;}
+  var b=document.getElementById('pr_save');b.disabled=true;var lbl=b.textContent;b.textContent='Submitting…';
+  try{
+    var r=await fetch('/purchase/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
+    var d=await r.json().catch(function(){return{};});
+    if(!r.ok||!d.ok)throw new Error(d.detail||'Submit failed');
+    toast('ok','Purchase request submitted');
+    prReset();await prLoad();window.scrollTo({top:document.body.scrollHeight,behavior:'smooth'});
+  }catch(e){toast('err','Couldn’t submit: '+((e&&e.message)||e));}
+  finally{b.disabled=false;b.textContent=lbl;}
+}
+
+async function prLoad(){
+  var h=document.getElementById('pr_rows');h.innerHTML='<div class="empty">Loading…</div>';
+  try{var r=await fetch('/purchase/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}
+    var d=await r.json();PR=(d&&d.rows)||[];PR_ADMIN=!!(d&&d.is_admin);if(d&&d.statuses)PR_STATUSES=d.statuses;}
+  catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load requests. Try again.</div>';return;}
+  document.getElementById('pr_reg_title').textContent=PR_ADMIN?'All purchase requests':'My requests';
+  prRender();
+}
+function urgBadge(u){var l=String(u||'').toLowerCase();
+  if(l.indexOf('urgent')>=0)return'<span class="badge urg">Urgent</span>';
+  if(l.indexOf('low')>=0)return'<span class="badge low">Low</span>';
+  return'<span class="badge norm">Normal</span>';}
+function stBadge(s){var l=String(s||'Pending').toLowerCase();var cls='pending';
+  if(l.indexOf('approv')>=0)cls='approved';else if(l.indexOf('reject')>=0)cls='rejected';else if(l.indexOf('purchas')>=0)cls='purchased';
+  return'<span class="badge '+cls+'">'+esc(s||'Pending')+'</span>';}
+function prRender(){
+  var host=document.getElementById('pr_rows'),q=(v('pr_search')||'').toLowerCase();
+  var rows=PR.filter(function(x){
+    if(!q)return true;
+    return [x.item_name,x.category,x.preferred_supplier,x.status,x.purpose,x.requester_name].join(' ').toLowerCase().indexOf(q)>=0;
+  });
+  document.getElementById('pr_cnt').textContent=rows.length+' shown';
+  if(!rows.length){host.innerHTML='<div class="empty">No purchase requests yet.</div>';return;}
+  var cols = PR_ADMIN
+    ? [['#','5%'],['Date','9%'],['Requester','13%'],['Item','22%'],['Qty','8%'],['Urgency','9%'],['Est ₹','9%'],['Status','12%'],['Set status','13%']]
+    : [['#','6%'],['Date','11%'],['Item','30%'],['Qty','10%'],['Urgency','12%'],['Est ₹','11%'],['Status','20%']];
+  var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
+  var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
+  var g=function(a){return(a===''||a==null)?'':esc(a);};
+  var body=rows.map(function(x){
+    var dt=String(x.request_date||x.created_at||'').slice(0,10);
+    var qty=(x.quantity!=null&&x.quantity!=='')?(g(x.quantity)+' '+g(x.unit||'')):'';
+    var cost=(x.est_cost!=null&&x.est_cost!=='')?('₹'+g(x.est_cost)):'';
+    var tr='<tr><td>'+g(x.id)+'</td><td>'+g(dt)+'</td>';
+    if(PR_ADMIN)tr+='<td>'+g(x.requester_name||x.req_name)+'</td>';
+    tr+='<td><b>'+g(x.item_name)+'</b>'+(x.category?('<br><span class="muted" style="font-size:11px">'+g(x.category)+(x.purpose?(' · '+g(x.purpose)):'')+'</span>'):'')+'</td>'
+      +'<td class="c">'+qty+'</td><td class="c">'+urgBadge(x.urgency)+'</td><td class="c">'+cost+'</td>'
+      +'<td class="c">'+stBadge(x.status)+'</td>';
+    if(PR_ADMIN){
+      tr+='<td class="c"><select class="pr-stsel" onchange="prSetStatus('+Number(x.id)+',this.value)">'
+        +PR_STATUSES.map(function(s){return'<option'+(String(s)===String(x.status||'Pending')?' selected':'')+'>'+esc(s)+'</option>';}).join('')
+        +'</select></td>';
+    }
+    tr+='</tr>';return tr;
+  }).join('');
+  host.innerHTML='<table class="dgrid">'+cg+'<thead>'+hd+'</thead><tbody>'+body+'</tbody></table>';
+}
+async function prSetStatus(id,status){
+  try{var r=await fetch('/purchase/status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,status:status})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');
+    var row=PR.filter(function(x){return Number(x.id)===Number(id);})[0];if(row)row.status=status;
+    toast('ok','Marked '+status);prRender();
+  }catch(e){toast('err','Couldn’t update: '+((e&&e.message)||e));prLoad();}
+}
+(function(){prReset();prLoad();})();
+</script>
+{% endblock %}
