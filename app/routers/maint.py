@@ -24,6 +24,7 @@ from fastapi.responses import JSONResponse, Response
 
 from .. import db, wati, graph
 from .. import config as _cfg
+from .. import overdue_img
 from ..auth import require_employee, current_employee
 
 # Read config defensively so a slightly older app/config.py (missing one of the
@@ -31,10 +32,18 @@ from ..auth import require_employee, current_employee
 # WATI template names. Env/config still wins if set; otherwise use the approved
 # templates created in WATI (Oct 2026): reminder to user, overdue digest, breakdown.
 WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "") or "bsc_maint_reminder"
-WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "bsc_pm_overdue"
+# Overdue digest to admins is now a WhatsApp IMAGE-header template (like the daily
+# stock report): the template header points at /maint/overdue-report.png and the
+# body carries no variables. The old text template was bsc_pm_overdue.
+WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "bsc_maint_overdue_report"
 WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") or "bsc_breakdown_alert2"
 MAINT_SUPERVISOR_MOBILE       = getattr(_cfg, "MAINT_SUPERVISOR_MOBILE", "")
 AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
+# Token for the public overdue PNG (baked into the WhatsApp template's image URL). Defaults
+# to AGENT_TOKEN so it works out of the box; set env OVERDUE_IMG_TOKEN to a URL-safe value
+# (e.g. letters/digits, no '@') to avoid exposing AGENT_TOKEN in WATI's template store.
+OVERDUE_IMG_TOKEN             = (os.environ.get("OVERDUE_IMG_TOKEN")
+                                 or getattr(_cfg, "OVERDUE_IMG_TOKEN", "") or AGENT_TOKEN)
 ONEDRIVE_BASE                 = getattr(_cfg, "ONEDRIVE_BASE", "BSC Inspections")
 
 router = APIRouter(prefix="/maint", tags=["maintenance"])
@@ -44,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v61-board-status-column"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v62-overdue-image-report"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4445,7 +4454,8 @@ async def _overdue_reminder_enabled() -> bool:
     return (v or "on").strip().lower() != "off"
 
 
-async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
+async def _run_reminders(dry: bool = False, kind: str = "all",
+                         force_overdue: bool = False) -> dict:
     await ensure_tables()
     await _refresh_holidays()
     today = _today()
@@ -4464,7 +4474,9 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
     # The bsc_pm_overdue supervisor digest only goes out within the working window
     # 09:00–before 19:00 IST. Outside that window no overdue item is added to the
     # supervisor escalation.
-    allow_overdue = 9 <= datetime.now(IST).hour < 19
+    # force_overdue=True ignores the time window — used when rendering the on-demand
+    # overdue PNG (/maint/overdue-report.png), so the image is complete whenever fetched.
+    allow_overdue = True if force_overdue else (9 <= datetime.now(IST).hour < 19)
     overdue_suppressed = 0
 
     # each person's morning digest keeps preventive and breakdown lists separate
@@ -4665,10 +4677,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                         "breakdown": len(sup_bd),
                         "result": "skipped: overdue reminder is turned OFF"})
     elif _want_overdue:
-        pm_num = _overdue_table(sup_pm)
-        bd_num = _overdue_table(sup_bd, bd=True)
-        # body vars: 1 date, 2 preventive list, 3 breakdown list
-        params = [tdisp, pm_num, bd_num]
+        # Image-header template (bsc_maint_overdue_report): the overdue board goes out
+        # as a PNG (served live at /maint/overdue-report.png). No body variables — the
+        # whole table is in the image — so params is empty.
+        params = []
         sups = await _overdue_recipients()
         for sup in sups:
             nm = sup.get("name") or "Overdue recipient"
@@ -4685,6 +4697,7 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                         "overdue_items": overdue_suppressed})
     return {"today": today.isoformat(), "sent": sent, "skipped": skipped,
             "allow_overdue": allow_overdue,
+            "overdue_pm": sup_pm, "overdue_bd": sup_bd,
             "counts": {"sent": len(sent), "skipped": len(skipped)}}
 
 
@@ -4699,6 +4712,30 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
         raise HTTPException(401, "bad token")
     k = kind if kind in ("due", "overdue", "all") else "all"
     return _json(await _run_reminders(dry=bool(dry), kind=k))
+
+
+@router.get("/overdue-report.png")
+async def overdue_report_png(token: str = Query(default="")):
+    """Live PNG of the maintenance overdue board (S.No, Date, M/C Code, Machine Name,
+    Category, Status, Assigned To), rendered like the daily stock report. This URL is the
+    image header of the bsc_maint_overdue_report WhatsApp template, so WhatsApp fetches a
+    current image each time the overdue digest is sent. Public but token-gated with
+    OVERDUE_IMG_TOKEN (falls back to AGENT_TOKEN):
+    /maint/overdue-report.png?token=<OVERDUE_IMG_TOKEN>. force_overdue=True so the image is
+    complete at any hour."""
+    if token != OVERDUE_IMG_TOKEN and token != AGENT_TOKEN:
+        raise HTTPException(403, "Bad token")
+    try:
+        data = await _run_reminders(dry=True, kind="overdue", force_overdue=True)
+        pm = data.get("overdue_pm") or []
+        bd = data.get("overdue_bd") or []
+    except Exception:
+        pm, bd = [], []
+    tdisp = datetime.now(IST).strftime("%d-%m-%Y")
+    png = overdue_img.build_overdue_png(tdisp, pm, bd)
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "no-store, max-age=0",
+                             "Content-Disposition": "inline; filename=overdue.png"})
 
 
 @router.get("/overdue-reminder")
@@ -4763,20 +4800,15 @@ async def test_overdue(token: str = Query(default=""), to: str = Query(default="
         num = wati.normalize_number(subs[0]) if subs else ""
     if not num:
         return _json({"ok": False, "detail": "No number — add ?to=919XXXXXXXXX to the URL."})
-    sample = [
-        "DG-002 GEN-SET 125 KVA - Quarterly PM - Mohan K",
-        "M/C-018 IRON WORKER MACHINE - Daily PM - Surajit Sasanka Maity",
-        "M/C-005 TMT BENDING M/C 8 MM TO 32 MM - Daily PM - Velu C",
-    ]
-    body = _numbered(sample)
-    params = [_today().strftime("%d-%m-%Y"), body, "—"]
-    ok, detail = await _wsend(WATI_MAINT_OVERDUE_TEMPLATE, num, params, name="(test)", kind="test")
-    # preview: show exactly what separator the LIVE build put between items.
-    # ⏎ marker = U+2028 line separator (this build); ", " = old build still live.
-    preview = body.replace(" ", " ⏎ ").replace(" ", " ⏎ ")
+    # The overdue digest is now an IMAGE-header template (bsc_maint_overdue_report) with
+    # no body variables — the whole board is the PNG at /maint/overdue-report.png — so the
+    # test send passes empty params, exactly like the live digest.
+    ok, detail = await _wsend(WATI_MAINT_OVERDUE_TEMPLATE, num, [], name="(test)", kind="test")
     return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_OVERDUE_TEMPLATE,
-                  "build": MAINT_BUILD, "separator": ("U+2028 (line break)" if " " in body else "space/other"),
-                  "sent_text_preview": preview, "wati_reply": detail})
+                  "build": MAINT_BUILD,
+                  "image_url": "/maint/overdue-report.png?token=<AGENT_TOKEN>",
+                  "note": "image-header template; the live board is the PNG in the header",
+                  "wati_reply": detail})
 
 
 @router.get("/admin/export-onedrive")
