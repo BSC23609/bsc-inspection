@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v69-breakdown-regen-pdf"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v70-regen-diagnostics"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3088,11 +3088,21 @@ async def breakdown_regen_pdf(token: str = Query(default=""), id: int = Query(de
         targets = [r["id"] for r in rows]
     out = []
     for bid in targets:
+        row = await db.fetchrow(
+            "SELECT id, status, closed_at, resolution FROM maint_breakdowns WHERE id=$1", bid)
+        if not row:
+            out.append({"id": bid, "ok": False,
+                        "reason": "row not found in database (likely lost in migration)"})
+            continue
         try:
             p = await _regen_breakdown_pdf(bid)
-            out.append({"id": bid, "ok": bool(p), "pdf": p})
+            out.append({"id": bid, "ok": bool(p),
+                        "status": row["status"], "closed": bool(row["closed_at"]),
+                        "has_action_taken": bool((row["resolution"] or "").strip()),
+                        "reason": (None if p else "PDF build or OneDrive upload failed"),
+                        "pdf": p})
         except Exception as e:
-            out.append({"id": bid, "ok": False, "error": str(e)[:150]})
+            out.append({"id": bid, "ok": False, "reason": str(e)[:160]})
     return _json({"count": len(out), "regenerated": out})
 
 
