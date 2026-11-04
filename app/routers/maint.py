@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v58-daily-done-ok-clean"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v59-overdue-table-msg"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4396,6 +4396,36 @@ def _numbered(items, cap=1000):
     return SEP.join(out) if out else "—"
 
 
+def _overdue_table(items, bd=False, cap=1500):
+    """Stacked 'table' for the WhatsApp overdue digest — one block per machine with
+    Date / Machine / Category / Assigned / Status on their own lines. Uses U+2028 line
+    separators: WhatsApp renders them as line breaks and they survive _safe_param
+    (which only strips \\r\\n\\t). Returns '—' when empty."""
+    LS = " "
+    if not items:
+        return "—"
+    blocks, used = [], 0
+    for i, it in enumerate(items, 1):
+        if isinstance(it, str):   # safety — shouldn't happen, but never crash a reminder
+            blocks.append(f"{i}) {it}")
+            continue
+        machine = ((it.get("code") or "").strip() + "  " + (it.get("name") or "").strip()).strip() or "—"
+        l1 = f"{i}) {machine}"
+        if bd:
+            l2 = f"Category: Breakdown  |  Status: {it.get('status') or 'Open'}"
+            l3 = f"Problem: {it.get('prob') or '-'}  |  Assigned: {it.get('who') or '-'}"
+        else:
+            l2 = f"Date: {it.get('date') or '-'}  |  Category: {it.get('cat') or '-'}"
+            l3 = f"Assigned: {it.get('who') or '-'}  |  Status: {it.get('status') or '-'}"
+        block = LS.join([l1, l2, l3])
+        if used + len(block) + 2 > cap:
+            blocks.append(f"…and {len(items) - i + 1} more")
+            break
+        blocks.append(block)
+        used += len(block) + 2
+    return (LS + LS).join(blocks)
+
+
 async def _overdue_reminder_enabled() -> bool:
     """Master on/off for the bsc_pm_overdue supervisor digest (default ON). Stored in
     maint_meta['overdue_reminder_enabled'] = 'on' | 'off'. The morning due digest is
@@ -4515,7 +4545,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                     overdue_suppressed += 1
                     continue
                 od = min(past).strftime("%d-%m-%Y")
-                sup_pm.append(f"{label} - {task} - {assignee} - overdue since {od}")
+                sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
+                               "cat": task, "who": assignee, "date": od, "status": "Overdue"})
                 if aid and mobile:
                     _bucket(aid, assignee, mobile, "pm", f"{label} - {task} (overdue since {od})")
             else:  # only today's work pending -> DUE TODAY
@@ -4524,7 +4555,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                 elif aid and mobile:
                     _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
                 else:
-                    sup_pm.append(f"{label} - {task} - unassigned - due {tdisp}")
+                    sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
+                                   "cat": task, "who": "Unassigned", "date": tdisp, "status": "Due today"})
             continue
 
         # quarterly / periodic -> date model, plus per-person completion for quarterly
@@ -4545,7 +4577,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                 overdue_suppressed += 1
                 continue  # outside 09:00–19:00 IST — no overdue escalation
             od = _due_disp(info.get("next_due")) if info["overdue"] else _due_disp(q_pk.get(clid))
-            sup_pm.append(f"{label} - {task} - {assignee}" + (f" - overdue since {od}" if od else ""))
+            sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
+                           "cat": task, "who": assignee, "date": od or tdisp, "status": "Overdue"})
             if aid and mobile:
                 _bucket(aid, assignee, mobile, "pm",
                         f"{label} - {task} (overdue" + (f" since {od}" if od else "") + ")")  # personal digest
@@ -4555,7 +4588,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
             elif aid and mobile:
                 _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
             else:
-                sup_pm.append(f"{label} - {task} - unassigned - due {tdisp}")   # unassigned-due cover
+                sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
+                               "cat": task, "who": "Unassigned", "date": tdisp, "status": "Due today"})  # unassigned-due cover
 
     # ---- open breakdowns: to EACH assigned maintenance user; else to supervisors ----
     emap = await _emp_map()
@@ -4564,7 +4598,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
         prob = (b.get("problem") or "").strip() or "—"
         aids = b.get("assignees") or ([b["assignee_emp_id"]] if b.get("assignee_emp_id") else [])
         if not aids:
-            sup_bd.append(f"{label} - {prob} - unassigned")
+            sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
+                           "prob": prob, "who": "Unassigned", "status": "Open"})
             continue
         for aid in aids:
             if aid in on_leave:
@@ -4575,7 +4610,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
             if mob:
                 _bucket(aid, who, mob, "bd", f"{label} - {prob}")
             else:
-                sup_bd.append(f"{label} - {prob} - {who}")
+                sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
+                               "prob": prob, "who": who, "status": "Open"})
 
     sent, skipped = [], []
 
@@ -4619,8 +4655,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                         "breakdown": len(sup_bd),
                         "result": "skipped: overdue reminder is turned OFF"})
     elif _want_overdue:
-        pm_num = _numbered(sup_pm)
-        bd_num = _numbered(sup_bd)
+        pm_num = _overdue_table(sup_pm)
+        bd_num = _overdue_table(sup_bd, bd=True)
         # body vars: 1 date, 2 preventive list, 3 breakdown list
         params = [tdisp, pm_num, bd_num]
         sups = await _overdue_recipients()
