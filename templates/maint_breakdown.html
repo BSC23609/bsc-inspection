@@ -58,6 +58,30 @@
 .chkbox .none{color:var(--muted);font-size:12.5px;padding:2px 0}
 .ds-grp{margin-bottom:14px}
 .ds-grp>.lab{font-size:12.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px}
+/* work-order tables */
+.wo-sec h3{font-size:13px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--acc-ink);margin:20px 0 8px;display:flex;align-items:center;gap:8px}
+.wo-sec:first-child h3{margin-top:2px}
+.wo-count{background:#eef2f7;color:#41506a;font-size:11px;font-weight:700;border-radius:20px;padding:1px 9px}
+.wo-table{width:100%;border-collapse:collapse;font-size:13px}
+.wo-table th{background:var(--acc-ink,#1f3b5b);color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;text-align:left;padding:9px 10px}
+.wo-table td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+.wo-table tbody tr:nth-child(even){background:var(--soft,#f6f8fb)}
+.wo-table tr.bd-hi{background:#fff7e6;outline:2px solid #f0b429}
+.wo-table .c-sno{width:46px;color:var(--muted);font-weight:700}
+.wo-table .c-mac{font-weight:700;color:var(--acc-ink)}
+.wo-table .c-act{white-space:nowrap;text-align:right;width:1%}
+.wo-table .c-act a{font-weight:700;cursor:pointer;margin-left:14px}
+.wo-act-close{color:var(--acc-ink)}.wo-act-del{color:#c23438}
+.wo-empty{color:var(--muted);font-size:12.5px;padding:10px 2px}
+@media(max-width:620px){
+  .wo-table thead{display:none}
+  .wo-table,.wo-table tbody,.wo-table tr,.wo-table td{display:block;width:auto}
+  .wo-table tr{border:1px solid var(--line);border-radius:10px;margin-bottom:10px;padding:6px 10px;background:#fff}
+  .wo-table tbody tr:nth-child(even){background:#fff}
+  .wo-table td{border:0;padding:4px 0}
+  .wo-table td::before{content:attr(data-l);font-size:10.5px;font-weight:700;text-transform:uppercase;color:var(--muted);display:block}
+  .wo-table .c-act{text-align:left}.wo-table .c-act a{margin:0 16px 0 0}
+}
 </style>
 
 <div class="page-head"><h1>Work Order</h1><p>Raise a work order — a <b>breakdown</b> or an <b>unscheduled preventive maintenance</b> job (type is chosen by maintenance users; others raise a breakdown). The assigned maintenance user and the supervisor get a WhatsApp alert immediately, and it stays on the daily reminder until it is closed.</p></div>
@@ -68,7 +92,7 @@
     {% if emp.is_admin %}<button class="btn btn-ghost" style="color:#c23438;border-color:#f3c9cb" onclick="bdDeleteAll()">Delete all</button>{% endif %}
     <button class="btn btn-primary" onclick="openBD()">+ Raise breakdown</button>
   </div>
-  <div class="panel-body"><div id="bd_list"><div class="empty">Loading…</div></div></div>
+  <div class="panel-body"><div id="bd_wrap"><div class="empty">Loading…</div></div></div>
 </div>
 </div>
 
@@ -250,30 +274,45 @@ async function bdRaise(){var aid=v('b_asset'),bt=v('b_type'),prob=v('b_problem')
 document.getElementById('bd_scrim').addEventListener('click',function(e){if(e.target===this)closeBD();});
 document.getElementById('cl_scrim').addEventListener('click',function(e){if(e.target===this)closeCloseModal();});
 
-/* ---- list ---- */
-async function bdLoad(){var box=document.getElementById('bd_list');box.innerHTML='<div class="empty">Loading…</div>';
-  try{var ls=await (await fetch('/maint/breakdowns/list',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
-  if(!ls.length){box.innerHTML='<div class="empty">No breakdowns raised.</div>';return;}
-  box.innerHTML=ls.map(function(b){var mac=((b.asset_code?b.asset_code+' ':'')+(b.asset_name||'')).trim()||'—';
-    var isOpen=b.status==='open';var ph=b.photos;if(typeof ph==='string'){try{ph=JSON.parse(ph);}catch(e){ph=[];}}var np=(ph&&ph.length)||0;
-    var ag=b.assignees;if(typeof ag==='string'){try{ag=JSON.parse(ag);}catch(e){ag=[];}}
-    var who=(ag&&ag.length)?ag.map(function(id){return (EMPBY[id]&&EMPBY[id].name)||('#'+id);}).join(', '):(b.assignee_name||'unassigned');
-    var cz=b.close_causes;if(typeof cz==='string'){try{cz=JSON.parse(cz);}catch(e){cz=[];}}
-    var causeStr=(cz&&cz.length)?cz.join(', '):'';
-    var meta='Raised '+fmtdt(b.raised_at)+' by '+esc(b.reported_by||'—')+' · '+esc(who)
-      +(b.remarks?(' · '+esc(b.remarks)):'')+(np?(' · '+np+' photo(s)'):'')
-      +(isOpen?'':(' · closed '+fmtdt(b.closed_at)+(b.closed_by?(' by '+esc(b.closed_by)):'')+(b.resolution?(' · action: '+esc(b.resolution)):'')+(causeStr?(' · cause: '+esc(causeStr)):'')));
-    var acts='<div class="acts">'
-      +(isOpen?('<a class="act-close" onclick="openClose('+b.id+')">Close</a>'):'')
-      +(IS_ADMIN?('<a class="act-del" onclick="bdDelete('+b.id+')">Delete</a>'):'')
-      +'</div>';
-    var woLbl=(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0)?'Unscheduled PM':'Breakdown';
-    return '<div class="bd-item" id="bd-row-'+b.id+'"><div class="mac">'+esc(mac)+'<div><span class="chip '+(isOpen?'open':'closed')+'">'+(isOpen?'OPEN':'CLOSED')+'</span>'
-      +'<span class="tchip" style="background:#e7f0fb;color:#1f3b5b">'+esc(woLbl)+'</span>'
-      +(b.btype?('<span class="tchip">'+esc(b.btype)+'</span>'):'')+'</div></div>'
-      +'<div class="pr">'+esc(b.problem||'—')+'<div class="meta">'+meta+'</div></div>'
-      +acts
-      +'</div>';}).join('');}
+/* ---- work-order tables ---- */
+function macOf(b){return ((b.asset_code?b.asset_code+' ':'')+(b.asset_name||'')).trim()||'—';}
+function whoOf(b){var ag=b.assignees;if(typeof ag==='string'){try{ag=JSON.parse(ag);}catch(e){ag=[];}}
+  if(!ag||!ag.length)ag=b.assignee_emp_id?[b.assignee_emp_id]:[];
+  return (ag&&ag.length)?ag.map(function(id){return (EMPBY[id]&&EMPBY[id].name)||('#'+id);}).join(', '):(b.assignee_name||'unassigned');}
+function openOnly(a){return (a||[]).filter(function(b){return b.status==='open';});}
+function delCell(id){return '<td class="c-act" data-l="Action"><a class="wo-act-del" onclick="bdDelete('+id+')">Delete</a></td>';}
+function closeDelCell(id){return '<td class="c-act" data-l="Action"><a class="wo-act-close" onclick="openClose('+id+')">Close</a><a class="wo-act-del" onclick="bdDelete('+id+')">Delete</a></td>';}
+function baseCells(b,i){return '<td class="c-sno" data-l="S.No">'+(i+1)+'</td>'
+  +'<td data-l="Date">'+fmtdt(b.raised_at)+'</td>'
+  +'<td class="c-mac" data-l="Machine Name">'+esc(macOf(b))+'</td>'
+  +'<td data-l="Description">'+esc(b.problem||'—')+'</td>';}
+function tableRaised(rows){
+  if(!rows.length)return '<div class="wo-empty">No work orders raised by you.</div>';
+  var body=rows.map(function(b,i){return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)+delCell(b.id)+'</tr>';}).join('');
+  return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
+function tableAssigned(rows){
+  if(!rows.length)return '<div class="wo-empty">No work orders assigned to you.</div>';
+  var body=rows.map(function(b,i){return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)+closeDelCell(b.id)+'</tr>';}).join('');
+  return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
+function tableAll(rows){
+  if(!rows.length)return '<div class="wo-empty">No open work orders.</div>';
+  var body=rows.map(function(b,i){return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)
+    +'<td data-l="Raised By">'+esc(b.reported_by||'—')+'</td>'
+    +'<td data-l="Assigned To">'+esc(whoOf(b))+'</td>'
+    +closeDelCell(b.id)+'</tr>';}).join('');
+  return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th>Raised By</th><th>Assigned To</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
+async function bdLoad(){var box=document.getElementById('bd_wrap');box.innerHTML='<div class="empty">Loading…</div>';
+  var d;try{d=await (await fetch('/maint/breakdowns/list',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  var html='';
+  if(d.is_admin){
+    var all=openOnly(d.all);
+    html='<div class="wo-sec"><h3>All work orders <span class="wo-count">'+all.length+'</span></h3>'+tableAll(all)+'</div>';
+  }else{
+    var raised=openOnly(d.raised),asg=openOnly(d.assigned);
+    html='<div class="wo-sec"><h3>Assigned by me <span class="wo-count">'+raised.length+'</span></h3>'+tableRaised(raised)+'</div>'
+        +'<div class="wo-sec"><h3>Assigned to me <span class="wo-count">'+asg.length+'</span></h3>'+tableAssigned(asg)+'</div>';
+  }
+  box.innerHTML=html;}
 var WO_TYPES=['Mechanical','Hydraulic','Electrical','Automation / Control','Operational / Other'];
 var WO_CAUSES={
  'Mechanical':['M01 Bearing failure','M02 Gearbox failure','M03 Gear / gear teeth damage','M04 Coupling failure','M05 Chain / sprocket failure','M06 Belt failure','M07 Roller damage / seizure','M08 Shaft breakage','M09 Misalignment','M10 Lubrication failure','M11 Excessive vibration / noise','M12 Structural damage / crack'],
@@ -318,8 +357,8 @@ function cfClose(){document.getElementById('cf_scrim').style.display='none';_cfC
 document.getElementById('cf_ok').onclick=function(){var cb=_cfCb;cfClose();if(cb)cb();};
 document.getElementById('cf_scrim').addEventListener('click',function(e){if(e.target===this)cfClose();});
 
-function bdDelete(id){if(!IS_ADMIN)return;
-  askConfirm('Delete this breakdown ticket permanently? This cannot be undone.',function(){doBdDelete(id);});}
+function bdDelete(id){
+  askConfirm('Delete this work order permanently? This cannot be undone.',function(){doBdDelete(id);});}
 async function doBdDelete(id){
   try{var r=await fetch('/maint/breakdown/delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');toast('ok','Deleted');await bdLoad();}

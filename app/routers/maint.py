@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v62-overdue-image-report"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v63-workorder-two-tables"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -2597,19 +2597,68 @@ async def _send_breakdown_alert(bd: dict):
     return results
 
 
+def _bd_aids(row) -> list:
+    """Assignee emp-id list for a breakdown row (assignees JSONB, falling back to the
+    single assignee_emp_id)."""
+    ag = row.get("assignees")
+    if isinstance(ag, str):
+        try:
+            ag = json.loads(ag)
+        except Exception:
+            ag = []
+    if not ag:
+        ag = [row["assignee_emp_id"]] if row.get("assignee_emp_id") else []
+    out = []
+    for x in (ag or []):
+        try:
+            out.append(int(x))
+        except (TypeError, ValueError):
+            pass
+    return out
+
+
+def _can_close_bd(emp: dict, row) -> bool:
+    """A work order may be closed by an admin or by a person it is assigned to."""
+    return bool(emp.get("is_admin")) or (emp.get("id") in _bd_aids(row))
+
+
+def _can_delete_bd(emp: dict, row) -> bool:
+    """A work order may be deleted by an admin, the person who raised it, or an assignee."""
+    return (bool(emp.get("is_admin"))
+            or emp.get("id") == row.get("reported_by_emp_id")
+            or (emp.get("id") in _bd_aids(row)))
+
+
 @router.get("/breakdowns/list")
 async def breakdowns_list(emp: dict = Depends(require_employee)):
+    """Work orders for the Work Order page, split for its two tables and role-scoped:
+    a normal user sees only the work orders they RAISED ('assigned by me') and the ones
+    ASSIGNED to them ('assigned to'); an admin sees every work order (in 'all')."""
     await ensure_tables()
+    uid = emp.get("id")
+    is_admin = bool(emp.get("is_admin"))
     rows = await db.fetch(
-        "SELECT b.id, b.asset_id, b.btype, b.wo_type, b.problem, b.reported_by, b.assignee_emp_id, b.assignees, "
-        "b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, b.resolution, b.photos, "
-        "b.close_types, b.close_causes, "
+        "SELECT b.id, b.asset_id, b.btype, b.wo_type, b.problem, b.reported_by, b.reported_by_emp_id, "
+        "b.assignee_emp_id, b.assignees, b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, "
+        "b.resolution, b.photos, b.close_types, b.close_causes, "
         "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
         "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
         "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
         "WHERE b.status='open' OR b.closed_at > now() - interval '7 days' "
         "ORDER BY (b.status='open') DESC, b.raised_at DESC")
-    return _json([dict(r) for r in rows])
+    data = [dict(r) for r in rows]
+    raised, assigned, all_rows = [], [], []
+    for b in data:
+        aids = _bd_aids(b)
+        if is_admin:
+            all_rows.append(b)
+        else:
+            if b.get("reported_by_emp_id") == uid:
+                raised.append(b)
+            if uid in aids:
+                assigned.append(b)
+    return _json({"is_admin": is_admin, "uid": uid,
+                  "raised": raised, "assigned": assigned, "all": all_rows})
 
 
 def _mask(num: str) -> str:
@@ -2948,6 +2997,12 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
         bid = int(body.get("id"))
     except (TypeError, ValueError):
         raise HTTPException(400, "Missing id")
+    _crow = await db.fetchrow(
+        "SELECT reported_by_emp_id, assignee_emp_id, assignees FROM maint_breakdowns WHERE id=$1", bid)
+    if not _crow:
+        raise HTTPException(404, "Work order not found")
+    if not _can_close_bd(emp, dict(_crow)):
+        raise HTTPException(403, "You can only close work orders assigned to you")
     action = (body.get("action") or "").strip()        # what was done to fix it
     note = (body.get("remarks") or "").strip()          # optional extra remark
     # completion time from the form (local IST); fall back to now
@@ -2989,13 +3044,19 @@ def _require_admin(emp: dict):
 
 @router.post("/breakdown/delete")
 async def breakdown_delete(body: dict, emp: dict = Depends(require_employee)):
-    """Delete ONE raised ticket (admin only)."""
+    """Delete ONE work order. Allowed for an admin, the person who RAISED it, or a
+    person it is ASSIGNED to."""
     await ensure_tables()
-    _require_admin(emp)
     try:
         bid = int(body.get("id"))
     except (TypeError, ValueError):
         raise HTTPException(400, "Missing id")
+    _drow = await db.fetchrow(
+        "SELECT reported_by_emp_id, assignee_emp_id, assignees FROM maint_breakdowns WHERE id=$1", bid)
+    if not _drow:
+        raise HTTPException(404, "Work order not found")
+    if not _can_delete_bd(emp, dict(_drow)):
+        raise HTTPException(403, "You can only delete your own work orders")
     await db.execute("DELETE FROM maint_breakdowns WHERE id=$1", bid)
     return {"ok": True}
 
