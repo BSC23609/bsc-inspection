@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-03-v56-daily-done-ok-report"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v57-daily-done-ok-regen"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4134,7 +4134,8 @@ def _daily_done_pdf(target, tdate, items):
 async def mark_daily_done(token: str = Query(default=""),
                           date: str = Query(default="2026-10-30"),
                           confirm: int = Query(default=0),
-                          pdf: int = Query(default=0)):
+                          pdf: int = Query(default=0),
+                          assets: str = Query(default="")):
     """Record the DAILY PM that is overdue on a given date (default 30-Oct) as COMPLETED
     on that date, clearing it from the overdue board. Open
     /maint/mark-daily-done?token=<AGENT_TOKEN> to PREVIEW (nothing written). Add &confirm=1
@@ -4185,33 +4186,40 @@ async def mark_daily_done(token: str = Query(default=""),
     emp_name = {e["id"]: (e["name"] or e["emp_no"])
                 for e in await db.fetch("SELECT id, name, emp_no FROM employees")}
 
-    items, to_insert = [], []
+    def _norm(code):
+        return str(code or "").upper().replace(" ", "")
+    asset_set = {_norm(a) for a in assets.split(",") if a.strip()}
+
+    items, to_insert, norm_ids = [], [], []
     for clid in clids:
         lst = cps.get(clid) or []
         if not lst:
             continue
+        code = daily[clid]["asset_code"]
+        if asset_set and _norm(code) not in asset_set:
+            continue   # restricted to the machines named in &assets=
         done_cps = [c for c in lst if c["id"] in done]
-        if not done_cps:
-            continue   # a past day is overdue only when there is partial completion
+        forced = bool(asset_set)   # naming a machine forces it, even with no prior activity
+        if not done_cps and not forced:
+            continue   # no activity on this date and not explicitly requested -> skip
         pending = [c for c in lst if c["id"] not in done
                    and not (c["emp"] and (clid, c["emp"]) in absent)]
-        if not pending:
-            continue   # already fully done
         names = sorted({emp_name.get(c["emp"], "") for c in lst if c["emp"]} - {""})
         cp_detail = [{"seq": c.get("seq"), "text": c.get("text") or "",
-                      "assignee": emp_name.get(c["emp"], "") or "-", "status": "DONE"} for c in lst]
-        items.append({"asset_code": daily[clid]["asset_code"], "asset_name": daily[clid]["asset_name"],
+                      "assignee": emp_name.get(c["emp"], "") or "-", "status": "OK"} for c in lst]
+        items.append({"asset_code": code, "asset_name": daily[clid]["asset_name"],
                       "checklist": daily[clid]["checklist_name"], "checklist_id": clid,
                       "asset_location": daily[clid].get("asset_location") or "",
                       "total_cps": len(lst), "already_done": len(done_cps),
                       "pending": len(pending), "assignees": names, "checkpoints": cp_detail})
+        norm_ids.extend(c["id"] for c in lst)
         for c in pending:
             to_insert.append((c["id"], c["emp"]))
     items.sort(key=lambda x: str(x["asset_code"]))
 
     # Mark complete first (if confirmed), so a combined &confirm=1&pdf=1 returns the
     # PDF of exactly the rows just marked. `items` is captured before the write.
-    marked = 0
+    marked, normalized, reports = 0, 0, 0
     if confirm:
         done_at = datetime.combine(tdate, time(17, 0)).replace(tzinfo=IST)
         for cp_id, emp in to_insert:
@@ -4222,15 +4230,28 @@ async def mark_daily_done(token: str = Query(default=""),
                 cp_id, emp, target, done_at)
             if str(res).strip().endswith("1"):
                 marked += 1
+        # Normalise already-recorded rows on this date to OK (fixes placeholder/'done'
+        # results) WITHOUT overwriting a genuine 'Not OK' inspection result.
+        if norm_ids:
+            r2 = await db.execute(
+                "UPDATE maint_checkpoint_done SET result='OK' "
+                "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[]) "
+                "AND (result IS NULL OR result='' OR lower(result) IN ('done','pending'))",
+                target, norm_ids)
+            try:
+                normalized = int(str(r2).split()[-1])
+            except Exception:
+                normalized = 0
         # Regenerate each machine's stored OneDrive PM report so it now shows every
         # checkpoint OK / status Completed (overwrites the same per-day file). Best-effort.
         for it in items:
             try:
                 await _file_pm_report(it.get("asset_code"), it.get("asset_name"),
                                       it.get("checklist"), None,
-                                      (it.get("assignees") or ["—"])[0], [],
+                                      (it.get("assignees") or ["-"])[0], [],
                                       it.get("checklist_id"),
                                       location=it.get("asset_location") or "", when=done_at)
+                reports += 1
             except Exception:
                 pass
     if pdf:
@@ -4238,13 +4259,16 @@ async def mark_daily_done(token: str = Query(default=""),
     slim = [{k: v for k, v in it.items() if k != "checkpoints"} for it in items]
     if not confirm:
         return _json({"date": target, "mode": "preview (nothing written)",
-                      "machines_overdue": len(items),
-                      "checkpoints_to_mark_done": len(to_insert),
-                      "note": "add &confirm=1 to record as completed; add &confirm=1&pdf=1 for the PDF",
+                      "machines": len(items),
+                      "checkpoints_pending_to_mark": len(to_insert),
+                      "note": "add &confirm=1 to record as completed (OK) + regenerate OneDrive "
+                              "reports; add &confirm=1&pdf=1 for the PDF; add "
+                              "&assets=M/C-005,M/C-006 to target specific machines",
                       "items": slim})
-    return _json({"date": target, "mode": "APPLIED - recorded as completed",
+    return _json({"date": target, "mode": "APPLIED - recorded as completed (OK)",
                   "machines": len(items), "checkpoints_marked_done": marked,
-                  "items": slim})
+                  "checkpoints_normalised_to_ok": normalized,
+                  "onedrive_reports_generated": reports, "items": slim})
 
 
 @router.get("/board-debug")
