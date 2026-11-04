@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v57-daily-done-ok-regen"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v58-daily-done-ok-clean"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4225,7 +4225,7 @@ async def mark_daily_done(token: str = Query(default=""),
         for cp_id, emp in to_insert:
             res = await db.execute(
                 "INSERT INTO maint_checkpoint_done (checkpoint_id, emp_id, period_key, done_at, result, note) "
-                "VALUES ($1,$2,$3,$4,'OK','marked complete (admin)') "
+                "VALUES ($1,$2,$3,$4,'OK','') "
                 "ON CONFLICT (checkpoint_id, period_key) DO NOTHING",
                 cp_id, emp, target, done_at)
             if str(res).strip().endswith("1"):
@@ -4234,9 +4234,10 @@ async def mark_daily_done(token: str = Query(default=""),
         # results) WITHOUT overwriting a genuine 'Not OK' inspection result.
         if norm_ids:
             r2 = await db.execute(
-                "UPDATE maint_checkpoint_done SET result='OK' "
+                "UPDATE maint_checkpoint_done SET result='OK', note='' "
                 "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[]) "
-                "AND (result IS NULL OR result='' OR lower(result) IN ('done','pending'))",
+                "AND (result IS NULL OR result='' OR lower(result) IN ('done','pending') "
+                "     OR note = 'marked complete (admin)')",
                 target, norm_ids)
             try:
                 normalized = int(str(r2).split()[-1])
