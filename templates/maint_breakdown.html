@@ -292,11 +292,12 @@ function tableRaised(rows){
   return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
 function tableAssigned(rows){
   if(!rows.length)return '<div class="wo-empty">No work orders assigned to you.</div>';
+  // Close is always shown (desktop + mobile) so the assignee can close an open work order
+  // or update the Action Taken on one already closed; Delete stays alongside.
   var body=rows.map(function(b,i){
-    var isOpen=b.status==='open';
     return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)
       +'<td data-l="Action Taken">'+esc(b.resolution||'—')+'</td>'
-      +(isOpen?closeDelCell(b.id):delCell(b.id))+'</tr>';}).join('');
+      +closeDelCell(b.id)+'</tr>';}).join('');
   return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th>Action Taken</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
 /* admin view — unchanged original single list (kept until the admin layout is approved) */
 function adminList(ls){
