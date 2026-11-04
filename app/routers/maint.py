@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v70-regen-diagnostics"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v71-reconcile-report"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3104,6 +3104,70 @@ async def breakdown_regen_pdf(token: str = Query(default=""), id: int = Query(de
         except Exception as e:
             out.append({"id": bid, "ok": False, "reason": str(e)[:160]})
     return _json({"count": len(out), "regenerated": out})
+
+
+@router.get("/reconcile")
+async def reconcile_migration(token: str = Query(default=""), emp: dict = Depends(current_employee)):
+    """Migration-loss report: find records whose OneDrive PDF exists but whose row is
+    MISSING from the current database. Breakdown PDFs carry the DB id in the file name
+    (..._bm_<id>.pdf); coil inward PDFs carry the batch (<batch>_(date)_Inward.pdf). We
+    list those PDFs and check each id/batch against the DB. Admin or ?token=AGENT_TOKEN.
+    Open qms.bharatsteels.in/maint/reconcile?token=<AGENT_TOKEN>."""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    import re as _re
+    tok = await graph.get_token()
+
+    # ---- breakdowns: Maintenance/Reports/<machine>/Breakdown Maintenance/<date>_<code>_bm_<id>.pdf
+    base = f"{ONEDRIVE_BASE}/Maintenance/Reports"
+    bd_ids, bd_err = set(), None
+    try:
+        machines = [m for m in await graph.list_children(tok, base) if m.get("is_folder")]
+
+        async def _scan(m):
+            found = set()
+            for f in await graph.list_children(tok, f"{base}/{m['name']}/Breakdown Maintenance"):
+                mm = _re.search(r"_bm_(\d+)\.pdf$", f.get("name") or "", _re.I)
+                if mm:
+                    found.add(int(mm.group(1)))
+            return found
+        for res in await asyncio.gather(*[_scan(m) for m in machines], return_exceptions=True):
+            if isinstance(res, set):
+                bd_ids |= res
+    except Exception as e:
+        bd_err = str(e)[:150]
+    bd_missing = []
+    if bd_ids:
+        have = {r["id"] for r in await db.fetch(
+            "SELECT id FROM maint_breakdowns WHERE id = ANY($1::int[])", list(bd_ids))}
+        bd_missing = sorted(bd_ids - have)
+
+    # ---- coils: Inward/PDF/<batch>_(date)_Inward.pdf
+    coil_batches, coil_err = {}, None
+    try:
+        for f in await graph.list_children(tok, f"{ONEDRIVE_BASE}/Inward/PDF"):
+            nm = f.get("name") or ""
+            if nm.lower().endswith(".pdf") and "_(" in nm:
+                b = nm.split("_(")[0].strip()
+                if b:
+                    coil_batches.setdefault(b, nm)
+    except Exception as e:
+        coil_err = str(e)[:150]
+    coil_missing = []
+    if coil_batches:
+        have = {(r["batch_number"] or "").strip() for r in await db.fetch(
+            "SELECT batch_number FROM coil_inward WHERE batch_number = ANY($1::text[])",
+            list(coil_batches.keys()))}
+        coil_missing = sorted([b for b in coil_batches if b not in have])
+
+    return _json({
+        "note": "missing = PDF exists in OneDrive but the row is absent in the current database (migration loss)",
+        "breakdowns": {"onedrive_pdfs": len(bd_ids), "missing_count": len(bd_missing),
+                       "missing_ids": bd_missing, "error": bd_err},
+        "coils": {"onedrive_pdfs": len(coil_batches), "missing_count": len(coil_missing),
+                  "missing_batches": coil_missing, "error": coil_err},
+    })
 
 
 def _require_admin(emp: dict):
