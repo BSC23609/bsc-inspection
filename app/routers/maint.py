@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v64-overdue-report-datetime"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v65-due-window-guard"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4541,6 +4541,9 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
     # quarterly OVERDUE, every open breakdown, and every DUE-TODAY item — assigned or not —
     # rather than the narrower supervisor escalation (which omits assigned due/breakdown).
     allow_overdue = True if force_overdue else (9 <= datetime.now(IST).hour < 19)
+    # The per-person due-today digest is confined to the same plant window 09:00–before
+    # 19:00 IST, so a stray off-hours cron run (GitHub Actions drifts) never sends at night.
+    allow_due = 9 <= datetime.now(IST).hour < 19
     overdue_suppressed = 0
 
     # each person's morning digest keeps preventive and breakdown lists separate
@@ -4730,8 +4733,12 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         rec["result"] = "sent" if ok else f"failed: {detail}"
         (sent if ok else skipped).append(rec)
 
-    # due digests (morning run) — preventive and breakdown kept in separate variables
-    if kind in ("due", "all"):
+    # due digests — preventive and breakdown kept in separate variables. Held outside the
+    # 09:00–before 19:00 IST window so no reminder goes out at night.
+    if kind in ("due", "all") and not allow_due and due_by_assignee:
+        skipped.append({"kind": "due-digest", "recipients": len(due_by_assignee),
+                        "result": "skipped: outside 09:00–19:00 IST window"})
+    elif kind in ("due", "all") and allow_due:
         for aid, g in due_by_assignee.items():
             pm_list = _join_items(g["pm"])
             bd_list = _join_items(g["bd"])
