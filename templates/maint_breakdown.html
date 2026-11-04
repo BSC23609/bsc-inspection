@@ -292,8 +292,12 @@ function tableRaised(rows){
   return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
 function tableAssigned(rows){
   if(!rows.length)return '<div class="wo-empty">No work orders assigned to you.</div>';
-  var body=rows.map(function(b,i){return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)+closeDelCell(b.id)+'</tr>';}).join('');
-  return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
+  var body=rows.map(function(b,i){
+    var isOpen=b.status==='open';
+    return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)
+      +'<td data-l="Action Taken">'+esc(b.resolution||'—')+'</td>'
+      +(isOpen?closeDelCell(b.id):delCell(b.id))+'</tr>';}).join('');
+  return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th>Action Taken</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
 /* admin view — unchanged original single list (kept until the admin layout is approved) */
 function adminList(ls){
   if(!ls.length)return '<div class="empty">No work orders raised.</div>';
@@ -321,7 +325,7 @@ async function bdLoad(){var box=document.getElementById('bd_wrap');box.innerHTML
   if(d.is_admin){
     html=adminList(d.all||[]);   // admins keep the original single list, unchanged
   }else{
-    var raised=openOnly(d.raised),asg=openOnly(d.assigned);
+    var raised=openOnly(d.raised),asg=(d.assigned||[]);   // assigned-to keeps recent closed so Action Taken shows
     html='<div class="wo-sec"><h3>Assigned by me <span class="wo-count">'+raised.length+'</span></h3>'+tableRaised(raised)+'</div>'
         +'<div class="wo-sec"><h3>Assigned to me <span class="wo-count">'+asg.length+'</span></h3>'+tableAssigned(asg)+'</div>';
   }
