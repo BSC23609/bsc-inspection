@@ -197,9 +197,11 @@ async function sLoad(){var h=document.getElementById('s_rows');h.innerHTML='<div
 function freqText(x){var f=(x.freq_type||'').toLowerCase();var map={daily:'Daily',weekly:'Weekly',monthly:'Monthly',quarterly:'Quarterly'};
   var base=map[f]||(x.freq_days?('every '+x.freq_days+'d'):'—');
   if((f==='monthly'||f==='quarterly')&&x.day_of_month)base+=' · day '+x.day_of_month;return base;}
+// round running-hours for display: 1.3000000000000004408... -> "1.3", 25 -> "25"
+function fmtHrs(n){n=Number(n);if(!isFinite(n))return '0';return String(Math.round(n*100)/100);}
 function meterText(x){if(x.hours_interval){var tgt=Number(x.last_done_hours||0)+Number(x.hours_interval);
-    return esc(x.asset_hours!=null?x.asset_hours:0)+' / '+tgt+' hrs';}
-  return x.asset_hours!=null?esc(x.asset_hours)+' hrs':'—';}
+    return esc(fmtHrs(x.asset_hours!=null?x.asset_hours:0))+' / '+esc(fmtHrs(tgt))+' hrs';}
+  return x.asset_hours!=null?esc(fmtHrs(x.asset_hours))+' hrs':'—';}
 function dueBadge(x){if(!x.active)return '<span class="badge b-off">Paused</span>';
   if(x.overdue)return '<span class="badge b-over">Overdue</span>';if(x.due)return '<span class="badge b-due">Due</span>';return '<span class="badge b-ok">OK</span>';}
 function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.getElementById('s_dueonly').checked;
