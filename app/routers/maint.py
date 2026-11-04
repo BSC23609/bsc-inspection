@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v63-workorder-two-tables"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v64-overdue-report-datetime"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4810,7 +4810,9 @@ async def overdue_report_png(token: str = Query(default="")):
         bd = data.get("overdue_bd") or []
     except Exception:
         pm, bd = [], []
-    tdisp = datetime.now(IST).strftime("%d-%m-%Y")
+    # date AND time the report is generated (= when WhatsApp fetches it to send), so each
+    # overdue report carries the exact moment it went out, e.g. "04-11-2026 03:12 PM".
+    tdisp = datetime.now(IST).strftime("%d-%m-%Y %I:%M %p")
     png = overdue_img.build_overdue_png(tdisp, pm, bd)
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "no-store, max-age=0",
