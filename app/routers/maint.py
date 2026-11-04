@@ -44,7 +44,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v59-overdue-table-msg"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v60-overdue-report-msg"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4396,28 +4396,36 @@ def _numbered(items, cap=1000):
     return SEP.join(out) if out else "—"
 
 
-def _overdue_table(items, bd=False, cap=1500):
-    """Stacked 'table' for the WhatsApp overdue digest — one block per machine with
-    Date / Machine / Category / Assigned / Status on their own lines. Uses U+2028 line
-    separators: WhatsApp renders them as line breaks and they survive _safe_param
-    (which only strips \\r\\n\\t). Returns '—' when empty."""
+def _overdue_table(items, bd=False, cap=1800):
+    """Report-style 'table' for the WhatsApp overdue digest (admins only) — one numbered
+    block per machine carrying S.No, Date, Machine Name, Category and Assigned To, laid
+    out like the Maintenance Board. Uses U+2028 line separators: WhatsApp renders them as
+    line breaks and they survive _safe_param (which only strips \\r\\n\\t). '—' when empty."""
     LS = " "
     if not items:
         return "—"
+
+    def _cat(c):
+        c = (c or "").lower()
+        if "quarter" in c:
+            return "Quarterly Maintenance"
+        if "daily" in c:
+            return "Daily Maintenance"
+        return (c.title() or "-") if c else "-"
+
     blocks, used = [], 0
     for i, it in enumerate(items, 1):
-        if isinstance(it, str):   # safety — shouldn't happen, but never crash a reminder
+        if isinstance(it, str):   # safety — never crash a reminder
             blocks.append(f"{i}) {it}")
             continue
-        machine = ((it.get("code") or "").strip() + "  " + (it.get("name") or "").strip()).strip() or "—"
-        l1 = f"{i}) {machine}"
-        if bd:
-            l2 = f"Category: Breakdown  |  Status: {it.get('status') or 'Open'}"
-            l3 = f"Problem: {it.get('prob') or '-'}  |  Assigned: {it.get('who') or '-'}"
-        else:
-            l2 = f"Date: {it.get('date') or '-'}  |  Category: {it.get('cat') or '-'}"
-            l3 = f"Assigned: {it.get('who') or '-'}  |  Status: {it.get('status') or '-'}"
-        block = LS.join([l1, l2, l3])
+        machine = ((it.get("code") or "").strip() + " " + (it.get("name") or "").strip()).strip() or "—"
+        date = it.get("date") or "-"
+        who = it.get("who") or "-"
+        cat = "Breakdown" if bd else _cat(it.get("cat"))
+        lines = [f"{i}) {date}", f"   {machine}", f"   {cat}  |  {who}"]
+        if bd and (it.get("prob") or "").strip():
+            lines.append(f"   Problem: {it.get('prob')}")
+        block = LS.join(lines)
         if used + len(block) + 2 > cap:
             blocks.append(f"…and {len(items) - i + 1} more")
             break
@@ -4596,10 +4604,12 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
     for b in await _open_breakdowns():
         label = (str(b.get("asset_code") or "") + " " + str(b.get("asset_name") or "")).strip() or "—"
         prob = (b.get("problem") or "").strip() or "—"
+        _braised = b.get("raised_at")
+        bdate = _braised.astimezone(IST).strftime("%d-%b-%Y") if isinstance(_braised, datetime) else "-"
         aids = b.get("assignees") or ([b["assignee_emp_id"]] if b.get("assignee_emp_id") else [])
         if not aids:
             sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
-                           "prob": prob, "who": "Unassigned", "status": "Open"})
+                           "prob": prob, "who": "Unassigned", "status": "Open", "date": bdate})
             continue
         for aid in aids:
             if aid in on_leave:
@@ -4611,7 +4621,7 @@ async def _run_reminders(dry: bool = False, kind: str = "all") -> dict:
                 _bucket(aid, who, mob, "bd", f"{label} - {prob}")
             else:
                 sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
-                               "prob": prob, "who": who, "status": "Open"})
+                               "prob": prob, "who": who, "status": "Open", "date": bdate})
 
     sent, skipped = [], []
 
