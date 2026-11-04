@@ -294,19 +294,32 @@ function tableAssigned(rows){
   if(!rows.length)return '<div class="wo-empty">No work orders assigned to you.</div>';
   var body=rows.map(function(b,i){return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)+closeDelCell(b.id)+'</tr>';}).join('');
   return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
-function tableAll(rows){
-  if(!rows.length)return '<div class="wo-empty">No open work orders.</div>';
-  var body=rows.map(function(b,i){return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)
-    +'<td data-l="Raised By">'+esc(b.reported_by||'—')+'</td>'
-    +'<td data-l="Assigned To">'+esc(whoOf(b))+'</td>'
-    +closeDelCell(b.id)+'</tr>';}).join('');
-  return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th>Raised By</th><th>Assigned To</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
+/* admin view — unchanged original single list (kept until the admin layout is approved) */
+function adminList(ls){
+  if(!ls.length)return '<div class="empty">No work orders raised.</div>';
+  return ls.map(function(b){var mac=macOf(b);
+    var isOpen=b.status==='open';var ph=b.photos;if(typeof ph==='string'){try{ph=JSON.parse(ph);}catch(e){ph=[];}}var np=(ph&&ph.length)||0;
+    var who=whoOf(b);
+    var cz=b.close_causes;if(typeof cz==='string'){try{cz=JSON.parse(cz);}catch(e){cz=[];}}
+    var causeStr=(cz&&cz.length)?cz.join(', '):'';
+    var meta='Raised '+fmtdt(b.raised_at)+' by '+esc(b.reported_by||'—')+' · '+esc(who)
+      +(b.remarks?(' · '+esc(b.remarks)):'')+(np?(' · '+np+' photo(s)'):'')
+      +(isOpen?'':(' · closed '+fmtdt(b.closed_at)+(b.closed_by?(' by '+esc(b.closed_by)):'')+(b.resolution?(' · action: '+esc(b.resolution)):'')+(causeStr?(' · cause: '+esc(causeStr)):'')));
+    var acts='<div class="acts">'
+      +(isOpen?('<a class="act-close" onclick="openClose('+b.id+')">Close</a>'):'')
+      +(IS_ADMIN?('<a class="act-del" onclick="bdDelete('+b.id+')">Delete</a>'):'')
+      +'</div>';
+    var woLbl=(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0)?'Unscheduled PM':'Breakdown';
+    return '<div class="bd-item" id="bd-row-'+b.id+'"><div class="mac">'+esc(mac)+'<div><span class="chip '+(isOpen?'open':'closed')+'">'+(isOpen?'OPEN':'CLOSED')+'</span>'
+      +'<span class="tchip" style="background:#e7f0fb;color:#1f3b5b">'+esc(woLbl)+'</span>'
+      +(b.btype?('<span class="tchip">'+esc(b.btype)+'</span>'):'')+'</div></div>'
+      +'<div class="pr">'+esc(b.problem||'—')+'<div class="meta">'+meta+'</div></div>'
+      +acts+'</div>';}).join('');}
 async function bdLoad(){var box=document.getElementById('bd_wrap');box.innerHTML='<div class="empty">Loading…</div>';
   var d;try{d=await (await fetch('/maint/breakdowns/list',{cache:'no-store'})).json();}catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
   var html='';
   if(d.is_admin){
-    var all=openOnly(d.all);
-    html='<div class="wo-sec"><h3>All work orders <span class="wo-count">'+all.length+'</span></h3>'+tableAll(all)+'</div>';
+    html=adminList(d.all||[]);   // admins keep the original single list, unchanged
   }else{
     var raised=openOnly(d.raised),asg=openOnly(d.assigned);
     html='<div class="wo-sec"><h3>Assigned by me <span class="wo-count">'+raised.length+'</span></h3>'+tableRaised(raised)+'</div>'
