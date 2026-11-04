@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v65-due-window-guard"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v66-hard-window-guard"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -4797,6 +4797,19 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
     if not AGENT_TOKEN or token != AGENT_TOKEN:
         raise HTTPException(401, "bad token")
     k = kind if kind in ("due", "overdue", "all") else "all"
+    # HARD WINDOW GUARD — the single chokepoint that makes off-hours sends impossible.
+    # GitHub Actions can execute a scheduled run hours late (even at night), so a real
+    # (non-dry) run outside 09:00–before 19:00 IST sends NOTHING AT ALL and returns early,
+    # before any reminder type is evaluated. This covers every current and future reminder
+    # type on this endpoint; the per-digest allow_due/allow_overdue checks remain as backup.
+    # &dry=1 previews are allowed any time for testing.
+    now_ist = datetime.now(IST)
+    if not bool(dry) and not (9 <= now_ist.hour < 19):
+        return _json({"today": _today().isoformat(), "sent": [],
+                      "skipped": [{"kind": k, "result":
+                                   f"skipped: outside 09:00–19:00 IST window (now {now_ist.strftime('%H:%M')} IST)"}],
+                      "window_blocked": True,
+                      "counts": {"sent": 0, "skipped": 1}})
     return _json(await _run_reminders(dry=bool(dry), kind=k))
 
 
