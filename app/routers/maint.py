@@ -4455,7 +4455,7 @@ async def _overdue_reminder_enabled() -> bool:
 
 
 async def _run_reminders(dry: bool = False, kind: str = "all",
-                         force_overdue: bool = False) -> dict:
+                         force_overdue: bool = False, board_mode: bool = False) -> dict:
     await ensure_tables()
     await _refresh_holidays()
     today = _today()
@@ -4476,6 +4476,9 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
     # supervisor escalation.
     # force_overdue=True ignores the time window — used when rendering the on-demand
     # overdue PNG (/maint/overdue-report.png), so the image is complete whenever fetched.
+    # board_mode=True makes sup_pm/sup_bd the COMPLETE board for that PNG: every daily and
+    # quarterly OVERDUE, every open breakdown, and every DUE-TODAY item — assigned or not —
+    # rather than the narrower supervisor escalation (which omits assigned due/breakdown).
     allow_overdue = True if force_overdue else (9 <= datetime.now(IST).hour < 19)
     overdue_suppressed = 0
 
@@ -4572,6 +4575,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
             else:  # only today's work pending -> DUE TODAY
                 if aid and aid in on_leave:
                     continue
+                if board_mode:  # full board PNG: show every due-today item, assigned or not
+                    sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
+                                   "cat": task, "who": assignee if aid else "Unassigned",
+                                   "date": tdisp, "status": "Due today"})
                 elif aid and mobile:
                     _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
                 else:
@@ -4605,6 +4612,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         else:  # due today
             if aid and aid in on_leave:
                 continue  # on leave — not flagged to the supervisor's overdue alert
+            if board_mode:  # full board PNG: show every due-today item, assigned or not
+                sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
+                               "cat": task, "who": assignee if aid else "Unassigned",
+                               "date": tdisp, "status": "Due today"})
             elif aid and mobile:
                 _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
             else:
@@ -4619,6 +4630,13 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         _braised = b.get("raised_at")
         bdate = _braised.astimezone(IST).strftime("%d-%b-%Y") if isinstance(_braised, datetime) else "-"
         aids = b.get("assignees") or ([b["assignee_emp_id"]] if b.get("assignee_emp_id") else [])
+        if board_mode:  # full board PNG: one row per open breakdown, every assignee shown
+            nms = [(emap.get(a) or {}).get("name") for a in aids]
+            nms = [n for n in nms if n]
+            sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
+                           "prob": prob, "who": ", ".join(nms) if nms else "Unassigned",
+                           "status": "Open", "date": bdate})
+            continue
         if not aids:
             sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
                            "prob": prob, "who": "Unassigned", "status": "Open", "date": bdate})
@@ -4726,7 +4744,7 @@ async def overdue_report_png(token: str = Query(default="")):
     if token != OVERDUE_IMG_TOKEN and token != AGENT_TOKEN:
         raise HTTPException(403, "Bad token")
     try:
-        data = await _run_reminders(dry=True, kind="overdue", force_overdue=True)
+        data = await _run_reminders(dry=True, kind="overdue", force_overdue=True, board_mode=True)
         pm = data.get("overdue_pm") or []
         bd = data.get("overdue_bd") or []
     except Exception:
