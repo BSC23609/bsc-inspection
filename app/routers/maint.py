@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v68-breakdown-close-pdf"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v69-breakdown-regen-pdf"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -2506,6 +2506,25 @@ async def _file_breakdown_report(bd: dict, assignee_names: str):
         return None
 
 
+async def _regen_breakdown_pdf(bid: int):
+    """Rebuild the OneDrive breakdown PDF for one work order from its CURRENT DB state
+    (so a work order closed before the on-close regeneration shipped gets its 'pending'
+    PDF replaced with the completed one). Returns the saved path, or None."""
+    bd = await db.fetchrow(
+        "SELECT b.*, a.code AS asset_code, a.name AS asset_name, a.location AS location "
+        "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.id=$1", bid)
+    if not bd:
+        return None
+    bd = dict(bd)
+    aids = _bd_aids(bd)
+    names = []
+    if aids:
+        nm = {r["id"]: (r["name"] or r["emp_no"]) for r in await db.fetch(
+            "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", aids)}
+        names = [nm[i] for i in aids if nm.get(i)]
+    return await _file_breakdown_report(bd, ", ".join(names))
+
+
 _WLOG_TABLE_READY = False
 
 
@@ -3035,25 +3054,46 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
         emp.get("name") or emp.get("emp_no") or "staff", note, closed, action,
         json.dumps(ctypes), json.dumps(ccauses))
     # Regenerate the OneDrive breakdown PDF so it reflects the CLOSED / completed state
-    # (same file name = raised-date + code + id, so it overwrites the earlier "pending"
-    # copy). Awaited, not a background task — Vercel kills post-response work.
+    # (overwrites the earlier "pending" copy). Awaited — Vercel kills post-response work.
     pdf_path = None
     try:
-        bd = await db.fetchrow(
-            "SELECT b.*, a.code AS asset_code, a.name AS asset_name, a.location AS location "
-            "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.id=$1", bid)
-        if bd:
-            bd = dict(bd)
-            aids = _bd_aids(bd)
-            names = []
-            if aids:
-                nm = {r["id"]: (r["name"] or r["emp_no"]) for r in await db.fetch(
-                    "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", aids)}
-                names = [nm[i] for i in aids if nm.get(i)]
-            pdf_path = await _file_breakdown_report(bd, ", ".join(names))
+        pdf_path = await _regen_breakdown_pdf(bid)
     except Exception as e:
         print("[maint] breakdown close PDF regen skipped:", e)
     return {"ok": True, "pdf": pdf_path}
+
+
+@router.get("/breakdown/regen-pdf")
+async def breakdown_regen_pdf(token: str = Query(default=""), id: int = Query(default=0),
+                              ids: str = Query(default=""), days: int = Query(default=7),
+                              emp: dict = Depends(current_employee)):
+    """Rebuild OneDrive breakdown PDFs from the CURRENT database state — fixes PDFs that
+    still show 'pending' because the work order was closed before on-close regeneration
+    shipped. Admin or ?token=AGENT_TOKEN.
+      ?id=30         one work order
+      ?ids=30,34     several
+      (no id/ids)    every breakdown closed in the last <days> days (default 7)."""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    targets = []
+    if id:
+        targets = [id]
+    elif ids.strip():
+        targets = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    else:
+        rows = await db.fetch(
+            "SELECT id FROM maint_breakdowns WHERE status='closed' "
+            "AND closed_at > now() - ($1 * interval '1 day') ORDER BY id", int(days))
+        targets = [r["id"] for r in rows]
+    out = []
+    for bid in targets:
+        try:
+            p = await _regen_breakdown_pdf(bid)
+            out.append({"id": bid, "ok": bool(p), "pdf": p})
+        except Exception as e:
+            out.append({"id": bid, "ok": False, "error": str(e)[:150]})
+    return _json({"count": len(out), "regenerated": out})
 
 
 def _require_admin(emp: dict):
