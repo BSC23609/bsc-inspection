@@ -61,8 +61,8 @@ a.cellbtn{text-decoration:none}
     <span id="b_count" style="font-size:12px;color:var(--muted)"></span>
   </div>
   <div class="mtx-wrap"><table class="mtx">
-    <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Assigned To</th></tr></thead>
-    <tbody id="mtx_rows"><tr><td colspan="5" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
+    <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Status</th><th>Assigned To</th></tr></thead>
+    <tbody id="mtx_rows"><tr><td colspan="6" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
   </table></div>
 </div></div>
 </div>
@@ -103,11 +103,11 @@ async function load(){
   (d.rows||[]).forEach(function(m){
     var mac=((m.code?m.code+' ':'')+(m.name||'')).trim()||'—';
     if(m.daily&&(m.daily.state==='overdue'||m.daily.state==='due'))
-      OV.push({date:m.daily.due,machine:mac,category:'Daily Maintenance',assigned:(m.daily.assignees||[]),sched:m.daily_sched});
+      OV.push({date:m.daily.due,machine:mac,category:'Daily Maintenance',status:(m.daily.state==='overdue'?'Overdue':'Due today'),assigned:(m.daily.assignees||[]),sched:m.daily_sched});
     if(m.quarterly&&(m.quarterly.state==='overdue'||m.quarterly.state==='due'))
-      OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',assigned:(m.quarterly.assignees||[]),sched:m.quarterly_sched});
+      OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',status:(m.quarterly.state==='overdue'?'Overdue':'Due today'),assigned:(m.quarterly.assignees||[]),sched:m.quarterly_sched});
     (m.breakdowns||[]).forEach(function(b){
-      OV.push({date:b.date,machine:mac,category:'Breakdown',assigned:(b.assignees||[]),bd:b.id});
+      OV.push({date:b.date,machine:mac,category:'Breakdown',status:'Overdue',assigned:(b.assignees||[]),bd:b.id});
     });
   });
   OV.sort(function(a,b){return dateKey(a.date)-dateKey(b.date)||a.machine.localeCompare(b.machine);});
@@ -129,9 +129,13 @@ function catBadge(c){
   if(c==='Quarterly Maintenance')return '<span class="badge cat-q">Quarterly Maintenance</span>';
   return '<span class="badge cat-d">Daily Maintenance</span>';
 }
+function statusBadge(s){
+  if(s==='Due today')return '<span class="badge b-due">Due today</span>';
+  return '<span class="badge b-over">Overdue</span>';
+}
 function render(list){
   document.getElementById('b_count').textContent=list.length+' pending';
-  if(!list.length){document.getElementById('mtx_rows').innerHTML='<tr><td colspan="5" style="padding:18px;color:var(--muted)">Nothing overdue or pending today. ✅</td></tr>';return;}
+  if(!list.length){document.getElementById('mtx_rows').innerHTML='<tr><td colspan="6" style="padding:18px;color:var(--muted)">Nothing overdue or pending today. ✅</td></tr>';return;}
   document.getElementById('mtx_rows').innerHTML=list.map(function(r,i){
     var click = r.sched?(' class="rowact" onclick="openComplete('+r.sched+')" title="Complete this work order"')
              : (r.bd?(' class="rowact" onclick="location.href=\'/maint/breakdown\'" title="Close this work order"'):'');
@@ -139,6 +143,7 @@ function render(list){
     return '<tr'+click+'><td>'+(i+1)+'</td><td>'+fmtDue(r.date)+'</td>'
       +'<td><span class="mc">'+esc(r.machine)+'</span></td>'
       +'<td>'+catBadge(r.category)+'</td>'
+      +'<td>'+statusBadge(r.status)+'</td>'
       +'<td>'+asg+'</td></tr>';
   }).join('');
 }
