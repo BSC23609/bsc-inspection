@@ -292,7 +292,7 @@ function tableRaised(rows){
   return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
 function tableAssigned(rows){
   if(!rows.length)return '<div class="wo-empty">No work orders assigned to you.</div>';
-  // Close is always shown (desktop + mobile) so the assignee can close an open work order
+  // Close always shown (desktop + mobile) so the assignee can close an open work order
   // or update the Action Taken on one already closed; Delete stays alongside.
   var body=rows.map(function(b,i){
     return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)
@@ -326,7 +326,7 @@ async function bdLoad(){var box=document.getElementById('bd_wrap');box.innerHTML
   if(d.is_admin){
     html=adminList(d.all||[]);   // admins keep the original single list, unchanged
   }else{
-    var raised=openOnly(d.raised),asg=(d.assigned||[]);   // assigned-to keeps recent closed so Action Taken shows
+    var raised=(d.raised||[]),asg=(d.assigned||[]);   // both keep recent closed so a raised/assigned WO never vanishes after it is closed
     html='<div class="wo-sec"><h3>Assigned by me <span class="wo-count">'+raised.length+'</span></h3>'+tableRaised(raised)+'</div>'
         +'<div class="wo-sec"><h3>Assigned to me <span class="wo-count">'+asg.length+'</span></h3>'+tableAssigned(asg)+'</div>';
   }
