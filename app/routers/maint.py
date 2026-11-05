@@ -617,6 +617,16 @@ async def ensure_tables():
                          ("resolution", "TEXT"), ("wo_type", "TEXT"),
                          ("close_types", "JSONB"), ("close_causes", "JSONB")):
             await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
+        # Self-heal the status column: older / migration-restored rows can carry a blank,
+        # NULL or odd-cased status ('Open', ' open ', 'OPEN'), which made the Close button
+        # never render (it only showed when status was exactly 'open') — so those work
+        # orders could not be closed. Normalise to clean lowercase; blanks default to open.
+        await db.execute(
+            "UPDATE maint_breakdowns SET status='open' "
+            "WHERE status IS NULL OR btrim(status)=''")
+        await db.execute(
+            "UPDATE maint_breakdowns SET status=lower(btrim(status)) "
+            "WHERE status <> lower(btrim(status))")
         # PM completions can carry a work start/end time (entered on the Complete form),
         # so the Machine History Card shows a span and total hours like a breakdown does.
         for col in ("started_at", "ended_at"):
@@ -2663,8 +2673,9 @@ async def breakdowns_list(emp: dict = Depends(require_employee)):
         "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
         "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
         "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
-        "WHERE b.status='open' OR b.closed_at > now() - interval '7 days' "
-        "ORDER BY (b.status='open') DESC, b.raised_at DESC")
+        "WHERE lower(coalesce(b.status,'open')) <> 'closed' "
+        "OR b.closed_at > now() - interval '7 days' "
+        "ORDER BY (lower(coalesce(b.status,'open')) <> 'closed') DESC, b.raised_at DESC")
     data = [dict(r) for r in rows]
     raised, assigned, all_rows = [], [], []
     for b in data:

@@ -303,7 +303,7 @@ function tableAssigned(rows){
 function adminList(ls){
   if(!ls.length)return '<div class="empty">No work orders raised.</div>';
   return ls.map(function(b){var mac=macOf(b);
-    var isOpen=b.status==='open';var ph=b.photos;if(typeof ph==='string'){try{ph=JSON.parse(ph);}catch(e){ph=[];}}var np=(ph&&ph.length)||0;
+    var isOpen=String(b.status||'').trim().toLowerCase()!=='closed';var ph=b.photos;if(typeof ph==='string'){try{ph=JSON.parse(ph);}catch(e){ph=[];}}var np=(ph&&ph.length)||0;
     var who=whoOf(b);
     var cz=b.close_causes;if(typeof cz==='string'){try{cz=JSON.parse(cz);}catch(e){cz=[];}}
     var causeStr=(cz&&cz.length)?cz.join(', '):'';
