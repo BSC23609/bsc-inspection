@@ -3158,6 +3158,67 @@ async def breakdown_audit(token: str = Query(default=""), code: str = Query(defa
     return _json({"count": len(out), "showing_on_board": open_board, "breakdowns": out})
 
 
+@router.get("/breakdown/cleanup")
+async def breakdown_cleanup(token: str = Query(default=""), ids: str = Query(default=""),
+                            code: str = Query(default=""), action: str = Query(default="close"),
+                            apply: int = Query(default=0),
+                            emp: dict = Depends(current_employee)):
+    """Clear leftover OPEN breakdowns that are stuck on the board (never properly closed,
+    or duplicate test rows). Only ever touches rows that are still open (no close time).
+      close (default): mark them completed so they leave the board.
+      delete:          remove the row entirely (for junk / duplicates).
+    Target by ids or by machine code. Admin or ?token=AGENT_TOKEN. Dry-run unless apply=1.
+      /maint/breakdown/cleanup?token=<AGENT_TOKEN>&code=M/C-002                 (dry run)
+      /maint/breakdown/cleanup?token=<AGENT_TOKEN>&ids=12,13&action=close&apply=1
+      /maint/breakdown/cleanup?token=<AGENT_TOKEN>&ids=12&action=delete&apply=1
+    """
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    action = (action or "close").strip().lower()
+    if action not in ("close", "delete"):
+        raise HTTPException(400, "action must be close or delete")
+    # Only consider rows that are still OPEN (nothing with a close time is touched).
+    where = ["lower(btrim(coalesce(b.status,'open')))='open'", "b.closed_at IS NULL"]
+    args = []
+    id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    if id_list:
+        args.append(id_list); where.append(f"b.id = ANY(${len(args)}::int[])")
+    if code.strip():
+        args.append(code.strip()); where.append(f"upper(a.code)=upper(${len(args)})")
+    if not id_list and not code.strip():
+        raise HTTPException(400, "Pass ids= or code= so nothing is cleared by accident")
+    rows = await db.fetch(
+        "SELECT b.id, a.code AS asset_code, a.name AS asset_name, b.problem, b.raised_at "
+        "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+        "WHERE " + " AND ".join(where) + " ORDER BY b.raised_at DESC", *args)
+    targets = [{"id": r["id"], "machine": ((r["asset_code"] or "") + " " + (r["asset_name"] or "")).strip(),
+                "problem": (r["problem"] or "")[:60], "raised_at": str(r["raised_at"] or "")[:16]}
+               for r in rows]
+    if not apply:
+        return _json({"apply": False, "action": action, "would_affect": len(targets), "targets": targets})
+    done = []
+    for t in targets:
+        bid = t["id"]
+        try:
+            if action == "delete":
+                await db.execute("DELETE FROM maint_breakdowns WHERE id=$1", bid)
+            else:
+                await db.execute(
+                    "UPDATE maint_breakdowns SET status='closed', closed_at=now(), "
+                    "closed_by=COALESCE(closed_by,$2), "
+                    "resolution=COALESCE(NULLIF(btrim(resolution),''),'Closed (admin cleanup)') "
+                    "WHERE id=$1", bid, (emp.get("name") if emp else None) or "admin cleanup")
+                try:
+                    await _regen_breakdown_pdf(bid)
+                except Exception:
+                    pass
+            done.append(t)
+        except Exception as e:
+            t["error"] = str(e)[:160]
+    return _json({"apply": True, "action": action, "affected": len(done), "targets": done})
+
+
 @router.get("/breakdown/regen-pdf")
 async def breakdown_regen_pdf(token: str = Query(default=""), id: int = Query(default=0),
                               ids: str = Query(default=""), days: int = Query(default=7),
