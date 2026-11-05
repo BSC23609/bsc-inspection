@@ -564,17 +564,41 @@ async def s_fix_filenames(token: str = Query(...), apply: int = Query(0),
     # Index existing PDFs by name so we can find item ids to delete old copies.
     children = await graph.list_children(tok, f"{ONEDRIVE_BASE}/Shearing/PDF") if tok else []
     by_name = {c["name"]: c["id"] for c in children if not c.get("is_folder")}
-    planned, changed, errors = [], [], []
+
+    # Pass 1 — assign a UNIQUE final name to every record. If the same batch was
+    # inspected more than once on the same day, both map to the same base name;
+    # keep the earliest (lowest id) on the clean name and give the others a _2/_3
+    # suffix so no PDF is overwritten. Deterministic: order by id ascending.
+    recs = []
     for row in rows:
         r = dict(row)
         data = odsync.as_obj(r.get("payload"), {})
         batch = data.get("batch_number") or r.get("batch_number")
-        correct = _insp_filename(data, r.get("created_at"), batch)
-        cur = r.get("file_name") or ""
+        base = _insp_filename(data, r.get("created_at"), batch)
+        recs.append({"id": r["id"], "data": data, "batch": batch,
+                     "insp_date": str(r.get("log_date") or (data.get("date") or "")[:10]),
+                     "cur": r.get("file_name") or "", "base": base})
+    taken = {}      # base name -> count already assigned
+    final = {}      # id -> unique final name
+    collisions = []
+    for rec in sorted(recs, key=lambda x: x["id"]):
+        b = rec["base"]
+        n = taken.get(b, 0)
+        name = b if n == 0 else f"{b}_{n + 1}"
+        taken[b] = n + 1
+        final[rec["id"]] = name
+        if n > 0:
+            collisions.append({"id": rec["id"], "batch": rec["batch"],
+                               "insp_date": rec["insp_date"], "name": name})
+
+    # Pass 2 — rename the records whose current name isn't the final one.
+    planned, changed, errors = [], [], []
+    for rec in recs:                       # original DESC order for the report
+        correct = final[rec["id"]]
+        cur = rec["cur"]
         if cur == correct:
             continue
-        item = {"id": r["id"], "batch": batch,
-                "insp_date": str(r.get("log_date") or (data.get("date") or "")[:10]),
+        item = {"id": rec["id"], "batch": rec["batch"], "insp_date": rec["insp_date"],
                 "old_name": cur, "new_name": correct}
         planned.append(item)
         if not apply:
@@ -582,18 +606,20 @@ async def s_fix_filenames(token: str = Query(...), apply: int = Query(0),
         if not tok:
             errors.append({**item, "error": "no OneDrive token"}); continue
         try:
-            # Upload the PDF under the correct name, then remove the stale one.
+            # Regenerate the PDF from THIS record and upload under its unique name,
+            # then remove the stale copy (only if nothing else now uses that name).
             await graph.upload_file(
                 tok, f"{ONEDRIVE_BASE}/Shearing/PDF/{correct}.pdf",
-                build_shearing_pdf(data, r["id"], MP_SPEC), "application/pdf")
+                build_shearing_pdf(rec["data"], rec["id"], MP_SPEC), "application/pdf")
             old_id = by_name.get(f"{cur}.pdf") if cur else None
-            if old_id and cur != correct:
+            if old_id and cur != correct and cur not in final.values():
                 await graph.delete_item(tok, old_id)
             await db.execute("UPDATE shearing_inspection SET file_name=$1 WHERE id=$2",
-                             correct, r["id"])
+                             correct, rec["id"])
             changed.append(item)
         except Exception as e:
             errors.append({**item, "error": str(e)[:200]})
     return {"ok": True, "apply": bool(apply), "scanned": len(rows),
             "mismatched": len(planned), "renamed": len(changed),
+            "duplicates_suffixed": collisions,
             "planned": planned, "changed": changed, "errors": errors}
