@@ -39,6 +39,7 @@
 .qcard.ok{border-color:#cfe6c2}.qcard.notok{border-color:#f3c9cb}
 .qt{font-weight:700;font-size:13.5px;margin-bottom:10px}
 .qt .ctag{margin-left:6px;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px}
+.qt .donetag{margin-left:8px;font-size:10.5px;font-weight:700;color:#2f6b27;background:#e2efda;border-radius:20px;padding:2px 9px;white-space:nowrap}
 .ctag.E{background:#ddebf7;color:#1f4e79}.ctag.M{background:#e2efda;color:#375623}.ctag.H{background:#fce4d6;color:#843c0b}
 .opts{display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .opt{display:flex;align-items:center;gap:7px;border:1px solid var(--line-2);border-radius:9px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;color:var(--ink-2)}
@@ -74,6 +75,7 @@ var ITEMS=[],BDS=[],CUR=null;
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function catCls(c){c=(c||'').toLowerCase();return c[0]==='e'?'E':(c[0]==='h'?'H':'M');}
 function fdate(s){if(!s)return'';var d=new Date(s);if(isNaN(d))return String(s).slice(0,10);return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear();}
+function fdatetime(s){if(!s)return'';var d=new Date(s);if(isNaN(d))return String(s).slice(0,16);return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
 function aidsOf(b){var ag=b.assignees;if(typeof ag==='string'){try{ag=JSON.parse(ag);}catch(e){ag=[];}}if(!ag||!ag.length){ag=(b.assignee_emp_id!=null)?[b.assignee_emp_id]:[];}return (ag||[]).map(Number).filter(function(n){return !isNaN(n);});}
 async function boot(){
   try{var r=await fetch('/maint/my/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();ITEMS=d.items||[];}
@@ -151,8 +153,9 @@ async function openForm(cid){
         +'<label class="opt'+(selNo?' sel-no':'')+'"><input type="radio" name="r'+p.id+'" value="Not OK"'+(selNo?' checked':'')+' onchange="mark(this,'+p.id+',0)">Not OK</label></div>';
     }
     var spec=p.spec?('<span class="spec"> · '+esc(p.spec)+'</span>'):'';
+    var doneTag=(p.done&&p.done_at)?('<span class="donetag">✓ Done · '+fdatetime(p.done_at)+'</span>'):'';
     return '<div class="qcard'+(selOk?' ok':(selNo?' notok':''))+'" id="qc'+p.id+'" data-id="'+p.id+'" data-type="'+(isVal?'value':'check')+'">'
-      +'<div class="qt">'+esc(p.text)+'<span class="ctag '+catCls(p.category)+'">'+esc((p.category||'—').slice(0,4))+'</span>'+spec+'</div>'
+      +'<div class="qt">'+esc(p.text)+'<span class="ctag '+catCls(p.category)+'">'+esc((p.category||'—').slice(0,4))+'</span>'+spec+doneTag+'</div>'
       +ctrl
       +'<textarea class="qnote" data-id="'+p.id+'" placeholder="Add a note / remark (optional)">'+esc(p.note||'')+'</textarea></div>';
   }).join('');
@@ -184,7 +187,9 @@ async function submitForm(){
       body:JSON.stringify({checklist_id:CUR.checklist_id,schedule_id:CUR.schedule_id,results:results,
         start_time:(document.getElementById('my_start')||{}).value||'',end_time:(document.getElementById('my_end')||{}).value||''})});
     var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'Failed');
-    toast&&toast('ok','Saved '+(d.saved||0)+' point(s)');closeForm();boot();
+    var msg=d.all_done?('Saved '+(d.saved||0)+' point(s) — checklist complete, report generated')
+                       :('Saved '+(d.saved||0)+' point(s) — waiting for the other assignee(s) to finish');
+    toast&&toast('ok',msg);closeForm();boot();
   }catch(e){toast&&toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}
 }
 document.getElementById('f_scrim').addEventListener('click',function(e){if(e.target===this)closeForm();});

@@ -1977,9 +1977,10 @@ async def my_checklist_form(checklist: int = Query(...), emp: dict = Depends(req
     prev = {}
     if ids:
         for d in await db.fetch(
-                "SELECT checkpoint_id, result, note FROM maint_checkpoint_done "
+                "SELECT checkpoint_id, result, note, done_at FROM maint_checkpoint_done "
                 "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])", pk, ids):
-            prev[d["checkpoint_id"]] = {"result": d["result"], "note": d["note"]}
+            prev[d["checkpoint_id"]] = {"result": d["result"], "note": d["note"],
+                                        "done_at": d["done_at"]}
     pts = []
     for r in rows:
         d = dict(r)
@@ -1987,6 +1988,8 @@ async def my_checklist_form(checklist: int = Query(...), emp: dict = Depends(req
         d["result"] = p.get("result")
         d["note"] = p.get("note")
         d["done"] = r["id"] in prev
+        da = p.get("done_at")
+        d["done_at"] = da.isoformat() if isinstance(da, datetime) else None
         pts.append(d)
     sch = await db.fetchval("SELECT id FROM maint_schedules WHERE checklist_id=$1 AND COALESCE(active,true)=true LIMIT 1", checklist)
     return _json({"checklist": dict(c), "freq": _freq_label(c["name"]),
@@ -2038,6 +2041,10 @@ async def my_checklist_submit(body: dict, emp: dict = Depends(require_employee))
     # assigned and not marked absent has a result), advance the PM schedule's last_done
     # so the task stops showing as due/overdue and no reminder is sent for it again.
     # (For a checklist split across people this only advances once the last person submits.)
+    # Is EVERY assigned, non-absent checkpoint for this period now complete? When a
+    # quarterly (or any) checklist is split across several people, this is true only
+    # once the LAST person submits — which gates both the schedule advance and the PDF.
+    all_done = False
     try:
         all_cps = await db.fetch(
             "SELECT id, assigned_emp_id FROM maint_checkpoints WHERE checklist_id=$1", cid)
@@ -2049,7 +2056,8 @@ async def my_checklist_submit(body: dict, emp: dict = Depends(require_employee))
                 "SELECT checkpoint_id FROM maint_checkpoint_done "
                 "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])",
                 pk, [r["id"] for r in all_cps])}
-            if all(cp_id in done_ids for cp_id in required):
+            all_done = all(cp_id in done_ids for cp_id in required)
+            if all_done:
                 today_d = _today()
                 for sr in await db.fetch(
                         "SELECT id, asset_id FROM maint_schedules "
@@ -2061,17 +2069,21 @@ async def my_checklist_submit(body: dict, emp: dict = Depends(require_employee))
                         today_d, ah, sr["id"])
     except Exception as e:
         print("[maint] my submit schedule-advance skipped:", e)
-    # work-order PDF -> OneDrive/Maintenance/Preventive (in the background so the
-    # save returns immediately; the nightly reconcile backstops any that don't finish)
-    try:
-        a = await db.fetchrow("SELECT code, name, location FROM maint_assets WHERE id=$1", c["asset_id"])
-        asyncio.create_task(_file_pm_report(
-            asset_code=(a["code"] if a else ""), asset_name=(a["name"] if a else ""),
-            checklist=c["name"], doc_no=str(log_id or ""), done_by=done_by,
-            results=results, checklist_id=cid, location=(a["location"] if a else "")))
-    except Exception as e:
-        print("[maint] my submit report skipped:", e)
-    return {"ok": True, "saved": saved, "status": status, "period_key": pk}
+    # Work-order PDF -> OneDrive/Maintenance/Preventive — generated ONLY once every
+    # assigned person has finished their checkpoints for this period (no intermediate
+    # 'pending' PDF). _pm_rows_full then builds it from the full checklist, so it shows
+    # each point, who did it and when. Background so the save returns immediately.
+    if all_done:
+        try:
+            a = await db.fetchrow("SELECT code, name, location FROM maint_assets WHERE id=$1", c["asset_id"])
+            asyncio.create_task(_file_pm_report(
+                asset_code=(a["code"] if a else ""), asset_name=(a["name"] if a else ""),
+                checklist=c["name"], doc_no=str(log_id or ""), done_by=done_by,
+                results=results, checklist_id=cid, location=(a["location"] if a else "")))
+        except Exception as e:
+            print("[maint] my submit report skipped:", e)
+    return {"ok": True, "saved": saved, "status": status,
+            "period_key": pk, "all_done": all_done}
 
 
 # =======================================================================
