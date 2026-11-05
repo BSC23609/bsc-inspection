@@ -2295,7 +2295,11 @@ async def _open_breakdowns():
             "FROM maint_breakdowns b "
             "LEFT JOIN maint_assets a ON a.id=b.asset_id "
             "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
-            "WHERE b.status='open' ORDER BY b.raised_at DESC")
+            # A breakdown counts as OPEN only when it is not closed by EITHER signal:
+            # a clean 'open' status AND no completion time. Once it has a closed_at it
+            # is done and must leave the board, even if the status text is off-case.
+            "WHERE lower(btrim(coalesce(b.status,'open')))='open' AND b.closed_at IS NULL "
+            "ORDER BY b.raised_at DESC")
         return [dict(r) for r in rows]
     except Exception:
         return []
