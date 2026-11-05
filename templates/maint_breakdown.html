@@ -72,6 +72,7 @@
 .wo-table .c-act{white-space:nowrap;text-align:right;width:1%}
 .wo-table .c-act a{font-weight:700;cursor:pointer;margin-left:14px}
 .wo-act-close{color:var(--acc-ink)}.wo-act-del{color:#c23438}
+.wo-closed-tag{display:inline-block;font-size:11px;font-weight:700;color:#2f6b27;background:#e2efda;border-radius:20px;padding:2px 9px;margin-right:8px}
 .wo-empty{color:var(--muted);font-size:12.5px;padding:10px 2px}
 @media(max-width:620px){
   .wo-table thead{display:none}
@@ -282,6 +283,14 @@ function whoOf(b){var ag=b.assignees;if(typeof ag==='string'){try{ag=JSON.parse(
 function openOnly(a){return (a||[]).filter(function(b){return b.status==='open';});}
 function delCell(id){return '<td class="c-act" data-l="Action"><a class="wo-act-del" onclick="bdDelete('+id+')">Delete</a></td>';}
 function closeDelCell(id){return '<td class="c-act" data-l="Action"><a class="wo-act-close" onclick="openClose('+id+')">Close</a><a class="wo-act-del" onclick="bdDelete('+id+')">Delete</a></td>';}
+function isBdOpen(b){return String(b.status||'').trim().toLowerCase()!=='closed' && !b.closed_at;}
+function assignedActCell(b){
+  // Close shows ONLY while the work order is open; once closed it drops to a "Closed"
+  // tag plus Delete, so a closed one can't be re-closed.
+  return isBdOpen(b)
+    ? closeDelCell(b.id)
+    : '<td class="c-act" data-l="Action"><span class="wo-closed-tag">Closed</span><a class="wo-act-del" onclick="bdDelete('+b.id+')">Delete</a></td>';
+}
 function baseCells(b,i){return '<td class="c-sno" data-l="S.No">'+(i+1)+'</td>'
   +'<td data-l="Date">'+fmtdt(b.raised_at)+'</td>'
   +'<td class="c-mac" data-l="Machine Name">'+esc(macOf(b))+'</td>'
@@ -292,12 +301,11 @@ function tableRaised(rows){
   return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
 function tableAssigned(rows){
   if(!rows.length)return '<div class="wo-empty">No work orders assigned to you.</div>';
-  // Close always shown (desktop + mobile) so the assignee can close an open work order
-  // or update the Action Taken on one already closed; Delete stays alongside.
+  // Close shows only while the work order is open; a closed one shows a "Closed" tag.
   var body=rows.map(function(b,i){
     return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)
       +'<td data-l="Action Taken">'+esc(b.resolution||'—')+'</td>'
-      +closeDelCell(b.id)+'</tr>';}).join('');
+      +assignedActCell(b)+'</tr>';}).join('');
   return '<table class="wo-table"><thead><tr><th>S.No</th><th>Date</th><th>Machine Name</th><th>Description</th><th>Action Taken</th><th style="text-align:right">Action</th></tr></thead><tbody>'+body+'</tbody></table>';}
 /* admin view — unchanged original single list (kept until the admin layout is approved) */
 function adminList(ls){
