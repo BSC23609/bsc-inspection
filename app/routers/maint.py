@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-05-v74-restore-all"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-05-v75-restore-open-option"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3192,18 +3192,21 @@ async def breakdown_restore(token: str = Query(default=""), id: int = Query(defa
                             btype: str = Query(default="Mechanical"),
                             raised: str = Query(default=""), closed: str = Query(default=""),
                             action: str = Query(default="Completed"),
+                            status: str = Query(default="closed"),
                             emp: dict = Depends(current_employee)):
-    """Restore a breakdown work order lost in the migration: re-insert the row with its
-    ORIGINAL id as CLOSED and rewrite its OneDrive PDF (so #<id> shows completed). Admin or
-    ?token=AGENT_TOKEN. Dates as YYYY-MM-DDTHH:MM (IST). Example:
-    /maint/breakdown/restore?token=..&id=30&code=M/C-002&btype=Mechanical&who=Velu C
-      &by=Kumar Balakrishnan&problem=Shearing clamp shadblod change work
-      &raised=2026-11-03T15:54&action=Shearing clamp changed"""
+    """Restore / re-state a breakdown work order: re-insert (or update) the row with its
+    ORIGINAL id and rewrite its OneDrive PDF. status=closed (default) marks it completed;
+    status=open marks it an active, unfinished work order (clears the action/closed fields).
+    Admin or ?token=AGENT_TOKEN. Dates as YYYY-MM-DDTHH:MM (IST). Example:
+    /maint/breakdown/restore?token=..&id=30&code=M/C-002&who=Velu C&by=Kumar Balakrishnan
+      &problem=Shearing clamp shadblod change work&raised=2026-11-03T15:54&status=open"""
     await ensure_tables()
     if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
     if not id or not code.strip():
         raise HTTPException(400, "id and code are required")
+    is_closed = "open" not in status.strip().lower()
+    status_val = "closed" if is_closed else "open"
     asset = await db.fetchrow("SELECT id FROM maint_assets WHERE upper(code)=upper($1) LIMIT 1", code.strip())
     asset_id = asset["id"] if asset else None
     aemp = await db.fetchrow("SELECT id FROM employees WHERE lower(name)=lower($1) LIMIT 1",
@@ -3222,23 +3225,24 @@ async def breakdown_restore(token: str = Query(default=""), id: int = Query(defa
         except Exception:
             return default
     raised_at = _pdt(raised, datetime.now(IST))
-    closed_at = _pdt(closed, raised_at)
-    closed_by = who.strip() or by.strip() or "staff"
+    closed_at = _pdt(closed, raised_at) if is_closed else None
+    closed_by = (who.strip() or by.strip() or "staff") if is_closed else None
+    resolution = (action.strip() or "Completed") if is_closed else None
     assignees = json.dumps([aid] if aid else [])
     await db.execute(
         "INSERT INTO maint_breakdowns (id, asset_id, btype, problem, reported_by, reported_by_emp_id, "
         "assignee_emp_id, assignees, status, raised_at, closed_at, closed_by, resolution, wo_type, "
         "close_types, close_causes) "
-        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,'closed',$9,$10,$11,$12,'Breakdown','[]'::jsonb,'[]'::jsonb) "
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,'Breakdown','[]'::jsonb,'[]'::jsonb) "
         "ON CONFLICT (id) DO UPDATE SET asset_id=EXCLUDED.asset_id, btype=EXCLUDED.btype, "
         "problem=EXCLUDED.problem, reported_by=EXCLUDED.reported_by, "
         "reported_by_emp_id=EXCLUDED.reported_by_emp_id, assignee_emp_id=EXCLUDED.assignee_emp_id, "
-        "assignees=EXCLUDED.assignees, status='closed', raised_at=EXCLUDED.raised_at, "
+        "assignees=EXCLUDED.assignees, status=EXCLUDED.status, raised_at=EXCLUDED.raised_at, "
         "closed_at=EXCLUDED.closed_at, closed_by=EXCLUDED.closed_by, resolution=EXCLUDED.resolution, "
         "wo_type='Breakdown'",
         id, asset_id, btype.strip() or "Mechanical", problem.strip() or "--",
-        by.strip() or "—", bid_emp, aid, assignees, raised_at, closed_at,
-        closed_by, action.strip() or "Completed")
+        by.strip() or "—", bid_emp, aid, assignees, status_val, raised_at, closed_at,
+        closed_by, resolution)
     try:
         await db.execute(
             "SELECT setval(pg_get_serial_sequence('maint_breakdowns','id'), "
@@ -3250,7 +3254,7 @@ async def breakdown_restore(token: str = Query(default=""), id: int = Query(defa
         pdf_path = await _regen_breakdown_pdf(id)
     except Exception as e:
         print("[maint] restore PDF regen skipped:", e)
-    return _json({"ok": True, "id": id, "status": "closed", "asset_id": asset_id,
+    return _json({"ok": True, "id": id, "status": status_val, "asset_id": asset_id,
                   "assignee_id": aid, "reported_by_emp_id": bid_emp, "pdf": pdf_path,
                   "warnings": [w for w in [
                       None if asset_id else f"asset code '{code}' not found — asset_id is NULL",
