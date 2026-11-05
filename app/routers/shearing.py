@@ -29,9 +29,10 @@ _ensured = False
 
 
 def _insp_filename(data: dict, created_at, batch) -> str:
-    """Correct OneDrive file name for a shearing record: <batch>_(dd-mm-yyyy)_Shearing
-    using the INSPECTION date the user entered, falling back to the upload time only
-    when the inspection date is missing/unparseable."""
+    """Correct OneDrive file name for a shearing record: <coilno>_dd-mm-yyyy_Shearing
+    (coil/batch number first, then the INSPECTION date the user entered, no
+    parentheses). Falls back to the upload time only when the inspection date is
+    missing/unparseable."""
     d = (data.get("date") or "")[:10]
     try:
         when = datetime.fromisoformat(d).replace(tzinfo=IST) if d else None
@@ -39,7 +40,7 @@ def _insp_filename(data: dict, created_at, batch) -> str:
         when = None
     if when is None:
         when = created_at or datetime.now(timezone.utc)
-    return odsync.legacy_file_name(batch, when, "Shearing")
+    return f"{odsync.legacy_safe(batch)}_{odsync.ist_date_str(when)}_Shearing"
 
 SHEAR_XLSX = f"{ONEDRIVE_BASE}/Shearing/Shearing_Log.xlsx"
 SHEAR_TABLE = "ShearingLog"
@@ -284,11 +285,9 @@ async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: 
     data = odsync.as_obj(r.get("payload"), {})
     if not data.get("timestamp"):
         data["timestamp"] = odsync.iso_z(r.get("created_at") or datetime.now(timezone.utc))
-    old_name = r.get("file_name") or ""
-    # File-name date must be the inspection date the user entered (the "Date" shown
-    # in the app), NOT the upload timestamp. Keep an already-stamped name as-is.
-    fn = old_name if "_(" in old_name else _insp_filename(
-        data, r.get("created_at"), data.get("batch_number"))
+    # File name is always <coilno>_dd-mm-yyyy_Shearing built from the inspection date
+    # the user entered (the "Date" shown in the app), NOT the upload timestamp.
+    fn = _insp_filename(data, r.get("created_at"), data.get("batch_number"))
     token = await st.run("OneDrive sign-in", graph.get_token())
     if token:
         if photos:
