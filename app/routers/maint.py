@@ -4306,12 +4306,15 @@ async def board_matrix(emp: dict = Depends(require_employee)):
         fully, started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent) if clid else (None, None)
         if fully:
             return {"state": "ok", "due": info.get("next_due")}
+        # Quarterly due/overdue follows the ANNUAL SCHEDULE DATE only. A machine shows
+        # 'due' on its scheduled quarterly date and 'overdue' after that date passes
+        # without completion. Partially ticking a checkpoint early must NOT force an
+        # 'overdue' when the scheduled date has not yet arrived (that used to flag every
+        # started-but-incomplete machine regardless of its date).
         if info["overdue"]:
             return {"state": "overdue", "due": info.get("next_due")}
         if info["due"]:
             return {"state": "due", "due": info.get("next_due")}
-        if started:
-            return {"state": "overdue", "due": q_pk.get(clid)}
         nd = _d(info["next_due"]) if info.get("next_due") else None
         if nd and nd <= today + timedelta(days=7):
             return {"state": "upcoming", "due": info.get("next_due")}
@@ -4434,8 +4437,9 @@ async def board_matrix(emp: dict = Depends(require_employee)):
             g = by_asset[r["asset_id"]] = {"asset_id": r["asset_id"], "code": r["acode"] or "",
                                            "name": r["aname"] or "", "daily": None, "daily_sched": None,
                                            "quarterly": None, "quarterly_sched": None, "breakdowns": []}
-        if g.get("quarterly") and g["quarterly"].get("state") == "overdue":
-            continue  # already flagged by its schedule
+        if g.get("quarterly") is not None:
+            continue  # this machine has a quarterly SCHEDULE — trust its date-based
+                      # state; don't override it to overdue from partial activity
         names, seen = [], set()
         for cp in cps:
             a2 = cp.get("assigned_emp_id")
