@@ -30,6 +30,7 @@
 
     <div class="sec">
       <div class="sec-h">{{ icon('truck',15) }} Vehicle &amp; Coil Identity</div>
+      <div class="field"><label>Inspection Date <span class="rq">*</span></label><input type="date" id="c_date"></div>
       <div class="row row-2">
         <div class="field"><label>Vehicle Number <span class="rq">*</span></label><input type="text" id="c_vehicle" placeholder="e.g. TN09AB1234"></div>
         <div class="field"><label>Batch Number <span class="rq">*</span></label><input type="text" id="c_batch" placeholder="Enter batch number"></div>
@@ -291,6 +292,7 @@ async function scanPick(inp){
 function coilReset(){
   scanClearMarks();scanBar('','');
   document.getElementById('c_edit_id').value='';
+  (function(){var n=new Date(),e=document.getElementById('c_date');if(e)e.value=n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());})();
   ['c_vehicle','c_batch','c_thick','c_weight','c_coilid','c_actthick','c_actwidth','c_remarks','c_make','c_grade','c_width','c_dmg','c_insp'].forEach(function(i){var e=document.getElementById(i);if(e)e.value='';});
   ['c_make_oth','c_grade_oth','c_width_oth','c_dmg_oth','c_insp_oth'].forEach(function(i){var e=document.getElementById(i);if(e){e.value='';e.style.display='none';}});
   document.querySelectorAll('.pill.on').forEach(function(p){p.classList.remove('on');});
@@ -341,6 +343,7 @@ function coilRender(){
 }
 function coilEdit(id){var x=CI.filter(function(r){return r.id===id;})[0];if(!x)return;coilReset();
   document.getElementById('c_edit_id').value=x.id;
+  (function(){var e=document.getElementById('c_date');if(e)e.value=String(x.log_date||'').slice(0,10);})();
   document.getElementById('c_vehicle').value=x.vehicle_number||'';document.getElementById('c_batch').value=x.batch_number||'';
   var pg=function(sel,val){var g=document.querySelector('.pills[data-target="'+sel+'"]');if(g)setPill(g,val||'');};
   pg('c_make',x.make_of_coil);pg('c_grade',x.grade);pg('c_width',x.width);pg('c_dmg',x.other_damages);pg('c_insp',x.inspected_by);
@@ -354,7 +357,8 @@ function coilEdit(id){var x=CI.filter(function(r){return r.id===id;})[0];if(!x)r
   window.scrollTo({top:0,behavior:'smooth'});
 }
 async function coilSubmit(){
-  var p={id:v('c_edit_id')||null,log_date:(function(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());})(),
+  var _today=(function(){var n=new Date();return n.getFullYear()+'-'+pad(n.getMonth()+1)+'-'+pad(n.getDate());})();
+  var p={id:v('c_edit_id')||null,log_date:(v('c_date')||_today),
     vehicle_number:v('c_vehicle').trim(),batch_number:v('c_batch').trim(),make_of_coil:pillVal('c_make'),grade:pillVal('c_grade'),
     width:pillVal('c_width'),thickness:num(v('c_thick')),coil_weight:num(v('c_weight')),coil_id:v('c_coilid'),
     actual_thickness:num(v('c_actthick')),actual_width:num(v('c_actwidth')),
