@@ -142,16 +142,23 @@ function rowsHtml(rows){
     }).join('')+'</tbody></table></div>';
 }
 function sectionHtml(freq){
-  var rows=ITEMS.filter(function(x){return x.freq===freq;});
+  // Only show what needs action now — overdue and due today (plus ones done this
+  // period so finished work still appears). Upcoming checks are hidden.
+  var rows=ITEMS.filter(function(x){return x.freq===freq && x.status!=='upcoming';});
+  if(!rows.length)return '';
   var done=rows.filter(function(x){return x.status==='done';}).length;
   var over=rows.filter(function(x){return x.status==='overdue';}).length;
   var head='<div class="my-sec"><h2>'+freq+'</h2><span class="cnt">'
-    +(rows.length?(done+' done · '+over+' overdue · '+rows.length+' total'):'nothing assigned')+'</span></div>';
-  return head+(rows.length?rowsHtml(rows):'<div class="empty">No '+freq.toLowerCase()+' checks assigned to you.</div>');
+    +(done+' done · '+over+' overdue · '+rows.length+' total')+'</span></div>';
+  return head+rowsHtml(rows);
 }
 function render(){
-  // Daily, Quarterly and the user's own breakdowns, each as a labelled section
-  document.getElementById('my_body').innerHTML=sectionHtml('Daily')+sectionHtml('Quarterly')+bdSectionHtml();
+  // Daily, Quarterly and the user's own breakdowns, each as a labelled section.
+  // Only overdue / due-today checks are listed (upcoming hidden).
+  var html=sectionHtml('Daily')+sectionHtml('Quarterly')+bdSectionHtml();
+  var checks=ITEMS.filter(function(x){return x.status!=='upcoming';}).length;
+  if(!checks && !BDS.length){html='<div class="empty">Nothing due right now — you’re all caught up. 🎉</div>';}
+  document.getElementById('my_body').innerHTML=html;
 }
 async function openForm(cid){
   document.getElementById('f_scrim').style.display='flex';
