@@ -4477,9 +4477,12 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                 g["daily"] = _daily_state(s); g["daily_sched"] = s.get("id")
                 g["daily"]["assignees"] = _assignees(clid) or (
                     [s.get("assignee_name")] if s.get("assignee_name") else [])
+                # Per-person status for the SAME day the row represents (the state's due
+                # date) — so an overdue row shows who was pending THAT day, not today.
+                dday = g["daily"].get("due") or cur_due.isoformat()
+                _lv = on_leave if dday == today.isoformat() else set()
                 g["daily"]["assignee_status"] = _assignee_status(
-                    clid, cps_by_cl.get(clid) or [], done_set, cur_due.isoformat(),
-                    absent_set, on_leave)
+                    clid, cps_by_cl.get(clid) or [], done_set, dday, absent_set, _lv)
         elif _is_q(s) and g["quarterly"] is None:
             if is_admin or _mine_cl(s.get("checklist_id"), q_cps) or s.get("assignee_emp_id") == uid:
                 clid = s.get("checklist_id")
