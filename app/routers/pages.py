@@ -37,6 +37,8 @@ NAV_GROUPS = [
     {"key": "maintenance", "title": "Maintenance", "accent": "teal", "icon": "wrench",
      "blurb": "Assets, PM schedules, checklists and machine history.",
      "items": [
+         {"name": "My Checklist", "icon": "clipboard", "desc": "Your assigned daily & quarterly checks and breakdowns.",
+          "href": "/maint/my-checklist", "active_key": "maint_my"},
          {"name": "Analytics", "icon": "gauge", "desc": "MTTR, MTBF, availability, downtime and PM compliance.",
           "href": "/maint/analytics", "active_key": "maint_analytics"},
          {"name": "Maintenance Board", "icon": "gauge", "desc": "Due today, overdue and upcoming PM at a glance.",

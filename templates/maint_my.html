@@ -18,7 +18,9 @@
 .pill{display:inline-block;font-size:11px;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap}
 .pill.overdue{background:#fde0e1;color:#c0241c}.pill.due{background:#fff3d6;color:#8a5a00}
 .pill.done{background:#e2efda;color:#2f6b27}.pill.upcoming{background:#eef1f5;color:#5a6472}
-.openb{border:1px solid var(--acc);color:var(--acc);background:#fff;border-radius:8px;padding:6px 14px;font-size:12.5px;font-weight:700;cursor:pointer}
+.pill.open{background:#fff3d6;color:#8a5a00}.pill.closed{background:#e2efda;color:#2f6b27}
+.tchip{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px;background:#eef2f7;color:#41506a}
+.openb{border:1px solid var(--acc);color:var(--acc);background:#fff;border-radius:8px;padding:6px 14px;font-size:12.5px;font-weight:700;cursor:pointer;text-decoration:none;display:inline-block}
 .openb.done{border-color:var(--line-2);color:var(--muted)}
 .empty{color:var(--muted);text-align:center;padding:26px}
 .my-sec{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:14px 16px 6px;border-top:1px solid var(--line)}
@@ -49,7 +51,7 @@
 .spec{font-size:11px;color:var(--muted);font-weight:500}
 </style>
 
-<div class="page-head"><h1>My Checklist</h1><p>Your assigned machine checks. Open a card to fill it in — mark each point OK or Not OK and add a note. Daily checks reset each day, quarterly each quarter.</p></div>
+<div class="page-head"><h1>My Checklist</h1><p>Your assigned machine checks and breakdowns. Open a card to fill it in — mark each point OK or Not OK and add a note. Daily checks reset each day, quarterly each quarter.</p></div>
 
 <div class="panel">
   <div id="my_body"><div class="empty">Loading…</div></div>
@@ -68,14 +70,37 @@
 {% endblock %}
 {% block scripts %}
 <script>
-var ITEMS=[],CUR=null;
+var ITEMS=[],BDS=[],CUR=null;
 function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
 function catCls(c){c=(c||'').toLowerCase();return c[0]==='e'?'E':(c[0]==='h'?'H':'M');}
 function fdate(s){if(!s)return'';var d=new Date(s);if(isNaN(d))return String(s).slice(0,10);return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear();}
+function aidsOf(b){var ag=b.assignees;if(typeof ag==='string'){try{ag=JSON.parse(ag);}catch(e){ag=[];}}if(!ag||!ag.length){ag=(b.assignee_emp_id!=null)?[b.assignee_emp_id]:[];}return (ag||[]).map(Number).filter(function(n){return !isNaN(n);});}
 async function boot(){
-  var d;try{var r=await fetch('/maint/my/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}d=await r.json();}
+  try{var r=await fetch('/maint/my/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();ITEMS=d.items||[];}
   catch(e){document.getElementById('my_body').innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
-  ITEMS=d.items||[];render();
+  try{var d2=await (await fetch('/maint/breakdowns/list',{cache:'no-store'})).json();
+    var pool=d2.is_admin?(d2.all||[]):(d2.assigned||[]);
+    BDS=d2.is_admin?pool.filter(function(b){return aidsOf(b).indexOf(d2.uid)>=0;}):pool;
+  }catch(e){BDS=[];}
+  render();
+}
+function bdSectionHtml(){
+  var open=BDS.filter(function(b){return (b.status||'')==='open';}).length;
+  var head='<div class="my-sec"><h2>My Breakdowns</h2><span class="cnt">'
+    +(BDS.length?(open+' open · '+BDS.length+' total'):'nothing assigned')+'</span></div>';
+  if(!BDS.length)return head+'<div class="empty">No breakdowns assigned to you.</div>';
+  BDS.sort(function(a,b){return ((b.status==='open')-(a.status==='open'))||(new Date(b.raised_at)-new Date(a.raised_at));});
+  var body='<div class="mtbl-wrap"><table class="mtbl"><thead><tr><th>Machine</th><th class="hide-sm">Type</th><th>Problem</th><th class="hide-sm">Raised</th><th>Status</th><th></th></tr></thead><tbody>'
+    +BDS.map(function(b){
+      var isOpen=(b.status||'')==='open';
+      return '<tr><td><div class="mac">'+esc(b.asset_name||'—')+'</div>'+(b.asset_code?'<div class="code">'+esc(b.asset_code)+'</div>':'')+'</td>'
+        +'<td class="hide-sm"><span class="tchip">'+esc(b.btype||'—')+'</span></td>'
+        +'<td>'+esc((b.problem||'').slice(0,70))+'</td>'
+        +'<td class="hide-sm">'+fdate(b.raised_at)+'</td>'
+        +'<td><span class="pill '+(isOpen?'open':'closed')+'">'+(isOpen?'Open':'Closed')+'</span></td>'
+        +'<td style="text-align:right"><a class="openb" href="/maint/breakdown?id='+b.id+'">Open</a></td></tr>';
+    }).join('')+'</tbody></table></div>';
+  return head+body;
 }
 function rowsHtml(rows){
   var rank={overdue:0,due:1,upcoming:2,done:3};
@@ -102,8 +127,8 @@ function sectionHtml(freq){
   return head+(rows.length?rowsHtml(rows):'<div class="empty">No '+freq.toLowerCase()+' checks assigned to you.</div>');
 }
 function render(){
-  // Daily and Quarterly shown together, each as its own labelled section
-  document.getElementById('my_body').innerHTML=sectionHtml('Daily')+sectionHtml('Quarterly');
+  // Daily, Quarterly and the user's own breakdowns, each as a labelled section
+  document.getElementById('my_body').innerHTML=sectionHtml('Daily')+sectionHtml('Quarterly')+bdSectionHtml();
 }
 async function openForm(cid){
   document.getElementById('f_scrim').style.display='flex';
