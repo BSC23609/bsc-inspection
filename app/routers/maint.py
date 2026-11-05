@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v71-reconcile-report"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-04-v73-breakdown-restore"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3144,30 +3144,118 @@ async def reconcile_migration(token: str = Query(default=""), emp: dict = Depend
         bd_missing = sorted(bd_ids - have)
 
     # ---- coils: Inward/PDF/<batch>_(date)_Inward.pdf
-    coil_batches, coil_err = {}, None
+    # A coil is "present" if its batch is in the new DB table OR in the legacy Inward_Log.xlsx
+    # (the app's coil list merges both). Only batches in NEITHER are genuine migration losses;
+    # the 900+ legacy coils have PDFs but live only in the xlsx and are NOT lost.
+    def _nb(x):
+        return (x or "").strip().upper()
+    coil_batches, coil_err = {}, None   # normalised batch -> original filename
     try:
         for f in await graph.list_children(tok, f"{ONEDRIVE_BASE}/Inward/PDF"):
             nm = f.get("name") or ""
             if nm.lower().endswith(".pdf") and "_(" in nm:
-                b = nm.split("_(")[0].strip()
+                b = _nb(nm.split("_(")[0])
                 if b:
                     coil_batches.setdefault(b, nm)
     except Exception as e:
         coil_err = str(e)[:150]
+    db_batches = legacy_batches = 0
     coil_missing = []
     if coil_batches:
-        have = {(r["batch_number"] or "").strip() for r in await db.fetch(
-            "SELECT batch_number FROM coil_inward WHERE batch_number = ANY($1::text[])",
-            list(coil_batches.keys()))}
-        coil_missing = sorted([b for b in coil_batches if b not in have])
+        present = {_nb(r["batch_number"]) for r in await db.fetch(
+            "SELECT batch_number FROM coil_inward")}
+        db_batches = len(present)
+        try:
+            from .coil import _read_inward_legacy
+            leg = {_nb(r.get("batch_number")) for r in await _read_inward_legacy()}
+            leg.discard("")
+            legacy_batches = len(leg)
+            present |= leg
+        except Exception as e:
+            coil_err = (coil_err or "") + f" | legacy read: {str(e)[:90]}"
+        coil_missing = sorted([b for b in coil_batches if b not in present])
 
     return _json({
-        "note": "missing = PDF exists in OneDrive but the row is absent in the current database (migration loss)",
+        "note": "missing = PDF in OneDrive but the record is in NEITHER the database NOR the legacy Inward_Log.xlsx (genuine migration loss). Legacy coils that live only in the xlsx are excluded.",
         "breakdowns": {"onedrive_pdfs": len(bd_ids), "missing_count": len(bd_missing),
                        "missing_ids": bd_missing, "error": bd_err},
-        "coils": {"onedrive_pdfs": len(coil_batches), "missing_count": len(coil_missing),
+        "coils": {"onedrive_pdfs": len(coil_batches), "in_db": db_batches,
+                  "in_legacy_xlsx": legacy_batches, "missing_count": len(coil_missing),
                   "missing_batches": coil_missing, "error": coil_err},
     })
+
+
+@router.get("/breakdown/restore")
+async def breakdown_restore(token: str = Query(default=""), id: int = Query(default=0),
+                            code: str = Query(default=""), problem: str = Query(default=""),
+                            by: str = Query(default=""), who: str = Query(default=""),
+                            btype: str = Query(default="Mechanical"),
+                            raised: str = Query(default=""), closed: str = Query(default=""),
+                            action: str = Query(default="Completed"),
+                            emp: dict = Depends(current_employee)):
+    """Restore a breakdown work order lost in the migration: re-insert the row with its
+    ORIGINAL id as CLOSED and rewrite its OneDrive PDF (so #<id> shows completed). Admin or
+    ?token=AGENT_TOKEN. Dates as YYYY-MM-DDTHH:MM (IST). Example:
+    /maint/breakdown/restore?token=..&id=30&code=M/C-002&btype=Mechanical&who=Velu C
+      &by=Kumar Balakrishnan&problem=Shearing clamp shadblod change work
+      &raised=2026-11-03T15:54&action=Shearing clamp changed"""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    if not id or not code.strip():
+        raise HTTPException(400, "id and code are required")
+    asset = await db.fetchrow("SELECT id FROM maint_assets WHERE upper(code)=upper($1) LIMIT 1", code.strip())
+    asset_id = asset["id"] if asset else None
+    aemp = await db.fetchrow("SELECT id FROM employees WHERE lower(name)=lower($1) LIMIT 1",
+                             who.strip()) if who.strip() else None
+    aid = aemp["id"] if aemp else None
+    bemp = await db.fetchrow("SELECT id FROM employees WHERE lower(name)=lower($1) LIMIT 1",
+                             by.strip()) if by.strip() else None
+    bid_emp = bemp["id"] if bemp else None
+
+    def _pdt(s, default):
+        s = (s or "").strip()
+        if not s:
+            return default
+        try:
+            return datetime.fromisoformat(s[:16]).replace(tzinfo=IST)
+        except Exception:
+            return default
+    raised_at = _pdt(raised, datetime.now(IST))
+    closed_at = _pdt(closed, raised_at)
+    closed_by = who.strip() or by.strip() or "staff"
+    assignees = json.dumps([aid] if aid else [])
+    await db.execute(
+        "INSERT INTO maint_breakdowns (id, asset_id, btype, problem, reported_by, reported_by_emp_id, "
+        "assignee_emp_id, assignees, status, raised_at, closed_at, closed_by, resolution, wo_type, "
+        "close_types, close_causes) "
+        "VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,'closed',$9,$10,$11,$12,'Breakdown','[]'::jsonb,'[]'::jsonb) "
+        "ON CONFLICT (id) DO UPDATE SET asset_id=EXCLUDED.asset_id, btype=EXCLUDED.btype, "
+        "problem=EXCLUDED.problem, reported_by=EXCLUDED.reported_by, "
+        "reported_by_emp_id=EXCLUDED.reported_by_emp_id, assignee_emp_id=EXCLUDED.assignee_emp_id, "
+        "assignees=EXCLUDED.assignees, status='closed', raised_at=EXCLUDED.raised_at, "
+        "closed_at=EXCLUDED.closed_at, closed_by=EXCLUDED.closed_by, resolution=EXCLUDED.resolution, "
+        "wo_type='Breakdown'",
+        id, asset_id, btype.strip() or "Mechanical", problem.strip() or "--",
+        by.strip() or "—", bid_emp, aid, assignees, raised_at, closed_at,
+        closed_by, action.strip() or "Completed")
+    try:
+        await db.execute(
+            "SELECT setval(pg_get_serial_sequence('maint_breakdowns','id'), "
+            "GREATEST((SELECT COALESCE(MAX(id),1) FROM maint_breakdowns), $1))", id)
+    except Exception as e:
+        print("[maint] restore setval skipped:", e)
+    pdf_path = None
+    try:
+        pdf_path = await _regen_breakdown_pdf(id)
+    except Exception as e:
+        print("[maint] restore PDF regen skipped:", e)
+    return _json({"ok": True, "id": id, "status": "closed", "asset_id": asset_id,
+                  "assignee_id": aid, "reported_by_emp_id": bid_emp, "pdf": pdf_path,
+                  "warnings": [w for w in [
+                      None if asset_id else f"asset code '{code}' not found — asset_id is NULL",
+                      None if (aid or not who.strip()) else f"assignee '{who}' not matched",
+                  ] if w]})
 
 
 def _require_admin(emp: dict):
