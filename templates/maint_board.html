@@ -15,6 +15,12 @@
 .mcard .sp{flex:1}
 .badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
 .b-over{background:#fdecec;color:#c23438}.b-due{background:#fff4e0;color:#9a6508}.b-up{background:var(--acc-soft);color:var(--acc-ink)}
+.asg-list{display:flex;flex-direction:column;gap:4px}
+.asg{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;border-radius:20px;padding:2px 9px;width:fit-content;white-space:nowrap}
+.asg b{font-weight:800}
+.asg.as-done{background:#e2efda;color:#2f6b27}
+.asg.as-pend{background:#fff3d6;color:#8a5a00}
+.asg.as-abs{background:#eef1f5;color:#5a6472}
 .sect-h{font-size:13px;font-weight:700;margin:18px 0 8px;display:flex;align-items:center;gap:8px}
 .scrim{position:fixed;inset:0;background:rgba(8,24,40,.45);display:none;align-items:center;justify-content:center;z-index:60;padding:16px}
 .modal{background:#fff;border-radius:16px;max-width:560px;width:100%;max-height:90vh;overflow:auto;box-shadow:0 20px 60px rgba(0,0,0,.3)}
@@ -103,11 +109,11 @@ async function load(){
   (d.rows||[]).forEach(function(m){
     var mac=((m.code?m.code+' ':'')+(m.name||'')).trim()||'—';
     if(m.daily&&(m.daily.state==='overdue'||m.daily.state==='due'))
-      OV.push({date:m.daily.due,machine:mac,category:'Daily Maintenance',status:(m.daily.state==='overdue'?'Overdue':'Due today'),assigned:(m.daily.assignees||[]),sched:m.daily_sched});
+      OV.push({date:m.daily.due,machine:mac,category:'Daily Maintenance',status:(m.daily.state==='overdue'?'Overdue':'Due today'),assigned:(m.daily.assignees||[]),astatus:(m.daily.assignee_status||[]),sched:m.daily_sched});
     if(m.quarterly&&(m.quarterly.state==='overdue'||m.quarterly.state==='due'))
-      OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',status:(m.quarterly.state==='overdue'?'Overdue':'Due today'),assigned:(m.quarterly.assignees||[]),sched:m.quarterly_sched});
+      OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',status:(m.quarterly.state==='overdue'?'Overdue':'Due today'),assigned:(m.quarterly.assignees||[]),astatus:(m.quarterly.assignee_status||[]),sched:m.quarterly_sched});
     (m.breakdowns||[]).forEach(function(b){
-      OV.push({date:b.date,machine:mac,category:'Breakdown',status:'Overdue',assigned:(b.assignees||[]),bd:b.id});
+      OV.push({date:b.date,machine:mac,category:'Breakdown',status:'Overdue',assigned:(b.assignees||[]),astatus:[],bd:b.id});
     });
   });
   OV.sort(function(a,b){return dateKey(a.date)-dateKey(b.date)||a.machine.localeCompare(b.machine);});
@@ -133,13 +139,23 @@ function statusBadge(s){
   if(s==='Due today')return '<span class="badge b-due">Due today</span>';
   return '<span class="badge b-over">Overdue</span>';
 }
+function asgCell(r){
+  if(r.astatus&&r.astatus.length){
+    return '<div class="asg-list">'+r.astatus.map(function(a){
+      var cls=a.status==='Done'?'as-done':(a.status==='Absent'?'as-abs':'as-pend');
+      var mk=a.status==='Done'?'✓':(a.status==='Absent'?'–':'○');
+      return '<span class="asg '+cls+'"><b>'+mk+'</b> '+esc(a.emp)+'</span>';
+    }).join('')+'</div>';
+  }
+  return (r.assigned&&r.assigned.length)?esc(r.assigned.join(', ')):'<span style="color:var(--muted)">—</span>';
+}
 function render(list){
   document.getElementById('b_count').textContent=list.length+' pending';
   if(!list.length){document.getElementById('mtx_rows').innerHTML='<tr><td colspan="6" style="padding:18px;color:var(--muted)">Nothing overdue or pending today. ✅</td></tr>';return;}
   document.getElementById('mtx_rows').innerHTML=list.map(function(r,i){
     var click = r.sched?(' class="rowact" onclick="openComplete('+r.sched+')" title="Complete this work order"')
              : (r.bd?(' class="rowact" onclick="location.href=\'/maint/breakdown\'" title="Close this work order"'):'');
-    var asg=(r.assigned&&r.assigned.length)?esc(r.assigned.join(', ')):'<span style="color:var(--muted)">—</span>';
+    var asg=asgCell(r);
     return '<tr'+click+'><td>'+(i+1)+'</td><td>'+fmtDue(r.date)+'</td>'
       +'<td><span class="mc">'+esc(r.machine)+'</span></td>'
       +'<td>'+catBadge(r.category)+'</td>'

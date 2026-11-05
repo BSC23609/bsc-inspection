@@ -4441,6 +4441,25 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                 seen.append(a); names.append(emp_name.get(a, "#%s" % a))
         return names
 
+    def _assignee_status(clid, cps, dset, pk, absent, leave=None):
+        """Per-person Done / Pending / Absent for one checklist's checkpoints in a period.
+        A person is Done when every checkpoint assigned to them (and not skipped as absent)
+        is completed; otherwise Pending. Used to show who has finished on the board."""
+        leave = leave or set()
+        out, seen = [], set()
+        for cp in (cps or []):
+            aid = cp.get("assigned_emp_id")
+            if not aid or aid in seen:
+                continue
+            seen.add(aid)
+            if (clid, aid, pk) in absent or aid in leave:
+                st = "Absent"
+            else:
+                theirs = [c for c in cps if c.get("assigned_emp_id") == aid]
+                st = "Done" if (theirs and all((c["id"], pk) in dset for c in theirs)) else "Pending"
+            out.append({"emp": emp_name.get(aid, "#%s" % aid), "status": st})
+        return out
+
     by_asset = {}
     for s in sched_all:
         if not s.get("active"):
@@ -4454,14 +4473,21 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                                  "quarterly": None, "quarterly_sched": None, "breakdowns": []}
         if _is_daily(s) and g["daily"] is None:
             if is_admin or _mine_cl(s.get("checklist_id"), cps_by_cl) or s.get("assignee_emp_id") == uid:
+                clid = s.get("checklist_id")
                 g["daily"] = _daily_state(s); g["daily_sched"] = s.get("id")
-                g["daily"]["assignees"] = _assignees(s.get("checklist_id")) or (
+                g["daily"]["assignees"] = _assignees(clid) or (
                     [s.get("assignee_name")] if s.get("assignee_name") else [])
+                g["daily"]["assignee_status"] = _assignee_status(
+                    clid, cps_by_cl.get(clid) or [], done_set, cur_due.isoformat(),
+                    absent_set, on_leave)
         elif _is_q(s) and g["quarterly"] is None:
             if is_admin or _mine_cl(s.get("checklist_id"), q_cps) or s.get("assignee_emp_id") == uid:
+                clid = s.get("checklist_id")
                 g["quarterly"] = _q_state(s); g["quarterly_sched"] = s.get("id")
-                g["quarterly"]["assignees"] = _assignees(s.get("checklist_id")) or (
+                g["quarterly"]["assignees"] = _assignees(clid) or (
                     [s.get("assignee_name")] if s.get("assignee_name") else [])
+                g["quarterly"]["assignee_status"] = _assignee_status(
+                    clid, q_cps.get(clid) or [], q_done, q_pk.get(clid), q_absent)
 
     for b in await _open_breakdowns():
         b_aids = b.get("assignees") or ([b.get("assignee_emp_id")] if b.get("assignee_emp_id") else [])
