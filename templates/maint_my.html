@@ -100,10 +100,10 @@ function bdSectionHtml(){
     +(BDS.length?(open+' open · '+BDS.length+' total'):'nothing assigned')+'</span></div>';
   if(!BDS.length)return head+'<div class="empty">No breakdowns assigned to you.</div>';
   BDS.sort(function(a,b){return ((b.status==='open')-(a.status==='open'))||(new Date(b.raised_at)-new Date(a.raised_at));});
-  var body='<div class="mtbl-wrap"><table class="mtbl"><thead><tr><th>Machine</th><th class="hide-sm">Type</th><th>Problem</th><th class="hide-sm">Raised</th><th>Status</th><th></th></tr></thead><tbody>'
-    +BDS.map(function(b){
+  var body='<div class="mtbl-wrap"><table class="mtbl"><thead><tr><th style="width:48px">S.No</th><th>Machine</th><th class="hide-sm">Type</th><th>Problem</th><th class="hide-sm">Raised</th><th>Status</th><th></th></tr></thead><tbody>'
+    +BDS.map(function(b,i){
       var isOpen=(b.status||'')==='open';
-      return '<tr><td><div class="mac">'+esc(b.asset_name||'—')+'</div>'+(b.asset_code?'<div class="code">'+esc(b.asset_code)+'</div>':'')+'</td>'
+      return '<tr><td>'+(i+1)+'</td><td><div class="mac">'+esc(b.asset_name||'—')+'</div>'+(b.asset_code?'<div class="code">'+esc(b.asset_code)+'</div>':'')+'</td>'
         +'<td class="hide-sm"><span class="tchip">'+esc(b.btype||'—')+'</span></td>'
         +'<td>'+esc((b.problem||'').slice(0,70))+'</td>'
         +'<td class="hide-sm">'+fdate(b.raised_at)+'</td>'
@@ -122,18 +122,18 @@ function pointsHtml(x){
                               :'<span class="pt-when pend">Pending</span>';
     return '<li class="pt-line">'+mark+'<span class="pt-txt">'+esc(p.text||'')+'</span>'+when+'</li>';
   }).join('');
-  return '<tr class="pts-row"><td colspan="5"><ul class="pt-list">'+lis+'</ul></td></tr>';
+  return '<tr class="pts-row"><td></td><td colspan="5"><ul class="pt-list">'+lis+'</ul></td></tr>';
 }
 function rowsHtml(rows){
   var rank={overdue:0,due:1,upcoming:2,done:3};
   rows.sort(function(a,b){return (rank[a.status]-rank[b.status])||String(a.asset_name).localeCompare(b.asset_name);});
-  return '<div class="mtbl-wrap"><table class="mtbl"><thead><tr><th>Machine</th><th class="hide-sm">Items</th><th class="hide-sm">Next due</th><th>Status</th><th></th></tr></thead><tbody>'
-    +rows.map(function(x){
+  return '<div class="mtbl-wrap"><table class="mtbl"><thead><tr><th style="width:48px">S.No</th><th>Machine</th><th class="hide-sm">Items</th><th class="hide-sm">Next due</th><th>Status</th><th></th></tr></thead><tbody>'
+    +rows.map(function(x,i){
       var lbl={overdue:'Overdue',due:'Due',done:'Done',upcoming:'Upcoming'}[x.status]||x.status;
       var btn=x.status==='done'
         ? '<button class="openb done" onclick="openForm('+x.checklist_id+')">View / redo</button>'
         : '<button class="openb" onclick="openForm('+x.checklist_id+')">Open</button>';
-      return '<tr><td><div class="mac">'+esc(x.asset_name||'—')+'</div>'+(x.asset_code?'<div class="code">'+esc(x.asset_code)+'</div>':'')+'</td>'
+      return '<tr><td>'+(i+1)+'</td><td><div class="mac">'+esc(x.asset_name||'—')+'</div>'+(x.asset_code?'<div class="code">'+esc(x.asset_code)+'</div>':'')+'</td>'
         +'<td class="hide-sm">'+(x.done_n||0)+' / '+x.my_count+'</td>'
         +'<td class="hide-sm">'+(x.next_due?fdate(x.next_due):'—')+'</td>'
         +'<td><span class="pill '+x.status+'">'+lbl+'</span></td>'
