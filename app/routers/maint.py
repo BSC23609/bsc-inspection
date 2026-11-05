@@ -53,7 +53,7 @@ _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
 SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
-MAINT_BUILD = "2026-11-04-v73-breakdown-restore"   # bump on each deploy to confirm Vercel updated
+MAINT_BUILD = "2026-11-05-v74-restore-all"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
 FULL_RESEED_KEY = "full_reseed_from_xlsx_v1"   # one-time: rebuild ALL machines from the Oct-2026 checklist workbook
@@ -3256,6 +3256,149 @@ async def breakdown_restore(token: str = Query(default=""), id: int = Query(defa
                       None if asset_id else f"asset code '{code}' not found — asset_id is NULL",
                       None if (aid or not who.strip()) else f"assignee '{who}' not matched",
                   ] if w]})
+
+
+def _parse_bd_pdf(b: bytes) -> dict:
+    """Extract breakdown fields from one of our generated work-order PDFs."""
+    import io as _io
+    import re as _re
+    from pypdf import PdfReader
+    txt = PdfReader(_io.BytesIO(b)).pages[0].extract_text() or ""
+    lines = [l.strip() for l in txt.splitlines() if l.strip()]
+
+    def after(label):
+        for i, l in enumerate(lines):
+            if l == label and i + 1 < len(lines):
+                return lines[i + 1].strip()
+        return ""
+
+    def block(label, stops):
+        out, started = [], False
+        for l in lines:
+            if not started:
+                if l == label:
+                    started = True
+                continue
+            if any(_re.match(s, l) for s in stops):
+                break
+            out.append(l)
+        return " ".join(out).strip()
+
+    date_pat = r"\d{1,2}\s+\w{3,}\s+\d{4}"
+    asset_field = after("Asset:")
+    code = asset_field.split(" - ")[0].strip() if asset_field else ""
+    st = (after("Status:") or "open").lower()
+    status = "closed" if "clos" in st else "open"
+    action = block("Action taken", [date_pat, r"^pending$", r"^Raised by:$", r"^\d+$"])
+    if action.strip() in ("--", "pending", ""):
+        action = ""
+    con = after("Closed on:")
+    return {"code": code, "status": status,
+            "problem": block("Problem reported", [date_pat, r"^\d+$", r"^Action taken$"]) or "--",
+            "action": action, "raised": after("Raised on:"), "by": after("Raised by:"),
+            "who": after("Assigned to:"), "btype": after("Breakdown type:") or "Mechanical",
+            "closed_on": "" if con in ("--", "") else con}
+
+
+def _parse_dt(s, default):
+    s = (s or "").strip()
+    if not s:
+        return default
+    try:
+        from dateutil import parser as _dtp
+        d = _dtp.parse(s)
+        return d.replace(tzinfo=IST) if d.tzinfo is None else d.astimezone(IST)
+    except Exception:
+        return default
+
+
+@router.get("/breakdown/restore-all")
+async def breakdown_restore_all(token: str = Query(default=""), apply: int = Query(default=0),
+                                emp: dict = Depends(current_employee)):
+    """Restore EVERY breakdown whose OneDrive PDF exists but whose row is missing (migration
+    loss): read each PDF, re-insert the row in the exact state the PDF shows (open stays open,
+    closed stays closed), and regenerate the PDF. Admin or ?token=AGENT_TOKEN.
+    apply=0 (default) is a DRY RUN — shows what it WOULD restore, writes nothing.
+    apply=1 performs the restore. Open qms.bharatsteels.in/maint/breakdown/restore-all?token=.."""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    import re as _re
+    tok = await graph.get_token()
+    base = f"{ONEDRIVE_BASE}/Maintenance/Reports"
+    id_item = {}
+    try:
+        machines = [m for m in await graph.list_children(tok, base) if m.get("is_folder")]
+
+        async def _scan(m):
+            found = {}
+            for f in await graph.list_children(tok, f"{base}/{m['name']}/Breakdown Maintenance"):
+                mm = _re.search(r"_bm_(\d+)\.pdf$", f.get("name") or "", _re.I)
+                if mm and f.get("id"):
+                    found[int(mm.group(1))] = f["id"]
+            return found
+        for res in await asyncio.gather(*[_scan(m) for m in machines], return_exceptions=True):
+            if isinstance(res, dict):
+                id_item.update(res)
+    except Exception as e:
+        return _json({"ok": False, "error": f"scan failed: {str(e)[:150]}"})
+    have = {r["id"] for r in await db.fetch(
+        "SELECT id FROM maint_breakdowns WHERE id = ANY($1::int[])", list(id_item))} if id_item else set()
+    missing = sorted(set(id_item) - have)
+
+    records = []
+    for bid in missing:
+        try:
+            raw = await graph.download_item(tok, id_item[bid])
+            if not raw:
+                records.append({"id": bid, "ok": False, "reason": "could not download PDF"})
+                continue
+            p = _parse_bd_pdf(raw)
+            asset = await db.fetchrow("SELECT id FROM maint_assets WHERE upper(code)=upper($1) LIMIT 1",
+                                      p["code"]) if p["code"] else None
+            asset_id = asset["id"] if asset else None
+            aemp = await db.fetchrow("SELECT id FROM employees WHERE lower(name)=lower($1) LIMIT 1",
+                                     p["who"]) if p["who"] else None
+            aid = aemp["id"] if aemp else None
+            bemp = await db.fetchrow("SELECT id FROM employees WHERE lower(name)=lower($1) LIMIT 1",
+                                     p["by"]) if p["by"] else None
+            bid_emp = bemp["id"] if bemp else None
+            raised_at = _parse_dt(p["raised"], datetime.now(IST))
+            is_closed = p["status"] == "closed"
+            closed_at = _parse_dt(p["closed_on"], raised_at) if is_closed else None
+            rec = {"id": bid, "machine": p["code"], "machine_found": bool(asset_id),
+                   "status": p["status"], "problem": p["problem"],
+                   "assigned_to": p["who"], "assignee_found": bool(aid),
+                   "raised_by": p["by"], "raised_on": p["raised"],
+                   "action_taken": p["action"] or ("—" if is_closed else "(still open)")}
+            if apply:
+                assignees = json.dumps([aid] if aid else [])
+                await db.execute(
+                    "INSERT INTO maint_breakdowns (id, asset_id, btype, problem, reported_by, "
+                    "reported_by_emp_id, assignee_emp_id, assignees, status, raised_at, closed_at, "
+                    "closed_by, resolution, wo_type, close_types, close_causes) "
+                    "VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9,$10,$11,$12,$13,'Breakdown','[]'::jsonb,'[]'::jsonb) "
+                    "ON CONFLICT (id) DO UPDATE SET asset_id=EXCLUDED.asset_id, btype=EXCLUDED.btype, "
+                    "problem=EXCLUDED.problem, reported_by=EXCLUDED.reported_by, "
+                    "reported_by_emp_id=EXCLUDED.reported_by_emp_id, assignee_emp_id=EXCLUDED.assignee_emp_id, "
+                    "assignees=EXCLUDED.assignees, status=EXCLUDED.status, raised_at=EXCLUDED.raised_at, "
+                    "closed_at=EXCLUDED.closed_at, closed_by=EXCLUDED.closed_by, resolution=EXCLUDED.resolution, "
+                    "wo_type='Breakdown'",
+                    bid, asset_id, p["btype"], p["problem"], p["by"] or "—", bid_emp, aid, assignees,
+                    p["status"], raised_at, closed_at,
+                    (p["who"] or p["by"] or "staff") if is_closed else None,
+                    (p["action"] or None) if is_closed else None)
+                await db.execute(
+                    "SELECT setval(pg_get_serial_sequence('maint_breakdowns','id'), "
+                    "GREATEST((SELECT COALESCE(MAX(id),1) FROM maint_breakdowns), $1))", bid)
+                rec["restored"] = True
+                rec["pdf"] = await _regen_breakdown_pdf(bid)
+            records.append(rec)
+        except Exception as e:
+            records.append({"id": bid, "ok": False, "reason": str(e)[:160]})
+    return _json({"mode": ("APPLIED — rows restored" if apply
+                           else "DRY RUN (nothing written). Review, then add &apply=1 to restore."),
+                  "missing_count": len(missing), "missing_ids": missing, "records": records})
 
 
 def _require_admin(emp: dict):
