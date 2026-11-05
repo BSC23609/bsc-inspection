@@ -20,9 +20,26 @@ from ..auth import require_employee
 from ..config import ONEDRIVE_BASE
 from ..pdfgen import build_shearing_pdf
 
+from .. import config as _cfg
+AGENT_TOKEN = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
+
 router = APIRouter(prefix="/shearing", tags=["shearing"])
 IST = ZoneInfo("Asia/Kolkata")
 _ensured = False
+
+
+def _insp_filename(data: dict, created_at, batch) -> str:
+    """Correct OneDrive file name for a shearing record: <batch>_(dd-mm-yyyy)_Shearing
+    using the INSPECTION date the user entered, falling back to the upload time only
+    when the inspection date is missing/unparseable."""
+    d = (data.get("date") or "")[:10]
+    try:
+        when = datetime.fromisoformat(d).replace(tzinfo=IST) if d else None
+    except ValueError:
+        when = None
+    if when is None:
+        when = created_at or datetime.now(timezone.utc)
+    return odsync.legacy_file_name(batch, when, "Shearing")
 
 SHEAR_XLSX = f"{ONEDRIVE_BASE}/Shearing/Shearing_Log.xlsx"
 SHEAR_TABLE = "ShearingLog"
@@ -268,8 +285,10 @@ async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: 
     if not data.get("timestamp"):
         data["timestamp"] = odsync.iso_z(r.get("created_at") or datetime.now(timezone.utc))
     old_name = r.get("file_name") or ""
-    fn = old_name if "_(" in old_name else odsync.legacy_file_name(
-        data.get("batch_number"), r.get("created_at"), "Shearing")
+    # File-name date must be the inspection date the user entered (the "Date" shown
+    # in the app), NOT the upload timestamp. Keep an already-stamped name as-is.
+    fn = old_name if "_(" in old_name else _insp_filename(
+        data, r.get("created_at"), data.get("batch_number"))
     token = await st.run("OneDrive sign-in", graph.get_token())
     if token:
         if photos:
@@ -524,3 +543,57 @@ async def s_pdf_legacy(i: int = Query(...), emp: dict = Depends(require_employee
     return Response(pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="Shearing_{b}.pdf"',
                              "Cache-Control": "no-store"})
+
+
+@router.get("/fix-filenames")
+async def s_fix_filenames(token: str = Query(...), apply: int = Query(0),
+                          limit: int = Query(500)):
+    """One-shot repair: rename existing OneDrive shearing PDFs so the date in the
+    file name matches the INSPECTION date in the app (not the upload date).
+
+    Open /shearing/fix-filenames?token=<AGENT_TOKEN>           -> dry run (lists changes)
+         /shearing/fix-filenames?token=<AGENT_TOKEN>&apply=1   -> actually rename
+    """
+    if token != AGENT_TOKEN:
+        raise HTTPException(403, "bad token")
+    await ensure_table()
+    rows = await db.fetch(
+        "SELECT id, payload, file_name, created_at, batch_number, log_date "
+        "FROM shearing_inspection ORDER BY id DESC LIMIT $1", limit)
+    tok = await graph.get_token()
+    # Index existing PDFs by name so we can find item ids to delete old copies.
+    children = await graph.list_children(tok, f"{ONEDRIVE_BASE}/Shearing/PDF") if tok else []
+    by_name = {c["name"]: c["id"] for c in children if not c.get("is_folder")}
+    planned, changed, errors = [], [], []
+    for row in rows:
+        r = dict(row)
+        data = odsync.as_obj(r.get("payload"), {})
+        batch = data.get("batch_number") or r.get("batch_number")
+        correct = _insp_filename(data, r.get("created_at"), batch)
+        cur = r.get("file_name") or ""
+        if cur == correct:
+            continue
+        item = {"id": r["id"], "batch": batch,
+                "insp_date": str(r.get("log_date") or (data.get("date") or "")[:10]),
+                "old_name": cur, "new_name": correct}
+        planned.append(item)
+        if not apply:
+            continue
+        if not tok:
+            errors.append({**item, "error": "no OneDrive token"}); continue
+        try:
+            # Upload the PDF under the correct name, then remove the stale one.
+            await graph.upload_file(
+                tok, f"{ONEDRIVE_BASE}/Shearing/PDF/{correct}.pdf",
+                build_shearing_pdf(data, r["id"], MP_SPEC), "application/pdf")
+            old_id = by_name.get(f"{cur}.pdf") if cur else None
+            if old_id and cur != correct:
+                await graph.delete_item(tok, old_id)
+            await db.execute("UPDATE shearing_inspection SET file_name=$1 WHERE id=$2",
+                             correct, r["id"])
+            changed.append(item)
+        except Exception as e:
+            errors.append({**item, "error": str(e)[:200]})
+    return {"ok": True, "apply": bool(apply), "scanned": len(rows),
+            "mismatched": len(planned), "renamed": len(changed),
+            "planned": planned, "changed": changed, "errors": errors}
