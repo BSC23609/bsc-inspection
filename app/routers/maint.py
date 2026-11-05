@@ -1927,6 +1927,20 @@ async def my_checklist(emp: dict = Depends(require_employee)):
             "FROM maint_checkpoint_done d JOIN maint_checkpoints p ON p.id=d.checkpoint_id "
             "WHERE p.assigned_emp_id=$1 GROUP BY p.checklist_id, d.period_key", eid):
         donemap[(r["cid"], r["pk"])] = r["n"]
+    # The actual checkpoint points assigned to this person, per checklist, so the list
+    # can show the point descriptions (not just a count), each with its done time.
+    cps_by_cl, cp_ids = {}, []
+    for cp in await db.fetch(
+            "SELECT id, checklist_id, seq, text, category FROM maint_checkpoints "
+            "WHERE assigned_emp_id=$1 ORDER BY seq, id", eid):
+        cps_by_cl.setdefault(cp["checklist_id"], []).append(dict(cp))
+        cp_ids.append(cp["id"])
+    done_cp = {}
+    if cp_ids:
+        for d in await db.fetch(
+                "SELECT checkpoint_id, period_key, result, done_at FROM maint_checkpoint_done "
+                "WHERE checkpoint_id = ANY($1::int[])", cp_ids):
+            done_cp[(d["checkpoint_id"], d["period_key"])] = d
     items = []
     for g in groups:
         g = dict(g)
@@ -1949,12 +1963,22 @@ async def my_checklist(emp: dict = Depends(require_employee)):
         else:
             due = True  # quarterly with no schedule -> due this period
         status = "done" if done else ("overdue" if overdue else ("due" if due else "upcoming"))
+        # the point descriptions assigned to me on this checklist, with done time
+        points = []
+        for cp in cps_by_cl.get(g["checklist_id"], []):
+            dd = done_cp.get((cp["id"], pk))
+            da = dd["done_at"] if dd else None
+            points.append({
+                "text": cp["text"], "category": cp.get("category"),
+                "done": bool(dd),
+                "result": (dd["result"] if dd else None),
+                "done_at": da.isoformat() if isinstance(da, datetime) else None})
         items.append({"checklist_id": g["checklist_id"], "schedule_id": g.get("schedule_id"),
                       "asset_id": g.get("asset_id"), "asset_code": g.get("asset_code"),
                       "asset_name": g.get("asset_name"), "checklist_name": g["checklist_name"],
                       "freq": _freq_label(g["checklist_name"]), "my_count": g["my_count"],
                       "done_n": done_n, "status": status, "next_due": next_due,
-                      "period_key": pk})
+                      "period_key": pk, "points": points})
     return _json({"items": items, "today": today.isoformat(),
                   "me": emp.get("name") or emp.get("emp_no")})
 

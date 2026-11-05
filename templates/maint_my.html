@@ -28,6 +28,14 @@
 .my-sec h2{margin:0;font-size:14px;font-weight:800;letter-spacing:.3px;color:var(--acc-ink)}
 .my-sec .cnt{font-size:12px;color:var(--muted);font-weight:600;margin-left:auto}
 .mtbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+.pts-row td{background:#f8fafc;padding:8px 12px 10px 12px;border-bottom:1px solid var(--line)}
+.pt-list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:5px}
+.pt-line{display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--ink-2)}
+.pt-mark{flex:0 0 auto;width:16px;height:16px;line-height:16px;text-align:center;border-radius:50%;font-size:11px;font-weight:800;background:#eef1f5;color:#8a93a6}
+.pt-mark.done{background:#e2efda;color:#2f6b27}
+.pt-txt{flex:1 1 auto}
+.pt-when{flex:0 0 auto;font-size:11px;font-weight:600;color:#2f6b27;white-space:nowrap}
+.pt-when.pend{color:#8a5a00}
 @media(max-width:620px){.hide-sm{display:none}.mtbl td,.mtbl th{padding:9px 8px}}
 /* popup */
 .scrim{position:fixed;inset:0;background:rgba(8,24,40,.5);display:none;align-items:flex-start;justify-content:center;z-index:70;padding:24px 14px;overflow:auto}
@@ -104,6 +112,18 @@ function bdSectionHtml(){
     }).join('')+'</tbody></table></div>';
   return head+body;
 }
+function pointsHtml(x){
+  var pts=x.points||[];
+  if(!pts.length)return '';
+  var lis=pts.map(function(p){
+    var done=p.done;
+    var mark=done?'<span class="pt-mark done">✓</span>':'<span class="pt-mark">○</span>';
+    var when=(done&&p.done_at)?('<span class="pt-when">'+fdatetime(p.done_at)+(p.result?(' · '+esc(p.result)):'')+'</span>')
+                              :'<span class="pt-when pend">Pending</span>';
+    return '<li class="pt-line">'+mark+'<span class="pt-txt">'+esc(p.text||'')+'</span>'+when+'</li>';
+  }).join('');
+  return '<tr class="pts-row"><td colspan="5"><ul class="pt-list">'+lis+'</ul></td></tr>';
+}
 function rowsHtml(rows){
   var rank={overdue:0,due:1,upcoming:2,done:3};
   rows.sort(function(a,b){return (rank[a.status]-rank[b.status])||String(a.asset_name).localeCompare(b.asset_name);});
@@ -117,7 +137,8 @@ function rowsHtml(rows){
         +'<td class="hide-sm">'+(x.done_n||0)+' / '+x.my_count+'</td>'
         +'<td class="hide-sm">'+(x.next_due?fdate(x.next_due):'—')+'</td>'
         +'<td><span class="pill '+x.status+'">'+lbl+'</span></td>'
-        +'<td style="text-align:right">'+btn+'</td></tr>';
+        +'<td style="text-align:right">'+btn+'</td></tr>'
+        +pointsHtml(x);
     }).join('')+'</tbody></table></div>';
 }
 function sectionHtml(freq){
