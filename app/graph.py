@@ -111,6 +111,22 @@ async def move_item(token: str, item_id: str, target_parent_id: str) -> bool:
     return r.status_code < 300
 
 
+async def set_file_dates(token: str, item_id: str, modified_iso: str,
+                         created_iso: str | None = None) -> bool:
+    """Set a drive item's createdDateTime / lastModifiedDateTime (fileSystemInfo).
+    Used to stamp a report PDF with its real inspection date so OneDrive can be
+    sorted date-wise even when the file name doesn't lead with the date. ISO strings
+    must be UTC, e.g. 2026-11-04T06:30:00Z."""
+    fsi = {"lastModifiedDateTime": modified_iso}
+    if created_iso:
+        fsi["createdDateTime"] = created_iso
+    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.patch(url, headers=headers, json={"fileSystemInfo": fsi})
+    return r.status_code < 300
+
+
 async def read_text(token: str, path: str) -> str | None:
     """Return a file's text content, or None if it doesn't exist."""
     url = _item_url(path, "/content")

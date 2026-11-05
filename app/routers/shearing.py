@@ -622,3 +622,66 @@ async def s_fix_filenames(token: str = Query(...), apply: int = Query(0),
             "mismatched": len(planned), "renamed": len(changed),
             "duplicates_suffixed": collisions,
             "planned": planned, "changed": changed, "errors": errors}
+
+
+@router.get("/fix-dates")
+async def s_fix_dates(token: str = Query(...), apply: int = Query(0),
+                      limit: int = Query(500)):
+    """Stamp each shearing PDF's OneDrive date (Modified + Created) with its
+    INSPECTION date, so the folder can be sorted date-wise (current day on top)
+    independent of the coil-first file name. Sort OneDrive by "Modified" descending.
+
+    /shearing/fix-dates?token=<AGENT_TOKEN>          -> dry run (lists what it would set)
+    /shearing/fix-dates?token=<AGENT_TOKEN>&apply=1  -> actually stamp the dates
+    """
+    if token != AGENT_TOKEN:
+        raise HTTPException(403, "bad token")
+    await ensure_table()
+    rows = await db.fetch(
+        "SELECT id, payload, file_name, created_at, batch_number, log_date "
+        "FROM shearing_inspection ORDER BY id DESC LIMIT $1", limit)
+    tok = await graph.get_token()
+    children = await graph.list_children(tok, f"{ONEDRIVE_BASE}/Shearing/PDF") if tok else []
+    by_name = {c["name"]: c["id"] for c in children if not c.get("is_folder")}
+    planned, changed, errors = [], [], []
+    for row in rows:
+        r = dict(row)
+        data = odsync.as_obj(r.get("payload"), {})
+        batch = data.get("batch_number") or r.get("batch_number")
+        fn = r.get("file_name") or _insp_filename(data, r.get("created_at"), batch)
+        d = (data.get("date") or str(r.get("log_date") or "") or "")[:10]
+        if not d:
+            continue
+        try:
+            dt = datetime.fromisoformat(d)
+        except ValueError:
+            continue
+        # Reuse the upload time-of-day so same-day files keep a stable order.
+        ca = r.get("created_at")
+        if ca is not None:
+            cai = ca.astimezone(IST)
+            dt = dt.replace(hour=cai.hour, minute=cai.minute, second=cai.second)
+        else:
+            dt = dt.replace(hour=12)
+        iso = dt.replace(tzinfo=IST).astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        item = {"id": r["id"], "batch": batch, "file": fn,
+                "insp_date": d, "stamp_utc": iso}
+        item_id = by_name.get(f"{fn}.pdf")
+        if not item_id:
+            errors.append({**item, "error": "pdf not found in OneDrive"})
+            continue
+        planned.append(item)
+        if not apply:
+            continue
+        if not tok:
+            errors.append({**item, "error": "no OneDrive token"}); continue
+        try:
+            if await graph.set_file_dates(tok, item_id, iso, iso):
+                changed.append(item)
+            else:
+                errors.append({**item, "error": "patch failed"})
+        except Exception as e:
+            errors.append({**item, "error": str(e)[:200]})
+    return {"ok": True, "apply": bool(apply), "scanned": len(rows),
+            "to_stamp": len(planned), "stamped": len(changed),
+            "planned": planned, "changed": changed, "errors": errors}
