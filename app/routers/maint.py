@@ -3110,6 +3110,50 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True, "pdf": pdf_path}
 
 
+@router.get("/breakdown/audit")
+async def breakdown_audit(token: str = Query(default=""), code: str = Query(default=""),
+                          only_open: int = Query(default=0),
+                          emp: dict = Depends(current_employee)):
+    """See every breakdown's real status, to explain why the board shows one as open.
+    The board only shows a breakdown when its status is exactly 'open'.
+      /maint/breakdown/audit?token=<AGENT_TOKEN>                 all breakdowns
+      /maint/breakdown/audit?token=<AGENT_TOKEN>&only_open=1      only the open ones
+      /maint/breakdown/audit?token=<AGENT_TOKEN>&code=M/C-002     one machine
+    """
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    where, args = [], []
+    if code.strip():
+        args.append(code.strip()); where.append(f"upper(a.code)=upper(${len(args)})")
+    if only_open:
+        where.append("lower(coalesce(b.status,'open'))='open'")
+    sql = ("SELECT b.id, a.code AS asset_code, a.name AS asset_name, b.status, "
+           "b.raised_at, b.closed_at, b.closed_by, b.reported_by, b.assignee_emp_id, b.assignees, "
+           "e.name AS assignee_name "
+           "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+           "LEFT JOIN employees e ON e.id=b.assignee_emp_id")
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY b.raised_at DESC"
+    rows = await db.fetch(sql, *args)
+    out = []
+    for r in rows:
+        d = dict(r)
+        st = (d.get("status") or "")
+        out.append({
+            "id": d["id"], "machine": ((d.get("asset_code") or "") + " " + (d.get("asset_name") or "")).strip(),
+            "status_stored": st,
+            "shows_on_board": st == "open",   # board uses an exact 'open' match
+            "raised_at": str(d.get("raised_at") or "")[:16],
+            "closed_at": str(d.get("closed_at") or "") or None,
+            "closed_by": d.get("closed_by"),
+            "raised_by": d.get("reported_by"),
+            "assignee": d.get("assignee_name")})
+    open_board = sum(1 for x in out if x["shows_on_board"])
+    return _json({"count": len(out), "showing_on_board": open_board, "breakdowns": out})
+
+
 @router.get("/breakdown/regen-pdf")
 async def breakdown_regen_pdf(token: str = Query(default=""), id: int = Query(default=0),
                               ids: str = Query(default=""), days: int = Query(default=7),
