@@ -1181,6 +1181,25 @@ def compute_due(sch: dict, asset_hours, today: date):
             "due": due, "overdue": overdue, "hours_due": hours_due, "hours_remaining": hrs_rem}
 
 
+def _q_cur_due(sch, today):
+    """A quarterly schedule's scheduled date within the CURRENT calendar quarter.
+
+    The quarterly fires on `day_of_month` every 3 months; its anchor month is taken from
+    start_date's month (so the Feb/May/Aug/Nov vs Jan/Apr/Jul/Oct vs Mar/Jun/Sep/Dec
+    cycle survives even when the stored start_date was rolled forward to next year). Returns
+    the firing date that falls in this quarter, or None. Used to decide whether a quarterly
+    is due this period regardless of a forward-rolled start_date."""
+    start = sch.get("start_date")
+    dom = int(sch.get("day_of_month") or (start.day if start else today.day))
+    sm = start.month if start else today.month
+    q_start = ((today.month - 1) // 3) * 3 + 1          # 1, 4, 7, or 10
+    for mo in (q_start, q_start + 1, q_start + 2):
+        if (mo - sm) % 3 == 0:
+            dim = calendar.monthrange(today.year, mo)[1]
+            return date(today.year, mo, min(dom, dim))
+    return None
+
+
 # =======================================================================
 #  ASSETS
 # =======================================================================
@@ -5710,19 +5729,30 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
         elif dd and (g["date"] is None or dd > g["date"]):
             g["date"] = dd
 
-    # add today's not-yet-started DAILY work orders so absentees can be marked
+    # Add today's not-yet-started DAILY work orders (so absentees can be marked) and any
+    # QUARTERLY whose scheduled date in THIS calendar quarter has already arrived — so a
+    # due/overdue quarterly shows even when nobody has started it yet (no log). Quarterly
+    # checklists whose quarter date is still ahead are left off.
+    q_due_clids = set()
     for s in await db.fetch(
-            "SELECT s.checklist_id, s.asset_id, s.freq_type, s.freq_days, "
-            "a.code AS acode, a.name AS aname, c.name AS cname "
+            "SELECT s.*, a.code AS acode, a.name AS aname, c.name AS cname "
             "FROM maint_schedules s LEFT JOIN maint_assets a ON a.id=s.asset_id "
             "LEFT JOIN maint_checklists c ON c.id=s.checklist_id "
             "WHERE COALESCE(s.active,true)=true AND s.checklist_id IS NOT NULL"):
+        cname = s["cname"] or ""
         ft = (s["freq_type"] or "").lower()
         is_daily = ft == "daily" or (not ft and s["freq_days"] and int(s["freq_days"]) == 1)
-        if not is_daily:
+        is_q = "quarter" in cname.lower()
+        if is_daily:
+            pk = _period_key(cname, today)
+        elif is_q:
+            cur_due = _q_cur_due(dict(s), today)
+            if not (cur_due and cur_due <= today):
+                continue
+            q_due_clids.add(s["checklist_id"])
+            pk = _period_key(cname, today)
+        else:
             continue
-        cname = s["cname"] or ""
-        pk = _period_key(cname, today)
         key = (s["asset_id"], s["checklist_id"], pk)
         if key not in wo:
             wo[key] = {"date": today, "pk": pk, "acode": s["acode"], "aname": s["aname"],
@@ -5747,21 +5777,6 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
             done_set.add((d["checkpoint_id"], d["period_key"]))
     absent_set = {(a["checklist_id"], a["period_key"], a["emp_id"])
                   for a in await db.fetch("SELECT checklist_id, period_key, emp_id FROM maint_wo_absent")}
-
-    # Which QUARTERLY checklists are actually DUE now, by their annual-schedule date?
-    # A quarterly only belongs on the Monitor when its scheduled date has arrived (due)
-    # or passed (overdue); ones not yet due this period are hidden.
-    q_due_clids = set()
-    if cl_ids:
-        for s in await db.fetch(
-                "SELECT * FROM maint_schedules WHERE COALESCE(active,true)=true "
-                "AND checklist_id = ANY($1::int[])", cl_ids):
-            try:
-                info = compute_due(dict(s), None, today)
-            except Exception:
-                continue
-            if info.get("due") or info.get("overdue"):
-                q_due_clids.add(s["checklist_id"])
 
     rows = []
     for (asset_id, checklist_id, pk), g in wo.items():
