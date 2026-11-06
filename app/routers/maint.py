@@ -5756,6 +5756,11 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
             aid = cp["assigned_emp_id"]
             if aid and aid not in seen:
                 seen.add(aid); assignee_ids.append(aid)
+        # Only show PM work orders that actually have someone assigned. A machine whose
+        # (quarterly or daily) checklist has no assignee is not actionable here, so it
+        # must not appear in the Monitor.
+        if not assignee_ids:
+            continue
         is_daily = "quarter" not in (g["cname"] or "").lower()
         # is there any precise per-checkpoint 'done' data for this work order's period?
         has_cpdone = any((cp["id"], pk) in done_set for cp in cps)
