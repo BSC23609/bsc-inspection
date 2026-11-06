@@ -45,3 +45,14 @@ MAINT_SUPERVISOR_MOBILE      = os.environ.get("MAINT_SUPERVISOR_MOBILE", "")  # 
 
 # Shared agent token for protected cron endpoints (reminders) — matches the Node app
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "BSC@123")
+
+# ---- Consumer Store — live SAP mirror via the BSC MIS data pipeline (READ-ONLY) ----
+# QMS never talks to SAP directly. Exactly like the stock MIS, a PowerShell job on the
+# SAP box (refresh_consumer.ps1) reads the Consumer Store warehouse from SAP and pushes
+# consumer_*.csv to the bsc-stock-data GitHub repo; this app reads those CSVs from raw
+# GitHub. Because the data lives in a repo the app host does not watch, a refresh never
+# redeploys the app. Override CONSUMER_DATA_BASE only if the data repo/branch changes.
+CONSUMER_DATA_BASE = os.environ.get(
+    "CONSUMER_DATA_BASE",
+    "https://raw.githubusercontent.com/BSC23609/bsc-stock-data/main/")
+SAP_COMPANY_DB     = os.environ.get("SAP_COMPANY_DB", "BSC_FINAL_2707")  # shown on the page

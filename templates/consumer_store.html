@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block title %}Consumer Store · {{ app_name }}{% endblock %}
+{% block tb_title %}Consumer Store{% endblock %}
+{% block content %}
+<div class="acc-navy">
+<style>
+.cs-head{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.cs-head .live{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;color:#0a7d55;background:#e2efda;border-radius:20px;padding:4px 12px}
+.cs-head .live .dot{width:8px;height:8px;border-radius:50%;background:#15a06e;animation:csp 1.6s infinite}
+@keyframes csp{0%,100%{opacity:1}50%{opacity:.35}}
+.cs-head .upd{font-size:12px;color:var(--muted)}
+.cs-head .sp{flex:1}
+.cs-btn{border:1px solid var(--acc);color:var(--acc);background:#fff;border-radius:9px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer}
+.cs-tabs{display:flex;gap:6px;border-bottom:1px solid var(--line);margin-bottom:14px}
+.cs-tab{border:none;background:none;padding:10px 16px;font-size:13.5px;font-weight:700;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.cs-tab.on{color:var(--acc-ink);border-bottom-color:var(--acc)}
+.kgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:16px}
+@media(max-width:640px){.kgrid{grid-template-columns:1fr 1fr}}
+.kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.kpi .lab{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;color:var(--muted)}
+.kpi .val{font-size:26px;font-weight:800;margin-top:4px;color:var(--ink)}
+.cs-wrap{background:#fff;border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.cs-search{padding:12px 14px;border-bottom:1px solid var(--line)}
+.cs-search input{width:100%;max-width:340px;box-sizing:border-box;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px}
+.cs-scroll{max-height:60vh;overflow:auto}
+.ctbl{width:100%;border-collapse:collapse;font-size:13px}
+.ctbl th{position:sticky;top:0;background:#f4f7fb;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);padding:9px 14px;z-index:1}
+.ctbl td{border-bottom:1px solid var(--line);padding:9px 14px;vertical-align:middle}
+.ctbl td.num,.ctbl th.num{text-align:right;font-variant-numeric:tabular-nums}
+.ctbl .code{font-size:11px;color:var(--muted);font-weight:600}
+.ctbl .mac{font-weight:700;color:var(--ink)}
+.in-q{color:#2f6b27;font-weight:700}.out-q{color:#c0241c;font-weight:700}
+.chip{display:inline-block;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 8px;background:#eef2f7;color:#41506a}
+.cs-empty{padding:28px;text-align:center;color:var(--muted)}
+.cs-setup{background:#fff;border:1px dashed var(--line-2);border-radius:14px;padding:22px 20px}
+.cs-setup h3{margin:0 0 8px;font-size:15px}
+.cs-setup code{background:#f4f7fb;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:12px}
+.cs-setup ul{margin:8px 0 0;padding-left:18px;font-size:13px;line-height:1.9;color:var(--ink-2)}
+.hide{display:none}
+</style>
+
+<div class="page-head"><h1>Consumer Store</h1><p>Live on-hand stock and stock movements for the Consumer Store, read directly from SAP. This view is read-only — SAP stays the source of truth.</p></div>
+
+<div id="cs_setup" class="cs-setup hide">
+  <h3>SAP mirror not live yet</h3>
+  <p style="margin:0;color:var(--muted);font-size:13px">The Consumer Store page is ready. It reads live stock the same way as the stock MIS — a scheduled job on the SAP server reads SAP and publishes the data file the page reads. To go live, on the SAP box (RDP):</p>
+  <ul>
+    <li>Run <code>C:\scripts\refresh_consumer.ps1 -Discover</code> once to find the Consumer Store warehouse code, set it in the script.</li>
+    <li>Run <code>setup_consumer_task.ps1</code> to register the 15-minute refresh (writes <code>consumer_*.csv</code> to the <code>bsc-stock-data</code> repo).</li>
+    <li>This page starts showing live data automatically once the first refresh has pushed.</li>
+  </ul>
+</div>
+
+<div id="cs_live" class="hide">
+  <div class="cs-head">
+    <span class="live"><span class="dot"></span>Live from SAP</span>
+    <span class="upd" id="cs_upd"></span>
+    <span class="sp"></span>
+    <button class="cs-btn" onclick="csLoad()">Refresh from SAP</button>
+  </div>
+
+  <div class="kgrid">
+    <div class="kpi"><div class="lab">Items in store</div><div class="val" id="k_items">–</div></div>
+    <div class="kpi"><div class="lab">Total on-hand qty</div><div class="val" id="k_qty">–</div></div>
+    <div class="kpi"><div class="lab">Movements (recent)</div><div class="val" id="k_mov">–</div></div>
+  </div>
+
+  <div class="cs-tabs">
+    <button class="cs-tab on" id="t_stock" onclick="csTab('stock')">On-hand stock</button>
+    <button class="cs-tab" id="t_mov" onclick="csTab('mov')">Stock movements</button>
+  </div>
+
+  <!-- STOCK -->
+  <div id="tab-stock" class="cs-wrap">
+    <div class="cs-search"><input id="cs_q" type="text" placeholder="Search item code or name…" oninput="csRenderStock()"></div>
+    <div class="cs-scroll">
+      <table class="ctbl"><thead><tr>
+        <th>Item</th><th class="num">On hand</th><th class="num">Committed</th><th class="num">Available</th><th class="num">On order</th><th>UoM</th>
+      </tr></thead><tbody id="cs_stock"><tr><td colspan="6" class="cs-empty">Loading…</td></tr></tbody></table>
+    </div>
+  </div>
+
+  <!-- MOVEMENTS -->
+  <div id="tab-mov" class="cs-wrap hide">
+    <div class="cs-scroll">
+      <table class="ctbl"><thead><tr>
+        <th>Date</th><th>Item</th><th>Document</th><th class="num">In</th><th class="num">Out</th>
+      </tr></thead><tbody id="cs_mov"><tr><td colspan="5" class="cs-empty">Loading…</td></tr></tbody></table>
+    </div>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function num(n){var x=Number(n);if(!isFinite(x))return '0';return (Math.round(x*1000)/1000).toLocaleString('en-IN');}
+function fdate(s){if(!s)return '';var d=new Date(s);if(isNaN(d))return String(s).slice(0,10);return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear();}
+var STOCK=[],MOV=[],META={};
+function fdatetime(s){if(!s)return '';var d=new Date(s);if(isNaN(d))return String(s);return fdate(s)+' '+d.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'});}
+
+function csTab(name){
+  var s=name==='stock';
+  document.getElementById('tab-stock').classList.toggle('hide',!s);
+  document.getElementById('tab-mov').classList.toggle('hide',s);
+  document.getElementById('t_stock').classList.toggle('on',s);
+  document.getElementById('t_mov').classList.toggle('on',!s);
+}
+function csRenderStock(){
+  var q=(document.getElementById('cs_q').value||'').toLowerCase().trim();
+  var rows=STOCK.filter(function(r){return !q || String(r.ItemCode||'').toLowerCase().indexOf(q)>=0 || String(r.ItemName||'').toLowerCase().indexOf(q)>=0;});
+  var b=document.getElementById('cs_stock');
+  if(!rows.length){b.innerHTML='<tr><td colspan="6" class="cs-empty">'+(STOCK.length?'No match.':'No stock in this warehouse.')+'</td></tr>';return;}
+  b.innerHTML=rows.map(function(r){
+    return '<tr><td><div class="mac">'+esc(r.ItemName||'—')+'</div><div class="code">'+esc(r.ItemCode||'')+'</div></td>'
+      +'<td class="num">'+num(r.OnHand)+'</td>'
+      +'<td class="num">'+num(r.Committed)+'</td>'
+      +'<td class="num">'+num(r.Available)+'</td>'
+      +'<td class="num">'+num(r.OnOrder)+'</td>'
+      +'<td><span class="chip">'+esc(r.Uom||'')+'</span></td></tr>';
+  }).join('');
+}
+function csRenderMov(){
+  var b=document.getElementById('cs_mov');
+  if(!MOV.length){b.innerHTML='<tr><td colspan="5" class="cs-empty">No recent movements.</td></tr>';return;}
+  b.innerHTML=MOV.map(function(r){
+    var inq=Number(r.InQty||0),outq=Number(r.OutQty||0);
+    return '<tr><td>'+fdate(r.DocDate)+'</td>'
+      +'<td><div class="mac">'+esc(r.ItemName||'—')+'</div><div class="code">'+esc(r.ItemCode||'')+'</div></td>'
+      +'<td><span class="chip">'+esc(r.TransName||'')+'</span></td>'
+      +'<td class="num">'+(inq?'<span class="in-q">+'+num(inq)+'</span>':'')+'</td>'
+      +'<td class="num">'+(outq?'<span class="out-q">-'+num(outq)+'</span>':'')+'</td></tr>';
+  }).join('');
+}
+async function csLoad(){
+  try{
+    var st=await (await fetch('/consumer/status',{cache:'no-store'})).json();
+    META=st||{};
+    if(!st.configured){
+      document.getElementById('cs_setup').classList.remove('hide');
+      document.getElementById('cs_live').classList.add('hide');
+      return;
+    }
+    document.getElementById('cs_setup').classList.add('hide');
+    document.getElementById('cs_live').classList.remove('hide');
+  }catch(e){ return; }
+  document.getElementById('cs_stock').innerHTML='<tr><td colspan="6" class="cs-empty">Loading…</td></tr>';
+  document.getElementById('cs_mov').innerHTML='<tr><td colspan="5" class="cs-empty">Loading…</td></tr>';
+  try{
+    var s=await (await fetch('/consumer/stock',{cache:'no-store'})).json();
+    STOCK=s.rows||[];
+  }catch(e){ STOCK=[]; document.getElementById('cs_stock').innerHTML='<tr><td colspan="6" class="cs-empty" style="color:#c0241c">Couldn’t read stock from SAP.</td></tr>'; }
+  try{
+    var m=await (await fetch('/consumer/movements',{cache:'no-store'})).json();
+    MOV=m.rows||[];
+  }catch(e){ MOV=[]; }
+  var tq=STOCK.reduce(function(a,r){return a+Number(r.OnHand||0);},0);
+  document.getElementById('k_items').textContent=STOCK.length;
+  document.getElementById('k_qty').textContent=num(tq);
+  document.getElementById('k_mov').textContent=MOV.length;
+  var whs=META.warehouse_name||META.warehouse;
+  var upd=META.updated_at?('SAP refresh '+fdatetime(META.updated_at)):('Loaded '+new Date().toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit'}));
+  document.getElementById('cs_upd').textContent=(whs?('Warehouse '+whs+' · '):'')+upd;
+  csRenderStock(); csRenderMov();
+}
+csLoad();
+</script>
+{% endblock %}
