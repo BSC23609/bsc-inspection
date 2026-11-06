@@ -5173,6 +5173,38 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
             return False
         return bool(has_cpdone or has_log or is_current)
 
+    emap = await _emp_map()
+
+    def _pending_cp_aids(cps, dset, period, clid):
+        """Checkpoint assignees who still have a not-done, non-excused checkpoint in
+        `period`, so the per-person PM reminder reaches EVERYONE with pending checkpoints
+        on the machine, not just the schedule's single main assignee."""
+        aids, seen = [], set()
+        for cp in (cps or []):
+            a = cp.get("assigned_emp_id")
+            if not a or a in seen:
+                continue
+            seen.add(a)
+            if (clid, a, period) in absent_set or a in on_leave:
+                continue
+            theirs = [c for c in cps if c.get("assigned_emp_id") == a]
+            if any((c["id"], period) not in dset for c in theirs):
+                aids.append(a)
+        return aids
+
+    def _bucket_pending(cps, dset, period, clid, sched_aid, sched_name, sched_mobile, text):
+        """Send the PM reminder to each checkpoint assignee with pending work (by their own
+        mobile); fall back to the schedule's single assignee when the checklist has no
+        per-checkpoint assignees."""
+        pa = _pending_cp_aids(cps, dset, period, clid)
+        if pa:
+            for a in pa:
+                e = emap.get(a) or {}
+                if e.get("mobile"):
+                    _bucket(a, e.get("name") or sched_name, e["mobile"], "pm", text)
+        elif sched_aid and sched_mobile:
+            _bucket(sched_aid, sched_name, sched_mobile, "pm", text)
+
     for s in sched_all:
         if not s.get("active"):
             continue
@@ -5210,8 +5242,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                 od = min(past).strftime("%d-%m-%Y")
                 sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
                                "cat": task, "who": assignee, "date": od, "status": "Overdue"})
-                if aid and mobile:
-                    _bucket(aid, assignee, mobile, "pm", f"{label} - {task} (overdue since {od})")
+                _bucket_pending(cps, done_set, cur_due.isoformat(), clid, aid, assignee, mobile,
+                                f"{label} - {task} (overdue since {od})")
             else:  # only today's work pending -> DUE TODAY
                 if aid and aid in on_leave:
                     continue
@@ -5219,8 +5251,9 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                     sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
                                    "cat": task, "who": assignee if aid else "Unassigned",
                                    "date": tdisp, "status": "Due today"})
-                elif aid and mobile:
-                    _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
+                elif _pending_cp_aids(cps, done_set, cur_due.isoformat(), clid) or (aid and mobile):
+                    _bucket_pending(cps, done_set, cur_due.isoformat(), clid, aid, assignee, mobile,
+                                    f"{label} - {task}")
                 else:
                     sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
                                    "cat": task, "who": "Unassigned", "date": tdisp, "status": "Due today"})
@@ -5246,9 +5279,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
             od = _due_disp(info.get("next_due")) if info["overdue"] else _due_disp(q_pk.get(clid))
             sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
                            "cat": task, "who": assignee, "date": od or tdisp, "status": "Overdue"})
-            if aid and mobile:
-                _bucket(aid, assignee, mobile, "pm",
-                        f"{label} - {task} (overdue" + (f" since {od}" if od else "") + ")")  # personal digest
+            _bucket_pending(q_cps.get(clid) or [], q_done, q_pk.get(clid), clid, aid, assignee, mobile,
+                            f"{label} - {task} (overdue" + (f" since {od}" if od else "") + ")")
         else:  # due today
             if aid and aid in on_leave:
                 continue  # on leave — not flagged to the supervisor's overdue alert
@@ -5256,14 +5288,14 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                 sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
                                "cat": task, "who": assignee if aid else "Unassigned",
                                "date": tdisp, "status": "Due today"})
-            elif aid and mobile:
-                _bucket(aid, assignee, mobile, "pm", f"{label} - {task}")
+            elif _pending_cp_aids(q_cps.get(clid) or [], q_done, q_pk.get(clid), clid) or (aid and mobile):
+                _bucket_pending(q_cps.get(clid) or [], q_done, q_pk.get(clid), clid, aid, assignee, mobile,
+                                f"{label} - {task}")
             else:
                 sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
                                "cat": task, "who": "Unassigned", "date": tdisp, "status": "Due today"})  # unassigned-due cover
 
     # ---- open breakdowns: to EACH assigned maintenance user; else to supervisors ----
-    emap = await _emp_map()
     for b in await _open_breakdowns():
         label = (str(b.get("asset_code") or "") + " " + str(b.get("asset_name") or "")).strip() or "—"
         prob = (b.get("problem") or "").strip() or "—"
