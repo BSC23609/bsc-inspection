@@ -72,6 +72,12 @@ NAV_GROUPS = [
          {"name": "Purchase Request", "icon": "file", "desc": "Raise a purchase request; track its Pending / Approved / Rejected / Purchased status.",
           "href": "/purchase", "active_key": "purchase"},
      ]},
+    {"key": "store", "title": "Consumer Store", "accent": "navy", "icon": "cube",
+     "blurb": "Live stock and movements for the Consumer Store, mirrored from SAP.",
+     "items": [
+         {"name": "Consumer Store", "icon": "cube", "desc": "Live on-hand stock and stock movements, read live from SAP (read-only).",
+          "href": "/consumer", "active_key": "consumer"},
+     ]},
 ]
 
 ADMIN_NAV = [
@@ -223,6 +229,15 @@ async def complaint_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("complaint.html", _ctx(request, emp, "complaint", section="Quality Complaint"))
+
+
+@router.get("/consumer", response_class=HTMLResponse)
+async def consumer_page(request: Request):
+    emp = await current_employee(request)
+    if not emp:
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("consumer_store.html",
+                                      _ctx(request, emp, "consumer", section="Consumer Store"))
 
 
 @router.get("/purchase", response_class=HTMLResponse)
