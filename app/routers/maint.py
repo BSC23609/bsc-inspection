@@ -5748,6 +5748,21 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
     absent_set = {(a["checklist_id"], a["period_key"], a["emp_id"])
                   for a in await db.fetch("SELECT checklist_id, period_key, emp_id FROM maint_wo_absent")}
 
+    # Which QUARTERLY checklists are actually DUE now, by their annual-schedule date?
+    # A quarterly only belongs on the Monitor when its scheduled date has arrived (due)
+    # or passed (overdue); ones not yet due this period are hidden.
+    q_due_clids = set()
+    if cl_ids:
+        for s in await db.fetch(
+                "SELECT * FROM maint_schedules WHERE COALESCE(active,true)=true "
+                "AND checklist_id = ANY($1::int[])", cl_ids):
+            try:
+                info = compute_due(dict(s), None, today)
+            except Exception:
+                continue
+            if info.get("due") or info.get("overdue"):
+                q_due_clids.add(s["checklist_id"])
+
     rows = []
     for (asset_id, checklist_id, pk), g in wo.items():
         cps = cps_by_cl.get(checklist_id, [])
@@ -5762,6 +5777,9 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
         if not assignee_ids:
             continue
         is_daily = "quarter" not in (g["cname"] or "").lower()
+        # Quarterly: show only when its scheduled quarterly date is actually due/overdue.
+        if not is_daily and checklist_id not in q_due_clids:
+            continue
         # is there any precise per-checkpoint 'done' data for this work order's period?
         has_cpdone = any((cp["id"], pk) in done_set for cp in cps)
         statuses = []
