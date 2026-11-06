@@ -4405,21 +4405,27 @@ async def board_matrix(emp: dict = Depends(require_employee)):
     def _daily_state(s):
         clid = s.get("checklist_id"); cps = cps_by_cl.get(clid) or []
         start_d = s.get("start_date"); end_d = s.get("end_date")
-        inc = []
+        in_window = not ((start_d and start_d > cur_due) or (end_d and cur_due > end_d))
+        # A daily is on the board ONLY while TODAY's check is still pending. Once today's
+        # is done the machine clears, even if an earlier day was missed — a completed
+        # daily must not keep showing an old date as overdue.
         if clid and cps:
-            for d in window_days:
-                if (start_d and d < start_d) or (end_d and d > end_d):
-                    continue
-                if _day_overdue(clid, d.isoformat(), cps, d == cur_due):
-                    inc.append(d)
+            today_pending = in_window and _day_overdue(clid, cur_due.isoformat(), cps, True)
         else:
             ld = s.get("last_done"); aid = s.get("assignee_emp_id")
-            if (not (start_d and start_d > cur_due) and not (end_d and cur_due > end_d)
-                    and (not ld or ld < cur_due) and not (aid and aid in on_leave)):
-                inc.append(cur_due)
+            today_pending = (in_window and (not ld or ld < cur_due)
+                             and not (aid and aid in on_leave))
         info = compute_due(s, s.get("asset_hours"), today)
-        if inc:
-            past = [d for d in inc if d < today]
+        if today_pending:
+            past = []
+            if clid and cps:
+                for d in window_days:
+                    if d >= today:
+                        continue
+                    if (start_d and d < start_d) or (end_d and d > end_d):
+                        continue
+                    if _day_overdue(clid, d.isoformat(), cps, False):
+                        past.append(d)
             if past:
                 return {"state": "overdue", "due": min(past).isoformat()}
             return {"state": "due", "due": today.isoformat()}
@@ -5231,6 +5237,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                         and (not ld or ld < cur_due) and not (aid and aid in on_leave)):
                     incomplete.append(cur_due)
             if not incomplete:
+                continue
+            # Remind only while TODAY's check is still pending. Once today's is done the
+            # daily clears — a completed daily must not keep firing an old overdue date.
+            if cur_due not in incomplete:
                 continue
             past = [d for d in incomplete if d < today]
             if past:  # a past working day was left pending -> OVERDUE
