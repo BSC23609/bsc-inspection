@@ -5734,6 +5734,7 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
     # due/overdue quarterly shows even when nobody has started it yet (no log). Quarterly
     # checklists whose quarter date is still ahead are left off.
     q_due_clids = set()
+    q_due_date = {}     # checklist_id -> its scheduled date THIS quarter (for the Date column)
     for s in await db.fetch(
             "SELECT s.*, a.code AS acode, a.name AS aname, c.name AS cname "
             "FROM maint_schedules s LEFT JOIN maint_assets a ON a.id=s.asset_id "
@@ -5747,6 +5748,8 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
             pk = _period_key(cname, today)
         elif is_q:
             cur_due = _q_cur_due(dict(s), today)
+            if cur_due:
+                q_due_date[s["checklist_id"]] = cur_due
             if not (cur_due and cur_due <= today):
                 continue
             q_due_clids.add(s["checklist_id"])
@@ -5813,8 +5816,13 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
                 else:
                     st = "Pending"
             statuses.append({"emp": emps.get(aid, "#%s" % aid), "emp_id": aid, "status": st})
+        # For a quarterly, the Date column is the machine's SCHEDULED date this quarter
+        # (from the annual plan) — not the day it happened to be completed on.
+        row_date = g["date"]
+        if not is_daily and q_due_date.get(checklist_id):
+            row_date = q_due_date[checklist_id]
         rows.append({
-            "date": g["date"].isoformat() if g["date"] else "",
+            "date": row_date.isoformat() if row_date else "",
             "category": _wo_category(g["cname"]), "machine_code": g["acode"] or "",
             "machine_name": g["aname"] or "", "assigner": "Admin",
             "statuses": statuses, "checklist_id": checklist_id, "period_key": pk,
