@@ -4417,17 +4417,11 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                              and not (aid and aid in on_leave))
         info = compute_due(s, s.get("asset_hours"), today)
         if today_pending:
-            past = []
-            if clid and cps:
-                for d in window_days:
-                    if d >= today:
-                        continue
-                    if (start_d and d < start_d) or (end_d and d > end_d):
-                        continue
-                    if _day_overdue(clid, d.isoformat(), cps, False):
-                        past.append(d)
-            if past:
-                return {"state": "overdue", "due": min(past).isoformat()}
+            # A daily that is pending today is simply "due today". We deliberately do NOT
+            # drag an earlier missed day onto the board as an old overdue date: a daily
+            # cannot be back-filled, so an old date would cling forever and read as "still
+            # overdue" even after the work has been done on later days. Today pending -> due;
+            # today done -> the row clears below.
             return {"state": "due", "due": today.isoformat()}
         nd = _d(info["next_due"]) if info.get("next_due") else None
         if nd and nd <= today + timedelta(days=7):
@@ -5238,35 +5232,23 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                     incomplete.append(cur_due)
             if not incomplete:
                 continue
-            # Remind only while TODAY's check is still pending. Once today's is done the
-            # daily clears — a completed daily must not keep firing an old overdue date.
+            # A daily is only ever "due today" — remind while TODAY's check is still pending,
+            # and stop the moment today's is done. We do NOT escalate an earlier missed day as
+            # overdue: a daily cannot be back-filled, so an old date would keep firing forever.
             if cur_due not in incomplete:
                 continue
-            past = [d for d in incomplete if d < today]
-            if past:  # a past working day was left pending -> OVERDUE
-                if aid and aid in on_leave:
-                    continue
-                if not allow_overdue:
-                    overdue_suppressed += 1
-                    continue
-                od = min(past).strftime("%d-%m-%Y")
+            if aid and aid in on_leave:
+                continue
+            if board_mode:  # full board PNG: show every due-today item, assigned or not
                 sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
-                               "cat": task, "who": assignee, "date": od, "status": "Overdue"})
+                               "cat": task, "who": assignee if aid else "Unassigned",
+                               "date": tdisp, "status": "Due today"})
+            elif _pending_cp_aids(cps, done_set, cur_due.isoformat(), clid) or (aid and mobile):
                 _bucket_pending(cps, done_set, cur_due.isoformat(), clid, aid, assignee, mobile,
-                                f"{label} - {task} (overdue since {od})")
-            else:  # only today's work pending -> DUE TODAY
-                if aid and aid in on_leave:
-                    continue
-                if board_mode:  # full board PNG: show every due-today item, assigned or not
-                    sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
-                                   "cat": task, "who": assignee if aid else "Unassigned",
-                                   "date": tdisp, "status": "Due today"})
-                elif _pending_cp_aids(cps, done_set, cur_due.isoformat(), clid) or (aid and mobile):
-                    _bucket_pending(cps, done_set, cur_due.isoformat(), clid, aid, assignee, mobile,
-                                    f"{label} - {task}")
-                else:
-                    sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
-                                   "cat": task, "who": "Unassigned", "date": tdisp, "status": "Due today"})
+                                f"{label} - {task}")
+            else:
+                sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
+                               "cat": task, "who": "Unassigned", "date": tdisp, "status": "Due today"})
             continue
 
         # quarterly / periodic -> date model, plus per-person completion for quarterly
