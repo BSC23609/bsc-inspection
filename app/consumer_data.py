@@ -96,6 +96,37 @@ async def stock() -> list[dict]:
     return out
 
 
+async def lookup(q: str, limit: int = 12) -> list[dict]:
+    """Search Consumer Store items by code or name — for the Purchase Request picker,
+    so a requester can see what the consumable store already holds before raising a PR."""
+    q = (q or "").strip().lower()
+    if not q:
+        return []
+    out = []
+    for r in await stock():
+        if q in str(r["ItemCode"]).lower() or q in str(r["ItemName"]).lower():
+            out.append({"code": r["ItemCode"], "name": r["ItemName"],
+                        "onhand": r["OnHand"], "available": r["Available"], "uom": r["Uom"]})
+            if len(out) >= max(int(limit), 1):
+                break
+    return out
+
+
+async def stock_map(codes) -> dict:
+    """{item_code: {onhand, available, uom, name}} for the given SAP item codes — used to
+    show live store stock beside each linked purchase request."""
+    want = {str(c).strip() for c in codes if c}
+    if not want:
+        return {}
+    m = {}
+    for r in await stock():
+        c = str(r["ItemCode"]).strip()
+        if c in want:
+            m[c] = {"onhand": r["OnHand"], "available": r["Available"],
+                    "uom": r["Uom"], "name": r["ItemName"]}
+    return m
+
+
 async def movements(limit: int = 200) -> list[dict]:
     """Recent stock movements for the Consumer Store warehouse (from consumer_movements.csv)."""
     rows = await _csv("consumer_movements.csv")

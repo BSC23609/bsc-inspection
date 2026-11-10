@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 
 from .. import db, wati
+from .. import consumer_data as cd
 from ..auth import require_employee
 
 router = APIRouter(prefix="/purchase")
@@ -99,6 +100,9 @@ async def ensure_tables():
     await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS act_token TEXT")
     # v8: part number / make kept separate from specification.
     await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS part_make TEXT")
+    # SAP item code when the requester picks the item from the Consumer Store (links the
+    # request to live warehouse-46 stock). NULL for a free-typed item.
+    await db.execute("ALTER TABLE purchase_requests ADD COLUMN IF NOT EXISTS sap_item_code TEXT")
     await db.execute("CREATE INDEX IF NOT EXISTS ix_pr_token ON purchase_requests (act_token)")
     await db.execute(
         "CREATE INDEX IF NOT EXISTS ix_pr_requester ON purchase_requests (requester_emp_id)")
@@ -394,8 +398,18 @@ async def pr_list(emp: dict = Depends(require_employee)):
             "LEFT JOIN employees e ON e.id = p.requester_emp_id "
             "WHERE p.requester_emp_id = $1 "
             "ORDER BY p.created_at DESC, p.id DESC", emp.get("id"))
-    return _json({"is_admin": _is_admin(emp), "statuses": list(STATUSES),
-                  "rows": [dict(r) for r in rows]})
+    out = [dict(r) for r in rows]
+    # Attach live Consumer Store (SAP warehouse 46) stock to any request that was linked
+    # to a store item, so the requester/approver sees what's already on hand.
+    try:
+        smap = await cd.stock_map([r.get("sap_item_code") for r in out])
+        for r in out:
+            code = (r.get("sap_item_code") or "").strip()
+            if code and code in smap:
+                r["sap_stock"] = smap[code]
+    except Exception:
+        pass
+    return _json({"is_admin": _is_admin(emp), "statuses": list(STATUSES), "rows": out})
 
 
 @router.post("/create")
@@ -415,8 +429,8 @@ async def pr_create(body: dict, emp: dict = Depends(require_employee)):
             (requester_emp_id, req_name, department, request_date, whatsapp,
              item_name, category, specification, part_make, quantity, unit, purpose, location,
              urgency, required_by, est_cost, preferred_supplier, in_stock, remarks,
-             status)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'Pending')
+             sap_item_code, status)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,'Pending')
         RETURNING id
         """,
         emp.get("id"),
@@ -438,6 +452,7 @@ async def pr_create(body: dict, emp: dict = Depends(require_employee)):
         _s(body.get("preferred_supplier"), 200),
         _s(body.get("in_stock"), 10),
         _s(body.get("remarks"), 1000),
+        _s(body.get("sap_item_code"), 80),
     )
     # Unique token that the WhatsApp Approve/Reject URL buttons carry.
     await db.execute("UPDATE purchase_requests SET act_token=$1 WHERE id=$2",

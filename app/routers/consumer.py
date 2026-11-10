@@ -40,6 +40,18 @@ async def consumer_status(emp: dict = Depends(require_employee)):
                   "company_db": m.get("company_db")})
 
 
+@router.get("/lookup")
+async def consumer_lookup(q: str = "", limit: int = 12, emp: dict = Depends(require_employee)):
+    """Type-ahead search over the Consumer Store items, for the Purchase Request form."""
+    if not cd.is_configured():
+        return _json({"ok": False, "configured": False, "items": []})
+    try:
+        items = await cd.lookup(q, min(max(int(limit), 1), 25))
+    except Exception:
+        items = []
+    return _json({"ok": True, "configured": True, "items": items})
+
+
 @router.get("/stock")
 async def consumer_stock(emp: dict = Depends(require_employee)):
     if not cd.is_configured():

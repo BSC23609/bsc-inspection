@@ -25,6 +25,21 @@
 .badge.rejected{background:#fdecec;color:#c23438}.badge.purchased{background:#e7eefb;color:#1d4e74}
 .badge.urg{background:#fdecec;color:#c23438}.badge.norm{background:#eef1f5;color:#51607a}.badge.low{background:#eef1f5;color:#8a93a3}
 .pr-stsel{padding:5px 8px;border:1px solid var(--line-2);border-radius:7px;font-size:12px;background:#fff}
+.store-dd{position:absolute;left:0;right:0;top:100%;z-index:30;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 28px rgba(16,32,64,.14);max-height:260px;overflow:auto;margin-top:4px}
+.store-dd-row{padding:8px 12px;cursor:pointer;border-bottom:1px solid #f0f3f7}
+.store-dd-row:last-child{border-bottom:none}
+.store-dd-row:hover{background:#f4f8ff}
+.store-dd .sd-nm{font-size:13px;font-weight:600;color:#17304f}
+.store-dd .sd-meta{display:flex;gap:10px;align-items:center;margin-top:2px}
+.store-dd .sd-code{font-size:11px;color:#6b7a90}
+.store-dd .sd-av{font-size:11px;font-weight:700}
+.store-dd .sd-av.in{color:#0a7d55}.store-dd .sd-av.out{color:#c0241c}
+.store-dd-empty{padding:10px 12px;font-size:12.5px;color:#6b7a90}
+.store-pick{margin-top:6px;font-size:12.5px;background:#eef6f1;border:1px solid #cce6d8;border-radius:8px;padding:7px 10px;color:#20593d}
+.store-pick .ok{color:#0a7d55;font-weight:700}.store-pick .no{color:#c0241c;font-weight:700}
+.store-pick a{margin-left:8px;color:#1f6fd6}
+.store-badge{display:inline-block;font-size:10.5px;font-weight:700;border-radius:20px;padding:1px 8px;margin-top:3px}
+.store-badge.in{background:#e2efda;color:#2f6b27}.store-badge.out{background:#fde0e1;color:#c0241c}
 </style>
 
 <div class="page-head"><h1>Purchase Request</h1>
@@ -53,6 +68,13 @@
   <!-- Section 2: Item details -->
   <div class="pr-sec">
     <div class="sh"><span class="n">2</span> Item Details</div>
+    <div class="field" style="margin-bottom:12px;position:relative">
+      <label>Find in Consumer Store <span class="opt">(optional — links to live SAP stock)</span></label>
+      <input id="pr_store_q" autocomplete="off" placeholder="Search the consumable store…" oninput="storeLookup(this.value)" onfocus="storeLookup(this.value)">
+      <div id="pr_store_dd" class="store-dd" style="display:none"></div>
+      <div id="pr_store_pick" class="store-pick" style="display:none"></div>
+      <input type="hidden" id="pr_sapcode">
+    </div>
     <div class="field" style="margin-bottom:12px"><label>Item Name <span class="rq">*</span></label>
       <input id="pr_item" placeholder="Name of the item you need"></div>
     <div class="row r2">
@@ -160,7 +182,48 @@ function prReset(){
   var _as=document.getElementById('pr_asset');if(_as)_as.selectedIndex=0;
   var no=document.querySelector('input[name="pr_stock"][value="No"]');if(no)no.checked=true;
   sv('pr_reqdate',today());
+  clearStore();
 }
+
+// ---- Consumer Store link: search live SAP warehouse-46 items and attach one ----
+var _storeTmr=null,_storeItems=[];
+function storeLookup(q){
+  q=(q||'').trim();clearTimeout(_storeTmr);
+  var dd=document.getElementById('pr_store_dd');
+  if(q.length<2){dd.style.display='none';return;}
+  _storeTmr=setTimeout(async function(){
+    try{var r=await fetch('/consumer/lookup?q='+encodeURIComponent(q)+'&limit=12',{cache:'no-store'});
+      var d=await r.json();_storeItems=(d&&d.items)||[];}catch(e){_storeItems=[];}
+    if(!_storeItems.length){dd.innerHTML='<div class="store-dd-empty">No matching item in the Consumer Store</div>';dd.style.display='block';return;}
+    dd.innerHTML=_storeItems.map(function(it,i){
+      var av=Number(it.available||0),cls=av>0?'in':'out';
+      return '<div class="store-dd-row" onclick="pickStore('+i+')"><div class="sd-nm">'+esc(it.name||it.code)+'</div>'
+        +'<div class="sd-meta"><span class="sd-code">'+esc(it.code)+'</span><span class="sd-av '+cls+'">'+av+' '+esc(it.uom||'')+' available</span></div></div>';
+    }).join('');
+    dd.style.display='block';
+  },220);
+}
+function pickStore(i){
+  var it=_storeItems[i];if(!it)return;
+  sv('pr_item',it.name||it.code);
+  if(!v('pr_partmake').trim())sv('pr_partmake',it.code);
+  document.getElementById('pr_sapcode').value=it.code;
+  var yes=Number(it.available||0)>0;
+  var rb=document.querySelector('input[name="pr_stock"][value="'+(yes?'Yes':'No')+'"]');if(rb)rb.checked=true;
+  var pick=document.getElementById('pr_store_pick');
+  pick.innerHTML='Linked to store item <b>'+esc(it.code)+'</b> · '+(yes?('<span class="ok">'+Number(it.available)+' '+esc(it.uom||'')+' available now</span>'):'<span class="no">none available</span>')+' <a href="#" onclick="clearStore();return false;">clear</a>';
+  pick.style.display='block';
+  document.getElementById('pr_store_dd').style.display='none';
+  document.getElementById('pr_store_q').value='';
+}
+function clearStore(){
+  document.getElementById('pr_sapcode').value='';
+  var p=document.getElementById('pr_store_pick');if(p){p.style.display='none';p.innerHTML='';}
+  var q=document.getElementById('pr_store_q');if(q)q.value='';
+}
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#pr_store_q,#pr_store_dd')){var dd=document.getElementById('pr_store_dd');if(dd)dd.style.display='none';}
+});
 
 async function prSubmit(){
   var p={
@@ -170,7 +233,8 @@ async function prSubmit(){
     quantity:v('pr_qty'), unit:v('pr_unit'), location:v('pr_loc'),
     purpose:(v('pr_ptype')==='Asset'?v('pr_asset'):v('pr_ptype')),
     urgency:v('pr_urg'), required_by:v('pr_reqby'), est_cost:v('pr_cost'),
-    preferred_supplier:v('pr_sup').trim(), in_stock:stockVal(), remarks:v('pr_remarks').trim()
+    preferred_supplier:v('pr_sup').trim(), in_stock:stockVal(), remarks:v('pr_remarks').trim(),
+    sap_item_code:v('pr_sapcode')
   };
   if(!p.req_name){toast('err','Enter the requester name');return;}
   if(!p.item_name){toast('err','Enter the item name / description');return;}
@@ -194,6 +258,11 @@ async function prLoad(){
   catch(e){h.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load requests. Try again.</div>';return;}
   document.getElementById('pr_reg_title').textContent=PR_ADMIN?'All purchase requests':'My requests';
   prRender();
+}
+function storeBadge(x){
+  if(!x.sap_stock)return '';
+  var s=x.sap_stock,av=Number(s.available||0),cls=av>0?'in':'out';
+  return '<br><span class="store-badge '+cls+'">Store: '+av+' '+esc(s.uom||'')+' available'+(s.onhand!=null?(' · '+Number(s.onhand)+' on hand'):'')+'</span>';
 }
 function urgBadge(u){var l=String(u||'').toLowerCase();
   if(l.indexOf('urgent')>=0)return'<span class="badge urg">Urgent</span>';
@@ -223,7 +292,7 @@ function prRender(){
     var tr='<tr><td>'+g(x.id)+'</td><td>'+g(dt)+'</td>';
     if(PR_ADMIN)tr+='<td>'+g(x.requester_name||x.req_name)+'</td>';
     var sub=[g(x.category),g(x.purpose),g(x.location)].filter(function(s){return s;}).join(' · ');
-    tr+='<td><b>'+g(x.item_name)+'</b>'+(sub?('<br><span class="muted" style="font-size:11px">'+sub+'</span>'):'')+'</td>'
+    tr+='<td><b>'+g(x.item_name)+'</b>'+(sub?('<br><span class="muted" style="font-size:11px">'+sub+'</span>'):'')+storeBadge(x)+'</td>'
       +'<td class="c">'+qty+'</td><td class="c">'+urgBadge(x.urgency)+'</td><td class="c">'+cost+'</td>'
       +'<td class="c">'+stBadge(x.status)+'</td>';
     if(PR_ADMIN){
