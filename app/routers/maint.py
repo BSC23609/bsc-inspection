@@ -1970,9 +1970,17 @@ async def my_checklist(emp: dict = Depends(require_employee)):
         next_due = None
         overdue = due = False
         if freq == "Daily":
-            # daily resets every day; due today unless it's Sunday
+            # daily resets every day; due today unless it's Sunday (plant off)
             due = today.weekday() != 6
-            next_due = today.isoformat()
+            if done or not due:
+                # done for today (or today is an off day) -> next due is the next working
+                # day, so a completed daily doesn't keep showing today's date as "next due"
+                nd = today + timedelta(days=1)
+                while nd.weekday() == 6:   # skip Sundays
+                    nd += timedelta(days=1)
+                next_due = nd.isoformat()
+            else:
+                next_due = today.isoformat()
         elif g.get("schedule_id"):
             info = compute_due(g, g.get("asset_hours"), today)
             overdue = bool(info.get("overdue"))
@@ -6145,6 +6153,96 @@ async def monitor_mark_absent(body: dict, emp: dict = Depends(require_employee))
     return _json({"ok": True, "action": "saved",
                   "msg": ("Marked absent. Report saved excluding the absent person's checkpoints."
                           if p else "Marked absent; the report will file when OneDrive is reachable.")})
+
+
+@router.post("/monitor/mark-done")
+async def monitor_mark_done(body: dict, emp: dict = Depends(require_employee)):
+    """Admin-only: mark a pending assignee's checkpoints for a work order as DONE with
+    result OK (for when the work was completed on the floor but not logged in the app).
+    Works for Daily and Quarterly PM. When this completes every assigned, non-absent
+    checkpoint for the period, the PM schedule is advanced and the work-order PDF is
+    generated (all points OK), exactly as a normal My-Checklist submit would."""
+    await ensure_tables()
+    await _ensure_absent_table()
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admins only")
+    try:
+        cid = int(body.get("checklist_id"))
+        aid = int(body.get("emp_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Bad checklist/emp id")
+    pk = (body.get("period_key") or "").strip()
+    if not pk:
+        raise HTTPException(400, "Missing period")
+
+    # period date (noon IST) for the done_at stamp
+    try:
+        pdate = _dt_date.fromisoformat(pk[:10])
+    except ValueError:
+        pdate = _today()
+    done_at = datetime(pdate.year, pdate.month, pdate.day, 12, 0, tzinfo=IST)
+
+    # that assignee's checkpoints on this checklist that are not yet recorded this period
+    their = await db.fetch(
+        "SELECT id FROM maint_checkpoints WHERE checklist_id=$1 AND assigned_emp_id=$2", cid, aid)
+    if not their:
+        raise HTTPException(404, "No checkpoints for that assignee")
+    their_ids = [r["id"] for r in their]
+    done_ids = {d["checkpoint_id"] for d in await db.fetch(
+        "SELECT checkpoint_id FROM maint_checkpoint_done "
+        "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])", pk, their_ids)}
+    marked = 0
+    for pid in their_ids:
+        if pid in done_ids:
+            continue
+        await db.execute(
+            "INSERT INTO maint_checkpoint_done (checkpoint_id,emp_id,period_key,result,note,done_at) "
+            "VALUES ($1,$2,$3,'OK','',$4) ON CONFLICT (checkpoint_id,period_key) "
+            "DO UPDATE SET emp_id=$2, result='OK', note='', done_at=$4",
+            pid, aid, pk, done_at)
+        marked += 1
+
+    # Is the WHOLE period now complete (every assigned, non-absent checkpoint has a result)?
+    all_cps = await db.fetch(
+        "SELECT id, assigned_emp_id FROM maint_checkpoints WHERE checklist_id=$1", cid)
+    absent = await _absent_emp_ids(cid, pk)
+    required = [r["id"] for r in all_cps
+                if r["assigned_emp_id"] and r["assigned_emp_id"] not in absent]
+    all_done = False
+    if required:
+        done_now = {d["checkpoint_id"] for d in await db.fetch(
+            "SELECT checkpoint_id FROM maint_checkpoint_done "
+            "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])",
+            pk, [r["id"] for r in all_cps])}
+        all_done = all(cp_id in done_now for cp_id in required)
+
+    cname = await db.fetchval("SELECT name FROM maint_checklists WHERE id=$1", cid) or ""
+    sch = await db.fetchrow(
+        "SELECT s.id, s.asset_id, a.code AS acode, a.name AS aname, a.location AS loc, "
+        "a.running_hours AS rh FROM maint_schedules s LEFT JOIN maint_assets a ON a.id=s.asset_id "
+        "WHERE s.checklist_id=$1 ORDER BY s.id LIMIT 1", cid)
+
+    if all_done:
+        # advance every schedule on this checklist so it stops showing due/overdue
+        for sr in await db.fetch(
+                "SELECT id, asset_id FROM maint_schedules "
+                "WHERE checklist_id=$1 AND COALESCE(active,true)=true", cid):
+            ah = await db.fetchval("SELECT running_hours FROM maint_assets WHERE id=$1", sr["asset_id"])
+            await db.execute("UPDATE maint_schedules SET last_done=$1, last_done_hours=$2 WHERE id=$3",
+                             pdate, ah, sr["id"])
+        # generate the work-order PDF (rebuilt from maint_checkpoint_done -> all OK)
+        done_by = (await db.fetchval("SELECT name FROM employees WHERE id=$1", aid)
+                   or "(admin — marked done)")
+        p = await _file_pm_report(
+            asset_code=(sch["acode"] if sch else ""), asset_name=(sch["aname"] if sch else ""),
+            checklist=cname, doc_no="", done_by=done_by,
+            results=[], checklist_id=cid, location=(sch["loc"] if sch else ""), when=done_at)
+        return _json({"ok": True, "all_done": True, "marked": marked,
+                      "msg": ("Marked done. All checks complete — work-order PDF generated (all OK)."
+                              if p else "Marked done. All checks complete; the PDF will file when "
+                                        "OneDrive is reachable.")})
+    return _json({"ok": True, "all_done": False, "marked": marked,
+                  "msg": "Marked done for this person. Still waiting on other assignees before the PDF."})
 
 
 @router.get("/admin/backfill-checkpoint-done")

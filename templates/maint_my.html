@@ -17,6 +17,7 @@
 .mtbl .code{font-size:11px;color:var(--muted);font-weight:600}
 .pill{display:inline-block;font-size:11px;font-weight:700;border-radius:20px;padding:3px 10px;white-space:nowrap}
 .pill.overdue{background:#fde0e1;color:#c0241c}.pill.due{background:#fff3d6;color:#8a5a00}
+.od-date{font-size:11px;font-weight:700;color:#c0241c;margin-top:3px;white-space:nowrap}
 .pill.done{background:#e2efda;color:#2f6b27}.pill.upcoming{background:#eef1f5;color:#5a6472}
 .pill.open{background:#fff3d6;color:#8a5a00}.pill.closed{background:#e2efda;color:#2f6b27}
 .tchip{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px;background:#eef2f7;color:#41506a}
@@ -133,10 +134,14 @@ function rowsHtml(rows){
       var btn=x.status==='done'
         ? '<button class="openb done" onclick="openForm('+x.checklist_id+')">View / redo</button>'
         : '<button class="openb" onclick="openForm('+x.checklist_id+')">Open</button>';
+      // For an overdue machine, show its overdue date right under the badge (always
+      // visible, even on phones where the "Next due" column is hidden).
+      var statusCell='<span class="pill '+x.status+'">'+lbl+'</span>'
+        +((x.status==='overdue'&&x.next_due)?('<div class="od-date">Overdue: '+fdate(x.next_due)+'</div>'):'');
       return '<tr><td>'+(i+1)+'</td><td><div class="mac">'+esc(x.asset_name||'—')+'</div>'+(x.asset_code?'<div class="code">'+esc(x.asset_code)+'</div>':'')+'</td>'
         +'<td class="hide-sm">'+(x.done_n||0)+' / '+x.my_count+'</td>'
         +'<td class="hide-sm">'+(x.next_due?fdate(x.next_due):'—')+'</td>'
-        +'<td><span class="pill '+x.status+'">'+lbl+'</span></td>'
+        +'<td>'+statusCell+'</td>'
         +'<td style="text-align:right">'+btn+'</td></tr>'
         +pointsHtml(x);
     }).join('')+'</tbody></table></div>';

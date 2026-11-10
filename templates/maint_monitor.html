@@ -23,6 +23,8 @@ table.mon tr:nth-child(even) td{background:#f7f9fc}
 .st.done{background:#e3f6ee;color:#0a7d55}.st.pend{background:#fff3d6;color:#9a6a00}.st.absent{background:#eef1f4;color:#6b7280}
 .btn-abs{font-size:10.5px;font-weight:700;border:1px solid #e3b7b9;color:#c23438;background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer}
 .btn-abs:hover{background:#fdeaea}
+.btn-done{font-size:10.5px;font-weight:700;border:1px solid #a9ddc4;color:#0a7d55;background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer}
+.btn-done:hover{background:#e3f6ee}
 .rp{display:inline-block;font-size:10.5px;font-weight:700;color:#1f3b5b;text-decoration:none;border:1px solid var(--line-2);border-radius:7px;padding:2px 8px;white-space:nowrap;background:#fff}
 a.rp:hover{background:#eef3fb;border-color:var(--acc)}
 .rp-cell{display:flex;gap:6px;flex-wrap:wrap}
@@ -124,6 +126,10 @@ function render(list){
     var names=sts.length?sts.map(function(s){return esc(s.emp);}).join('<br>'):'<span style="color:var(--muted)">—</span>';
     var stcells=sts.length?sts.map(function(s){
       var b='<span class="st '+stClass(s.status)+'">'+esc(s.status)+'</span>';
+      // Admin can mark a completed-but-unlogged check as Done (OK) — any PM work order.
+      if(x.kind==='pm'&&x.checklist_id&&s.status==='Pending'){
+        b+=' <button class="btn-done" onclick="markDone('+x.checklist_id+',\''+esc(x.period_key)+'\','+s.emp_id+',this)">Mark done</button>';
+      }
       if(x.can_absent&&s.status==='Pending'){
         b+=' <button class="btn-abs" onclick="markAbsent('+x.checklist_id+',\''+esc(x.period_key)+'\','+s.emp_id+',this)">Mark absent</button>';
       }
@@ -177,6 +183,16 @@ async function monDelete(i){
     toast(d.msg||(d.ok?('Deleted'+(d.pdf_deleted?' (with PDF).':'.')):'Could not delete.'), !d.ok);
     if(d.ok)reload();
   }catch(e){toast('Could not delete: '+e, true);}
+}
+async function markDone(cid,pk,eid,btn){
+  if(!confirm('Mark this assignee’s checks as Done (result OK) for this work order?\n\nUse this when the work was completed on the floor but not logged in the app. When every assignee is done, the work-order PDF is generated (all OK).'))return;
+  if(btn){btn.disabled=true;btn.textContent='…';}
+  try{
+    var r=await fetch('/maint/monitor/mark-done',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({checklist_id:cid,period_key:pk,emp_id:eid})});
+    var d=await r.json();
+    toast(d.msg||(d.ok?'Marked done.':'Could not mark done.'), !d.ok);
+    if(d.ok)reload();
+  }catch(e){toast('Could not mark done: '+e, true);if(btn){btn.disabled=false;btn.textContent='Mark done';}}
 }
 async function markAbsent(cid,pk,eid,btn){
   if(!confirm('Mark this assignee absent for this Daily PM?\n\nIf they were the only assignee left, the day is skipped (no report). Otherwise the report is saved now without their checkpoints.'))return;
