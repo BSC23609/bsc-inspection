@@ -185,6 +185,29 @@ async def _get_row(pid) -> dict:
     return dict(r) if r else None
 
 
+async def _store_note(row) -> str:
+    """Live Consumer Store (SAP warehouse 46) availability for a request linked by its
+    EXACT SAP item code — a short line for the WhatsApp approval message. '' when the
+    request isn't linked or the store can't be read."""
+    code = (row.get("sap_item_code") or "").strip()
+    if not code:
+        return ""
+    try:
+        m = await cd.stock_map([code])
+    except Exception:
+        return ""
+    s = m.get(code)
+    if not s:
+        return ""
+    av = s.get("available") or 0
+    uom = (s.get("uom") or "").strip()
+    try:
+        av = float(av)
+    except (TypeError, ValueError):
+        av = 0
+    return ("In store: %g %s available" % (av, uom)).strip() if av > 0 else "Not currently in store"
+
+
 async def _notify_approver(pid):
     """Send the new request to the single approver's WhatsApp (Approve/Reject buttons
     live on the approved WATI template). Never raises — a WATI failure must not fail
@@ -197,6 +220,9 @@ async def _notify_approver(pid):
     # Named body params + {{token}} for the two dynamic URL buttons (Approve,
     # Reject) — both buttons reference the same {{token}}, gatepass style.
     params = _req_params(row)
+    note = await _store_note(row)
+    if note:   # fold live store stock into the item line (no WATI template change needed)
+        params["item"] = _tidy((params.get("item") or "") + " — " + note)
     tok = row.get("act_token")
     if tok:
         params["token"] = tok
@@ -223,8 +249,12 @@ async def _notify_store(pid):
         return False, "row not found"
     if row.get("store_notified"):
         return True, "already notified"
+    params = _req_params(row)
+    note = await _store_note(row)
+    if note:
+        params["item"] = _tidy((params.get("item") or "") + " — " + note)
     try:
-        ok, detail = await wati.send_template(STORE_TEMPLATE, STORE_NUMBER, _req_params(row))
+        ok, detail = await wati.send_template(STORE_TEMPLATE, STORE_NUMBER, params)
     except Exception as e:  # noqa: BLE001
         ok, detail = False, "send error: %s" % e
     if ok:

@@ -186,7 +186,7 @@ function prReset(){
 }
 
 // ---- Consumer Store link: search live SAP warehouse-46 items and attach one ----
-var _storeTmr=null,_storeItems=[];
+var _storeTmr=null,_storeItems=[],_linkedStock=null;
 function storeLookup(q){
   q=(q||'').trim();clearTimeout(_storeTmr);
   var dd=document.getElementById('pr_store_dd');
@@ -208,6 +208,7 @@ function pickStore(i){
   sv('pr_item',it.name||it.code);
   if(!v('pr_partmake').trim())sv('pr_partmake',it.code);
   document.getElementById('pr_sapcode').value=it.code;
+  _linkedStock={code:it.code,name:it.name||it.code,available:Number(it.available||0),uom:it.uom||''};
   var yes=Number(it.available||0)>0;
   var rb=document.querySelector('input[name="pr_stock"][value="'+(yes?'Yes':'No')+'"]');if(rb)rb.checked=true;
   var pick=document.getElementById('pr_store_pick');
@@ -217,6 +218,7 @@ function pickStore(i){
   document.getElementById('pr_store_q').value='';
 }
 function clearStore(){
+  _linkedStock=null;
   document.getElementById('pr_sapcode').value='';
   var p=document.getElementById('pr_store_pick');if(p){p.style.display='none';p.innerHTML='';}
   var q=document.getElementById('pr_store_q');if(q)q.value='';
@@ -240,6 +242,10 @@ async function prSubmit(){
   if(!p.item_name){toast('err','Enter the item name / description');return;}
   if(!p.specification){toast('err','Enter the specification / model');return;}
   if(!p.quantity||Number(p.quantity)<=0){toast('err','Enter a quantity');return;}
+  // Warn if the linked item is already available in the Consumer Store.
+  if(_linkedStock&&p.sap_item_code===_linkedStock.code&&_linkedStock.available>0){
+    if(!confirm('"'+_linkedStock.name+'" already has '+_linkedStock.available+' '+(_linkedStock.uom||'')+' available in the Consumer Store (SAP).\n\nRaise the purchase request anyway?'))return;
+  }
   var b=document.getElementById('pr_save');b.disabled=true;var lbl=b.textContent;b.textContent='Submitting…';
   try{
     var r=await fetch('/purchase/create',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)});
