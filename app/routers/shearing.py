@@ -282,6 +282,10 @@ async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: 
         st.fail("record", "not found in database")
         return await odsync.record(st)
     r = dict(row)
+    # Previously stored OneDrive file name — lets the Excel log find and update the
+    # existing row when the name changes (date edit/rename) instead of duplicating it.
+    # Must be defined: referenced below in the Excel step.
+    old_name = r.get("file_name") or ""
     data = odsync.as_obj(r.get("payload"), {})
     if not data.get("timestamp"):
         data["timestamp"] = odsync.iso_z(r.get("created_at") or datetime.now(timezone.utc))
@@ -473,7 +477,12 @@ async def s_submit(body: SIn, emp: dict = Depends(require_employee)):
         s["process"], s["qc_name"], s["sheets_measured"], s["rejection_flag"],
         s["has_reworks"], json.dumps(data), file_name, by)
 
-    od = await od_sync(new_id, photos=photos)   # awaited: Vercel kills post-response work
+    # The inspection is already saved in the DB above; a OneDrive/Graph failure must NOT
+    # fail the save (it only means the PDF/Excel didn't sync yet). Report it, don't raise.
+    try:
+        od = await od_sync(new_id, photos=photos)
+    except Exception as e:  # noqa: BLE001
+        od = {"ok": False, "error": "saved to database; OneDrive sync failed: %s" % e}
     return {"ok": True, "id": new_id, "onedrive": od}
 
 
@@ -497,7 +506,10 @@ async def s_update(body: SIn, emp: dict = Depends(require_employee)):
         s["log_date"], s["customer_name"], s["batch_number"], s["grade"], s["make"],
         s["process"], s["qc_name"], s["sheets_measured"], s["rejection_flag"],
         s["has_reworks"], json.dumps(data), body.id)
-    od = await od_sync(body.id, photos=photos, excel=False)   # new photos + refreshed PDF
+    try:
+        od = await od_sync(body.id, photos=photos, excel=False)   # new photos + refreshed PDF
+    except Exception as e:  # noqa: BLE001
+        od = {"ok": False, "error": "saved to database; OneDrive sync failed: %s" % e}
     return {"ok": True, "id": body.id, "onedrive": od}
 
 
