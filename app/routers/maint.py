@@ -5306,7 +5306,12 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
             if ((s.get("freq_type") or "").lower() == "quarterly" and clid) else (None, None)
         if q_fully:
             continue  # quarterly fully done this quarter
-        is_overdue = bool(info["overdue"] or (q_started and not info["due"]))
+        # Overdue/due uses the EXACT same rule as the Maintenance Board (_q_state): a
+        # quarterly is overdue only once its SCHEDULED date has passed (info["overdue"]),
+        # due on its scheduled date (info["due"]) — never just because a checkpoint was
+        # ticked early. Both sides derive from compute_due()+_quarterly_progress, so the
+        # reminder can only ever show what the board shows (no phantom "started" overdues).
+        is_overdue = bool(info["overdue"])
         is_due = bool(info["due"] and not is_overdue)
         if not (is_overdue or is_due):
             continue
@@ -5316,7 +5321,7 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
             if not allow_overdue:
                 overdue_suppressed += 1
                 continue  # outside 09:00–19:00 IST — no overdue escalation
-            od = _due_disp(info.get("next_due")) if info["overdue"] else _due_disp(q_pk.get(clid))
+            od = _due_disp(info.get("next_due"))
             sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
                            "cat": task, "who": assignee, "date": od or tdisp, "status": "Overdue"})
             _bucket_pending(q_cps.get(clid) or [], q_done, q_pk.get(clid), clid, aid, assignee, mobile,
