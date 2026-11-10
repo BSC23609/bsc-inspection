@@ -31,6 +31,8 @@ a.rp:hover{background:#eef3fb;border-color:var(--acc)}
 button.rp{font-family:inherit;cursor:pointer}
 button.rp.rp-del{color:#c23438;border-color:#e3b7b9;background:#fff}
 button.rp.rp-del:hover{background:#fdeaea;border-color:#c23438}
+button.rp.rp-skip{color:#8a5a00;border-color:#e6cf99;background:#fff}
+button.rp.rp-skip:hover{background:#fff6e0;border-color:#b8860b}
 .rpt-ov{display:none;position:fixed;inset:0;z-index:1000;background:rgba(15,26,43,.55);padding:24px;align-items:center;justify-content:center}
 .rpt-ov.show{display:flex}
 .rpt-box{background:#fff;border-radius:12px;width:min(960px,96vw);height:min(90vh,100%);display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.4)}
@@ -152,7 +154,13 @@ function reportUrl(x,dl){
   return p;
 }
 function reportCell(x,i){
-  if(!x.has_report)return '<span style="color:var(--muted)">—</span>';
+  if(!x.has_report){
+    // a pending quarterly has no report yet — let admin skip it for this period
+    if(x.kind==='pm'&&x.category==='Quarterly PM'&&x.checklist_id){
+      return '<button class="rp rp-skip" onclick="skipQuarter('+i+')">Skip quarter</button>';
+    }
+    return '<span style="color:var(--muted)">—</span>';
+  }
   return '<div class="rp-cell">'
     +'<button class="rp" onclick="openReport('+i+')">View</button>'
     +'<a class="rp" href="'+reportUrl(x,1)+'">Download</a>'
@@ -183,6 +191,16 @@ async function monDelete(i){
     toast(d.msg||(d.ok?('Deleted'+(d.pdf_deleted?' (with PDF).':'.')):'Could not delete.'), !d.ok);
     if(d.ok)reload();
   }catch(e){toast('Could not delete: '+e, true);}
+}
+async function skipQuarter(i){
+  var x=(window.MON_LIST||[])[i]; if(!x)return;
+  if(!confirm('Skip this quarterly PM for this period?\n\nIt is removed from the Monitor, the board and the reminders for this quarter. No PDF is made and it is NOT marked done — the machine’s next quarterly PM stays scheduled.'))return;
+  try{
+    var r=await fetch('/maint/monitor/skip-quarter',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({checklist_id:x.checklist_id,period_key:x.period_key})});
+    var d=await r.json();
+    toast(d.msg||(d.ok?'Skipped this quarter.':'Could not skip.'), !d.ok);
+    if(d.ok)reload();
+  }catch(e){toast('Could not skip: '+e, true);}
 }
 async function markDone(cid,pk,eid,btn){
   if(!confirm('Mark this assignee’s checks as Done (result OK) for this work order?\n\nUse this when the work was completed on the floor but not logged in the app. When every assignee is done, the work-order PDF is generated (all OK).'))return;

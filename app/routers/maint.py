@@ -2413,6 +2413,41 @@ def _machine_folder(code: str, name: str) -> str:
 
 
 _WO_ABSENT_READY = False
+_WO_SKIP_READY = False
+
+
+async def _ensure_skip_table():
+    """Per-work-order 'skip this period' marks (admin, Quarterly PM). When a quarterly is
+    skipped for a period it stops showing on the Monitor, the board and the reminders for
+    that period, but the schedule keeps running for the NEXT quarter. Keyed by
+    (checklist_id, period_key)."""
+    global _WO_SKIP_READY
+    if _WO_SKIP_READY:
+        return
+    try:
+        await db.execute("""CREATE TABLE IF NOT EXISTS maint_wo_skip (
+            id SERIAL PRIMARY KEY, checklist_id INT, period_key TEXT,
+            skipped_by TEXT, skipped_at TIMESTAMPTZ DEFAULT now())""")
+        await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS ix_m_woskip "
+                         "ON maint_wo_skip (checklist_id, period_key)")
+        _WO_SKIP_READY = True
+    except Exception as e:
+        print("[maint] skip table ensure skip:", e)
+
+
+async def _skipped_set(pks=None) -> set:
+    """Set of (checklist_id, period_key) marked skipped (optionally limited to pks)."""
+    await _ensure_skip_table()
+    try:
+        if pks:
+            rows = await db.fetch(
+                "SELECT checklist_id, period_key FROM maint_wo_skip WHERE period_key = ANY($1::text[])",
+                list(pks))
+        else:
+            rows = await db.fetch("SELECT checklist_id, period_key FROM maint_wo_skip")
+        return {(r["checklist_id"], r["period_key"]) for r in rows}
+    except Exception:
+        return set()
 
 
 async def _ensure_absent_table():
@@ -4186,16 +4221,21 @@ async def _quarterly_state(sched_all, today):
                 "SELECT checklist_id, emp_id, period_key FROM maint_wo_absent "
                 "WHERE period_key = ANY($1::text[])", pks):
             absent_set.add((a["checklist_id"], a["emp_id"], a["period_key"]))
-    return cps_by_cl, pk_by_cl, done_set, absent_set
+    skip_set = await _skipped_set(pks)
+    return cps_by_cl, pk_by_cl, done_set, absent_set, skip_set
 
 
-def _quarterly_progress(clid, cps_by_cl, pk_by_cl, done_set, absent_set):
+def _quarterly_progress(clid, cps_by_cl, pk_by_cl, done_set, absent_set, skip_set=None):
     """(fully_done, started) for a quarterly checklist's current period, or (None, None)
-    when there are no checkpoints to track (fall back to the date model)."""
+    when there are no checkpoints to track (fall back to the date model). A period that
+    was explicitly SKIPPED by an admin counts as fully done, so it stops showing as
+    due/overdue on the board and in the reminders for this period."""
     cps = cps_by_cl.get(clid) or []
     if not cps:
         return None, None
     pk = pk_by_cl.get(clid)
+    if skip_set and (clid, pk) in skip_set:
+        return True, True
     effective = done_n = 0
     started = False
     for cp in cps:
@@ -4241,7 +4281,7 @@ async def board(emp: dict = Depends(require_employee)):
     cps_by_cl, done_set, absent_set, log_set, window_days = await _daily_window_state(
         sched_all, daily_cl_ids, today)
     # quarterly per-person completion for the current quarter (so a part-done quarterly shows)
-    q_cps, q_pk, q_done, q_absent = await _quarterly_state(sched_all, today)
+    q_cps, q_pk, q_done, q_absent, q_skip = await _quarterly_state(sched_all, today)
 
     cur_due = window_days[0] if window_days else today   # the current due working day
 
@@ -4319,7 +4359,7 @@ async def board(emp: dict = Depends(require_employee)):
             # the current quarter, so a part-done one (someone finished, someone didn't)
             # shows as OVERDUE even though last_done advanced. Fully done -> not shown.
             clid = s.get("checklist_id")
-            fully_done, started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent) \
+            fully_done, started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent, q_skip) \
                 if ((s.get("freq_type") or "").lower() == "quarterly" and clid) else (None, None)
             if fully_done:
                 pass  # completed this quarter -> drop off the board
@@ -4390,7 +4430,7 @@ async def board_matrix(emp: dict = Depends(require_employee)):
     cps_by_cl, done_set, absent_set, log_set, window_days = await _daily_window_state(
         sched_all, daily_cl_ids, today)
     cur_due = window_days[0] if window_days else today
-    q_cps, q_pk, q_done, q_absent = await _quarterly_state(sched_all, today)
+    q_cps, q_pk, q_done, q_absent, q_skip = await _quarterly_state(sched_all, today)
 
     def _day_overdue(clid, piso, cps, is_cur):
         if not cps:
@@ -4439,7 +4479,7 @@ async def board_matrix(emp: dict = Depends(require_employee)):
     def _q_state(s):
         clid = s.get("checklist_id")
         info = compute_due(s, s.get("asset_hours"), today)
-        fully, started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent) if clid else (None, None)
+        fully, started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent, q_skip) if clid else (None, None)
         if fully:
             return {"state": "ok", "due": info.get("next_due")}
         # Quarterly due/overdue follows the ANNUAL SCHEDULE DATE only. A machine shows
@@ -5156,7 +5196,7 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                            if s.get("active") and s.get("checklist_id") and _is_daily_s(s)})
     cps_by_cl, done_set, absent_set, log_set, window_days = await _daily_window_state(
         sched_all, daily_cl_ids, today)
-    q_cps, q_pk, q_done, q_absent = await _quarterly_state(sched_all, today)
+    q_cps, q_pk, q_done, q_absent, q_skip = await _quarterly_state(sched_all, today)
     cur_due = window_days[0] if window_days else today
 
     def _day_pending(checklist_id, period_iso, cps, is_current):
@@ -5262,7 +5302,7 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         # quarterly / periodic -> date model, plus per-person completion for quarterly
         info = compute_due(s, s.get("asset_hours"), today)
         clid = s.get("checklist_id")
-        q_fully, q_started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent) \
+        q_fully, q_started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent, q_skip) \
             if ((s.get("freq_type") or "").lower() == "quarterly" and clid) else (None, None)
         if q_fully:
             continue  # quarterly fully done this quarter
@@ -5812,6 +5852,7 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
             done_set.add((d["checkpoint_id"], d["period_key"]))
     absent_set = {(a["checklist_id"], a["period_key"], a["emp_id"])
                   for a in await db.fetch("SELECT checklist_id, period_key, emp_id FROM maint_wo_absent")}
+    skip_set = await _skipped_set(pks)   # admin-skipped quarterly periods -> hidden here
 
     rows = []
     for (asset_id, checklist_id, pk), g in wo.items():
@@ -5829,6 +5870,9 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
         is_daily = "quarter" not in (g["cname"] or "").lower()
         # Quarterly: show only when its scheduled quarterly date is actually due/overdue.
         if not is_daily and checklist_id not in q_due_clids:
+            continue
+        # admin skipped this quarterly for this period -> drop it from the Monitor
+        if not is_daily and (checklist_id, pk) in skip_set:
             continue
         # is there any precise per-checkpoint 'done' data for this work order's period?
         has_cpdone = any((cp["id"], pk) in done_set for cp in cps)
@@ -5848,6 +5892,13 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
                 else:
                     st = "Pending"
             statuses.append({"emp": emps.get(aid, "#%s" % aid), "emp_id": aid, "status": st})
+        # Checkpoints with NO assignee can never be completed by a user, so they keep a
+        # report stuck on "pending" forever. Surface them as a single "Unassigned" row the
+        # admin can mark done (emp_id 0). Only shown while one is still pending.
+        unassigned = [cp["id"] for cp in cps if not cp["assigned_emp_id"]]
+        if unassigned and not all((uid, pk) in done_set for uid in unassigned) \
+                and not (g.get("has_log") and not has_cpdone):
+            statuses.append({"emp": "Unassigned", "emp_id": 0, "status": "Pending"})
         # For a quarterly, the Date column is the machine's SCHEDULED date this quarter
         # (from the annual plan) — not the day it happened to be completed on.
         row_date = g["date"]
@@ -6168,7 +6219,7 @@ async def monitor_mark_done(body: dict, emp: dict = Depends(require_employee)):
         raise HTTPException(403, "Admins only")
     try:
         cid = int(body.get("checklist_id"))
-        aid = int(body.get("emp_id"))
+        aid = int(body.get("emp_id"))   # 0 = the "Unassigned" checkpoints row
     except (TypeError, ValueError):
         raise HTTPException(400, "Bad checklist/emp id")
     pk = (body.get("period_key") or "").strip()
@@ -6182,15 +6233,21 @@ async def monitor_mark_done(body: dict, emp: dict = Depends(require_employee)):
         pdate = _today()
     done_at = datetime(pdate.year, pdate.month, pdate.day, 12, 0, tzinfo=IST)
 
-    # that assignee's checkpoints on this checklist that are not yet recorded this period
-    their = await db.fetch(
-        "SELECT id FROM maint_checkpoints WHERE checklist_id=$1 AND assigned_emp_id=$2", cid, aid)
+    # The selected assignee's checkpoints (or, for emp_id 0, the unassigned ones) on this
+    # checklist that are not yet recorded this period.
+    if aid:
+        their = await db.fetch(
+            "SELECT id FROM maint_checkpoints WHERE checklist_id=$1 AND assigned_emp_id=$2", cid, aid)
+    else:
+        their = await db.fetch(
+            "SELECT id FROM maint_checkpoints WHERE checklist_id=$1 AND assigned_emp_id IS NULL", cid)
     if not their:
         raise HTTPException(404, "No checkpoints for that assignee")
     their_ids = [r["id"] for r in their]
     done_ids = {d["checkpoint_id"] for d in await db.fetch(
         "SELECT checkpoint_id FROM maint_checkpoint_done "
         "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])", pk, their_ids)}
+    emp_val = aid or None   # store NULL for unassigned checkpoints
     marked = 0
     for pid in their_ids:
         if pid in done_ids:
@@ -6199,7 +6256,7 @@ async def monitor_mark_done(body: dict, emp: dict = Depends(require_employee)):
             "INSERT INTO maint_checkpoint_done (checkpoint_id,emp_id,period_key,result,note,done_at) "
             "VALUES ($1,$2,$3,'OK','',$4) ON CONFLICT (checkpoint_id,period_key) "
             "DO UPDATE SET emp_id=$2, result='OK', note='', done_at=$4",
-            pid, aid, pk, done_at)
+            pid, emp_val, pk, done_at)
         marked += 1
 
     # Is the WHOLE period now complete (every assigned, non-absent checkpoint has a result)?
@@ -6223,6 +6280,17 @@ async def monitor_mark_done(body: dict, emp: dict = Depends(require_employee)):
         "WHERE s.checklist_id=$1 ORDER BY s.id LIMIT 1", cid)
 
     if all_done:
+        # Every assigned, non-absent checkpoint is done. Sweep any UNASSIGNED pending
+        # checkpoints to OK too, so the work-order PDF comes out fully complete (no
+        # orphan "pending" row) rather than "In progress — 1 pending".
+        orphan = [r["id"] for r in all_cps if not r["assigned_emp_id"]]
+        if orphan:
+            for pid in await db.fetch(
+                    "SELECT id FROM maint_checkpoints WHERE id = ANY($1::int[])", orphan):
+                await db.execute(
+                    "INSERT INTO maint_checkpoint_done (checkpoint_id,emp_id,period_key,result,note,done_at) "
+                    "VALUES ($1,NULL,$2,'OK','',$3) ON CONFLICT (checkpoint_id,period_key) DO NOTHING",
+                    pid["id"], pk, done_at)
         # advance every schedule on this checklist so it stops showing due/overdue
         for sr in await db.fetch(
                 "SELECT id, asset_id FROM maint_schedules "
@@ -6243,6 +6311,41 @@ async def monitor_mark_done(body: dict, emp: dict = Depends(require_employee)):
                                         "OneDrive is reachable.")})
     return _json({"ok": True, "all_done": False, "marked": marked,
                   "msg": "Marked done for this person. Still waiting on other assignees before the PDF."})
+
+
+@router.post("/monitor/skip-quarter")
+async def monitor_skip_quarter(body: dict, emp: dict = Depends(require_employee)):
+    """Admin-only (Quarterly PM): skip a quarterly work order for THIS period. It is
+    removed from the Monitor, the board and the reminders for this quarter (no PDF, not
+    marked done). The schedule is rolled to its next quarter, so the machine's NEXT
+    quarterly PM is scheduled as normal."""
+    await ensure_tables()
+    await _ensure_skip_table()
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admins only")
+    try:
+        cid = int(body.get("checklist_id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Bad checklist id")
+    pk = (body.get("period_key") or "").strip()
+    if not pk:
+        raise HTTPException(400, "Missing period")
+    cname = await db.fetchval("SELECT name FROM maint_checklists WHERE id=$1", cid) or ""
+    if "quarter" not in cname.lower():
+        raise HTTPException(400, "Skip is only for Quarterly PM.")
+    await db.execute(
+        "INSERT INTO maint_wo_skip (checklist_id, period_key, skipped_by) VALUES ($1,$2,$3) "
+        "ON CONFLICT (checklist_id, period_key) DO NOTHING",
+        cid, pk, emp.get("name") or emp.get("emp_no"))
+    # roll each schedule on this checklist to its next quarter so the date model also
+    # advances (last_done set to this quarter's scheduled date).
+    today_d = _today()
+    for sr in await db.fetch(
+            "SELECT * FROM maint_schedules WHERE checklist_id=$1 AND COALESCE(active,true)=true", cid):
+        cur_due = _q_cur_due(dict(sr), today_d) or today_d
+        await db.execute("UPDATE maint_schedules SET last_done=$1 WHERE id=$2", cur_due, sr["id"])
+    return _json({"ok": True, "msg": "Skipped this quarter. It's cleared from the Monitor; "
+                                     "the next quarterly PM stays scheduled."})
 
 
 @router.get("/admin/backfill-checkpoint-done")
