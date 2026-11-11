@@ -5403,18 +5403,38 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                             {"kind": "due-digest", "assignee": g["name"],
                              "preventive": len(g["pm"]), "breakdown": len(g["bd"])})
 
-    # overdue/cover digest to every supervisor — overdue daily + quarterly PM and open
-    # breakdowns. It goes out ONLY inside the plant window 09:00–before 19:00 IST; outside
-    # that the whole digest is held, even if the only items are unassigned-due or breakdowns.
-    _want_overdue = kind in ("overdue", "all") and (sup_pm or sup_bd)
+    # Admin overdue report — the WhatsApp digest whose image header is the Maintenance
+    # Board overdue PNG. Whether to SEND it is decided by what the BOARD actually shows,
+    # not by the narrow supervisor-escalation lists (sup_pm/sup_bd). Those escalation lists
+    # intentionally omit items ASSIGNED to a person (e.g. an assigned overdue breakdown, which
+    # routes to that person's own digest instead), so on a day whose only overdue items are
+    # assigned they are empty and the admin report used to be suppressed — even though the
+    # board, and the PNG the admins would receive, had rows. We therefore gate the send on
+    # the FULL board content (board_mode), computed once here with a dry pass, so the admin
+    # report reaches every admin whenever the board is not empty. WhatsApp fetches the PNG
+    # header live at send time, so its content always matches the board too. This is why the
+    # problem cannot recur: the send decision and the image now share one source of truth.
+    board_pm, board_bd = sup_pm, sup_bd
+    if kind in ("overdue", "all") and not board_mode:
+        try:
+            _bdata = await _run_reminders(dry=True, kind="overdue",
+                                          force_overdue=True, board_mode=True)
+            board_pm = _bdata.get("overdue_pm") or []
+            board_bd = _bdata.get("overdue_bd") or []
+        except Exception:
+            board_pm, board_bd = sup_pm, sup_bd
+    # It goes out ONLY inside the plant window 09:00–before 19:00 IST; outside that the whole
+    # digest is held.
+    _want_overdue = kind in ("overdue", "all") and (board_pm or board_bd)
     if _want_overdue and not allow_overdue:
-        skipped.append({"kind": "overdue-digest", "preventive": len(sup_pm),
-                        "breakdown": len(sup_bd),
+        skipped.append({"kind": "overdue-digest", "preventive": len(board_pm),
+                        "breakdown": len(board_bd),
                         "result": "skipped: outside 09:00–19:00 IST window"})
     elif _want_overdue and not await _overdue_reminder_enabled():
-        skipped.append({"kind": "overdue-digest", "preventive": len(sup_pm),
-                        "breakdown": len(sup_bd),
-                        "result": "skipped: overdue reminder is turned OFF"})
+        skipped.append({"kind": "overdue-digest", "preventive": len(board_pm),
+                        "breakdown": len(board_bd),
+                        "result": "skipped: overdue reminder is turned OFF "
+                                  "(turn it on at /maint/overdue-reminder?token=...&state=on)"})
     elif _want_overdue:
         # Image-header template (bsc_maint_overdue_report): the overdue board goes out
         # as a PNG (served live at /maint/overdue-report.png). No body variables — the
@@ -5426,11 +5446,12 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
             mob = sup.get("mobile") or ""
             await _dispatch(WATI_MAINT_OVERDUE_TEMPLATE, wati.normalize_number(mob) or mob, params,
                             {"kind": "overdue-digest", "assignee": nm,
-                             "preventive": len(sup_pm), "breakdown": len(sup_bd)})
+                             "preventive": len(board_pm), "breakdown": len(board_bd)})
         if not sups:
             skipped.append({"kind": "overdue-digest",
-                            "preventive": len(sup_pm), "breakdown": len(sup_bd),
-                            "result": "skipped: no overdue recipient chosen (pick users on the Schedules page)"})
+                            "preventive": len(board_pm), "breakdown": len(board_bd),
+                            "result": "skipped: no admin has a mobile number set "
+                                      "(add a mobile to the admin users, or pick recipients on the Schedules page)"})
     if overdue_suppressed:
         skipped.append({"kind": "overdue", "result": "skipped: outside 09:00–19:00 IST window",
                         "overdue_items": overdue_suppressed})
