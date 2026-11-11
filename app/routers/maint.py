@@ -4580,7 +4580,8 @@ async def board_matrix(emp: dict = Depends(require_employee)):
         raised = b.get("raised_at")
         raised_iso = raised.astimezone(IST).date().isoformat() if isinstance(raised, datetime) else ""
         g["breakdowns"].append({"id": b.get("id"), "problem": (b.get("problem") or ""),
-                                "date": raised_iso, "assignees": bnames})
+                                "date": raised_iso, "assignees": bnames,
+                                "by": (b.get("reported_by") or "").strip() or "-"})
 
     # --- quarterly from ACTIVITY (covers quarterly checklists with NO schedule, like a
     # machine whose quarterly was recorded but never scheduled). A quarterly checklist that

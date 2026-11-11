@@ -66,9 +66,16 @@ a.cellbtn{text-decoration:none}
     </select>
     <span id="b_count" style="font-size:12px;color:var(--muted)"></span>
   </div>
+  <div class="sect-h">Breakdown — Overdue</div>
+  <div class="mtx-wrap"><table class="mtx">
+    <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Status</th><th>Assigned To</th><th>Assigned By</th></tr></thead>
+    <tbody id="mtx_bd"><tr><td colspan="7" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
+  </table></div>
+
+  <div class="sect-h" style="margin-top:22px">Preventive Maintenance — Daily &amp; Quarterly (Due Today / Overdue)</div>
   <div class="mtx-wrap"><table class="mtx">
     <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Status</th><th>Assigned To</th></tr></thead>
-    <tbody id="mtx_rows"><tr><td colspan="6" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
+    <tbody id="mtx_pm"><tr><td colspan="6" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
   </table></div>
 </div></div>
 </div>
@@ -113,7 +120,7 @@ async function load(){
     if(m.quarterly&&(m.quarterly.state==='overdue'||m.quarterly.state==='due'))
       OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',status:(m.quarterly.state==='overdue'?'Overdue':'Due today'),assigned:(m.quarterly.assignees||[]),astatus:(m.quarterly.assignee_status||[]),sched:m.quarterly_sched});
     (m.breakdowns||[]).forEach(function(b){
-      OV.push({date:b.date,machine:mac,category:'Breakdown',status:'Overdue',assigned:(b.assignees||[]),astatus:[],bd:b.id});
+      OV.push({date:b.date,machine:mac,category:'Breakdown',status:'Overdue',assigned:(b.assignees||[]),astatus:[],bd:b.id,by:(b.by||'-')});
     });
   });
   OV.sort(function(a,b){return dateKey(a.date)-dateKey(b.date)||a.machine.localeCompare(b.machine);});
@@ -149,19 +156,28 @@ function asgCell(r){
   }
   return (r.assigned&&r.assigned.length)?esc(r.assigned.join(', ')):'<span style="color:var(--muted)">—</span>';
 }
+function rowHtml(r,i,withBy){
+  var click = r.sched?(' class="rowact" onclick="openComplete('+r.sched+')" title="Complete this work order"')
+           : (r.bd?(' class="rowact" onclick="location.href=\'/maint/breakdown\'" title="Close this work order"'):'');
+  var asg=asgCell(r);
+  var html='<tr'+click+'><td>'+(i+1)+'</td><td>'+fmtDue(r.date)+'</td>'
+    +'<td><span class="mc">'+esc(r.machine)+'</span></td>'
+    +'<td>'+catBadge(r.category)+'</td>'
+    +'<td>'+statusBadge(r.status)+'</td>'
+    +'<td>'+asg+'</td>';
+  if(withBy){var by=(r.by&&r.by!=='-')?esc(r.by):'<span style="color:var(--muted)">—</span>';html+='<td>'+by+'</td>';}
+  return html+'</tr>';
+}
 function render(list){
-  document.getElementById('b_count').textContent=list.length+' pending';
-  if(!list.length){document.getElementById('mtx_rows').innerHTML='<tr><td colspan="6" style="padding:18px;color:var(--muted)">Nothing overdue or pending today. ✅</td></tr>';return;}
-  document.getElementById('mtx_rows').innerHTML=list.map(function(r,i){
-    var click = r.sched?(' class="rowact" onclick="openComplete('+r.sched+')" title="Complete this work order"')
-             : (r.bd?(' class="rowact" onclick="location.href=\'/maint/breakdown\'" title="Close this work order"'):'');
-    var asg=asgCell(r);
-    return '<tr'+click+'><td>'+(i+1)+'</td><td>'+fmtDue(r.date)+'</td>'
-      +'<td><span class="mc">'+esc(r.machine)+'</span></td>'
-      +'<td>'+catBadge(r.category)+'</td>'
-      +'<td>'+statusBadge(r.status)+'</td>'
-      +'<td>'+asg+'</td></tr>';
-  }).join('');
+  var bd=list.filter(function(r){return r.category==='Breakdown';});
+  var pm=list.filter(function(r){return r.category!=='Breakdown';});
+  document.getElementById('b_count').textContent=bd.length+' breakdown · '+pm.length+' preventive';
+  document.getElementById('mtx_bd').innerHTML = bd.length
+    ? bd.map(function(r,i){return rowHtml(r,i,true);}).join('')
+    : '<tr><td colspan="7" style="padding:16px;color:var(--muted)">No overdue breakdowns. ✅</td></tr>';
+  document.getElementById('mtx_pm').innerHTML = pm.length
+    ? pm.map(function(r,i){return rowHtml(r,i,false);}).join('')
+    : '<tr><td colspan="6" style="padding:16px;color:var(--muted)">Nothing due or overdue. ✅</td></tr>';
 }
 function toast(msg,bad){
   var t=document.createElement('div');t.textContent=msg;
