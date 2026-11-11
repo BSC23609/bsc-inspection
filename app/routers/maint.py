@@ -44,6 +44,14 @@ AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
 # (e.g. letters/digits, no '@') to avoid exposing AGENT_TOKEN in WATI's template store.
 OVERDUE_IMG_TOKEN             = (os.environ.get("OVERDUE_IMG_TOKEN")
                                  or getattr(_cfg, "OVERDUE_IMG_TOKEN", "") or AGENT_TOKEN)
+# WhatsApp/Meta caches a template's header image BY URL, so a FIXED header URL can make the
+# overdue report replay an older image even though the app serves a fresh PNG. To defeat that,
+# set the WATI bsc_maint_overdue_report template header to a send-time VARIABLE and put that
+# placeholder's name here (env WATI_OVERDUE_IMG_PARAM, e.g. "image"). Each send then passes the
+# live PNG URL with a unique &t= timestamp, so Meta fetches the current board every time. Left
+# blank, the send behaves exactly as before (fixed-URL header — still cacheable).
+WATI_OVERDUE_IMG_PARAM        = (os.environ.get("WATI_OVERDUE_IMG_PARAM")
+                                 or getattr(_cfg, "WATI_OVERDUE_IMG_PARAM", "") or "")
 ONEDRIVE_BASE                 = getattr(_cfg, "ONEDRIVE_BASE", "BSC Inspections")
 
 router = APIRouter(prefix="/maint", tags=["maintenance"])
@@ -1034,6 +1042,25 @@ async def _overdue_recipients() -> list:
     if out:
         return out
     return [{"name": "", "mobile": m} for m in _supervisor_mobiles()]
+
+
+def _overdue_img_params():
+    """Parameters for the overdue image-header template.
+
+    WhatsApp/Meta caches a template's header image BY URL, so repeatedly sending the SAME
+    fixed URL lets it replay a stale copy of the board. When the WATI template header is set
+    to a send-time VARIABLE — whose placeholder name is configured in WATI_OVERDUE_IMG_PARAM
+    (e.g. "image") — we return that variable set to the live PNG URL plus a unique &t= epoch,
+    so Meta fetches a fresh image on every send and the report can never lag the board.
+
+    Left unconfigured (blank), we return [] and the template uses its fixed header URL exactly
+    as before — so deploying this change alone never alters the current behaviour."""
+    if not WATI_OVERDUE_IMG_PARAM:
+        return []
+    ts = int(datetime.now(IST).timestamp())
+    url = (f"https://qms.bharatsteels.in/maint/overdue-report.png"
+           f"?token={OVERDUE_IMG_TOKEN}&t={ts}")
+    return {WATI_OVERDUE_IMG_PARAM: url}
 
 
 def _is_offday(d):
@@ -5446,8 +5473,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
     elif _want_overdue:
         # Image-header template (bsc_maint_overdue_report): the overdue board goes out
         # as a PNG (served live at /maint/overdue-report.png). No body variables — the
-        # whole table is in the image — so params is empty.
-        params = []
+        # whole table is in the image. params carries the cache-busted header image URL
+        # when the template header is a send-time variable (see _overdue_img_params);
+        # otherwise it is empty and the template's fixed header URL is used.
+        params = _overdue_img_params()
         sups = await _overdue_recipients()
         for sup in sups:
             nm = sup.get("name") or "Overdue recipient"
@@ -5586,7 +5615,8 @@ async def test_overdue(token: str = Query(default=""), to: str = Query(default="
     # The overdue digest is now an IMAGE-header template (bsc_maint_overdue_report) with
     # no body variables — the whole board is the PNG at /maint/overdue-report.png — so the
     # test send passes empty params, exactly like the live digest.
-    ok, detail = await _wsend(WATI_MAINT_OVERDUE_TEMPLATE, num, [], name="(test)", kind="test")
+    ok, detail = await _wsend(WATI_MAINT_OVERDUE_TEMPLATE, num, _overdue_img_params(),
+                              name="(test)", kind="test")
     return _json({"ok": ok, "sent_to": num, "template": WATI_MAINT_OVERDUE_TEMPLATE,
                   "build": MAINT_BUILD,
                   "image_url": "/maint/overdue-report.png?token=<AGENT_TOKEN>",
