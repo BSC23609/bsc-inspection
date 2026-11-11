@@ -805,3 +805,56 @@ async def s_dedupe(token: str = Query(...), apply: int = Query(0), limit: int = 
         except Exception as e:
             result["errors"].append({"id": d["id"], "error": str(e)[:200]})
     return result
+
+
+@router.get("/resync")
+async def s_resync(token: str = Query(...), id: int = Query(...)):
+    """Regenerate ONE shearing record's PDF (+ photos/Excel) and upload it to OneDrive
+    under its correct, de-duplicated file name. Use when a record's PDF is missing from
+    OneDrive (e.g. it was overwritten before the de-dup fix).
+
+    /shearing/resync?token=<AGENT_TOKEN>&id=<record id>
+    """
+    if token != AGENT_TOKEN:
+        raise HTTPException(403, "bad token")
+    row = await db.fetchrow("SELECT id, file_name FROM shearing_inspection WHERE id=$1", int(id))
+    if not row:
+        raise HTTPException(404, "record not found")
+    try:
+        od = await od_sync(int(id))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"resync failed: {e}")
+    r = await db.fetchrow("SELECT file_name FROM shearing_inspection WHERE id=$1", int(id))
+    return {"ok": True, "id": int(id), "file_name": (dict(r).get("file_name") if r else None),
+            "onedrive": od}
+
+
+@router.get("/resync")
+async def s_resync(token: str = Query(...), id: int = Query(0),
+                   all: int = Query(0), excel: int = Query(0), limit: int = Query(2000)):
+    """Regenerate a shearing record's OneDrive PDF from its OWN data and write it under its
+    correct, de-duplicated name. Use this to recover a record whose PDF is missing or holds
+    another record's content (e.g. an old same-coil+date overwrite).
+
+    /shearing/resync?token=<AGENT_TOKEN>&id=55     -> regenerate one record's PDF
+    /shearing/resync?token=<AGENT_TOKEN>&all=1     -> regenerate every record's PDF (slower)
+    Add &excel=1 to also refresh the Excel log / rework CSV rows.
+    """
+    if token != AGENT_TOKEN:
+        raise HTTPException(403, "bad token")
+    await ensure_table()
+    if id:
+        ids = [id]
+    elif all:
+        ids = [r["id"] for r in await db.fetch(
+            "SELECT id FROM shearing_inspection ORDER BY id LIMIT $1", limit)]
+    else:
+        raise HTTPException(400, "pass ?id=<record id> or ?all=1")
+    done, errors = [], []
+    for i in ids:
+        try:
+            await od_sync(i, excel=bool(excel))
+            done.append(i)
+        except Exception as e:  # noqa: BLE001
+            errors.append({"id": i, "error": str(e)[:200]})
+    return {"ok": True, "resynced": len(done), "done": done, "errors": errors}
