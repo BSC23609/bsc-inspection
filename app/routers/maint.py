@@ -5290,13 +5290,14 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
             if board_mode:  # full board PNG: show every due-today item, assigned or not
                 sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
                                "cat": task, "who": assignee if aid else "Unassigned",
-                               "date": tdisp, "status": "Due today"})
+                               "date": tdisp, "status": "Due today", "by": "-"})
             elif _pending_cp_aids(cps, done_set, cur_due.isoformat(), clid) or (aid and mobile):
                 _bucket_pending(cps, done_set, cur_due.isoformat(), clid, aid, assignee, mobile,
                                 f"{label} - {task}")
             else:
                 sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
-                               "cat": task, "who": "Unassigned", "date": tdisp, "status": "Due today"})
+                               "cat": task, "who": "Unassigned", "date": tdisp,
+                               "status": "Due today", "by": "-"})
             continue
 
         # quarterly / periodic -> date model, plus per-person completion for quarterly
@@ -5323,7 +5324,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                 continue  # outside 09:00–19:00 IST — no overdue escalation
             od = _due_disp(info.get("next_due"))
             sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
-                           "cat": task, "who": assignee, "date": od or tdisp, "status": "Overdue"})
+                           "cat": task, "who": assignee, "date": od or tdisp,
+                           "status": "Overdue", "by": "-"})
             _bucket_pending(q_cps.get(clid) or [], q_done, q_pk.get(clid), clid, aid, assignee, mobile,
                             f"{label} - {task} (overdue" + (f" since {od}" if od else "") + ")")
         else:  # due today
@@ -5332,13 +5334,14 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
             if board_mode:  # full board PNG: show every due-today item, assigned or not
                 sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
                                "cat": task, "who": assignee if aid else "Unassigned",
-                               "date": tdisp, "status": "Due today"})
+                               "date": tdisp, "status": "Due today", "by": "-"})
             elif _pending_cp_aids(q_cps.get(clid) or [], q_done, q_pk.get(clid), clid) or (aid and mobile):
                 _bucket_pending(q_cps.get(clid) or [], q_done, q_pk.get(clid), clid, aid, assignee, mobile,
                                 f"{label} - {task}")
             else:
                 sup_pm.append({"code": s.get("asset_code") or "", "name": s.get("asset_name") or "",
-                               "cat": task, "who": "Unassigned", "date": tdisp, "status": "Due today"})  # unassigned-due cover
+                               "cat": task, "who": "Unassigned", "date": tdisp,
+                               "status": "Due today", "by": "-"})  # unassigned-due cover
 
     # ---- open breakdowns: to EACH assigned maintenance user; else to supervisors ----
     for b in await _open_breakdowns():
@@ -5346,17 +5349,20 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         prob = (b.get("problem") or "").strip() or "—"
         _braised = b.get("raised_at")
         bdate = _braised.astimezone(IST).strftime("%d-%b-%Y") if isinstance(_braised, datetime) else "-"
+        # Who raised / assigned this work order — shown in the report's "Assigned By" column.
+        brep = (b.get("reported_by") or "").strip() or "-"
         aids = b.get("assignees") or ([b["assignee_emp_id"]] if b.get("assignee_emp_id") else [])
         if board_mode:  # full board PNG: one row per open breakdown, every assignee shown
             nms = [(emap.get(a) or {}).get("name") for a in aids]
             nms = [n for n in nms if n]
             sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
                            "prob": prob, "who": ", ".join(nms) if nms else "Unassigned",
-                           "status": "Open", "date": bdate})
+                           "status": "Open", "date": bdate, "by": brep})
             continue
         if not aids:
             sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
-                           "prob": prob, "who": "Unassigned", "status": "Open", "date": bdate})
+                           "prob": prob, "who": "Unassigned", "status": "Open", "date": bdate,
+                           "by": brep})
             continue
         for aid in aids:
             if aid in on_leave:
@@ -5368,7 +5374,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                 _bucket(aid, who, mob, "bd", f"{label} - {prob}")
             else:
                 sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
-                               "prob": prob, "who": who, "status": "Open", "date": bdate})
+                               "prob": prob, "who": who, "status": "Open", "date": bdate,
+                               "by": brep})
 
     sent, skipped = [], []
 

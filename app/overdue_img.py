@@ -30,13 +30,14 @@ GREY_BG = (236, 240, 245)
 
 # columns: (key, header, width)
 COLS = [
-    ("sno", "S.No", 64),
-    ("date", "Date", 128),
-    ("code", "M/C Code", 148),
-    ("name", "Machine Name", 248),
-    ("cat", "Category", 210),
-    ("status", "Status", 140),
-    ("who", "Assigned To", 212),
+    ("sno", "S.No", 60),
+    ("date", "Date", 150),
+    ("code", "M/C Code", 122),
+    ("name", "Machine Name", 218),
+    ("cat", "Category", 182),
+    ("status", "Status", 132),
+    ("who", "Assigned To", 192),
+    ("by", "Assigned By", 192),
 ]
 PAD = 12           # cell left/right padding
 VPAD = 9           # cell top/bottom padding
@@ -105,6 +106,7 @@ def _rows(pm, bd):
             "cat": _cat(it.get("cat")),
             "status": it.get("status") or "Overdue",
             "who": (it.get("who") or "-").strip() or "-",
+            "by": (it.get("by") or "-").strip() or "-",
         })
     for it in (bd or []):
         rows.append({
@@ -114,6 +116,7 @@ def _rows(pm, bd):
             "cat": "Breakdown",
             "status": it.get("status") or "Open",
             "who": (it.get("who") or "-").strip() or "-",
+            "by": (it.get("by") or "-").strip() or "-",
         })
     prio = {"Overdue": 0, "Open": 1, "Due today": 2}
     rows.sort(key=lambda r: prio.get(r["status"], 1))
@@ -148,7 +151,7 @@ def build_overdue_png(tdisp, pm, bd):
     d0 = ImageDraw.Draw(tmp)
 
     # pre-compute wrapped lines + row heights
-    wrap_cols = {"name", "cat", "who"}
+    wrap_cols = {"name", "cat", "who", "by"}
     prepared = []
     for r in rows:
         cell_lines, max_lines = {}, 1
