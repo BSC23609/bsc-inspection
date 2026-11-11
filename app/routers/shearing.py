@@ -725,15 +725,23 @@ def _dup_sig(data: dict) -> str:
 
 
 @router.get("/dedupe")
-async def s_dedupe(token: str = Query(...), apply: int = Query(0), limit: int = Query(2000)):
-    """Remove DUPLICATE shearing entries (and their OneDrive PDFs) created by repeated
-    saves of the SAME inspection. Rows are grouped by batch + inspection date + identical
-    content; the earliest (lowest id) is KEPT and the rest are deleted. Genuinely different
-    inspections (different content) are never touched, and a PDF kept by the surviving row
-    is never deleted.
+async def s_dedupe(token: str = Query(...), apply: int = Query(0), limit: int = Query(2000),
+                   mode: str = Query("content"), date: str = Query("")):
+    """Remove DUPLICATE shearing entries (and their OneDrive PDFs).
 
-    Open /shearing/dedupe?token=<AGENT_TOKEN>           -> dry run (lists what would go)
-         /shearing/dedupe?token=<AGENT_TOKEN>&apply=1   -> actually delete
+    mode=content (default): only rows that are EXACT copies (same batch + date + identical
+      content) are duplicates; the earliest is kept. Genuinely different inspections are
+      never touched.
+    mode=batchdate: treats every record of the same coil on the same day as a duplicate;
+      keeps the MOST COMPLETE one (most sheet measurements, then lowest id) and deletes the
+      rest. Use with date=YYYY-MM-DD to limit it to one day. (More aggressive — ALWAYS dry
+      run first and check the to_delete list.)
+
+    date=YYYY-MM-DD limits the whole operation to that inspection date.
+    A PDF kept by a surviving row is never deleted.
+
+    Open /shearing/dedupe?token=<AGENT_TOKEN>[&mode=batchdate][&date=2026-11-04]  -> dry run
+         ...&apply=1                                                              -> delete
     """
     if token != AGENT_TOKEN:
         raise HTTPException(403, "bad token")
@@ -741,22 +749,38 @@ async def s_dedupe(token: str = Query(...), apply: int = Query(0), limit: int = 
     rows = await db.fetch(
         "SELECT id, payload, file_name, batch_number, log_date, created_at "
         "FROM shearing_inspection ORDER BY id LIMIT $1", limit)
+
+    def _nmeas(r):
+        return len(odsync.as_obj(r.get("payload"), {}).get("measurements") or [])
+
     groups = {}
     for row in rows:
         r = dict(row)
-        data = odsync.as_obj(r.get("payload"), {})
-        key = (r.get("batch_number") or "", str(r.get("log_date") or ""), _dup_sig(data))
+        ld = str(r.get("log_date") or "")
+        if date and ld != date:
+            continue
+        if mode == "batchdate":
+            key = (r.get("batch_number") or "", ld)
+        else:
+            key = (r.get("batch_number") or "", ld, _dup_sig(odsync.as_obj(r.get("payload"), {})))
         groups.setdefault(key, []).append(r)
 
     kept_names, to_delete = set(), []
     for key, lst in groups.items():
-        kept_names.add((lst[0].get("file_name") or ""))
-        for r in lst[1:]:
+        if mode == "batchdate":
+            keeper = sorted(lst, key=lambda r: (-_nmeas(r), r["id"]))[0]
+        else:
+            keeper = lst[0]
+        kept_names.add(keeper.get("file_name") or "")
+        for r in lst:
+            if r["id"] == keeper["id"]:
+                continue
             to_delete.append({"id": r["id"], "batch": r.get("batch_number"),
                               "date": str(r.get("log_date") or ""),
                               "file_name": r.get("file_name") or "",
-                              "keep_id": lst[0]["id"]})
-    result = {"ok": True, "apply": bool(apply), "scanned": len(rows),
+                              "keep_id": keeper["id"]})
+    result = {"ok": True, "apply": bool(apply), "mode": mode, "date": date or None,
+              "scanned": len(rows),
               "duplicate_groups": sum(1 for lst in groups.values() if len(lst) > 1),
               "to_delete": to_delete, "deleted": [], "pdf_removed": [], "errors": []}
     if not apply or not to_delete:
