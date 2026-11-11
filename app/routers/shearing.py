@@ -277,7 +277,8 @@ async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: 
     """Write one shearing inspection to OneDrive — PDF, photos, ShearingLog row, rework CSV."""
     await ensure_table()
     st = odsync.Steps("shearing", rec_id)
-    row = await db.fetchrow("SELECT id, payload, file_name, created_at FROM shearing_inspection WHERE id=$1", rec_id)
+    row = await db.fetchrow("SELECT id, payload, file_name, created_at, batch_number, log_date "
+                            "FROM shearing_inspection WHERE id=$1", rec_id)
     if not row:
         st.fail("record", "not found in database")
         return await odsync.record(st)
@@ -292,6 +293,21 @@ async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: 
     # File name is always <coilno>_dd-mm-yyyy_Shearing built from the inspection date
     # the user entered (the "Date" shown in the app), NOT the upload timestamp.
     fn = _insp_filename(data, r.get("created_at"), data.get("batch_number"))
+    # De-duplicate the filename: two inspections with the SAME coil + date build the same
+    # name, so the 2nd PDF would OVERWRITE the 1st in OneDrive. Give the 2nd, 3rd... record
+    # of the same (batch, date) a _2, _3 suffix — ordered by record id so each keeps its own
+    # stable file and nothing gets clobbered.
+    try:
+        sibs = [x["id"] for x in await db.fetch(
+            "SELECT id FROM shearing_inspection "
+            "WHERE coalesce(batch_number,'') = coalesce($1,'') "
+            "AND log_date IS NOT DISTINCT FROM $2 ORDER BY id, created_at",
+            r.get("batch_number"), r.get("log_date"))]
+        pos = sibs.index(rec_id) if rec_id in sibs else 0
+        if pos > 0:
+            fn = f"{fn}_{pos + 1}"
+    except Exception:
+        pass
     token = await st.run("OneDrive sign-in", graph.get_token())
     if token:
         if photos:
@@ -697,3 +713,71 @@ async def s_fix_dates(token: str = Query(...), apply: int = Query(0),
     return {"ok": True, "apply": bool(apply), "scanned": len(rows),
             "to_stamp": len(planned), "stamped": len(changed),
             "planned": planned, "changed": changed, "errors": errors}
+
+
+def _dup_sig(data: dict) -> str:
+    """Content signature of a shearing record, ignoring volatile/non-content keys. Two
+    records with the same signature are identical copies (e.g. the same inspection saved
+    twice by the old 'Save failed' retry), NOT two different inspections."""
+    d = {k: v for k, v in (data or {}).items()
+         if k not in ("timestamp", "photo_paths", "photos", "file_name")}
+    return json.dumps(d, sort_keys=True, default=str)
+
+
+@router.get("/dedupe")
+async def s_dedupe(token: str = Query(...), apply: int = Query(0), limit: int = Query(2000)):
+    """Remove DUPLICATE shearing entries (and their OneDrive PDFs) created by repeated
+    saves of the SAME inspection. Rows are grouped by batch + inspection date + identical
+    content; the earliest (lowest id) is KEPT and the rest are deleted. Genuinely different
+    inspections (different content) are never touched, and a PDF kept by the surviving row
+    is never deleted.
+
+    Open /shearing/dedupe?token=<AGENT_TOKEN>           -> dry run (lists what would go)
+         /shearing/dedupe?token=<AGENT_TOKEN>&apply=1   -> actually delete
+    """
+    if token != AGENT_TOKEN:
+        raise HTTPException(403, "bad token")
+    await ensure_table()
+    rows = await db.fetch(
+        "SELECT id, payload, file_name, batch_number, log_date, created_at "
+        "FROM shearing_inspection ORDER BY id LIMIT $1", limit)
+    groups = {}
+    for row in rows:
+        r = dict(row)
+        data = odsync.as_obj(r.get("payload"), {})
+        key = (r.get("batch_number") or "", str(r.get("log_date") or ""), _dup_sig(data))
+        groups.setdefault(key, []).append(r)
+
+    kept_names, to_delete = set(), []
+    for key, lst in groups.items():
+        kept_names.add((lst[0].get("file_name") or ""))
+        for r in lst[1:]:
+            to_delete.append({"id": r["id"], "batch": r.get("batch_number"),
+                              "date": str(r.get("log_date") or ""),
+                              "file_name": r.get("file_name") or "",
+                              "keep_id": lst[0]["id"]})
+    result = {"ok": True, "apply": bool(apply), "scanned": len(rows),
+              "duplicate_groups": sum(1 for lst in groups.values() if len(lst) > 1),
+              "to_delete": to_delete, "deleted": [], "pdf_removed": [], "errors": []}
+    if not apply or not to_delete:
+        return result
+
+    tok = await graph.get_token()
+    by_name = {}
+    if tok:
+        for c in await graph.list_children(tok, f"{ONEDRIVE_BASE}/Shearing/PDF"):
+            if not c.get("is_folder"):
+                by_name[c["name"]] = c["id"]
+    for d in to_delete:
+        try:
+            await db.execute("DELETE FROM shearing_inspection WHERE id=$1", d["id"])
+            result["deleted"].append(d["id"])
+            fn = d["file_name"]
+            # only delete a PDF that no surviving row keeps
+            if fn and fn not in kept_names and tok:
+                item_id = by_name.get(f"{fn}.pdf")
+                if item_id and await graph.delete_item(tok, item_id):
+                    result["pdf_removed"].append(f"{fn}.pdf")
+        except Exception as e:
+            result["errors"].append({"id": d["id"], "error": str(e)[:200]})
+    return result
