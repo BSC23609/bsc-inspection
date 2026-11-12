@@ -2638,10 +2638,25 @@ async def _file_breakdown_report(bd: dict, assignee_names: str):
         folder = _machine_folder(bd.get("asset_code"), bd.get("asset_name"))
         rdate = raised.strftime("%d-%m-%y") if isinstance(raised, datetime) else now.strftime("%d-%m-%y")
         fname = f"{rdate}_{code}_bm_{bd.get('id')}.pdf"
-        path = f"{ONEDRIVE_BASE}/Maintenance/Reports/{folder}/Breakdown Maintenance/{fname}"
+        # File under the subfolder that matches the work-order type: a Breakdown goes to
+        # 'Breakdown Maintenance', an Unscheduled PM to its own 'Unscheduled Preventive
+        # Maintenance' folder (created automatically on first upload).
+        sub = "Breakdown Maintenance" if _wl == "Breakdown" else "Unscheduled Preventive Maintenance"
+        other_sub = "Unscheduled Preventive Maintenance" if _wl == "Breakdown" else "Breakdown Maintenance"
+        path = f"{ONEDRIVE_BASE}/Maintenance/Reports/{folder}/{sub}/{fname}"
         token = await graph.get_token()
         await graph.upload_file(token, path, pdf, "application/pdf")
         print("[maint] breakdown report saved:", path)
+        # After a reclassify, remove any stale copy of this ticket's PDF left in the other
+        # subfolder, so the same work order isn't shown in two places.
+        try:
+            _suf = f"_bm_{bd.get('id')}.pdf".lower()
+            for _c in await graph.list_children(
+                    token, f"{ONEDRIVE_BASE}/Maintenance/Reports/{folder}/{other_sub}"):
+                if not _c.get("is_folder") and (_c.get("name") or "").lower().endswith(_suf):
+                    await graph.delete_item(token, _c["id"])
+        except Exception:
+            pass
         return path
     except Exception as e:
         print("[maint] breakdown report skipped:", e)
@@ -3557,10 +3572,15 @@ async def reconcile_migration(token: str = Query(default=""), emp: dict = Depend
 
         async def _scan(m):
             found = set()
-            for f in await graph.list_children(tok, f"{base}/{m['name']}/Breakdown Maintenance"):
-                mm = _re.search(r"_bm_(\d+)\.pdf$", f.get("name") or "", _re.I)
-                if mm:
-                    found.add(int(mm.group(1)))
+            for _sub in ("Breakdown Maintenance", "Unscheduled Preventive Maintenance"):
+                try:
+                    _items = await graph.list_children(tok, f"{base}/{m['name']}/{_sub}")
+                except Exception:
+                    continue
+                for f in _items:
+                    mm = _re.search(r"_bm_(\d+)\.pdf$", f.get("name") or "", _re.I)
+                    if mm:
+                        found.add(int(mm.group(1)))
             return found
         for res in await asyncio.gather(*[_scan(m) for m in machines], return_exceptions=True):
             if isinstance(res, set):
@@ -3766,10 +3786,15 @@ async def breakdown_restore_all(token: str = Query(default=""), apply: int = Que
 
         async def _scan(m):
             found = {}
-            for f in await graph.list_children(tok, f"{base}/{m['name']}/Breakdown Maintenance"):
-                mm = _re.search(r"_bm_(\d+)\.pdf$", f.get("name") or "", _re.I)
-                if mm and f.get("id"):
-                    found[int(mm.group(1))] = f["id"]
+            for _sub in ("Breakdown Maintenance", "Unscheduled Preventive Maintenance"):
+                try:
+                    _items = await graph.list_children(tok, f"{base}/{m['name']}/{_sub}")
+                except Exception:
+                    continue
+                for f in _items:
+                    mm = _re.search(r"_bm_(\d+)\.pdf$", f.get("name") or "", _re.I)
+                    if mm and f.get("id"):
+                        found[int(mm.group(1))] = f["id"]
             return found
         for res in await asyncio.gather(*[_scan(m) for m in machines], return_exceptions=True):
             if isinstance(res, dict):
@@ -5957,7 +5982,8 @@ async def backfill_reports(token: str = Query(default=""), limit: int = Query(de
 
 _REPORT_SUBS = ("Daily Preventive Maintenance",
                 "Quarterly Preventive Maintenance",
-                "Breakdown Maintenance")
+                "Breakdown Maintenance",
+                "Unscheduled Preventive Maintenance")
 
 
 @router.get("/admin/ensure-report-folders")
@@ -6207,17 +6233,24 @@ async def monitor_report(code: str = Query(default=""), name: str = Query(defaul
     folder = _machine_folder(code, name)
     safe = _safe_code(code)
     if cat == "BM":
-        sub = "Breakdown Maintenance"
+        # BM PDFs may be in 'Breakdown Maintenance' or (after a reclassify) in
+        # 'Unscheduled Preventive Maintenance' — gather from both.
+        subs = ["Breakdown Maintenance", "Unscheduled Preventive Maintenance"]
     elif cat == "Quarterly PM":
-        sub = "Quarterly Preventive Maintenance"
+        subs = ["Quarterly Preventive Maintenance"]
     else:
-        sub = "Daily Preventive Maintenance"
-    path = f"{ONEDRIVE_BASE}/Maintenance/Reports/{folder}/{sub}"
+        subs = ["Daily Preventive Maintenance"]
     try:
         token = await graph.get_token()
-        children = await graph.list_children(token, path)
     except Exception as e:
         raise HTTPException(502, f"OneDrive error: {e}")
+    children = []
+    for _s in subs:
+        try:
+            children += await graph.list_children(
+                token, f"{ONEDRIVE_BASE}/Maintenance/Reports/{folder}/{_s}")
+        except Exception:
+            pass
     pdfs = [c for c in children
             if not c.get("is_folder") and (c.get("name") or "").lower().endswith(".pdf")]
     target = None
@@ -6256,8 +6289,22 @@ async def _locate_report_item(token, code, name, cat, date_iso, bd=0):
     Returns the drive item dict {id,name} or None."""
     folder = _machine_folder(code, name)
     safe = _safe_code(code)
-    sub = ("Breakdown Maintenance" if cat == "BM"
-           else "Quarterly Preventive Maintenance" if cat == "Quarterly PM"
+    if cat == "BM":
+        # A breakdown PDF may live in 'Breakdown Maintenance' or, after a reclassify, in
+        # 'Unscheduled Preventive Maintenance' — search both.
+        suf = f"_bm_{bd}.pdf".lower()
+        for _sub in ("Breakdown Maintenance", "Unscheduled Preventive Maintenance"):
+            try:
+                _ch = await graph.list_children(
+                    token, f"{ONEDRIVE_BASE}/Maintenance/Reports/{folder}/{_sub}")
+            except Exception:
+                continue
+            _hit = next((c for c in _ch if not c.get("is_folder")
+                         and (c.get("name") or "").lower().endswith(suf)), None)
+            if _hit:
+                return _hit
+        return None
+    sub = ("Quarterly Preventive Maintenance" if cat == "Quarterly PM"
            else "Daily Preventive Maintenance")
     path = f"{ONEDRIVE_BASE}/Maintenance/Reports/{folder}/{sub}"
     try:
@@ -6266,9 +6313,6 @@ async def _locate_report_item(token, code, name, cat, date_iso, bd=0):
         return None
     pdfs = [c for c in children
             if not c.get("is_folder") and (c.get("name") or "").lower().endswith(".pdf")]
-    if cat == "BM":
-        suf = f"_bm_{bd}.pdf".lower()
-        return next((c for c in pdfs if (c.get("name") or "").lower().endswith(suf)), None)
     want = f"_{safe}_pm.pdf".lower()
     cand = [c for c in pdfs if (c.get("name") or "").lower().endswith(want)]
     d0 = None
