@@ -63,16 +63,17 @@ a.cellbtn{text-decoration:none}
       <option value="Daily Maintenance">Daily Maintenance</option>
       <option value="Quarterly Maintenance">Quarterly Maintenance</option>
       <option value="Breakdown">Breakdown</option>
+      <option value="Unscheduled PM">Unscheduled PM</option>
     </select>
     <span id="b_count" style="font-size:12px;color:var(--muted)"></span>
   </div>
-  <div class="sect-h">Breakdown / Unscheduled PM — Overdue</div>
+  <div class="sect-h">Breakdown — Overdue</div>
   <div class="mtx-wrap"><table class="mtx">
     <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Status</th><th>Assigned To</th><th>Assigned By</th></tr></thead>
     <tbody id="mtx_bd"><tr><td colspan="7" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
   </table></div>
 
-  <div class="sect-h" style="margin-top:22px">Preventive Maintenance — Daily &amp; Quarterly (Due Today / Overdue)</div>
+  <div class="sect-h" style="margin-top:22px">Preventive Maintenance — Daily, Quarterly &amp; Unscheduled (Due Today / Overdue)</div>
   <div class="mtx-wrap"><table class="mtx">
     <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Status</th><th>Assigned To</th></tr></thead>
     <tbody id="mtx_pm"><tr><td colspan="6" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
@@ -170,8 +171,8 @@ function rowHtml(r,i,withBy){
   return html+'</tr>';
 }
 function render(list){
-  var bd=list.filter(function(r){return r.bd;});
-  var pm=list.filter(function(r){return !r.bd;});
+  var bd=list.filter(function(r){return r.bd && r.category!=='Unscheduled PM';});
+  var pm=list.filter(function(r){return !r.bd || r.category==='Unscheduled PM';});
   document.getElementById('b_count').textContent=bd.length+' breakdown · '+pm.length+' preventive';
   document.getElementById('mtx_bd').innerHTML = bd.length
     ? bd.map(function(r,i){return rowHtml(r,i,true);}).join('')
