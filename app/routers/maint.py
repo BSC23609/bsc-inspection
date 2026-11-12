@@ -3416,6 +3416,42 @@ async def breakdown_regen_pdf(token: str = Query(default=""), id: int = Query(de
     return _json({"count": len(out), "regenerated": out})
 
 
+@router.get("/breakdown/set-action")
+async def breakdown_set_action(token: str = Query(default=""), id: int = Query(default=0),
+                               action: str = Query(default=""),
+                               apply: int = Query(default=0),
+                               emp: dict = Depends(current_employee)):
+    """Set the 'Action taken' (resolution) text on a breakdown work order and regenerate
+    its OneDrive PDF — used to replace the generic 'Closed (admin cleanup)' text left by
+    /breakdown/cleanup with the real action taken. Admin or ?token=AGENT_TOKEN.
+    Dry-run unless apply=1.
+      ?id=15&action=<text>            (dry run — shows current vs new)
+      ?id=15&action=<text>&apply=1    (apply + regenerate the OneDrive PDF)"""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    if not id or not action.strip():
+        raise HTTPException(400, "id and action are required")
+    row = await db.fetchrow(
+        "SELECT id, status, closed_at, resolution, problem FROM maint_breakdowns WHERE id=$1", id)
+    if not row:
+        return _json({"ok": False, "id": id, "reason": "row not found"})
+    new_action = action.strip()
+    preview = {"id": id, "status": row["status"],
+               "problem": (row["problem"] or ""),
+               "from_action": (row["resolution"] or ""),
+               "to_action": new_action,
+               "closed_at": str(row["closed_at"] or "")}
+    if not apply:
+        return _json({"apply": False, **preview})
+    await db.execute("UPDATE maint_breakdowns SET resolution=$2 WHERE id=$1", id, new_action)
+    try:
+        pdf = await _regen_breakdown_pdf(id)
+    except Exception as e:  # noqa: BLE001
+        return _json({"apply": True, **preview, "pdf_error": str(e)[:160]})
+    return _json({"apply": True, **preview, "pdf": pdf})
+
+
 @router.get("/reconcile")
 async def reconcile_migration(token: str = Query(default=""), emp: dict = Depends(current_employee)):
     """Migration-loss report: find records whose OneDrive PDF exists but whose row is
