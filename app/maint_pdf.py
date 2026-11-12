@@ -186,7 +186,7 @@ def build_pm_report(meta: dict, checkpoints: list) -> bytes:
 def build_breakdown_report(meta: dict) -> bytes:
     """meta: asset_code, asset_name, doc_no, btype, problem, raised, raised_by,
     assignees, location, status, closed, closed_by, resolution, qr_url."""
-    title = f"#{meta.get('doc_no','')} {meta.get('asset_code','')} {meta.get('asset_name','')} (Breakdown)".strip()
+    title = f"#{meta.get('doc_no','')} {meta.get('asset_code','')} {meta.get('asset_name','')} ({meta.get('wo_label','Breakdown')})".strip()
     left = [
         ("Doc No:", meta.get("doc_no", "--")),
         ("Raised on:", _fmt_dt(meta.get("raised"))),
@@ -196,7 +196,7 @@ def build_breakdown_report(meta: dict) -> bytes:
     ]
     right = [
         ("Asset:", f"{meta.get('asset_code','')} - {meta.get('asset_name','')}"),
-        ("Category:", "Breakdown Maintenance"),
+        ("Category:", meta.get("category", "Breakdown Maintenance")),
         ("Location:", meta.get("location", "--") or "--"),
         ("Assigned to:", meta.get("assignees", "--") or "--"),
         ("Closed on:", _fmt_dt(meta.get("closed")) if meta.get("closed") else "--"),

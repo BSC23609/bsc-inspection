@@ -2621,6 +2621,8 @@ async def _file_breakdown_report(bd: dict, assignee_names: str):
         from .. import maint_pdf
         now = datetime.now(IST)
         raised = bd.get("raised_at") or now
+        _wl = _wo_type(bd.get("wo_type"))   # 'Breakdown' or 'Unscheduled PM'
+        _cat = "Breakdown Maintenance" if _wl == "Breakdown" else "Unscheduled Preventive Maintenance"
         meta = {"doc_no": str(bd.get("id") or now.strftime("%y%m%d%H%M")),
                 "asset_code": bd.get("asset_code") or "", "asset_name": bd.get("asset_name") or "",
                 "raised": raised, "raised_by": bd.get("reported_by") or "—",
@@ -2629,6 +2631,7 @@ async def _file_breakdown_report(bd: dict, assignee_names: str):
                 "status": (bd.get("status") or "open").title(),
                 "closed": bd.get("closed_at"), "closed_by": bd.get("closed_by"),
                 "resolution": bd.get("resolution"),
+                "wo_label": _wl, "category": _cat,
                 "qr_url": "https://qms.bharatsteels.in/maint"}
         pdf = maint_pdf.build_breakdown_report(meta)
         code = _safe_code(bd.get("asset_code"))
@@ -3306,6 +3309,68 @@ async def breakdown_cleanup(token: str = Query(default=""), ids: str = Query(def
         except Exception as e:
             t["error"] = str(e)[:160]
     return _json({"apply": True, "action": action, "affected": len(done), "targets": done})
+
+
+@router.get("/breakdown/set-wo-type")
+async def breakdown_set_wo_type(token: str = Query(default=""), assignee: str = Query(default=""),
+                                ids: str = Query(default=""), type: str = Query(default="upm"),
+                                open_only: int = Query(default=1), apply: int = Query(default=0),
+                                emp: dict = Depends(current_employee)):
+    """Reclassify work orders between 'Breakdown' and 'Unscheduled PM' (wo_type), and
+    regenerate each OneDrive PDF so its title/category reflect the new type.
+    Target by assignee NAME (matches the person who raised it OR is assigned to it) or by ids.
+    type: upm/unscheduled -> Unscheduled PM ; bd/breakdown -> Breakdown. Admin or ?token=AGENT_TOKEN.
+    open_only=1 (default) touches only still-open work orders; 0 includes closed too.
+    Dry-run unless apply=1.
+      /maint/breakdown/set-wo-type?token=<AGENT_TOKEN>&assignee=Surajit Sasanka Maity           (dry run)
+      /maint/breakdown/set-wo-type?token=<AGENT_TOKEN>&assignee=Surajit Sasanka Maity&apply=1
+    """
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    new_type = _wo_type(type)
+    where, args = [], []
+    id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    if id_list:
+        args.append(id_list); where.append(f"b.id = ANY(${len(args)}::int[])")
+    nm = assignee.strip()
+    if nm:
+        args.append(nm)
+        where.append(
+            f"(lower(b.reported_by)=lower(${len(args)}) OR lower(e.name)=lower(${len(args)}) "
+            f"OR EXISTS (SELECT 1 FROM employees e2 WHERE lower(e2.name)=lower(${len(args)}) "
+            f"AND (b.assignee_emp_id=e2.id OR b.assignees @> to_jsonb(e2.id))))")
+    if not id_list and not nm:
+        raise HTTPException(400, "Pass assignee= or ids= so nothing is changed by accident")
+    if open_only:
+        where.append("lower(btrim(coalesce(b.status,'open')))='open' AND b.closed_at IS NULL")
+    rows = await db.fetch(
+        "SELECT b.id, a.code AS asset_code, a.name AS asset_name, b.wo_type, b.status, "
+        "b.reported_by, b.raised_at "
+        "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+        "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
+        "WHERE " + " AND ".join(where) + " ORDER BY b.raised_at DESC", *args)
+    targets = [{"id": r["id"],
+                "machine": ((r["asset_code"] or "") + " " + (r["asset_name"] or "")).strip(),
+                "raised_by": r["reported_by"], "status": r["status"] or "open",
+                "from": _wo_type(r["wo_type"]), "to": new_type,
+                "raised_at": str(r["raised_at"] or "")[:16]} for r in rows]
+    if not apply:
+        return _json({"apply": False, "new_type": new_type, "open_only": bool(open_only),
+                      "would_affect": len(targets), "targets": targets})
+    done = []
+    for t in targets:
+        try:
+            await db.execute("UPDATE maint_breakdowns SET wo_type=$2 WHERE id=$1", t["id"], new_type)
+            try:
+                await _regen_breakdown_pdf(t["id"])   # refresh PDF title/category to the new type
+            except Exception:
+                pass
+            done.append(t)
+        except Exception as e:  # noqa: BLE001
+            t["error"] = str(e)[:160]
+            done.append(t)
+    return _json({"apply": True, "new_type": new_type, "affected": len(done), "targets": done})
 
 
 @router.get("/breakdown/regen-pdf")
@@ -4608,6 +4673,7 @@ async def board_matrix(emp: dict = Depends(require_employee)):
         raised_iso = raised.astimezone(IST).date().isoformat() if isinstance(raised, datetime) else ""
         g["breakdowns"].append({"id": b.get("id"), "problem": (b.get("problem") or ""),
                                 "date": raised_iso, "assignees": bnames,
+                                "wo_type": _wo_type(b.get("wo_type")),
                                 "by": (b.get("reported_by") or "").strip() or "-"})
 
     # --- quarterly from ACTIVITY (covers quarterly checklists with NO schedule, like a

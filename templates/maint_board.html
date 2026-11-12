@@ -66,7 +66,7 @@ a.cellbtn{text-decoration:none}
     </select>
     <span id="b_count" style="font-size:12px;color:var(--muted)"></span>
   </div>
-  <div class="sect-h">Breakdown — Overdue</div>
+  <div class="sect-h">Breakdown / Unscheduled PM — Overdue</div>
   <div class="mtx-wrap"><table class="mtx">
     <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Status</th><th>Assigned To</th><th>Assigned By</th></tr></thead>
     <tbody id="mtx_bd"><tr><td colspan="7" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
@@ -120,7 +120,7 @@ async function load(){
     if(m.quarterly&&(m.quarterly.state==='overdue'||m.quarterly.state==='due'))
       OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',status:(m.quarterly.state==='overdue'?'Overdue':'Due today'),assigned:(m.quarterly.assignees||[]),astatus:(m.quarterly.assignee_status||[]),sched:m.quarterly_sched});
     (m.breakdowns||[]).forEach(function(b){
-      OV.push({date:b.date,machine:mac,category:'Breakdown',status:'Overdue',assigned:(b.assignees||[]),astatus:[],bd:b.id,by:(b.by||'-')});
+      OV.push({date:b.date,machine:mac,category:(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0?'Unscheduled PM':'Breakdown'),status:'Overdue',assigned:(b.assignees||[]),astatus:[],bd:b.id,by:(b.by||'-')});
     });
   });
   OV.sort(function(a,b){return dateKey(a.date)-dateKey(b.date)||a.machine.localeCompare(b.machine);});
@@ -139,6 +139,7 @@ function apply(){
 }
 function catBadge(c){
   if(c==='Breakdown')return '<span class="badge b-over">Breakdown</span>';
+  if(String(c).toLowerCase().indexOf('unscheduled')===0)return '<span class="badge" style="background:#e6f0fb;color:#0a2b66;border:1px solid #bcd3ef">Unscheduled PM</span>';
   if(c==='Quarterly Maintenance')return '<span class="badge cat-q">Quarterly Maintenance</span>';
   return '<span class="badge cat-d">Daily Maintenance</span>';
 }
@@ -169,8 +170,8 @@ function rowHtml(r,i,withBy){
   return html+'</tr>';
 }
 function render(list){
-  var bd=list.filter(function(r){return r.category==='Breakdown';});
-  var pm=list.filter(function(r){return r.category!=='Breakdown';});
+  var bd=list.filter(function(r){return r.bd;});
+  var pm=list.filter(function(r){return !r.bd;});
   document.getElementById('b_count').textContent=bd.length+' breakdown · '+pm.length+' preventive';
   document.getElementById('mtx_bd').innerHTML = bd.length
     ? bd.map(function(r,i){return rowHtml(r,i,true);}).join('')
