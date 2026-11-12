@@ -432,7 +432,11 @@ async def q_submit(body: QIn, emp: dict = Depends(require_employee)):
             print("[quality-photos-bg]", e)
         await _write_excel(data, file_name)
         await _save_quality_pdf(data, new_id, s, token)   # one PDF per inspection, unique name
-    asyncio.create_task(_bg())
+    # AWAIT it — on Vercel the serverless instance is frozen right after the response is
+    # returned, so a fire-and-forget asyncio.create_task() is killed before the OneDrive PDF
+    # (and Excel) upload finishes, leaving records saved in the DB with no PDF. Awaiting makes
+    # the upload complete before we respond (same pattern the coil module uses).
+    await _bg()
     return {"ok": True, "id": new_id}
 
 
@@ -451,7 +455,9 @@ async def q_update(body: QIn, emp: dict = Depends(require_employee)):
         s["log_date"], s["time"], s["customer_name"], s["coil_number"], s["batch_number"],
         s["grade"], s["make"], s["machine_name"], s["inspector"], s["sheets_measured"],
         s["oot_count"], s["rejection_flag"], json.dumps(data), body.id)
-    asyncio.create_task(_save_quality_pdf(data, body.id, s))   # refresh the OneDrive PDF on edit
+    # AWAIT (not create_task) — Vercel kills post-response background work, so a fire-and-forget
+    # task would not finish refreshing the OneDrive PDF after an edit.
+    await _save_quality_pdf(data, body.id, s)   # refresh the OneDrive PDF on edit
     return {"ok": True, "id": body.id}
 
 
