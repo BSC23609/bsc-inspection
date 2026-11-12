@@ -3419,32 +3419,55 @@ async def breakdown_regen_pdf(token: str = Query(default=""), id: int = Query(de
 @router.get("/breakdown/set-action")
 async def breakdown_set_action(token: str = Query(default=""), id: int = Query(default=0),
                                action: str = Query(default=""),
+                               closed_by: str = Query(default=""),
                                apply: int = Query(default=0),
                                emp: dict = Depends(current_employee)):
-    """Set the 'Action taken' (resolution) text on a breakdown work order and regenerate
-    its OneDrive PDF — used to replace the generic 'Closed (admin cleanup)' text left by
-    /breakdown/cleanup with the real action taken. Admin or ?token=AGENT_TOKEN.
-    Dry-run unless apply=1.
-      ?id=15&action=<text>            (dry run — shows current vs new)
-      ?id=15&action=<text>&apply=1    (apply + regenerate the OneDrive PDF)"""
+    """Set the 'Action taken' (resolution) text and/or the 'Closed by' name on a breakdown
+    work order, then regenerate its OneDrive PDF — used to replace the generic
+    'Closed (admin cleanup)' text/closer left by /breakdown/cleanup with the real values.
+    Admin or ?token=AGENT_TOKEN. Dry-run unless apply=1.
+      ?id=15&action=<text>                  set the Action taken text
+      ?id=15&closed_by=assignee             set Closed by = the assigned person's name(s)
+      ?id=15&closed_by=<name>               set Closed by = a specific name
+      add &apply=1 to apply and regenerate the OneDrive PDF."""
     await ensure_tables()
     if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
-    if not id or not action.strip():
-        raise HTTPException(400, "id and action are required")
-    row = await db.fetchrow(
-        "SELECT id, status, closed_at, resolution, problem FROM maint_breakdowns WHERE id=$1", id)
+    if not id or (not action.strip() and not closed_by.strip()):
+        raise HTTPException(400, "id and at least one of action / closed_by are required")
+    row = await db.fetchrow("SELECT * FROM maint_breakdowns WHERE id=$1", id)
     if not row:
         return _json({"ok": False, "id": id, "reason": "row not found"})
-    new_action = action.strip()
-    preview = {"id": id, "status": row["status"],
-               "problem": (row["problem"] or ""),
-               "from_action": (row["resolution"] or ""),
-               "to_action": new_action,
-               "closed_at": str(row["closed_at"] or "")}
+    bd = dict(row)
+    new_action = action.strip() or None
+    # Resolve closed_by; the keyword 'assignee' pulls the assigned person's name(s).
+    new_closed_by = None
+    if closed_by.strip():
+        if closed_by.strip().lower() in ("assignee", "assigned", "@assignee"):
+            aids = _bd_aids(bd)
+            names = []
+            if aids:
+                nm = {r["id"]: (r["name"] or r["emp_no"]) for r in await db.fetch(
+                    "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", aids)}
+                names = [nm[i] for i in aids if nm.get(i)]
+            new_closed_by = ", ".join(names) or None
+        else:
+            new_closed_by = closed_by.strip()
+    preview = {"id": id, "status": bd.get("status"),
+               "problem": (bd.get("problem") or ""),
+               "from_action": (bd.get("resolution") or ""),
+               "to_action": (new_action if new_action is not None else "(unchanged)"),
+               "from_closed_by": (bd.get("closed_by") or ""),
+               "to_closed_by": (new_closed_by if new_closed_by is not None else "(unchanged)")}
     if not apply:
         return _json({"apply": False, **preview})
-    await db.execute("UPDATE maint_breakdowns SET resolution=$2 WHERE id=$1", id, new_action)
+    q_vals = [id]
+    set_parts = []
+    if new_action is not None:
+        q_vals.append(new_action); set_parts.append(f"resolution=${len(q_vals)}")
+    if new_closed_by is not None:
+        q_vals.append(new_closed_by); set_parts.append(f"closed_by=${len(q_vals)}")
+    await db.execute(f"UPDATE maint_breakdowns SET {', '.join(set_parts)} WHERE id=$1", *q_vals)
     try:
         pdf = await _regen_breakdown_pdf(id)
     except Exception as e:  # noqa: BLE001
