@@ -116,14 +116,15 @@ function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.c
 {% if emp %}
 <!-- Global quick "Raise breakdown" button (shows on every page) -->
 <style>
-.gbd-fab{position:fixed;right:18px;bottom:18px;z-index:40;display:flex;align-items:center;justify-content:center;gap:7px;
-  background:#c23438;color:#fff;border:none;border-radius:50%;width:56px;height:56px;
-  box-shadow:0 10px 26px rgba(194,52,56,.45);cursor:pointer;font-weight:700;line-height:1}
-.gbd-fab .gbd-plus{font-size:29px;line-height:1}
-.gbd-fab .gbd-lbl{display:none;font-size:14px;white-space:nowrap}
-.gbd-fab:hover{background:#a82c30}.gbd-fab:active{transform:translateY(1px)}
-@media(min-width:720px){.gbd-fab{width:auto;height:50px;border-radius:25px;padding:0 19px 0 16px}
-  .gbd-fab .gbd-plus{font-size:21px}.gbd-fab .gbd-lbl{display:inline}}
+.gbd-fab-wrap{position:fixed;right:18px;bottom:18px;z-index:40;display:flex;flex-direction:column;gap:10px;align-items:flex-end}
+.gbd-fab{display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  color:#fff;border:none;border-radius:25px;padding:11px 18px;
+  cursor:pointer;font-weight:700;line-height:1.1;font-size:13.5px;max-width:calc(100vw - 36px)}
+.gbd-fab .gbd-plus{font-size:20px;line-height:1}
+.gbd-fab .gbd-lbl{display:inline;font-size:13.5px;white-space:nowrap}
+.gbd-fab-bd{background:#c23438;box-shadow:0 10px 26px rgba(194,52,56,.45)}.gbd-fab-bd:hover{background:#a82c30}
+.gbd-fab-upm{background:#0a2b66;box-shadow:0 10px 26px rgba(10,43,102,.4)}.gbd-fab-upm:hover{background:#082150}
+.gbd-fab:active{transform:translateY(1px)}
 .gbd-scrim{position:fixed;inset:0;background:rgba(8,24,40,.5);display:none;align-items:flex-start;justify-content:center;z-index:90;padding:24px 14px;overflow:auto}
 .gbd-modal{background:#fff;border-radius:16px;max-width:560px;width:100%;box-shadow:0 22px 60px rgba(0,0,0,.32)}
 .gbd-mh{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line,#e6ebf1)}
@@ -149,21 +150,20 @@ function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.c
 .gbd-thumb img{width:100%;height:100%;object-fit:cover}
 .gbd-thumb .x{position:absolute;top:1px;right:1px;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:17px;height:17px;line-height:16px;text-align:center;font-size:12px;cursor:pointer}
 </style>
-<button class="gbd-fab" type="button" onclick="gbdOpen()" title="Work Order" aria-label="Work Order"><span class="gbd-plus">+</span><span class="gbd-lbl">Work Order</span></button>
+<div class="gbd-fab-wrap">
+  {% if emp and (emp.is_admin or emp.is_maint) %}
+  <button class="gbd-fab gbd-fab-upm" type="button" onclick="gbdOpen('Unscheduled PM')" title="Unscheduled PM Work Order" aria-label="Unscheduled PM Work Order"><span class="gbd-plus">+</span><span class="gbd-lbl">Unscheduled PM Work Order</span></button>
+  {% endif %}
+  <button class="gbd-fab gbd-fab-bd" type="button" onclick="gbdOpen('Breakdown')" title="Breakdown Work Order" aria-label="Breakdown Work Order"><span class="gbd-plus">+</span><span class="gbd-lbl">Breakdown Work Order</span></button>
+</div>
 <div class="gbd-scrim" id="gbd_scrim"><div class="gbd-modal">
-  <div class="gbd-mh">{{ icon('warn',18) }}<b>WORK ORDER</b><span style="flex:1"></span>
+  <div class="gbd-mh">{{ icon('warn',18) }}<b id="gbd_modal_title">WORK ORDER</b><span style="flex:1"></span>
     <a href="#" onclick="gbdClose();return false" style="color:var(--muted,#8a93a3);font-size:20px;line-height:1">×</a></div>
   <div class="gbd-mb"><div class="gbd-mf">
     <input type="hidden" id="gbd_type" value="">
-    {% if emp and (emp.is_admin or emp.is_maint) %}
-    <div class="gbd-row"><label>Type <span class="gbd-req">*</span></label>
-      <select id="gbd_wotype">
-        <option value="Breakdown">Breakdown</option>
-        <option value="Unscheduled PM">Unscheduled Preventive Maintenance</option>
-      </select></div>
-    {% else %}
     <input type="hidden" id="gbd_wotype" value="Breakdown">
-    {% endif %}
+    <div class="gbd-row"><label>Type</label>
+      <div id="gbd_wotype_lbl" style="padding:10px 11px;border:1px solid var(--line-2,#d7dee7);border-radius:9px;font-size:13px;font-weight:600;background:#f6f8fb;color:var(--ink-2,#51607a)">Breakdown</div></div>
     <div class="gbd-row"><label>Asset <span class="gbd-req">*</span></label><select id="gbd_asset" onchange="gbdOnAsset()"><option value="">Loading machines…</option></select></div>
     <div class="gbd-row"><label>Category <span class="gbd-req">*</span></label>
       <div class="gbd-pills">
@@ -227,7 +227,7 @@ function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.c
     var a=$('gbd_asset');if(a)a.innerHTML='<option value="">Select machine…</option>'+GA.filter(function(x){return x.active;}).map(function(x){return opt(x.id,(x.code?x.code+' — ':'')+x.name);}).join('');
     GREADY=true;
   }
-  window.gbdOpen=function(){GPH=[];$('gbd_thumbs').innerHTML='';setv('gbd_type','');setv('gbd_wotype','Breakdown');setv('gbd_asset','');setv('gbd_problem','');setv('gbd_remarks','');setv('gbd_files','');
+  window.gbdOpen=function(woType){woType=(woType==='Unscheduled PM')?'Unscheduled PM':'Breakdown';GPH=[];$('gbd_thumbs').innerHTML='';setv('gbd_type','');setv('gbd_wotype',woType);var _wl=$('gbd_wotype_lbl');if(_wl)_wl.textContent=(woType==='Unscheduled PM'?'Unscheduled Preventive Maintenance':'Breakdown');var _ht=$('gbd_modal_title');if(_ht)_ht.textContent=(woType==='Unscheduled PM'?'UNSCHEDULED PM WORK ORDER':'BREAKDOWN WORK ORDER');setv('gbd_asset','');setv('gbd_problem','');setv('gbd_remarks','');setv('gbd_files','');
     $('gbd_autonote').style.display='none';var sf=$('gbd_self');if(sf)sf.checked=false;
     $('gbd_assignees').innerHTML='<div class="none">Pick a category above.</div>';
     [].forEach.call(document.querySelectorAll('#gbd_scrim .gbd-pill'),function(p){p.classList.remove('on');});
