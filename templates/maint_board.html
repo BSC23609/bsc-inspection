@@ -73,6 +73,12 @@ a.cellbtn{text-decoration:none}
     <tbody id="mtx_bd"><tr><td colspan="7" style="padding:18px;color:var(--muted)">Loading…</td></tr></tbody>
   </table></div>
 
+  <div class="sect-h" id="hold_sect" style="margin-top:22px;display:none">On Hold — paused breakdowns</div>
+  <div class="mtx-wrap" id="hold_wrap" style="display:none"><table class="mtx">
+    <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Reason</th><th>Held Since</th><th>Assigned To</th><th>Report</th></tr></thead>
+    <tbody id="mtx_hold"></tbody>
+  </table></div>
+
   <div class="sect-h" style="margin-top:22px">Preventive Maintenance — Daily, Quarterly &amp; Unscheduled (Due Today / Overdue)</div>
   <div class="mtx-wrap"><table class="mtx">
     <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Status</th><th>Assigned To</th></tr></thead>
@@ -121,7 +127,7 @@ async function load(){
     if(m.quarterly&&(m.quarterly.state==='overdue'||m.quarterly.state==='due'))
       OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',status:(m.quarterly.state==='overdue'?'Overdue':'Due today'),assigned:(m.quarterly.assignees||[]),astatus:(m.quarterly.assignee_status||[]),sched:m.quarterly_sched});
     (m.breakdowns||[]).forEach(function(b){
-      OV.push({date:b.date,machine:mac,category:(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0?'Unscheduled PM':'Breakdown'),status:'Overdue',assigned:(b.assignees||[]),astatus:[],bd:b.id,by:(b.by||'-')});
+      OV.push({date:b.date,machine:mac,category:(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0?'Unscheduled PM':'Breakdown'),status:'Overdue',assigned:(b.assignees||[]),astatus:[],bd:b.id,by:(b.by||'-'),hold:!!b.hold,hold_reason:(b.hold_reason||''),hold_at:(b.hold_at||null),mcode:(m.code||''),mname:(m.name||'')});
     });
   });
   OV.sort(function(a,b){return dateKey(a.date)-dateKey(b.date)||a.machine.localeCompare(b.machine);});
@@ -171,15 +177,39 @@ function rowHtml(r,i,withBy){
   return html+'</tr>';
 }
 function render(list){
-  var bd=list.filter(function(r){return r.bd && r.category!=='Unscheduled PM';});
-  var pm=list.filter(function(r){return !r.bd || r.category==='Unscheduled PM';});
-  document.getElementById('b_count').textContent=bd.length+' breakdown · '+pm.length+' preventive';
+  // On-hold work orders (paused breakdowns / unscheduled PM) go to their own table and
+  // are kept OUT of the active overdue tables.
+  var held=list.filter(function(r){return r.bd && r.hold;});
+  var bd=list.filter(function(r){return r.bd && !r.hold && r.category!=='Unscheduled PM';});
+  var pm=list.filter(function(r){return !r.hold && (!r.bd || r.category==='Unscheduled PM');});
+  document.getElementById('b_count').textContent=bd.length+' breakdown · '+pm.length+' preventive'+(held.length?(' · '+held.length+' on hold'):'');
   document.getElementById('mtx_bd').innerHTML = bd.length
     ? bd.map(function(r,i){return rowHtml(r,i,true);}).join('')
     : '<tr><td colspan="7" style="padding:16px;color:var(--muted)">No overdue breakdowns. ✅</td></tr>';
   document.getElementById('mtx_pm').innerHTML = pm.length
     ? pm.map(function(r,i){return rowHtml(r,i,false);}).join('')
     : '<tr><td colspan="6" style="padding:16px;color:var(--muted)">Nothing due or overdue. ✅</td></tr>';
+  renderHold(held);
+}
+function holdSince(s){if(!s)return '—';var d=new Date(s);if(isNaN(d))return esc(String(s).slice(0,16));
+  return ('0'+d.getDate()).slice(-2)+'-'+MON[d.getMonth()]+'-'+d.getFullYear()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
+function renderHold(held){
+  var sect=document.getElementById('hold_sect'),wrap=document.getElementById('hold_wrap'),body=document.getElementById('mtx_hold');
+  if(!sect||!wrap||!body)return;
+  if(!held.length){sect.style.display='none';wrap.style.display='none';body.innerHTML='';return;}
+  sect.style.display='';wrap.style.display='';
+  body.innerHTML=held.map(function(r,i){
+    var rep=(IS_ADMIN&&r.bd)
+      ? '<a class="rowact" href="/maint/monitor/report?cat=BM&bd='+r.bd+'&code='+encodeURIComponent(r.mcode||'')+'&name='+encodeURIComponent(r.mname||'')+'" target="_blank" rel="noopener">View</a>'
+      : '<span style="color:var(--muted)">—</span>';
+    return '<tr><td>'+(i+1)+'</td><td>'+fmtDue(r.date)+'</td>'
+      +'<td><span class="mc">'+esc(r.machine)+'</span></td>'
+      +'<td>'+catBadge(r.category)+'</td>'
+      +'<td><span class="badge" style="background:#fff3e0;color:#b45309;border:1px solid #f3d19e">'+esc(r.hold_reason||'On hold')+'</span></td>'
+      +'<td>'+holdSince(r.hold_at)+'</td>'
+      +'<td>'+asgCell(r)+'</td>'
+      +'<td>'+rep+'</td></tr>';
+  }).join('');
 }
 function toast(msg,bad){
   var t=document.createElement('div');t.textContent=msg;

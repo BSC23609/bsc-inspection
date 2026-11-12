@@ -623,7 +623,13 @@ async def ensure_tables():
     try:
         for col, typ in (("btype", "TEXT"), ("photos", "JSONB"), ("assignees", "JSONB"),
                          ("resolution", "TEXT"), ("wo_type", "TEXT"),
-                         ("close_types", "JSONB"), ("close_causes", "JSONB")):
+                         ("close_types", "JSONB"), ("close_causes", "JSONB"),
+                         # Hold / Resume: a breakdown can be paused (parts/worker unavailable)
+                         # WITHOUT being closed. hold_status='hold' while paused, cleared on
+                         # resume; hold_log keeps the audit trail. None of these touch the
+                         # report/PDF — status stays 'open' and resolution is untouched.
+                         ("hold_status", "TEXT"), ("hold_reason", "TEXT"),
+                         ("hold_at", "TIMESTAMPTZ"), ("hold_log", "JSONB")):
             await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
         # Self-heal the status column: older / migration-restored rows can carry a blank,
         # NULL or odd-cased status ('Open', ' open ', 'OPEN'), which made the Close button
@@ -2819,6 +2825,7 @@ async def breakdowns_list(emp: dict = Depends(require_employee)):
         "SELECT b.id, b.asset_id, b.btype, b.wo_type, b.problem, b.reported_by, b.reported_by_emp_id, "
         "b.assignee_emp_id, b.assignees, b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, "
         "b.resolution, b.photos, b.close_types, b.close_causes, "
+        "b.hold_status, b.hold_reason, b.hold_at, "
         "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
         "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
         "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
@@ -3221,6 +3228,78 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
     except Exception as e:
         print("[maint] breakdown close PDF regen skipped:", e)
     return {"ok": True, "pdf": pdf_path}
+
+
+@router.post("/breakdown/hold")
+async def breakdown_hold(body: dict, emp: dict = Depends(require_employee)):
+    """Pause an OPEN breakdown (parts/worker unavailable, etc.) WITHOUT closing it.
+    Records reason + time in hold_status/hold_reason/hold_at and appends to hold_log.
+    Never touches status/resolution or the OneDrive PDF, so the report is unaffected."""
+    await ensure_tables()
+    try:
+        bid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Missing id")
+    row = await db.fetchrow(
+        "SELECT reported_by_emp_id, assignee_emp_id, assignees, status, closed_at, hold_log "
+        "FROM maint_breakdowns WHERE id=$1", bid)
+    if not row:
+        raise HTTPException(404, "Work order not found")
+    row = dict(row)
+    if not _can_close_bd(emp, row):
+        raise HTTPException(403, "You can only hold work orders assigned to you")
+    if str(row.get("status") or "open").strip().lower() == "closed" or row.get("closed_at"):
+        raise HTTPException(400, "This work order is already closed")
+    reason = (body.get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(400, "Select a hold reason")
+    now = datetime.now(IST)
+    log = row.get("hold_log")
+    if isinstance(log, str):
+        try:
+            log = json.loads(log)
+        except Exception:
+            log = []
+    log = (log or []) + [{"action": "hold", "at": now.isoformat(), "reason": reason,
+                          "by": emp.get("name") or emp.get("emp_no") or "staff"}]
+    await db.execute(
+        "UPDATE maint_breakdowns SET hold_status='hold', hold_reason=$2, hold_at=$3, hold_log=$4 "
+        "WHERE id=$1", bid, reason, now, json.dumps(log))
+    return {"ok": True, "held": True, "reason": reason, "at": now.isoformat()}
+
+
+@router.post("/breakdown/resume")
+async def breakdown_resume(body: dict, emp: dict = Depends(require_employee)):
+    """Resume a HELD breakdown — clears the hold so it is active/open again and back on the
+    board's overdue list. Appends to hold_log. Never touches status/resolution or the PDF."""
+    await ensure_tables()
+    try:
+        bid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Missing id")
+    row = await db.fetchrow(
+        "SELECT reported_by_emp_id, assignee_emp_id, assignees, hold_status, hold_log "
+        "FROM maint_breakdowns WHERE id=$1", bid)
+    if not row:
+        raise HTTPException(404, "Work order not found")
+    row = dict(row)
+    if not _can_close_bd(emp, row):
+        raise HTTPException(403, "You can only resume work orders assigned to you")
+    if str(row.get("hold_status") or "").strip().lower() != "hold":
+        raise HTTPException(400, "This work order is not on hold")
+    now = datetime.now(IST)
+    log = row.get("hold_log")
+    if isinstance(log, str):
+        try:
+            log = json.loads(log)
+        except Exception:
+            log = []
+    log = (log or []) + [{"action": "resume", "at": now.isoformat(),
+                          "by": emp.get("name") or emp.get("emp_no") or "staff"}]
+    await db.execute(
+        "UPDATE maint_breakdowns SET hold_status=NULL, hold_reason=NULL, hold_at=NULL, hold_log=$2 "
+        "WHERE id=$1", bid, json.dumps(log))
+    return {"ok": True, "resumed": True}
 
 
 @router.get("/breakdown/audit")
@@ -4818,10 +4897,14 @@ async def board_matrix(emp: dict = Depends(require_employee)):
             bnames = [b.get("assignee_name")]
         raised = b.get("raised_at")
         raised_iso = raised.astimezone(IST).date().isoformat() if isinstance(raised, datetime) else ""
+        _hraw = b.get("hold_at")
         g["breakdowns"].append({"id": b.get("id"), "problem": (b.get("problem") or ""),
                                 "date": raised_iso, "assignees": bnames,
                                 "wo_type": _wo_type(b.get("wo_type")),
-                                "by": (b.get("reported_by") or "").strip() or "-"})
+                                "by": (b.get("reported_by") or "").strip() or "-",
+                                "hold": (str(b.get("hold_status") or "").strip().lower() == "hold"),
+                                "hold_reason": (b.get("hold_reason") or "").strip(),
+                                "hold_at": (_hraw.astimezone(IST).isoformat() if isinstance(_hraw, datetime) else None)})
 
     # --- quarterly from ACTIVITY (covers quarterly checklists with NO schedule, like a
     # machine whose quarterly was recorded but never scheduled). A quarterly checklist that
@@ -5586,6 +5669,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
 
     # ---- open breakdowns: to EACH assigned maintenance user; else to supervisors ----
     for b in await _open_breakdowns():
+        # A breakdown on HOLD is paused (parts/worker unavailable) — it is not an active
+        # overdue, so it never goes to reminders or onto the overdue report / board PNG.
+        if str(b.get("hold_status") or "").strip().lower() == "hold":
+            continue
         label = (str(b.get("asset_code") or "") + " " + str(b.get("asset_name") or "")).strip() or "—"
         prob = (b.get("problem") or "").strip() or "—"
         _braised = b.get("raised_at")
