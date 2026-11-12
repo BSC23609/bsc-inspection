@@ -35,7 +35,7 @@ WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "") or 
 # Overdue digest to admins is now a WhatsApp IMAGE-header template (like the daily
 # stock report): the template header points at /maint/overdue-report.png and the
 # body carries no variables. The old text template was bsc_pm_overdue.
-WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "bsc_maint_overdue_report1"
+WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "bsc_maint_overdue_report8"
 WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") or "bsc_breakdown_alert2"
 MAINT_SUPERVISOR_MOBILE       = getattr(_cfg, "MAINT_SUPERVISOR_MOBILE", "")
 AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
@@ -51,7 +51,7 @@ OVERDUE_IMG_TOKEN             = (os.environ.get("OVERDUE_IMG_TOKEN")
 # live PNG URL with a unique &t= timestamp, so Meta fetches the current board every time. Left
 # blank, the send behaves exactly as before (fixed-URL header — still cacheable).
 WATI_OVERDUE_IMG_PARAM        = (os.environ.get("WATI_OVERDUE_IMG_PARAM")
-                                 or getattr(_cfg, "WATI_OVERDUE_IMG_PARAM", "") or "bsc_maint_overdue_report1")
+                                 or getattr(_cfg, "WATI_OVERDUE_IMG_PARAM", "") or "bsc_maint_overdue_report8")
 ONEDRIVE_BASE                 = getattr(_cfg, "ONEDRIVE_BASE", "BSC Inspections")
 
 router = APIRouter(prefix="/maint", tags=["maintenance"])
@@ -1045,22 +1045,24 @@ async def _overdue_recipients() -> list:
 
 
 def _overdue_img_params():
-    """Parameters for the overdue image-header template.
+    """Parameters for the overdue template (WATI maps them to the template variables BY NAME).
 
-    WhatsApp/Meta caches a template's header image BY URL, so repeatedly sending the SAME
-    fixed URL lets it replay a stale copy of the board. When the WATI template header is set
-    to a send-time VARIABLE — whose placeholder name is configured in WATI_OVERDUE_IMG_PARAM
-    (e.g. "image") — we return that variable set to the live PNG URL plus a unique &t= epoch,
-    so Meta fetches a fresh image on every send and the report can never lag the board.
+    The body carries a date/time variable {{1}} ("Maintenance Overdue Report as on {{1}}"),
+    so every send fills "1" with the current date & time (IST) — without it, {{1}} is left
+    empty and WhatsApp shows the template's leftover sample text.
 
-    Left unconfigured (blank), we return [] and the template uses its fixed header URL exactly
-    as before — so deploying this change alone never alters the current behaviour."""
-    if not WATI_OVERDUE_IMG_PARAM:
-        return []
-    ts = int(datetime.now(IST).timestamp())
-    url = (f"https://qms.bharatsteels.in/maint/overdue-report.png"
-           f"?token={OVERDUE_IMG_TOKEN}&t={ts}")
-    return {WATI_OVERDUE_IMG_PARAM: url}
+    WhatsApp/Meta caches a template's header image BY URL, so when the WATI template header is
+    a send-time VARIABLE (placeholder name in WATI_OVERDUE_IMG_PARAM) we also pass that
+    variable set to the live PNG URL plus a unique &t= epoch, so Meta fetches a fresh board
+    image on every send and the report can never lag the board."""
+    now_ist = datetime.now(IST)
+    params = {"1": now_ist.strftime("%d %b %Y, %I:%M %p")}   # body {{1}} = date & time
+    if WATI_OVERDUE_IMG_PARAM:
+        ts = int(now_ist.timestamp())
+        params[WATI_OVERDUE_IMG_PARAM] = (
+            f"https://qms.bharatsteels.in/maint/overdue-report.png"
+            f"?token={OVERDUE_IMG_TOKEN}&t={ts}")
+    return params
 
 
 def _is_offday(d):
