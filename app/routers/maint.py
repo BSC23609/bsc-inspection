@@ -3311,6 +3311,67 @@ async def breakdown_cleanup(token: str = Query(default=""), ids: str = Query(def
     return _json({"apply": True, "action": action, "affected": len(done), "targets": done})
 
 
+@router.get("/breakdown/delete")
+async def breakdown_delete(token: str = Query(default=""), ids: str = Query(default=""),
+                           code: str = Query(default=""), apply: int = Query(default=0),
+                           emp: dict = Depends(current_employee)):
+    """Permanently delete breakdown work order(s) AND their OneDrive PDF(s) — for true
+    duplicates / junk rows. IRREVERSIBLE. Admin or ?token=AGENT_TOKEN. Dry-run unless
+    apply=1; apply requires explicit ids= (it never deletes a whole machine by code).
+      ?code=EOT-005             (dry run — list that machine's breakdowns with their ids)
+      ?ids=40                   (dry run — show the one row + the PDF it will remove)
+      ?ids=40&apply=1           (delete breakdown 40 and its _bm_40.pdf in OneDrive)"""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    id_list = [int(x) for x in ids.split(",") if x.strip().isdigit()]
+    where, args = [], []
+    if id_list:
+        args.append(id_list); where.append(f"b.id = ANY(${len(args)}::int[])")
+    if code.strip():
+        args.append(code.strip()); where.append(f"upper(a.code)=upper(${len(args)})")
+    if not id_list and not code.strip():
+        raise HTTPException(400, "Pass ids= or code= so nothing is deleted by accident")
+    rows = await db.fetch(
+        "SELECT b.id, a.code AS asset_code, a.name AS asset_name, b.problem, b.raised_at, "
+        "b.status, b.wo_type FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
+        "WHERE " + " AND ".join(where) + " ORDER BY b.raised_at DESC", *args)
+    targets = [{"id": r["id"],
+                "machine": ((r["asset_code"] or "") + " " + (r["asset_name"] or "")).strip(),
+                "raised_at": str(r["raised_at"] or "")[:16], "status": r["status"],
+                "wo_type": _wo_type(r["wo_type"]), "problem": (r["problem"] or "")[:70],
+                "pdf": f"_bm_{r['id']}.pdf"} for r in rows]
+    if not apply:
+        return _json({"apply": False, "would_delete": len(targets), "targets": targets})
+    if not id_list:
+        raise HTTPException(400, "apply needs explicit ids= (not code) so nothing is mass-deleted")
+    try:
+        gtoken = await graph.get_token()
+    except Exception:
+        gtoken = None
+    done = []
+    for t in targets:
+        bid = t["id"]
+        pdf_deleted = False
+        try:
+            row = await db.fetchrow(
+                "SELECT a.code AS acode, a.name AS aname FROM maint_breakdowns b "
+                "LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.id=$1", bid)
+            await db.execute("DELETE FROM maint_breakdowns WHERE id=$1", bid)
+            if gtoken and row:
+                item = await _locate_report_item(gtoken, row["acode"] or "", row["aname"] or "",
+                                                 "BM", "", bd=bid)
+                if item:
+                    pdf_deleted = await graph.delete_item(gtoken, item["id"])
+            t["deleted"] = True
+            t["pdf_deleted"] = pdf_deleted
+        except Exception as e:  # noqa: BLE001
+            t["deleted"] = False
+            t["error"] = str(e)[:160]
+        done.append(t)
+    return _json({"apply": True, "deleted": len(done), "targets": done})
+
+
 @router.get("/breakdown/set-wo-type")
 async def breakdown_set_wo_type(token: str = Query(default=""), assignee: str = Query(default=""),
                                 ids: str = Query(default=""), type: str = Query(default="upm"),
