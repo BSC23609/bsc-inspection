@@ -35,7 +35,7 @@ WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "") or 
 # Overdue digest to admins is now a WhatsApp IMAGE-header template (like the daily
 # stock report): the template header points at /maint/overdue-report.png and the
 # body carries no variables. The old text template was bsc_pm_overdue.
-WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "sc_maint_overdue_report3"
+WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "bsc_maint_overdue_report1"
 WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") or "bsc_breakdown_alert2"
 MAINT_SUPERVISOR_MOBILE       = getattr(_cfg, "MAINT_SUPERVISOR_MOBILE", "")
 AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
@@ -51,7 +51,7 @@ OVERDUE_IMG_TOKEN             = (os.environ.get("OVERDUE_IMG_TOKEN")
 # live PNG URL with a unique &t= timestamp, so Meta fetches the current board every time. Left
 # blank, the send behaves exactly as before (fixed-URL header — still cacheable).
 WATI_OVERDUE_IMG_PARAM        = (os.environ.get("WATI_OVERDUE_IMG_PARAM")
-                                 or getattr(_cfg, "WATI_OVERDUE_IMG_PARAM", "") or "")
+                                 or getattr(_cfg, "WATI_OVERDUE_IMG_PARAM", "") or "bsc_maint_overdue_report1")
 ONEDRIVE_BASE                 = getattr(_cfg, "ONEDRIVE_BASE", "BSC Inspections")
 
 router = APIRouter(prefix="/maint", tags=["maintenance"])
