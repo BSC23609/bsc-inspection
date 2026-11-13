@@ -411,7 +411,7 @@ function clRenderCauses(){var ts=clCheckedTypes(),host=document.getElementById('
   ts.forEach(function(t){html+='<div class="cl-grp">'+esc(t)+'</div>';
     (WO_CAUSES[t]||[]).forEach(function(c){html+='<label class="cl-opt"><input type="checkbox" class="cl-cause" value="'+esc(c)+'"'+(prev[c]?' checked':'')+'>'+esc(c)+'</label>';});});
   host.innerHTML=html;}
-function openClose(id){document.getElementById('cl_id').value=id;sv('cl_action','');sv('cl_remarks','');sv('cl_when',nowLocal());
+function openClose(id){document.getElementById('cl_id').value=id;sv('cl_action','');sv('cl_remarks','');sv('cl_when','');
   clRenderTypes();document.getElementById('cl_causes').innerHTML='<div class="cl-none">Select a type above to see causes.</div>';
   var ctx=document.getElementById('cl_ctx');if(ctx)ctx.textContent='Work Order Ref #'+id;
   document.getElementById('cl_scrim').style.display='flex';}
