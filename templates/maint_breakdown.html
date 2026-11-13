@@ -157,7 +157,9 @@
     <div style="margin-bottom:14px"><label>Remarks <span class="opt">(optional)</span></label>
       <textarea id="cl_remarks" placeholder="parts used, follow-up needed, etc."></textarea></div>
     <div><label>Completion date &amp; time <span class="req">*</span></label>
-      <input id="cl_when" type="datetime-local"></div>
+      <div style="display:flex;gap:8px">
+        <input id="cl_when_date" type="date" style="flex:1">
+        <input id="cl_when_time" type="time" style="flex:1"></div></div>
   </div></div>
   <div class="mfoot"><button class="btn btn-ghost" onclick="closeCloseModal()">Cancel</button>
     <button class="btn btn-primary" id="cl_save" onclick="doClose()">Close work order</button></div>
@@ -411,17 +413,20 @@ function clRenderCauses(){var ts=clCheckedTypes(),host=document.getElementById('
   ts.forEach(function(t){html+='<div class="cl-grp">'+esc(t)+'</div>';
     (WO_CAUSES[t]||[]).forEach(function(c){html+='<label class="cl-opt"><input type="checkbox" class="cl-cause" value="'+esc(c)+'"'+(prev[c]?' checked':'')+'>'+esc(c)+'</label>';});});
   host.innerHTML=html;}
-function openClose(id){document.getElementById('cl_id').value=id;sv('cl_action','');sv('cl_remarks','');sv('cl_when','');
+function openClose(id){document.getElementById('cl_id').value=id;sv('cl_action','');sv('cl_remarks','');sv('cl_when_date','');sv('cl_when_time','');
   clRenderTypes();document.getElementById('cl_causes').innerHTML='<div class="cl-none">Select a type above to see causes.</div>';
   var ctx=document.getElementById('cl_ctx');if(ctx)ctx.textContent='Work Order Ref #'+id;
   document.getElementById('cl_scrim').style.display='flex';}
 function closeCloseModal(){document.getElementById('cl_scrim').style.display='none';}
-async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl_remarks').trim(),when=v('cl_when');
+async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl_remarks').trim();
+  var wd=v('cl_when_date'),wt=v('cl_when_time');
   var types=clCheckedTypes(),causes=clCheckedCauses();
   if(!types.length){toast('err','Select at least one Type');return;}
   if(!causes.length){toast('err','Select at least one Cause');return;}
   if(!action){toast('err','Enter the action taken');return;}
-  if(!when){toast('err','Pick the completion date & time');return;}
+  if(!wd){toast('err','Pick the completion date');return;}
+  if(!wt){toast('err','Pick the completion time');return;}
+  var when=wd+'T'+wt;
   var b=document.getElementById('cl_save');b.disabled=true;var l=b.textContent;b.textContent='Closing…';
   try{var r=await fetch('/maint/breakdown/close',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({id:id,action:action,remarks:rm,closed_at:when,types:types,causes:causes})});
