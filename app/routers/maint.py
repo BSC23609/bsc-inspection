@@ -5918,11 +5918,13 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
     elif kind in ("due", "all") and allow_due:
         for aid, g in due_by_assignee.items():
             pm_list = _join_items(g["pm"])
-            bd_list = _join_items(g["bd"])
-            # body vars: 1 name, 2 date, 3 preventive list, 4 breakdown list, 5 button.
+            # body var 4 is the COUNT of this user's open/overdue breakdowns (a number like
+            # 0, 1, 2 …), not a list — so "Total breakdown overdue:" shows a figure, never "—".
+            bd_count = str(len(g["bd"]))
+            # body vars: 1 name, 2 date, 3 preventive list, 4 breakdown overdue count, 5 button.
             # WATI feeds the URL button's {{1}} from param "1" (the name), so it must
             # be URL-safe (spaces -> underscore) or WhatsApp drops the message.
-            params = [_url_token(g["name"]), tdisp, pm_list, bd_list, "maint"]
+            params = [_url_token(g["name"]), tdisp, pm_list, bd_count, "maint"]
             await _dispatch(WATI_MAINT_DUE_TEMPLATE, g["mobile"], params,
                             {"kind": "due-digest", "assignee": g["name"],
                              "preventive": len(g["pm"]), "breakdown": len(g["bd"])})
