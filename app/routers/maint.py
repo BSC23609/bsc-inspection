@@ -4045,21 +4045,34 @@ def _require_admin(emp: dict):
 
 @router.post("/breakdown/delete")
 async def breakdown_delete(body: dict, emp: dict = Depends(require_employee)):
-    """Delete ONE work order. Allowed for an admin, the person who RAISED it, or a
-    person it is ASSIGNED to."""
+    """Delete ONE work order AND its OneDrive PDF. Allowed for an admin, the person who
+    RAISED it, or a person it is ASSIGNED to."""
     await ensure_tables()
     try:
         bid = int(body.get("id"))
     except (TypeError, ValueError):
         raise HTTPException(400, "Missing id")
     _drow = await db.fetchrow(
-        "SELECT reported_by_emp_id, assignee_emp_id, assignees FROM maint_breakdowns WHERE id=$1", bid)
+        "SELECT b.reported_by_emp_id, b.assignee_emp_id, b.assignees, "
+        "a.code AS acode, a.name AS aname FROM maint_breakdowns b "
+        "LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.id=$1", bid)
     if not _drow:
         raise HTTPException(404, "Work order not found")
     if not _can_delete_bd(emp, dict(_drow)):
         raise HTTPException(403, "You can only delete your own work orders")
     await db.execute("DELETE FROM maint_breakdowns WHERE id=$1", bid)
-    return {"ok": True}
+    # Remove the work order's PDF from OneDrive too (searches both the Breakdown and
+    # Unscheduled Preventive Maintenance folders). Best-effort — the row is already gone.
+    pdf_deleted = False
+    try:
+        gtoken = await graph.get_token()
+        item = await _locate_report_item(gtoken, _drow["acode"] or "", _drow["aname"] or "",
+                                         "BM", "", bd=bid)
+        if item:
+            pdf_deleted = await graph.delete_item(gtoken, item["id"])
+    except Exception as e:  # noqa: BLE001
+        print("[maint] delete PDF skipped:", e)
+    return {"ok": True, "pdf_deleted": pdf_deleted}
 
 
 @router.post("/breakdowns/delete-all")
