@@ -173,12 +173,17 @@
     <div style="margin-bottom:14px"><label>Hold reason <span class="req">*</span></label>
       <select id="hd_reason" onchange="hdReasonChange()">
         <option value="">— select —</option>
-        <option value="Parts unavailable">Parts unavailable</option>
-        <option value="Worker unavailable">Worker unavailable</option>
-        <option value="Other">Other</option>
+        <option value="Waiting for spare parts">Waiting for spare parts</option>
+        <option value="Waiting for manpower">Waiting for manpower</option>
+        <option value="Waiting for diagnosis">Waiting for diagnosis</option>
+        <option value="Waiting for lubrication oil">Waiting for lubrication oil</option>
+        <option value="Waiting for tools/bolts">Waiting for tools/bolts</option>
+        <option value="Other">Other (free text)</option>
       </select></div>
-    <div id="hd_other_row" style="display:none;margin-bottom:4px"><label>Reason detail <span class="req">*</span></label>
+    <div id="hd_other_row" style="display:none;margin-bottom:14px"><label>Reason detail <span class="req">*</span></label>
       <textarea id="hd_other" placeholder="Type the reason for holding this work order"></textarea></div>
+    <div style="margin-bottom:4px"><label>Expected resolution time</label>
+      <input type="datetime-local" id="hd_eta" style="width:100%"></div>
   </div></div>
   <div class="mfoot"><button class="btn btn-ghost" onclick="closeHold()">Cancel</button>
     <button class="btn btn-primary" id="hd_save" onclick="doHold()">Put on hold</button></div>
@@ -337,7 +342,7 @@ function tableAssigned(rows){
   if(!rows.length)return '<div class="wo-empty">No work orders assigned to you.</div>';
   // Close shows only while the work order is open; a closed one shows a "Closed" tag.
   var body=rows.map(function(b,i){
-    var at=isHeld(b)?('<span class="hold-badge">On hold</span> '+esc(b.hold_reason||'')):esc(b.resolution||'—');
+    var at=isHeld(b)?('<span class="hold-badge">On hold</span> '+esc(b.hold_reason||'')+(b.hold_eta?(' · expected by '+fmtdt(b.hold_eta)):'')):esc(b.resolution||'—');
     return '<tr id="bd-row-'+b.id+'">'+baseCells(b,i)
       +'<td data-l="Action Taken">'+at+'</td>'
       +assignedActCell(b)+'</tr>';}).join('');
@@ -353,7 +358,7 @@ function adminList(ls){
     var meta='Raised '+fmtdt(b.raised_at)+' by '+esc(b.reported_by||'—')+' · '+esc(who)
       +(b.remarks?(' · '+esc(b.remarks)):'')+(np?(' · '+np+' photo(s)'):'')
       +(isOpen?'':(' · closed '+fmtdt(b.closed_at)+(b.closed_by?(' by '+esc(b.closed_by)):'')+(b.resolution?(' · action: '+esc(b.resolution)):'')+(causeStr?(' · cause: '+esc(causeStr)):'')))
-      +(isHeld(b)?(' · ON HOLD: '+esc(b.hold_reason||'')+(b.hold_at?(' since '+fmtdt(b.hold_at)):'')):'');
+      +(isHeld(b)?(' · ON HOLD: '+esc(b.hold_reason||'')+(b.hold_at?(' since '+fmtdt(b.hold_at)):'')+(b.hold_eta?(' · expected by '+fmtdt(b.hold_eta)):'')):'');
     var acts='<div class="acts">'
       +(isOpen?(isHeld(b)?('<a class="act-resume" onclick="doResume('+b.id+')">Resume</a>'):('<a class="act-hold" onclick="openHold('+b.id+')">Hold</a>')):'')
       +(isOpen?('<a class="act-close" onclick="openClose('+b.id+')">Close</a>'):'')
@@ -413,7 +418,7 @@ async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl
     toast('ok','Work order closed');closeCloseModal();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
 /* ---- hold / resume ---- */
-function openHold(id){sv('hd_id',id);sv('hd_reason','');sv('hd_other','');
+function openHold(id){sv('hd_id',id);sv('hd_reason','');sv('hd_other','');sv('hd_eta','');
   document.getElementById('hd_other_row').style.display='none';
   var ctx=document.getElementById('hd_ctx');if(ctx)ctx.textContent='Work Order Ref #'+id;
   document.getElementById('hd_scrim').style.display='flex';}
@@ -423,8 +428,9 @@ async function doHold(){var id=v('hd_id'),r=v('hd_reason');
   if(!r){toast('err','Select a hold reason');return;}
   var reason=r;
   if(r==='Other'){var o=v('hd_other').trim();if(!o){toast('err','Type the reason');return;}reason='Other: '+o;}
+  var eta=v('hd_eta');
   var b=document.getElementById('hd_save');b.disabled=true;var l=b.textContent;b.textContent='Holding…';
-  try{var res=await fetch('/maint/breakdown/hold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,reason:reason})});
+  try{var res=await fetch('/maint/breakdown/hold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,reason:reason,eta:eta})});
     var d=await res.json().catch(function(){return{};});if(!res.ok||!d.ok)throw new Error(d.detail||'Failed');
     toast('ok','Work order put on hold');closeHold();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}

@@ -38,6 +38,9 @@ WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "") or 
 # body carries no variables. The old text template was bsc_pm_overdue.
 WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "bsc_maint_overdue_report8"
 WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") or "bsc_breakdown_alert2"
+# Dedicated templates for the hold / resume notifications (see _send_hold_resume_alert).
+WATI_MAINT_HOLD_TEMPLATE      = os.environ.get("WATI_MAINT_HOLD_TEMPLATE") or "bsc_maint_hold"
+WATI_MAINT_RESUME_TEMPLATE    = os.environ.get("WATI_MAINT_RESUME_TEMPLATE") or "bsc_maint_resume"
 MAINT_SUPERVISOR_MOBILE       = getattr(_cfg, "MAINT_SUPERVISOR_MOBILE", "")
 AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
 # Token for the public overdue PNG (baked into the WhatsApp template's image URL). Defaults
@@ -61,7 +64,7 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-11-13a"   # bump when adding/altering a table so ensure_tables re-runs the DDL
+SCHEMA_VER = "2026-11-13b"   # bump when adding/altering a table so ensure_tables re-runs the DDL
 MAINT_BUILD = "2026-11-05-v75-restore-open-option"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
@@ -631,7 +634,8 @@ async def ensure_tables():
                          # report/PDF — status stays 'open' and resolution is untouched.
                          ("hold_status", "TEXT"), ("hold_reason", "TEXT"),
                          ("hold_at", "TIMESTAMPTZ"), ("hold_log", "JSONB"),
-                         ("resumed_at", "TIMESTAMPTZ")):   # when a hold was last resumed
+                         ("resumed_at", "TIMESTAMPTZ"),    # when a hold was last resumed
+                         ("hold_eta", "TIMESTAMPTZ")):     # expected resolution time of a hold
             await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
         # Self-heal the status column: older / migration-restored rows can carry a blank,
         # NULL or odd-cased status ('Open', ' open ', 'OPEN'), which made the Close button
@@ -2818,23 +2822,23 @@ async def _send_hold_resume_alert(bd: dict, action: str, reason: str = ""):
       resume -> 'RESUMED - <problem>'
     Best-effort: a WhatsApp failure never blocks the hold/resume itself, and no other
     reminder logic is touched."""
-    tmpl = WATI_MAINT_BREAKDOWN_TEMPLATE
+    tmpl = WATI_MAINT_HOLD_TEMPLATE if action == "hold" else WATI_MAINT_RESUME_TEMPLATE
     if not tmpl:
         return []
     label = (str(bd.get("asset_code") or "") + " " + str(bd.get("asset_name") or "")).strip() or "—"
     detail = (bd.get("problem") or "—").strip() or "—"
     btype = _norm_type(bd.get("btype"))
     problem = (f"{btype}: {detail}" if btype else detail)
-    if action == "hold":
-        status_line = "ON HOLD - " + ((reason or "").strip() or "reason not given")
-    else:
-        status_line = "RESUMED - " + problem
-    by = (bd.get("reported_by") or "—").strip() or "—"
+    emap = await _emp_map()
+    aids = _bd_aids(bd)
+    who = ", ".join([(emap.get(a) or {}).get("name") for a in aids
+                     if (emap.get(a) or {}).get("name")]) or "Unassigned"
+    # hold -> {{3}} = reason; resume -> {{3}} = the original problem / description.
+    middle = ((reason or "").strip() or "reason not given") if action == "hold" else problem
     tm = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
     ref = str(bd.get("id") or "")
-    # Same slot order as the breakdown alert: {{1}}=Ref, {{2}}=Machine, {{3}}=status line,
-    # {{4}}=Reported by, {{5}}=Time. The button URL ?id={{1}} still points at this ticket.
-    params = [ref, label, status_line, by, tm]
+    # Template slots: {{1}}=Ref, {{2}}=Machine, {{3}}=reason/problem, {{4}}=Assigned to, {{5}}=Time.
+    params = [ref, label, middle, who, tm]
     targets, seen = [], set()
     emap = await _emp_map()
     for aid in _bd_aids(bd):                       # the assigned user(s) — their own ticket
@@ -2881,7 +2885,7 @@ async def breakdowns_list(emp: dict = Depends(require_employee)):
         "SELECT b.id, b.asset_id, b.btype, b.wo_type, b.problem, b.reported_by, b.reported_by_emp_id, "
         "b.assignee_emp_id, b.assignees, b.status, b.raised_at, b.closed_at, b.closed_by, b.remarks, "
         "b.resolution, b.photos, b.close_types, b.close_causes, "
-        "b.hold_status, b.hold_reason, b.hold_at, "
+        "b.hold_status, b.hold_reason, b.hold_at, b.hold_eta, "
         "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
         "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
         "LEFT JOIN employees e ON e.id=b.assignee_emp_id "
@@ -3309,6 +3313,16 @@ async def breakdown_hold(body: dict, emp: dict = Depends(require_employee)):
     reason = (body.get("reason") or "").strip()
     if not reason:
         raise HTTPException(400, "Select a hold reason")
+    # Optional expected resolution time (datetime-local string, e.g. "2026-11-13T15:30").
+    eta_raw = (body.get("eta") or "").strip()
+    eta_dt = None
+    if eta_raw:
+        try:
+            eta_dt = datetime.fromisoformat(eta_raw)
+            if eta_dt.tzinfo is None:
+                eta_dt = eta_dt.replace(tzinfo=IST)
+        except Exception:
+            eta_dt = None
     now = datetime.now(IST)
     log = row.get("hold_log")
     if isinstance(log, str):
@@ -3319,8 +3333,8 @@ async def breakdown_hold(body: dict, emp: dict = Depends(require_employee)):
     log = (log or []) + [{"action": "hold", "at": now.isoformat(), "reason": reason,
                           "by": emp.get("name") or emp.get("emp_no") or "staff"}]
     await db.execute(
-        "UPDATE maint_breakdowns SET hold_status='hold', hold_reason=$2, hold_at=$3, hold_log=$4 "
-        "WHERE id=$1", bid, reason, now, json.dumps(log))
+        "UPDATE maint_breakdowns SET hold_status='hold', hold_reason=$2, hold_at=$3, hold_log=$4, "
+        "hold_eta=$5 WHERE id=$1", bid, reason, now, json.dumps(log), eta_dt)
     # Notify the assigned user + all admins that this work order is on hold (best-effort;
     # a WhatsApp failure never blocks the hold).
     alert = []
@@ -3364,7 +3378,7 @@ async def breakdown_resume(body: dict, emp: dict = Depends(require_employee)):
     log = (log or []) + [{"action": "resume", "at": now.isoformat(),
                           "by": emp.get("name") or emp.get("emp_no") or "staff"}]
     await db.execute(
-        "UPDATE maint_breakdowns SET hold_status=NULL, hold_reason=NULL, hold_at=NULL, "
+        "UPDATE maint_breakdowns SET hold_status=NULL, hold_reason=NULL, hold_at=NULL, hold_eta=NULL, "
         "resumed_at=$2, hold_log=$3 WHERE id=$1", bid, now, json.dumps(log))
     # Notify the assigned user + all admins that this work order is resumed (best-effort).
     # The fresh 1-hour reminder timer runs from resumed_at (see _run_reminders).
@@ -4976,13 +4990,15 @@ async def board_matrix(emp: dict = Depends(require_employee)):
         raised = b.get("raised_at")
         raised_iso = raised.astimezone(IST).date().isoformat() if isinstance(raised, datetime) else ""
         _hraw = b.get("hold_at")
+        _eraw = b.get("hold_eta")
         g["breakdowns"].append({"id": b.get("id"), "problem": (b.get("problem") or ""),
                                 "date": raised_iso, "assignees": bnames,
                                 "wo_type": _wo_type(b.get("wo_type")),
                                 "by": (b.get("reported_by") or "").strip() or "-",
                                 "hold": (str(b.get("hold_status") or "").strip().lower() == "hold"),
                                 "hold_reason": (b.get("hold_reason") or "").strip(),
-                                "hold_at": (_hraw.astimezone(IST).isoformat() if isinstance(_hraw, datetime) else None)})
+                                "hold_at": (_hraw.astimezone(IST).isoformat() if isinstance(_hraw, datetime) else None),
+                                "hold_eta": (_eraw.astimezone(IST).isoformat() if isinstance(_eraw, datetime) else None)})
 
     # --- quarterly from ACTIVITY (covers quarterly checklists with NO schedule, like a
     # machine whose quarterly was recorded but never scheduled). A quarterly checklist that

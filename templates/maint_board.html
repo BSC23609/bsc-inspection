@@ -75,7 +75,7 @@ a.cellbtn{text-decoration:none}
 
   <div class="sect-h" id="hold_sect" style="margin-top:22px;display:none">On Hold — paused breakdowns</div>
   <div class="mtx-wrap" id="hold_wrap" style="display:none"><table class="mtx">
-    <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Reason</th><th>Held Since</th><th>Assigned To</th><th>Report</th></tr></thead>
+    <thead><tr><th style="width:52px">S.No</th><th>Date</th><th>Machine Name</th><th>Category</th><th>Reason</th><th>Held Since</th><th>Expected By</th><th>Assigned To</th><th>Report</th></tr></thead>
     <tbody id="mtx_hold"></tbody>
   </table></div>
 
@@ -127,7 +127,7 @@ async function load(){
     if(m.quarterly&&(m.quarterly.state==='overdue'||m.quarterly.state==='due'))
       OV.push({date:m.quarterly.due,machine:mac,category:'Quarterly Maintenance',status:(m.quarterly.state==='overdue'?'Overdue':'Due today'),assigned:(m.quarterly.assignees||[]),astatus:(m.quarterly.assignee_status||[]),sched:m.quarterly_sched});
     (m.breakdowns||[]).forEach(function(b){
-      OV.push({date:b.date,machine:mac,category:(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0?'Unscheduled PM':'Breakdown'),status:'Overdue',assigned:(b.assignees||[]),astatus:[],bd:b.id,by:(b.by||'-'),hold:!!b.hold,hold_reason:(b.hold_reason||''),hold_at:(b.hold_at||null),mcode:(m.code||''),mname:(m.name||'')});
+      OV.push({date:b.date,machine:mac,category:(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0?'Unscheduled PM':'Breakdown'),status:'Overdue',assigned:(b.assignees||[]),astatus:[],bd:b.id,by:(b.by||'-'),hold:!!b.hold,hold_reason:(b.hold_reason||''),hold_at:(b.hold_at||null),hold_eta:(b.hold_eta||null),mcode:(m.code||''),mname:(m.name||'')});
     });
   });
   OV.sort(function(a,b){return dateKey(a.date)-dateKey(b.date)||a.machine.localeCompare(b.machine);});
@@ -207,6 +207,7 @@ function renderHold(held){
       +'<td>'+catBadge(r.category)+'</td>'
       +'<td><span class="badge" style="background:#fff3e0;color:#b45309;border:1px solid #f3d19e">'+esc(r.hold_reason||'On hold')+'</span></td>'
       +'<td>'+holdSince(r.hold_at)+'</td>'
+      +'<td>'+(r.hold_eta?holdSince(r.hold_eta):'<span style="color:var(--muted)">—</span>')+'</td>'
       +'<td>'+asgCell(r)+'</td>'
       +'<td>'+rep+'</td></tr>';
   }).join('');
