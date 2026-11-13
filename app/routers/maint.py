@@ -61,7 +61,7 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-11-12a"   # bump when adding/altering a table so ensure_tables re-runs the DDL
+SCHEMA_VER = "2026-11-13a"   # bump when adding/altering a table so ensure_tables re-runs the DDL
 MAINT_BUILD = "2026-11-05-v75-restore-open-option"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
@@ -630,7 +630,8 @@ async def ensure_tables():
                          # resume; hold_log keeps the audit trail. None of these touch the
                          # report/PDF — status stays 'open' and resolution is untouched.
                          ("hold_status", "TEXT"), ("hold_reason", "TEXT"),
-                         ("hold_at", "TIMESTAMPTZ"), ("hold_log", "JSONB")):
+                         ("hold_at", "TIMESTAMPTZ"), ("hold_log", "JSONB"),
+                         ("resumed_at", "TIMESTAMPTZ")):   # when a hold was last resumed
             await db.execute(f"ALTER TABLE maint_breakdowns ADD COLUMN IF NOT EXISTS {col} {typ}")
         # Self-heal the status column: older / migration-restored rows can carry a blank,
         # NULL or odd-cased status ('Open', ' open ', 'OPEN'), which made the Close button
@@ -2809,6 +2810,58 @@ def _can_close_bd(emp: dict, row) -> bool:
     return bool(emp.get("is_admin")) or (emp.get("id") in _bd_aids(row))
 
 
+async def _send_hold_resume_alert(bd: dict, action: str, reason: str = ""):
+    """Notify the work order's OWN assigned user + EVERY admin when a breakdown is put on
+    hold or resumed. Reuses the breakdown-alert template (bsc_breakdown_alert2); the status
+    goes in the Problem slot {{3}}:
+      hold   -> 'ON HOLD - <reason>'
+      resume -> 'RESUMED - <problem>'
+    Best-effort: a WhatsApp failure never blocks the hold/resume itself, and no other
+    reminder logic is touched."""
+    tmpl = WATI_MAINT_BREAKDOWN_TEMPLATE
+    if not tmpl:
+        return []
+    label = (str(bd.get("asset_code") or "") + " " + str(bd.get("asset_name") or "")).strip() or "—"
+    detail = (bd.get("problem") or "—").strip() or "—"
+    btype = _norm_type(bd.get("btype"))
+    problem = (f"{btype}: {detail}" if btype else detail)
+    if action == "hold":
+        status_line = "ON HOLD - " + ((reason or "").strip() or "reason not given")
+    else:
+        status_line = "RESUMED - " + problem
+    by = (bd.get("reported_by") or "—").strip() or "—"
+    tm = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
+    ref = str(bd.get("id") or "")
+    # Same slot order as the breakdown alert: {{1}}=Ref, {{2}}=Machine, {{3}}=status line,
+    # {{4}}=Reported by, {{5}}=Time. The button URL ?id={{1}} still points at this ticket.
+    params = [ref, label, status_line, by, tm]
+    targets, seen = [], set()
+    emap = await _emp_map()
+    for aid in _bd_aids(bd):                       # the assigned user(s) — their own ticket
+        info = emap.get(aid) or {}
+        m = wati.normalize_number(info.get("mobile") or "")
+        if m and m not in seen:
+            targets.append((m, info.get("name") or "")); seen.add(m)
+    try:                                           # every admin with a mobile
+        for r in await db.fetch(
+                "SELECT COALESCE(name,'') AS name, COALESCE(mobile,'') AS mobile FROM employees "
+                "WHERE COALESCE(is_admin,false)=true AND COALESCE(active,true)=true "
+                "AND COALESCE(mobile,'')<>''"):
+            m = wati.normalize_number(r["mobile"])
+            if m and m not in seen:
+                targets.append((m, r["name"])); seen.add(m)
+    except Exception:
+        pass
+    results = []
+    for m, nm in targets:
+        try:
+            ok, dt = await _wsend(tmpl, m, params, name=nm, kind=action)
+            results.append({"to": m, "result": "sent" if ok else f"failed: {dt}"})
+        except Exception as e:  # noqa: BLE001
+            results.append({"to": m, "result": f"error: {str(e)[:80]}"})
+    return results
+
+
 def _can_delete_bd(emp: dict, row) -> bool:
     """A work order may be deleted by an admin, the person who raised it, or an assignee."""
     return (bool(emp.get("is_admin"))
@@ -3268,7 +3321,18 @@ async def breakdown_hold(body: dict, emp: dict = Depends(require_employee)):
     await db.execute(
         "UPDATE maint_breakdowns SET hold_status='hold', hold_reason=$2, hold_at=$3, hold_log=$4 "
         "WHERE id=$1", bid, reason, now, json.dumps(log))
-    return {"ok": True, "held": True, "reason": reason, "at": now.isoformat()}
+    # Notify the assigned user + all admins that this work order is on hold (best-effort;
+    # a WhatsApp failure never blocks the hold).
+    alert = []
+    try:
+        full = await db.fetchrow(
+            "SELECT b.*, a.code AS asset_code, a.name AS asset_name FROM maint_breakdowns b "
+            "LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.id=$1", bid)
+        if full:
+            alert = await _send_hold_resume_alert(dict(full), "hold", reason)
+    except Exception as e:  # noqa: BLE001
+        print("[maint] hold alert failed:", e)
+    return {"ok": True, "held": True, "reason": reason, "at": now.isoformat(), "alerts": alert}
 
 
 @router.post("/breakdown/resume")
@@ -3300,9 +3364,20 @@ async def breakdown_resume(body: dict, emp: dict = Depends(require_employee)):
     log = (log or []) + [{"action": "resume", "at": now.isoformat(),
                           "by": emp.get("name") or emp.get("emp_no") or "staff"}]
     await db.execute(
-        "UPDATE maint_breakdowns SET hold_status=NULL, hold_reason=NULL, hold_at=NULL, hold_log=$2 "
-        "WHERE id=$1", bid, json.dumps(log))
-    return {"ok": True, "resumed": True}
+        "UPDATE maint_breakdowns SET hold_status=NULL, hold_reason=NULL, hold_at=NULL, "
+        "resumed_at=$2, hold_log=$3 WHERE id=$1", bid, now, json.dumps(log))
+    # Notify the assigned user + all admins that this work order is resumed (best-effort).
+    # The fresh 1-hour reminder timer runs from resumed_at (see _run_reminders).
+    alert = []
+    try:
+        full = await db.fetchrow(
+            "SELECT b.*, a.code AS asset_code, a.name AS asset_name FROM maint_breakdowns b "
+            "LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.id=$1", bid)
+        if full:
+            alert = await _send_hold_resume_alert(dict(full), "resume")
+    except Exception as e:  # noqa: BLE001
+        print("[maint] resume alert failed:", e)
+    return {"ok": True, "resumed": True, "alerts": alert}
 
 
 @router.get("/breakdown/audit")
@@ -5675,6 +5750,12 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         # A breakdown on HOLD is paused (parts/worker unavailable) — it is not an active
         # overdue, so it never goes to reminders or onto the overdue report / board PNG.
         if str(b.get("hold_status") or "").strip().lower() == "hold":
+            continue
+        # Fresh 1-hour timer after a resume: a just-resumed breakdown is not reminded for the
+        # first hour; its recurring hourly reminder restarts from resumed_at. (The live web
+        # board still shows it immediately — only the reminder digest waits.)
+        _rz = b.get("resumed_at")
+        if isinstance(_rz, datetime) and (datetime.now(IST) - _rz).total_seconds() < 3600:
             continue
         label = (str(b.get("asset_code") or "") + " " + str(b.get("asset_name") or "")).strip() or "—"
         prob = (b.get("problem") or "").strip() or "—"
