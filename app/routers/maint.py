@@ -60,7 +60,7 @@ CATEGORIES = ["Hydraulic", "Mechanical", "Electrical"]
 _ensured = False
 # Bump this string whenever the ensure_tables() DDL changes, so one request after a
 # deploy re-applies the schema and every later request skips it (big per-request speedup).
-SCHEMA_VER = "2026-10-31g"   # bump when adding/altering a table so ensure_tables re-runs the DDL
+SCHEMA_VER = "2026-11-12a"   # bump when adding/altering a table so ensure_tables re-runs the DDL
 MAINT_BUILD = "2026-11-05-v75-restore-open-option"   # bump on each deploy to confirm Vercel updated
 ASSIGN_SEED_KEY = "assign_seed_v1"   # one-time load of per-checkpoint user assignments
 NEW_MACHINES_SEED_KEY = "new_machines_seed_v1"   # one-time load of the 5 SHED-B machines (015,017,018,019,020)
