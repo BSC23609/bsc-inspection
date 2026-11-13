@@ -3265,6 +3265,39 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
     if not aids:
         raise HTTPException(400, "Select at least one maintenance user")
     primary = aids[0]
+    # Block a duplicate open work order: the same machine already has an OPEN job of the
+    # same type (Breakdown / Unscheduled PM) assigned to an overlapping person. Prevents
+    # raising the same machine breakdown twice for the same assignee while one is unresolved.
+    _new_set = set(aids)
+    _dups = await db.fetch(
+        "SELECT id, assignee_emp_id, assignees, wo_type FROM maint_breakdowns "
+        "WHERE asset_id=$1 AND lower(btrim(coalesce(status,'open')))='open' "
+        "AND closed_at IS NULL", aid)
+    for _d in _dups:
+        if _wo_type(_d.get("wo_type")) != wo_type:
+            continue
+        _ex = set()
+        _ea = _d.get("assignees")
+        if isinstance(_ea, str):
+            try:
+                _ea = json.loads(_ea)
+            except Exception:
+                _ea = []
+        for _x in (_ea or []):
+            try:
+                _ex.add(int(_x))
+            except Exception:
+                pass
+        if _d.get("assignee_emp_id"):
+            try:
+                _ex.add(int(_d["assignee_emp_id"]))
+            except Exception:
+                pass
+        if _new_set & _ex:
+            _lbl = "Unscheduled PM" if wo_type != "Breakdown" else "breakdown"
+            raise HTTPException(
+                400, f"This machine already has an open {_lbl} (Work Order #{_d['id']}) "
+                     "assigned to the same person. Close or resolve it before raising a new one.")
     raised_at = _dt(body.get("raised_at"))   # user-supplied date+time; falls back to now
     reporter = emp.get("name") or emp.get("emp_no") or "staff"
     remarks = (body.get("remarks") or "").strip()
@@ -5918,13 +5951,11 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
     elif kind in ("due", "all") and allow_due:
         for aid, g in due_by_assignee.items():
             pm_list = _join_items(g["pm"])
-            # body var 4 is the COUNT of this user's open/overdue breakdowns (a number like
-            # 0, 1, 2 …), not a list — so "Total breakdown overdue:" shows a figure, never "—".
-            bd_count = str(len(g["bd"]))
-            # body vars: 1 name, 2 date, 3 preventive list, 4 breakdown overdue count, 5 button.
+            bd_list = _join_items(g["bd"])
+            # body vars: 1 name, 2 date, 3 preventive list, 4 breakdown list, 5 button.
             # WATI feeds the URL button's {{1}} from param "1" (the name), so it must
             # be URL-safe (spaces -> underscore) or WhatsApp drops the message.
-            params = [_url_token(g["name"]), tdisp, pm_list, bd_count, "maint"]
+            params = [_url_token(g["name"]), tdisp, pm_list, bd_list, "maint"]
             await _dispatch(WATI_MAINT_DUE_TEMPLATE, g["mobile"], params,
                             {"kind": "due-digest", "assignee": g["name"],
                              "preventive": len(g["pm"]), "breakdown": len(g["bd"])})
