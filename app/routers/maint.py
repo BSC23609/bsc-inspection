@@ -1350,6 +1350,76 @@ async def asset_delete(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True}
 
 
+@router.get("/asset/purge")
+async def asset_purge(token: str = Query(default=""), code: str = Query(default=""),
+                      id: int = Query(default=0), apply: int = Query(default=0),
+                      emp: dict = Depends(current_employee)):
+    """Permanently delete a machine and EVERYTHING attached to it — work orders AND their
+    OneDrive PDFs, schedules, checklists, checkpoints, completion records, logs, readings —
+    then the asset itself. IRREVERSIBLE. Admin or ?token=AGENT_TOKEN. Dry-run unless apply=1.
+      ?code=M/C-018              (dry run — shows what will be removed)
+      ?code=M/C-018&apply=1      (delete everything, incl. OneDrive PDFs)"""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    if id:
+        a = await db.fetchrow("SELECT id, code, name FROM maint_assets WHERE id=$1", id)
+    elif code.strip():
+        a = await db.fetchrow(
+            "SELECT id, code, name FROM maint_assets WHERE upper(code)=upper($1)", code.strip())
+    else:
+        raise HTTPException(400, "Pass code= or id=")
+    if not a:
+        return _json({"ok": False, "reason": "machine not found"})
+    aid = a["id"]
+    counts = {}
+    for label, q in (
+        ("work_orders", "SELECT COUNT(*) FROM maint_breakdowns WHERE asset_id=$1"),
+        ("schedules", "SELECT COUNT(*) FROM maint_schedules WHERE asset_id=$1"),
+        ("checklists", "SELECT COUNT(*) FROM maint_checklists WHERE asset_id=$1"),
+        ("checkpoints", "SELECT COUNT(*) FROM maint_checkpoints WHERE checklist_id IN "
+                        "(SELECT id FROM maint_checklists WHERE asset_id=$1)"),
+        ("logs", "SELECT COUNT(*) FROM maint_logs WHERE asset_id=$1"),
+    ):
+        try:
+            counts[label] = int(await db.fetchval(q, aid) or 0)
+        except Exception:
+            counts[label] = None
+    preview = {"id": aid, "code": a["code"], "name": a["name"], "counts": counts}
+    if not apply:
+        return _json({"apply": False, **preview})
+    # 1) remove each work order's OneDrive PDF (both folders) — best-effort
+    pdfs_deleted = 0
+    try:
+        gtoken = await graph.get_token()
+        for r in await db.fetch("SELECT id FROM maint_breakdowns WHERE asset_id=$1", aid):
+            try:
+                item = await _locate_report_item(gtoken, a["code"] or "", a["name"] or "",
+                                                 "BM", "", bd=r["id"])
+                if item and await graph.delete_item(gtoken, item["id"]):
+                    pdfs_deleted += 1
+            except Exception:
+                pass
+    except Exception as e:  # noqa: BLE001
+        print("[maint] purge PDF step skipped:", e)
+    # 2) delete all DB rows attached to the machine, then the asset (same cascade as asset_delete)
+    await db.execute(
+        "DELETE FROM maint_checkpoint_done WHERE checkpoint_id IN "
+        "(SELECT p.id FROM maint_checkpoints p JOIN maint_checklists c ON c.id=p.checklist_id "
+        "WHERE c.asset_id=$1)", aid)
+    await db.execute(
+        "DELETE FROM maint_checkpoints WHERE checklist_id IN "
+        "(SELECT id FROM maint_checklists WHERE asset_id=$1)", aid)
+    await db.execute("DELETE FROM maint_checklists WHERE asset_id=$1", aid)
+    for t in ("maint_schedules", "maint_logs", "maint_breakdowns", "maint_readings", "maint_asset_elec"):
+        try:
+            await db.execute(f"DELETE FROM {t} WHERE asset_id=$1", aid)
+        except Exception as e:  # noqa: BLE001
+            print("[maint] purge step skipped:", t, e)
+    await db.execute("DELETE FROM maint_assets WHERE id=$1", aid)
+    return _json({"apply": True, **preview, "pdfs_deleted": pdfs_deleted})
+
+
 @router.get("/assets/duplicates")
 async def assets_duplicates(emp: dict = Depends(require_employee)):
     """Group machines that share the same code or the same name, so duplicates
