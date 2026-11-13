@@ -13,6 +13,7 @@ import os
 import json
 import re
 import base64
+import urllib.parse
 import calendar
 import asyncio
 from datetime import date, datetime, timedelta, time
@@ -1051,13 +1052,20 @@ async def _overdue_recipients() -> list:
 
 
 def _overdue_img_params():
-    """Body parameter for the overdue template — a single value for {{1}} = the current
-    date & time (IST), e.g. "13 Nov 2026, 09:01 AM"."""
-    # Single positional value -> WhatsApp fills {{1}} with just the date/time string,
-    # e.g. "13 Nov 2026, 09:01 AM". The board image is the template's fixed header, so no
-    # image URL is sent as a parameter (that extra param is what previously got stringified
-    # into {{1}} and printed the whole {...} dict in the message body).
-    return [datetime.now(IST).strftime("%d %b %Y, %I:%M %p")]
+    """Named parameters for the overdue template:
+      - "1"  -> body {{1}} = current date & time (IST), e.g. "13 Nov 2026, 09:01 AM".
+      - WATI_OVERDUE_IMG_PARAM -> the header image variable, set to the live PNG URL with a
+        unique &t= timestamp so WhatsApp/Meta fetches a FRESH board image every send instead
+        of replaying its by-URL cached copy. This only takes effect when the WATI template
+        header is a send-time VARIABLE (not a fixed URL)."""
+    now_ist = datetime.now(IST)
+    params = {"1": now_ist.strftime("%d %b %Y, %I:%M %p")}
+    if WATI_OVERDUE_IMG_PARAM:
+        ts = int(now_ist.timestamp())
+        tok = urllib.parse.quote(str(OVERDUE_IMG_TOKEN), safe="")  # encode '@' etc. -> %40
+        params[WATI_OVERDUE_IMG_PARAM] = (
+            f"https://qms.bharatsteels.in/maint/overdue-report.png?token={tok}&t={ts}")
+    return params
 
 
 def _is_offday(d):
@@ -2728,10 +2736,16 @@ def _safe_param(v):
 
 
 async def _wsend(template, phone, params, name="", kind=""):
-    """Send a WATI template AND log the outcome. Returns (ok, detail) like send_template."""
-    plist = params if isinstance(params, (list, tuple)) else [params]
-    plist = [_safe_param(p) for p in plist]
-    ok, detail = await wati.send_template(template, phone, plist)
+    """Send a WATI template AND log the outcome. Returns (ok, detail) like send_template.
+    A dict of named parameters is passed through as a dict (so WATI maps each by name,
+    e.g. body {{1}} and a header-image variable); a list/tuple stays positional. Wrapping a
+    dict in a list here was the bug that stringified the whole {...} into {{1}}."""
+    if isinstance(params, dict):
+        payload = {str(k): _safe_param(v) for k, v in params.items()}
+    else:
+        plist = params if isinstance(params, (list, tuple)) else [params]
+        payload = [_safe_param(p) for p in plist]
+    ok, detail = await wati.send_template(template, phone, payload)
     await _log_wati(template, phone, name, ok, detail, kind)
     return ok, detail
 
