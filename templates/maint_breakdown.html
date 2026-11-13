@@ -178,14 +178,22 @@
         <option value="Waiting for diagnosis">Waiting for diagnosis</option>
         <option value="Waiting for lubrication oil">Waiting for lubrication oil</option>
         <option value="Waiting for tools/bolts">Waiting for tools/bolts</option>
-        <option value="Other">Other (free text)</option>
+        <option value="Other">Other</option>
       </select></div>
     <div id="hd_other_row" style="display:none;margin-bottom:14px"><label>Reason detail <span class="req">*</span></label>
       <textarea id="hd_other" placeholder="Type the reason for holding this work order"></textarea></div>
     <div style="margin-bottom:4px"><label>Expected resolution time</label>
-      <div style="display:flex;gap:8px">
-        <input type="date" id="hd_eta_date" style="flex:1" title="Expected date">
-        <input type="time" id="hd_eta_time" style="flex:1" title="Expected time">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <input type="date" id="hd_eta_date" style="flex:1 1 150px" title="Expected date">
+        <select id="hd_eta_hr" style="flex:1 1 60px" title="Hour">
+          <option value="">Hr</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option><option>7</option><option>8</option><option>9</option><option>10</option><option>11</option><option>12</option>
+        </select>
+        <select id="hd_eta_min" style="flex:1 1 60px" title="Minute">
+          <option value="">Min</option><option>00</option><option>05</option><option>10</option><option>15</option><option>20</option><option>25</option><option>30</option><option>35</option><option>40</option><option>45</option><option>50</option><option>55</option>
+        </select>
+        <select id="hd_eta_ap" style="flex:1 1 60px" title="AM / PM">
+          <option value="">AM/PM</option><option>AM</option><option>PM</option>
+        </select>
       </div></div>
   </div></div>
   <div class="mfoot"><button class="btn btn-ghost" onclick="closeHold()">Cancel</button>
@@ -421,7 +429,7 @@ async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl
     toast('ok','Work order closed');closeCloseModal();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
 /* ---- hold / resume ---- */
-function openHold(id){sv('hd_id',id);sv('hd_reason','');sv('hd_other','');sv('hd_eta_date','');sv('hd_eta_time','');
+function openHold(id){sv('hd_id',id);sv('hd_reason','');sv('hd_other','');sv('hd_eta_date','');sv('hd_eta_hr','');sv('hd_eta_min','');sv('hd_eta_ap','');
   document.getElementById('hd_other_row').style.display='none';
   var ctx=document.getElementById('hd_ctx');if(ctx)ctx.textContent='Work Order Ref #'+id;
   document.getElementById('hd_scrim').style.display='flex';}
@@ -431,8 +439,12 @@ async function doHold(){var id=v('hd_id'),r=v('hd_reason');
   if(!r){toast('err','Select a hold reason');return;}
   var reason=r;
   if(r==='Other'){var o=v('hd_other').trim();if(!o){toast('err','Type the reason');return;}reason='Other: '+o;}
-  var ed=v('hd_eta_date'),et=v('hd_eta_time');
-  var eta=ed?(ed+'T'+(et||'00:00')):'';
+  var ed=v('hd_eta_date'),eh=v('hd_eta_hr'),em=v('hd_eta_min'),ap=v('hd_eta_ap');
+  var eta='';
+  if(ed){
+    if(eh&&ap){var hh=parseInt(eh,10)%12;if(ap==='PM')hh+=12;eta=ed+'T'+('0'+hh).slice(-2)+':'+(em||'00');}
+    else{eta=ed+'T00:00';}
+  }
   var b=document.getElementById('hd_save');b.disabled=true;var l=b.textContent;b.textContent='Holding…';
   try{var res=await fetch('/maint/breakdown/hold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,reason:reason,eta:eta})});
     var d=await res.json().catch(function(){return{};});if(!res.ok||!d.ok)throw new Error(d.detail||'Failed');
