@@ -3230,10 +3230,15 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
             nm = {r["id"]: (r["name"] or r["emp_no"]) for r in await db.fetch(
                 "SELECT id, name, emp_no FROM employees WHERE id = ANY($1::int[])", aids)}
             names = [nm[i] for i in aids if nm.get(i)]
-        asyncio.create_task(_file_breakdown_report(dict(bd), ", ".join(names)))
+        # AWAIT it — Vercel kills post-response background work, so a create_task() here
+        # would often never write the PDF (that is why some work orders, including
+        # Unscheduled PM, had no report in OneDrive). Awaiting files the PDF on creation,
+        # into the Breakdown or Unscheduled Preventive Maintenance folder per its wo_type.
+        pdf_path = await _file_breakdown_report(dict(bd), ", ".join(names))
     except Exception as e:
+        pdf_path = None
         print("[maint] breakdown report skipped:", e)
-    return {"ok": True, "id": bid, "photos": len(paths), "alert": alert}
+    return {"ok": True, "id": bid, "photos": len(paths), "alert": alert, "pdf": pdf_path}
 
 
 @router.post("/breakdown/close")
