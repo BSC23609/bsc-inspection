@@ -1051,24 +1051,13 @@ async def _overdue_recipients() -> list:
 
 
 def _overdue_img_params():
-    """Parameters for the overdue template (WATI maps them to the template variables BY NAME).
-
-    The body carries a date/time variable {{1}} ("Maintenance Overdue Report as on {{1}}"),
-    so every send fills "1" with the current date & time (IST) — without it, {{1}} is left
-    empty and WhatsApp shows the template's leftover sample text.
-
-    WhatsApp/Meta caches a template's header image BY URL, so when the WATI template header is
-    a send-time VARIABLE (placeholder name in WATI_OVERDUE_IMG_PARAM) we also pass that
-    variable set to the live PNG URL plus a unique &t= epoch, so Meta fetches a fresh board
-    image on every send and the report can never lag the board."""
-    now_ist = datetime.now(IST)
-    params = {"1": now_ist.strftime("%d %b %Y, %I:%M %p")}   # body {{1}} = date & time
-    if WATI_OVERDUE_IMG_PARAM:
-        ts = int(now_ist.timestamp())
-        params[WATI_OVERDUE_IMG_PARAM] = (
-            f"https://qms.bharatsteels.in/maint/overdue-report.png"
-            f"?token={OVERDUE_IMG_TOKEN}&t={ts}")
-    return params
+    """Body parameter for the overdue template — a single value for {{1}} = the current
+    date & time (IST), e.g. "13 Nov 2026, 09:01 AM"."""
+    # Single positional value -> WhatsApp fills {{1}} with just the date/time string,
+    # e.g. "13 Nov 2026, 09:01 AM". The board image is the template's fixed header, so no
+    # image URL is sent as a parameter (that extra param is what previously got stringified
+    # into {{1}} and printed the whole {...} dict in the message body).
+    return [datetime.now(IST).strftime("%d %b %Y, %I:%M %p")]
 
 
 def _is_offday(d):
@@ -5685,7 +5674,8 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
             nms = [n for n in nms if n]
             sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
                            "prob": prob, "who": ", ".join(nms) if nms else "Unassigned",
-                           "status": "Open", "date": bdate, "by": brep})
+                           "status": "Open", "date": bdate, "by": brep,
+                           "wo_type": _wo_type(b.get("wo_type"))})
             continue
         if not aids:
             sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",

@@ -59,6 +59,8 @@ def _font(bold=False, size=20):
 
 def _cat(c):
     c = (c or "").lower()
+    if "unscheduled" in c:
+        return "Unscheduled PM"
     if "quarter" in c:
         return "Quarterly Maintenance"
     if "daily" in c:
@@ -109,12 +111,16 @@ def _rows(pm, bd):
             "by": (it.get("by") or "-").strip() or "-",
         })
     for it in (bd or []):
+        # Match the board: an Unscheduled PM work order is labelled "Unscheduled PM", a real
+        # breakdown "Breakdown"; both show as Overdue (they are on the overdue board).
+        wl = str(it.get("wo_type") or "Breakdown")
+        is_upm = wl.strip().lower().startswith("unscheduled")
         rows.append({
             "date": it.get("date") or "-",
             "code": (it.get("code") or "").strip() or "-",
             "name": (it.get("name") or "").strip() or "-",
-            "cat": "Breakdown",
-            "status": it.get("status") or "Open",
+            "cat": "Unscheduled PM" if is_upm else "Breakdown",
+            "status": "Overdue",
             "who": (it.get("who") or "-").strip() or "-",
             "by": (it.get("by") or "-").strip() or "-",
         })
