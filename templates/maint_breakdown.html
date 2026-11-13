@@ -429,7 +429,7 @@ async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl
     toast('ok','Work order closed');closeCloseModal();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
 /* ---- hold / resume ---- */
-function openHold(id){sv('hd_id',id);sv('hd_reason','');sv('hd_other','');sv('hd_eta_date','');sv('hd_eta_hr','');sv('hd_eta_min','');sv('hd_eta_ap','');
+function openHold(id){sv('hd_id',id);sv('hd_reason','');sv('hd_other','');sv('hd_eta_date','');sv('hd_eta_hr','');sv('hd_eta_min','');sv('hd_eta_ap','AM');
   document.getElementById('hd_other_row').style.display='none';
   var ctx=document.getElementById('hd_ctx');if(ctx)ctx.textContent='Work Order Ref #'+id;
   document.getElementById('hd_scrim').style.display='flex';}
