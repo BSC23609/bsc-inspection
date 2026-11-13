@@ -61,7 +61,7 @@
     </div>
     <div class="row r2">
       <div class="field"><label>Request Date <span class="rq">*</span></label><input type="date" id="pr_reqdate"></div>
-      <div class="field"><label>WhatsApp Number</label><input id="pr_wa" inputmode="numeric" placeholder="10-digit mobile"></div>
+      <div class="field"><label>WhatsApp Number</label><input id="pr_wa" inputmode="numeric" placeholder="10-digit mobile" value="{{ (emp.mobile or '')|e }}"{% if emp.mobile %} readonly title="Your registered WhatsApp number" style="background:#f1f3f5;color:#555;cursor:not-allowed"{% endif %}></div>
     </div>
   </div>
 
@@ -171,7 +171,7 @@ function stockVal(){var r=document.querySelector('input[name="pr_stock"]:checked
 
 function prReset(){
   sv('pr_name','{{ (emp.name or "")|e }}');
-  sv('pr_dept','');sv('pr_wa','');sv('pr_item','');sv('pr_spec','');sv('pr_partmake','');
+  sv('pr_dept','');sv('pr_wa','{{ (emp.mobile or "")|e }}');sv('pr_item','');sv('pr_spec','');sv('pr_partmake','');
   sv('pr_qty','');sv('pr_cost','');sv('pr_sup','');sv('pr_remarks','');sv('pr_reqby','');
   document.getElementById('pr_cat').selectedIndex=0;
   document.getElementById('pr_unit').selectedIndex=0;
