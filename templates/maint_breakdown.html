@@ -183,7 +183,10 @@
     <div id="hd_other_row" style="display:none;margin-bottom:14px"><label>Reason detail <span class="req">*</span></label>
       <textarea id="hd_other" placeholder="Type the reason for holding this work order"></textarea></div>
     <div style="margin-bottom:4px"><label>Expected resolution time</label>
-      <input type="datetime-local" id="hd_eta" style="width:100%"></div>
+      <div style="display:flex;gap:8px">
+        <input type="date" id="hd_eta_date" style="flex:1" title="Expected date">
+        <input type="time" id="hd_eta_time" style="flex:1" title="Expected time">
+      </div></div>
   </div></div>
   <div class="mfoot"><button class="btn btn-ghost" onclick="closeHold()">Cancel</button>
     <button class="btn btn-primary" id="hd_save" onclick="doHold()">Put on hold</button></div>
@@ -418,7 +421,7 @@ async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl
     toast('ok','Work order closed');closeCloseModal();await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}finally{b.disabled=false;b.textContent=l;}}
 /* ---- hold / resume ---- */
-function openHold(id){sv('hd_id',id);sv('hd_reason','');sv('hd_other','');sv('hd_eta','');
+function openHold(id){sv('hd_id',id);sv('hd_reason','');sv('hd_other','');sv('hd_eta_date','');sv('hd_eta_time','');
   document.getElementById('hd_other_row').style.display='none';
   var ctx=document.getElementById('hd_ctx');if(ctx)ctx.textContent='Work Order Ref #'+id;
   document.getElementById('hd_scrim').style.display='flex';}
@@ -428,7 +431,8 @@ async function doHold(){var id=v('hd_id'),r=v('hd_reason');
   if(!r){toast('err','Select a hold reason');return;}
   var reason=r;
   if(r==='Other'){var o=v('hd_other').trim();if(!o){toast('err','Type the reason');return;}reason='Other: '+o;}
-  var eta=v('hd_eta');
+  var ed=v('hd_eta_date'),et=v('hd_eta_time');
+  var eta=ed?(ed+'T'+(et||'00:00')):'';
   var b=document.getElementById('hd_save');b.disabled=true;var l=b.textContent;b.textContent='Holding…';
   try{var res=await fetch('/maint/breakdown/hold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,reason:reason,eta:eta})});
     var d=await res.json().catch(function(){return{};});if(!res.ok||!d.ok)throw new Error(d.detail||'Failed');
