@@ -186,7 +186,9 @@ def build_pm_report(meta: dict, checkpoints: list) -> bytes:
 def build_breakdown_report(meta: dict) -> bytes:
     """meta: asset_code, asset_name, doc_no, btype, problem, raised, raised_by,
     assignees, location, status, closed, closed_by, resolution, qr_url."""
-    title = f"#{meta.get('doc_no','')} {meta.get('asset_code','')} {meta.get('asset_name','')} ({meta.get('wo_label','Breakdown')})".strip()
+    wl = str(meta.get('wo_label', 'Breakdown') or 'Breakdown')
+    is_upm = wl.strip().lower().startswith("unscheduled")
+    title = f"#{meta.get('doc_no','')} {meta.get('asset_code','')} {meta.get('asset_name','')} ({wl})".strip()
     left = [
         ("Doc No:", meta.get("doc_no", "--")),
         ("Raised on:", _fmt_dt(meta.get("raised"))),
@@ -206,8 +208,12 @@ def build_breakdown_report(meta: dict) -> bytes:
         ("2", "Action taken", meta.get("resolution", "--") or "--",
          _fmt_dt(meta.get("closed")) if meta.get("closed") else "pending"),
     ]
+    # Unscheduled PM: "Closed by" shows the assigned person (who did the work), not whoever
+    # clicked close; the section heading reads "Unscheduled Preventive Maintenance Details".
+    closed_by_val = (meta.get("assignees") if is_upm else meta.get("closed_by")) or "--"
     footer = [("Raised by:", meta.get("raised_by", "--")),
               ("Assigned to:", meta.get("assignees", "--") or "--"),
-              ("Closed by:", meta.get("closed_by", "--") or "--")]
-    return _build(title, left, right, "Breakdown Details", items,
+              ("Closed by:", closed_by_val)]
+    section = "Unscheduled Preventive Maintenance Details" if is_upm else "Breakdown Details"
+    return _build(title, left, right, section, items,
                   ("#", "ITEM", "DETAIL", "WHEN"), footer, meta.get("qr_url", ""))
