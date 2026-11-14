@@ -187,13 +187,17 @@ async def _upload_photos(token, batch: str, photos: list) -> list:
     return out
 
 
-async def _write_excel(data: dict, file_name: str):
-    """Append the 315-col row to the existing OneDrive QualityLog table."""
+async def _write_excel(data: dict, file_name: str, strict: bool = False):
+    """Append the 315-col row to the existing OneDrive QualityLog table.
+    Best-effort — swallows errors unless strict=True (the log backfill passes strict so the
+    real error is reported)."""
     try:
         token = await graph.get_token()
         item_id = await graph.get_item_id(token, QUALITY_XLSX)
         if not item_id:
             print("[quality-xlsx] workbook not found:", QUALITY_XLSX)
+            if strict:
+                raise RuntimeError(f"workbook not found: {QUALITY_XLSX}")
             return
         headers = quality_headers()
         await graph.ensure_table_columns(token, item_id, QUALITY_TABLE, headers)
@@ -205,6 +209,8 @@ async def _write_excel(data: dict, file_name: str):
         await graph.add_table_row(token, item_id, QUALITY_TABLE, row)
     except Exception as e:
         print("[quality-xlsx]", e)
+        if strict:
+            raise
 
 
 async def _save_quality_pdf(data: dict, rec_id, s: dict, token=None, strict=False):
@@ -502,6 +508,70 @@ async def q_pdf_legacy(i: int = Query(...), emp: dict = Depends(require_employee
     return Response(pdf, media_type="application/pdf",
                     headers={"Content-Disposition": f'inline; filename="CTL_Quality_{b}.pdf"',
                              "Cache-Control": "no-store"})
+
+
+@router.get("/admin/backfill-log")
+async def q_backfill_log(token: str = Query(default=""), limit: int = Query(default=10),
+                         skip: int = Query(default=0), since: str = Query(default=""),
+                         emp: Optional[dict] = Depends(current_employee)):
+    """Backfill the Quality_Log.xlsx ROWS (not PDFs) from DB records — deduped by file name
+    so no row is written twice, with the real error per record (strict). Admin or
+    ?token=AGENT_TOKEN. Follow next_url until remaining=0. ?since=YYYY-MM-DD limits the range."""
+    await ensure_table()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    try:
+        limit = max(1, min(int(limit or 10), 10))
+        skip = max(0, int(skip or 0))
+        where = ""
+        s = (since or "").strip()
+        if s:
+            try:
+                d = date.fromisoformat(s)
+            except ValueError:
+                return JSONResponse(status_code=400, content={"ok": False, "error": "since must be YYYY-MM-DD"})
+            where = f"WHERE created_at >= '{d.isoformat()}'::timestamptz"
+        total = await db.fetchval(f"SELECT count(*) FROM quality_inspection {where}")
+        rows = await db.fetch(
+            f"SELECT id, payload, file_name FROM quality_inspection {where} ORDER BY id LIMIT {limit} OFFSET {skip}")
+        existing = set()                      # dedupe: file names already in the log (column 0)
+        try:
+            gtok = await graph.get_token()
+            item_id = await graph.get_item_id(gtok, QUALITY_XLSX)
+            if item_id:
+                existing = {str(x).strip() for x in await graph.column_values(gtok, item_id, QUALITY_TABLE, 0)}
+        except Exception as e:
+            print("[q-backfill-log existing]", e)
+        results = []
+        for r in rows:
+            r = dict(r)
+            fn = (r.get("file_name") or "").strip()
+            if fn and fn in existing:
+                results.append({"id": r["id"], "file": fn, "ok": True, "skipped": "already logged"})
+                continue
+            payload = r.get("payload")
+            if isinstance(payload, str):
+                try:
+                    payload = json.loads(payload)
+                except Exception:
+                    payload = {}
+            try:
+                await _write_excel(payload or {}, fn, strict=True)
+                results.append({"id": r["id"], "file": fn, "ok": True})
+            except Exception as e:
+                results.append({"id": r["id"], "file": fn, "ok": False, "error": str(e)[:250]})
+        done_through = skip + len(rows)
+        remaining = max(0, (total or 0) - done_through)
+        nxt = (f"https://qms.bharatsteels.in/quality/admin/backfill-log?token={token}"
+               f"&limit={limit}&skip={done_through}" + (f"&since={s}" if s else ""))
+        return {"ok": True, "records_total": total, "done_through": done_through, "remaining": remaining,
+                "ok_count": sum(1 for x in results if x["ok"]), "results": results,
+                "next_url": (nxt if remaining > 0 else None)}
+    except Exception as e:
+        import traceback
+        return JSONResponse(status_code=500,
+                            content={"ok": False, "error": f"{type(e).__name__}: {str(e)[:300]}",
+                                     "trace": traceback.format_exc()[-700:]})
 
 
 @router.get("/admin/backfill-pdfs")
