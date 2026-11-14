@@ -31,6 +31,7 @@ def _graph_identity() -> dict:
 
 @router.get("/graph-health")
 async def graph_health(token: str = Query(default=""), alert: int = Query(default=0),
+                       write: int = Query(default=0),
                        emp: Optional[dict] = Depends(current_employee)):
     """Check that OneDrive/Microsoft Graph access is working. Admin session or
     ?token=AGENT_TOKEN. Returns HTTP 200 {ok:true} when healthy, HTTP 503 {ok:false,...}
@@ -42,9 +43,17 @@ async def graph_health(token: str = Query(default=""), alert: int = Query(defaul
     checked = datetime.now(timezone.utc).isoformat(timespec="seconds")
     ident = _graph_identity()
     res = await graph.check_access()
-    if res.get("ok"):
-        return {"ok": True, "checked_at": checked, "identity": ident}
-    detail = f"{res.get('stage')}: {res.get('detail')}"
+    wr = await graph.check_write() if write else None
+    read_ok = bool(res.get("ok"))
+    write_ok = (wr is None) or bool(wr.get("ok"))
+    if read_ok and write_ok:
+        out = {"ok": True, "checked_at": checked, "read": f"{res.get('stage')}: {res.get('detail')}",
+               "identity": ident}
+        if wr is not None:
+            out["write"] = f"{wr.get('stage')}: {wr.get('detail')}"
+        return out
+    detail = (f"read {res.get('stage')}: {res.get('detail')}" if not read_ok
+              else f"write {wr.get('stage')}: {wr.get('detail')}")
     if alert:
         try:
             from ..notify import send_alert_email

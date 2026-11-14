@@ -112,29 +112,3 @@ def send_email_code(to: str, name: str, code: str) -> tuple[bool, str]:
     except Exception as exc:  # noqa: BLE001
         return False, f"SMTP error: {type(exc).__name__}: {str(exc)[:150]}"
     return True, "sent"
-
-
-def send_alert_email(subject: str, body: str, to: str | None = None) -> tuple[bool, str]:
-    """Send an operational alert email (e.g. OneDrive/Graph access down). Recipients come
-    from `to`, else the ALERT_EMAIL env (comma/semicolon separated), else SMTP_FROM.
-    Best-effort — returns (ok, detail)."""
-    if not email_ready():
-        return False, "Email not set up"
-    sender = os.getenv("SMTP_FROM", "info@bharatsteels.in")
-    rcpt = to or os.getenv("ALERT_EMAIL", "") or sender
-    recipients = [r.strip() for r in rcpt.replace(";", ",").split(",") if r.strip()]
-    if not recipients:
-        return False, "No alert recipient"
-    msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = f"{os.getenv('SMTP_FROM_NAME', 'Bharat Steel Group')} <{sender}>"
-    msg["To"] = ", ".join(recipients)
-    try:
-        with smtplib.SMTP(os.getenv("SMTP_HOST"), int(os.getenv("SMTP_PORT", "587")), timeout=15) as s:
-            s.starttls()
-            if os.getenv("SMTP_USER"):
-                s.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASS", ""))
-            s.sendmail(sender, recipients, msg.as_string())
-    except Exception as exc:  # noqa: BLE001
-        return False, f"SMTP error: {type(exc).__name__}: {str(exc)[:150]}"
-    return True, "sent"

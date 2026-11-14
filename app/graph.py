@@ -60,6 +60,29 @@ async def check_access() -> dict:
         return {"ok": False, "stage": "drive", "detail": f"{type(e).__name__}: {str(e)[:300]}"}
 
 
+async def check_write() -> dict:
+    """Health check for WRITE access: actually upload a tiny file to OneDrive. A read can
+    succeed while writes fail — most often when the OneDrive is FULL (HTTP 507) or a file
+    is locked (423). This is the operation the inspection modules really use. Never raises."""
+    try:
+        token = await get_token()
+    except Exception as e:
+        return {"ok": False, "stage": "token", "detail": f"{type(e).__name__}: {str(e)[:300]}"}
+    from .config import ONEDRIVE_BASE
+    path = f"{ONEDRIVE_BASE}/Config/_healthcheck.txt"
+    url = _item_url(path, "/content")
+    try:
+        async with httpx.AsyncClient(timeout=40) as c:
+            r = await c.put(url, headers={"Authorization": f"Bearer {token}",
+                                          "Content-Type": "text/plain"},
+                            content=f"health {time.time():.0f}".encode())
+        if r.status_code in (200, 201):
+            return {"ok": True, "stage": "write", "detail": f"upload ok -> {path}"}
+        return {"ok": False, "stage": "write", "detail": f"HTTP {r.status_code}: {r.text[:300]}"}
+    except Exception as e:
+        return {"ok": False, "stage": "write", "detail": f"{type(e).__name__}: {str(e)[:300]}"}
+
+
 def _item_url(path: str, suffix: str) -> str:
     return f"{_GRAPH}/users/{USER_ID}/drive/root:/{quote(path)}:{suffix}"
 
