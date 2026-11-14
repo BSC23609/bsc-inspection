@@ -4957,17 +4957,20 @@ async def board_matrix(emp: dict = Depends(require_employee)):
         # daily must not keep showing an old date as overdue.
         if clid and cps:
             today_pending = in_window and _day_overdue(clid, cur_due.isoformat(), cps, True)
+            # A PAST day that was STARTED but left incomplete stays on the board as OVERDUE
+            # (earliest missed day) until it is marked done / absent on the Monitor. A day
+            # with no record at all is not flagged (see _day_overdue), so untouched days /
+            # off-days never clutter the board.
+            for _pd in sorted(window_days):          # oldest -> newest
+                if _pd < today and _day_overdue(clid, _pd.isoformat(), cps, False):
+                    return {"state": "overdue", "due": _pd.isoformat()}
         else:
             ld = s.get("last_done"); aid = s.get("assignee_emp_id")
             today_pending = (in_window and (not ld or ld < cur_due)
                              and not (aid and aid in on_leave))
         info = compute_due(s, s.get("asset_hours"), today)
         if today_pending:
-            # A daily that is pending today is simply "due today". We deliberately do NOT
-            # drag an earlier missed day onto the board as an old overdue date: a daily
-            # cannot be back-filled, so an old date would cling forever and read as "still
-            # overdue" even after the work has been done on later days. Today pending -> due;
-            # today done -> the row clears below.
+            # Today's daily is still pending -> "due today".
             return {"state": "due", "due": today.isoformat()}
         nd = _d(info["next_due"]) if info.get("next_due") else None
         if nd and nd <= today + timedelta(days=7):
@@ -5871,11 +5874,6 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         if board_mode:  # full board PNG: one row per open breakdown, every assignee shown
             nms = [(emap.get(a) or {}).get("name") for a in aids]
             nms = [n for n in nms if n]
-            # Fallback to the primary assignee name (joined from assignee_emp_id) when the
-            # assignees list doesn't resolve — matches the web board, so the overdue image
-            # shows e.g. "Velu C" instead of "Unassigned".
-            if not nms and (b.get("assignee_name") or "").strip():
-                nms = [b.get("assignee_name").strip()]
             sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
                            "prob": prob, "who": ", ".join(nms) if nms else "Unassigned",
                            "status": "Open", "date": bdate, "by": brep,
