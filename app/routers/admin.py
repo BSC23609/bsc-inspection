@@ -2,17 +2,178 @@
 used (BSC Inspections/Config/settings.json). These settings feed the inspection
 forms (inspector lists, mills, grades, rejection types, sampling, tolerances)."""
 import json
+from datetime import datetime, timezone, date
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .. import graph, db
 from .. import customer_auth as CA
-from ..auth import require_employee, hash_pw
-from ..config import ONEDRIVE_BASE
+from ..auth import require_employee, current_employee, hash_pw
+from ..config import ONEDRIVE_BASE, AGENT_TOKEN, CLIENT_ID, TENANT_ID, USER_ID, CLIENT_SECRET
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _graph_identity() -> dict:
+    """Which Azure app the running site is actually configured with — so you can confirm
+    CLIENT_ID / TENANT_ID straight from the browser (Vercel stores them write-only). The
+    secret value is never exposed; only whether one is set and its length."""
+    return {
+        "client_id": CLIENT_ID or "(not set)",
+        "tenant_id": TENANT_ID or "(not set)",
+        "onedrive_user": USER_ID or "(not set)",
+        "client_secret_set": bool(CLIENT_SECRET),
+        "client_secret_len": len(CLIENT_SECRET or ""),
+    }
+
+
+@router.get("/graph-health")
+async def graph_health(token: str = Query(default=""), alert: int = Query(default=0),
+                       write: int = Query(default=0),
+                       emp: Optional[dict] = Depends(current_employee)):
+    """Check that OneDrive/Microsoft Graph access is working. Admin session or
+    ?token=AGENT_TOKEN. Returns HTTP 200 {ok:true} when healthy, HTTP 503 {ok:false,...}
+    when not (e.g. the Azure client secret has expired). With ?alert=1 it also emails an
+    alert on failure, so a silent OneDrive outage is caught the same day instead of weeks
+    later. A daily GitHub Action pings it with &alert=1."""
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    checked = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    ident = _graph_identity()
+    res = await graph.check_access()
+    wr = await graph.check_write() if write else None
+    read_ok = bool(res.get("ok"))
+    write_ok = (wr is None) or bool(wr.get("ok"))
+    if read_ok and write_ok:
+        out = {"ok": True, "checked_at": checked, "read": f"{res.get('stage')}: {res.get('detail')}",
+               "identity": ident}
+        if wr is not None:
+            out["write"] = f"{wr.get('stage')}: {wr.get('detail')}"
+        return out
+    detail = (f"read {res.get('stage')}: {res.get('detail')}" if not read_ok
+              else f"write {wr.get('stage')}: {wr.get('detail')}")
+    if alert:
+        try:
+            from ..notify import send_alert_email
+            send_alert_email(
+                "QMS ALERT: OneDrive access is DOWN (inspections not saving to OneDrive)",
+                "The QMS app cannot reach OneDrive via Microsoft Graph.\n\n"
+                f"Checked (UTC): {checked}\n"
+                f"Failure: {detail}\n\n"
+                "Most likely the Azure AD client secret has expired. To fix:\n"
+                "  1. Microsoft Entra > App registrations > [QMS app] > Certificates & secrets\n"
+                "     > New client secret (copy the value).\n"
+                "  2. Vercel > QMS project > Settings > Environment Variables > update\n"
+                "     CLIENT_SECRET > Redeploy.\n\n"
+                "Until fixed, Inward / Quality / Shearing / Pre-delivery PDFs and log rows\n"
+                "are NOT being written to OneDrive. The database records are safe and can\n"
+                "be backfilled afterwards.")
+        except Exception:
+            pass
+    return JSONResponse(status_code=503,
+                        content={"ok": False, "checked_at": checked, "error": detail, "identity": ident})
+
+
+@router.get("/inspection-counts")
+async def inspection_counts(token: str = Query(default=""),
+                            emp: Optional[dict] = Depends(current_employee)):
+    """Diagnostic: per-module record counts, latest record, and a per-day breakdown for
+    the last 30 days — to tell whether inspections are still being SAVED (DB) after a given
+    date. Read-only. Admin session or ?token=AGENT_TOKEN."""
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    tables = {"inward": "coil_inward", "quality": "quality_inspection",
+              "shearing": "shearing_inspection", "pre_delivery": "pdi_reports"}
+    out = {}
+    for label, tbl in tables.items():      # tbl values are a fixed whitelist, not user input
+        try:
+            total = await db.fetchval(f"SELECT count(*) FROM {tbl}")
+            latest = await db.fetchval(f"SELECT max(created_at) FROM {tbl}")
+            last30 = await db.fetchval(
+                f"SELECT count(*) FROM {tbl} WHERE created_at >= now() - interval '30 days'")
+            recent = await db.fetch(
+                f"SELECT (created_at AT TIME ZONE 'Asia/Kolkata')::date AS d, count(*) AS n "
+                f"FROM {tbl} WHERE created_at >= now() - interval '40 days' GROUP BY d ORDER BY d DESC")
+            out[label] = {
+                "table": tbl,
+                "total": total,
+                "last_30_days": last30,
+                "latest_created_at": latest.isoformat() if latest else None,
+                "by_day_last_40": {str(r["d"]): r["n"] for r in recent},
+            }
+        except Exception as e:
+            out[label] = {"table": tbl, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+    return out
+
+
+@router.get("/backfill-onedrive")
+async def backfill_onedrive(module: str = Query(default=""), token: str = Query(default=""),
+                            limit: int = Query(default=6), skip: int = Query(default=0),
+                            since: str = Query(default=""), log_only: int = Query(default=0),
+                            emp: Optional[dict] = Depends(current_employee)):
+    """Regenerate missing OneDrive PDFs/log rows from the DATABASE records for a module —
+    inward | shearing | pre_delivery (Quality has its own /quality/admin/backfill-pdfs).
+    Paginated: follow next_url until remaining=0. ?since=YYYY-MM-DD limits to records on/after
+    that date (use since=2026-10-23 for the gap). Admin session or ?token=AGENT_TOKEN."""
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    try:
+        from . import coil, shearing, pdi          # local import avoids any load-order issue
+        reg = {
+            "inward":       ("coil_inward",         "id",        coil.od_sync),
+            "shearing":     ("shearing_inspection", "id",        shearing.od_sync),
+            "pre_delivery": ("pdi_reports",         "report_no", pdi.od_sync),
+        }
+        mod = (module or "").strip().lower()
+        if mod not in reg:
+            return JSONResponse(status_code=400,
+                                content={"ok": False, "error": "module must be inward, shearing or pre_delivery"})
+        tbl, idcol, writer = reg[mod]
+        limit = max(1, min(int(limit or 6), 10))
+        skip = max(0, int(skip or 0))
+        where = ""
+        s = (since or "").strip()
+        if s:
+            try:
+                d = date.fromisoformat(s)           # validates; safe to inline below
+            except ValueError:
+                return JSONResponse(status_code=400,
+                                    content={"ok": False, "error": "since must be YYYY-MM-DD"})
+            where = f"WHERE created_at >= '{d.isoformat()}'::timestamptz"
+        total = await db.fetchval(f"SELECT count(*) FROM {tbl} {where}")
+        rows = await db.fetch(
+            f"SELECT {idcol} AS ref FROM {tbl} {where} ORDER BY {idcol} LIMIT {limit} OFFSET {skip}")
+        # log_only=1 skips the slow PDF/photo uploads and writes just the Excel log row —
+        # much faster when the PDFs are already backfilled. Only inward/shearing take `pdf`.
+        wkw = {"dedupe": True}
+        if int(log_only or 0) and mod in ("inward", "shearing", "pre_delivery"):
+            wkw["pdf"] = False
+        results = []
+        for r in rows:
+            ref = r["ref"]
+            try:
+                res = await writer(ref, **wkw)
+                results.append({"ref": str(ref), "ok": bool(res.get("ok")),
+                                "saved": res.get("saved"), "errors": res.get("errors")})
+            except Exception as e:
+                results.append({"ref": str(ref), "ok": False,
+                                "errors": [f"{type(e).__name__}: {str(e)[:200]}"]})
+        done_through = skip + len(rows)
+        remaining = max(0, (total or 0) - done_through)
+        nxt = (f"https://qms.bharatsteels.in/admin/backfill-onedrive?module={mod}"
+               f"&token={token}&limit={limit}&skip={done_through}" + (f"&since={s}" if s else "")
+               + ("&log_only=1" if int(log_only or 0) else ""))
+        return {"ok": True, "module": mod, "records_total": total, "done_through": done_through,
+                "remaining": remaining, "ok_count": sum(1 for x in results if x["ok"]),
+                "results": results, "next_url": (nxt if remaining > 0 else None)}
+    except Exception as e:
+        import traceback
+        return JSONResponse(status_code=500,
+                            content={"ok": False, "error": f"{type(e).__name__}: {str(e)[:400]}",
+                                     "trace": traceback.format_exc()[-800:]})
+
 
 SETTINGS_PATH = f"{ONEDRIVE_BASE}/Config/settings.json"
 
@@ -142,8 +303,8 @@ async def users_list(emp: dict = Depends(require_employee)):
             "COALESCE(token_version,0) AS token_version "
             "FROM employees ORDER BY lower(name) NULLS LAST, emp_no")
     except Exception as e:
-        # role column(s) may not exist yet (ALTER blocked) — fall back without them
-        print("[admin] users_list role fallback:", e)
+        # is_maint column may not exist yet (ALTER blocked) — fall back without it
+        print("[admin] users_list is_maint fallback:", e)
         rows = await db.fetch(
             "SELECT id, emp_no, name, COALESCE(mobile,'') AS mobile, COALESCE(active,true) AS active, "
             "COALESCE(is_admin,false) AS is_admin, false AS is_maint, false AS is_operator, "
