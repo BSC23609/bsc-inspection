@@ -119,41 +119,49 @@ async def backfill_onedrive(module: str = Query(default=""), token: str = Query(
     that date (use since=2026-10-23 for the gap). Admin session or ?token=AGENT_TOKEN."""
     if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
-    from . import coil, shearing, pdi          # local import avoids any load-order issue
-    reg = {
-        "inward":       ("coil_inward",         "id",        coil.od_sync),
-        "shearing":     ("shearing_inspection", "id",        shearing.od_sync),
-        "pre_delivery": ("pdi_reports",         "report_no", pdi.od_sync),
-    }
-    mod = (module or "").strip().lower()
-    if mod not in reg:
-        raise HTTPException(400, "module must be one of: inward, shearing, pre_delivery")
-    tbl, idcol, writer = reg[mod]
-    limit = max(1, min(int(limit or 6), 10))
-    skip = max(0, int(skip or 0))
-    where, args = "", []
-    s = (since or "").strip()
-    if s:
-        where, args = "WHERE created_at >= $1::date", [s]
-    total = await db.fetchval(f"SELECT count(*) FROM {tbl} {where}", *args)
-    rows = await db.fetch(
-        f"SELECT {idcol} AS ref FROM {tbl} {where} ORDER BY {idcol} LIMIT {limit} OFFSET {skip}", *args)
-    results = []
-    for r in rows:
-        ref = r["ref"]
-        try:
-            res = await writer(ref, dedupe=True)
-            results.append({"ref": str(ref), "ok": bool(res.get("ok")),
-                            "saved": res.get("saved"), "errors": res.get("errors")})
-        except Exception as e:
-            results.append({"ref": str(ref), "ok": False, "errors": [f"{type(e).__name__}: {str(e)[:200]}"]})
-    done_through = skip + len(rows)
-    remaining = max(0, (total or 0) - done_through)
-    nxt = (f"https://qms.bharatsteels.in/admin/backfill-onedrive?module={mod}"
-           f"&token={token}&limit={limit}&skip={done_through}" + (f"&since={s}" if s else ""))
-    return {"ok": True, "module": mod, "records_total": total, "done_through": done_through,
-            "remaining": remaining, "ok_count": sum(1 for x in results if x["ok"]),
-            "results": results, "next_url": (nxt if remaining > 0 else None)}
+    try:
+        from . import coil, shearing, pdi          # local import avoids any load-order issue
+        reg = {
+            "inward":       ("coil_inward",         "id",        coil.od_sync),
+            "shearing":     ("shearing_inspection", "id",        shearing.od_sync),
+            "pre_delivery": ("pdi_reports",         "report_no", pdi.od_sync),
+        }
+        mod = (module or "").strip().lower()
+        if mod not in reg:
+            return JSONResponse(status_code=400,
+                                content={"ok": False, "error": "module must be inward, shearing or pre_delivery"})
+        tbl, idcol, writer = reg[mod]
+        limit = max(1, min(int(limit or 6), 10))
+        skip = max(0, int(skip or 0))
+        where, args = "", []
+        s = (since or "").strip()
+        if s:
+            where, args = "WHERE created_at >= $1::date", [s]
+        total = await db.fetchval(f"SELECT count(*) FROM {tbl} {where}", *args)
+        rows = await db.fetch(
+            f"SELECT {idcol} AS ref FROM {tbl} {where} ORDER BY {idcol} LIMIT {limit} OFFSET {skip}", *args)
+        results = []
+        for r in rows:
+            ref = r["ref"]
+            try:
+                res = await writer(ref, dedupe=True)
+                results.append({"ref": str(ref), "ok": bool(res.get("ok")),
+                                "saved": res.get("saved"), "errors": res.get("errors")})
+            except Exception as e:
+                results.append({"ref": str(ref), "ok": False,
+                                "errors": [f"{type(e).__name__}: {str(e)[:200]}"]})
+        done_through = skip + len(rows)
+        remaining = max(0, (total or 0) - done_through)
+        nxt = (f"https://qms.bharatsteels.in/admin/backfill-onedrive?module={mod}"
+               f"&token={token}&limit={limit}&skip={done_through}" + (f"&since={s}" if s else ""))
+        return {"ok": True, "module": mod, "records_total": total, "done_through": done_through,
+                "remaining": remaining, "ok_count": sum(1 for x in results if x["ok"]),
+                "results": results, "next_url": (nxt if remaining > 0 else None)}
+    except Exception as e:
+        import traceback
+        return JSONResponse(status_code=500,
+                            content={"ok": False, "error": f"{type(e).__name__}: {str(e)[:400]}",
+                                     "trace": traceback.format_exc()[-800:]})
 
 
 SETTINGS_PATH = f"{ONEDRIVE_BASE}/Config/settings.json"
