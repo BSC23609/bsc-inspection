@@ -108,6 +108,54 @@ async def inspection_counts(token: str = Query(default=""),
     return out
 
 
+@router.get("/backfill-onedrive")
+async def backfill_onedrive(module: str = Query(default=""), token: str = Query(default=""),
+                            limit: int = Query(default=6), skip: int = Query(default=0),
+                            since: str = Query(default=""),
+                            emp: Optional[dict] = Depends(current_employee)):
+    """Regenerate missing OneDrive PDFs/log rows from the DATABASE records for a module —
+    inward | shearing | pre_delivery (Quality has its own /quality/admin/backfill-pdfs).
+    Paginated: follow next_url until remaining=0. ?since=YYYY-MM-DD limits to records on/after
+    that date (use since=2026-10-23 for the gap). Admin session or ?token=AGENT_TOKEN."""
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    from . import coil, shearing, pdi          # local import avoids any load-order issue
+    reg = {
+        "inward":       ("coil_inward",         "id",        coil.od_sync),
+        "shearing":     ("shearing_inspection", "id",        shearing.od_sync),
+        "pre_delivery": ("pdi_reports",         "report_no", pdi.od_sync),
+    }
+    mod = (module or "").strip().lower()
+    if mod not in reg:
+        raise HTTPException(400, "module must be one of: inward, shearing, pre_delivery")
+    tbl, idcol, writer = reg[mod]
+    limit = max(1, min(int(limit or 6), 10))
+    skip = max(0, int(skip or 0))
+    where, args = "", []
+    s = (since or "").strip()
+    if s:
+        where, args = "WHERE created_at >= $1::date", [s]
+    total = await db.fetchval(f"SELECT count(*) FROM {tbl} {where}", *args)
+    rows = await db.fetch(
+        f"SELECT {idcol} AS ref FROM {tbl} {where} ORDER BY {idcol} LIMIT {limit} OFFSET {skip}", *args)
+    results = []
+    for r in rows:
+        ref = r["ref"]
+        try:
+            res = await writer(ref, dedupe=True)
+            results.append({"ref": str(ref), "ok": bool(res.get("ok")),
+                            "saved": res.get("saved"), "errors": res.get("errors")})
+        except Exception as e:
+            results.append({"ref": str(ref), "ok": False, "errors": [f"{type(e).__name__}: {str(e)[:200]}"]})
+    done_through = skip + len(rows)
+    remaining = max(0, (total or 0) - done_through)
+    nxt = (f"https://qms.bharatsteels.in/admin/backfill-onedrive?module={mod}"
+           f"&token={token}&limit={limit}&skip={done_through}" + (f"&since={s}" if s else ""))
+    return {"ok": True, "module": mod, "records_total": total, "done_through": done_through,
+            "remaining": remaining, "ok_count": sum(1 for x in results if x["ok"]),
+            "results": results, "next_url": (nxt if remaining > 0 else None)}
+
+
 SETTINGS_PATH = f"{ONEDRIVE_BASE}/Config/settings.json"
 
 DEFAULT_SETTINGS = {
