@@ -111,7 +111,7 @@ async def inspection_counts(token: str = Query(default=""),
 @router.get("/backfill-onedrive")
 async def backfill_onedrive(module: str = Query(default=""), token: str = Query(default=""),
                             limit: int = Query(default=6), skip: int = Query(default=0),
-                            since: str = Query(default=""),
+                            since: str = Query(default=""), log_only: int = Query(default=0),
                             emp: Optional[dict] = Depends(current_employee)):
     """Regenerate missing OneDrive PDFs/log rows from the DATABASE records for a module —
     inward | shearing | pre_delivery (Quality has its own /quality/admin/backfill-pdfs).
@@ -145,11 +145,16 @@ async def backfill_onedrive(module: str = Query(default=""), token: str = Query(
         total = await db.fetchval(f"SELECT count(*) FROM {tbl} {where}")
         rows = await db.fetch(
             f"SELECT {idcol} AS ref FROM {tbl} {where} ORDER BY {idcol} LIMIT {limit} OFFSET {skip}")
+        # log_only=1 skips the slow PDF/photo uploads and writes just the Excel log row —
+        # much faster when the PDFs are already backfilled. Only inward/shearing take `pdf`.
+        wkw = {"dedupe": True}
+        if int(log_only or 0) and mod in ("inward", "shearing"):
+            wkw["pdf"] = False
         results = []
         for r in rows:
             ref = r["ref"]
             try:
-                res = await writer(ref, dedupe=True)
+                res = await writer(ref, **wkw)
                 results.append({"ref": str(ref), "ok": bool(res.get("ok")),
                                 "saved": res.get("saved"), "errors": res.get("errors")})
             except Exception as e:
@@ -158,7 +163,8 @@ async def backfill_onedrive(module: str = Query(default=""), token: str = Query(
         done_through = skip + len(rows)
         remaining = max(0, (total or 0) - done_through)
         nxt = (f"https://qms.bharatsteels.in/admin/backfill-onedrive?module={mod}"
-               f"&token={token}&limit={limit}&skip={done_through}" + (f"&since={s}" if s else ""))
+               f"&token={token}&limit={limit}&skip={done_through}" + (f"&since={s}" if s else "")
+               + ("&log_only=1" if int(log_only or 0) else ""))
         return {"ok": True, "module": mod, "records_total": total, "done_through": done_through,
                 "remaining": remaining, "ok_count": sum(1 for x in results if x["ok"]),
                 "results": results, "next_url": (nxt if remaining > 0 else None)}

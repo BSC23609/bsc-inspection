@@ -273,8 +273,10 @@ async def _write_reworks(token, data: dict, file_name: str):
     await graph.upload_file(token, path, (ex + lines).encode("utf-8"), "text/csv")
 
 
-async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: bool = False) -> dict:
-    """Write one shearing inspection to OneDrive — PDF, photos, ShearingLog row, rework CSV."""
+async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: bool = False,
+                  pdf: bool = True) -> dict:
+    """Write one shearing inspection to OneDrive — PDF, photos, ShearingLog row, rework CSV.
+    pdf=False skips the (slow) PDF + photo uploads and writes only the Excel log + CSV."""
     await ensure_table()
     st = odsync.Steps("shearing", rec_id)
     row = await db.fetchrow("SELECT id, payload, file_name, created_at, batch_number, log_date "
@@ -310,14 +312,15 @@ async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: 
         pass
     token = await st.run("OneDrive sign-in", graph.get_token())
     if token:
-        if photos:
+        if pdf and photos:
             have = list(data.get("photo_paths") or [])
             paths = await st.run("Photos", _upload_photos(token, f"{ONEDRIVE_BASE}/Shearing/Photos/{fn}", photos, start=len(have)))
             if paths:
                 data["photo_paths"] = have + paths
-        await st.run("PDF report", graph.upload_file(
-            token, f"{ONEDRIVE_BASE}/Shearing/PDF/{fn}.pdf",
-            build_shearing_pdf(data, rec_id, MP_SPEC), "application/pdf"))
+        if pdf:
+            await st.run("PDF report", graph.upload_file(
+                token, f"{ONEDRIVE_BASE}/Shearing/PDF/{fn}.pdf",
+                build_shearing_pdf(data, rec_id, MP_SPEC), "application/pdf"))
         if excel:
             await st.run("Excel log (Shearing_Log.xlsx)", _write_excel(token, data, fn, old_name, dedupe))
             await st.run("Rework register CSV", _write_reworks(token, data, fn))

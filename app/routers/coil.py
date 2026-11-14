@@ -245,7 +245,7 @@ async def coil_list(emp: dict = Depends(require_employee)):
     return JSONResponse(jsonable_encoder(merged), headers={"Cache-Control": "no-store"})
 
 
-async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False) -> dict:
+async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bool = True) -> dict:
     """Write one coil record to OneDrive (PDF + InwardLog row). Awaited inside the
     request. `dedupe` (backfill) skips the Excel row if the batch is already logged."""
     await ensure_table()
@@ -265,7 +265,8 @@ async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False) -> dict
     async def _pdf():
         await graph.upload_file(token, f"{ONEDRIVE_BASE}/Inward/PDF/{fn}.pdf",
                                 build_coil_pdf(r), "application/pdf")
-    await st.run("PDF report", _pdf())
+    if pdf:
+        await st.run("PDF report", _pdf())
 
     async def _xlsx():
         item_id = await graph.require_item_id(token, INWARD_XLSX)
