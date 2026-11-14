@@ -2,7 +2,7 @@
 used (BSC Inspections/Config/settings.json). These settings feed the inspection
 forms (inspector lists, mills, grades, rejection types, sampling, tolerances)."""
 import json
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
@@ -133,13 +133,18 @@ async def backfill_onedrive(module: str = Query(default=""), token: str = Query(
         tbl, idcol, writer = reg[mod]
         limit = max(1, min(int(limit or 6), 10))
         skip = max(0, int(skip or 0))
-        where, args = "", []
+        where = ""
         s = (since or "").strip()
         if s:
-            where, args = "WHERE created_at >= $1::date", [s]
-        total = await db.fetchval(f"SELECT count(*) FROM {tbl} {where}", *args)
+            try:
+                d = date.fromisoformat(s)           # validates; safe to inline below
+            except ValueError:
+                return JSONResponse(status_code=400,
+                                    content={"ok": False, "error": "since must be YYYY-MM-DD"})
+            where = f"WHERE created_at >= '{d.isoformat()}'::timestamptz"
+        total = await db.fetchval(f"SELECT count(*) FROM {tbl} {where}")
         rows = await db.fetch(
-            f"SELECT {idcol} AS ref FROM {tbl} {where} ORDER BY {idcol} LIMIT {limit} OFFSET {skip}", *args)
+            f"SELECT {idcol} AS ref FROM {tbl} {where} ORDER BY {idcol} LIMIT {limit} OFFSET {skip}")
         results = []
         for r in rows:
             ref = r["ref"]
