@@ -64,26 +64,32 @@ async def pdi_create_log(token: str = Query(default=""), overwrite: int = Query(
     ?overwrite=1 replaces an existing file with a fresh empty one (headers only)."""
     if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
-    gtok = await graph.get_token()
-    existing = await graph.get_item_id(gtok, PDI_XLSX)
-    if existing and not int(overwrite or 0):
-        return {"ok": True, "status": "already exists", "path": PDI_XLSX, "table": PDI_TABLE}
-    import io
-    from openpyxl import Workbook
-    from openpyxl.utils import get_column_letter
-    # Build the file with just the header row (NO openpyxl table — that triggers Excel's
-    # "workbook repaired"). Upload it, then let Graph create the real Excel table server-side.
-    wb = Workbook(); ws = wb.active; ws.title = "Sheet1"
-    ws.append(PDI_HEADERS)
-    buf = io.BytesIO(); wb.save(buf)
-    await graph.upload_file(gtok, PDI_XLSX, buf.getvalue(),
-                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    item_id = await graph.get_item_id(gtok, PDI_XLSX)
-    addr = f"Sheet1!A1:{get_column_letter(len(PDI_HEADERS))}1"
-    tname = await graph.create_table(gtok, item_id, addr, PDI_TABLE)
-    return {"ok": True, "status": ("overwritten" if existing else "created"),
-            "path": PDI_XLSX, "table": tname or PDI_TABLE, "table_created": bool(tname),
-            "columns": PDI_HEADERS}
+    try:
+        gtok = await graph.get_token()
+        existing = await graph.get_item_id(gtok, PDI_XLSX)
+        if existing and not int(overwrite or 0):
+            return {"ok": True, "status": "already exists", "path": PDI_XLSX, "table": PDI_TABLE}
+        import io
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+        # Build the file with just the header row (NO openpyxl table — that triggers Excel's
+        # "workbook repaired"). Upload it, then let Graph create the Excel table server-side.
+        wb = Workbook(); ws = wb.active; ws.title = "Sheet1"
+        ws.append(PDI_HEADERS)
+        buf = io.BytesIO(); wb.save(buf)
+        await graph.upload_file(gtok, PDI_XLSX, buf.getvalue(),
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        item_id = await graph.get_item_id(gtok, PDI_XLSX)
+        addr = f"Sheet1!A1:{get_column_letter(len(PDI_HEADERS))}1"
+        tname = await graph.create_table(gtok, item_id, addr, PDI_TABLE)
+        return {"ok": True, "status": ("overwritten" if existing else "created"),
+                "path": PDI_XLSX, "item_id": item_id, "table": tname or PDI_TABLE,
+                "table_created": bool(tname), "columns": PDI_HEADERS}
+    except Exception as e:
+        import traceback
+        return JSONResponse(status_code=500,
+                            content={"ok": False, "error": f"{type(e).__name__}: {str(e)[:400]}",
+                                     "trace": traceback.format_exc()[-800:]})
 
 
 async def ensure_table():
