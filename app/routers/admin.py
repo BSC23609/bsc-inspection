@@ -2,17 +2,69 @@
 used (BSC Inspections/Config/settings.json). These settings feed the inspection
 forms (inspector lists, mills, grades, rejection types, sampling, tolerances)."""
 import json
+from datetime import datetime, timezone
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .. import graph, db
 from .. import customer_auth as CA
-from ..auth import require_employee, hash_pw
-from ..config import ONEDRIVE_BASE
+from ..auth import require_employee, current_employee, hash_pw
+from ..config import ONEDRIVE_BASE, AGENT_TOKEN, CLIENT_ID, TENANT_ID, USER_ID, CLIENT_SECRET
 
 router = APIRouter(prefix="/admin", tags=["admin"])
+
+
+def _graph_identity() -> dict:
+    """Which Azure app the running site is actually configured with — so you can confirm
+    CLIENT_ID / TENANT_ID straight from the browser (Vercel stores them write-only). The
+    secret value is never exposed; only whether one is set and its length."""
+    return {
+        "client_id": CLIENT_ID or "(not set)",
+        "tenant_id": TENANT_ID or "(not set)",
+        "onedrive_user": USER_ID or "(not set)",
+        "client_secret_set": bool(CLIENT_SECRET),
+        "client_secret_len": len(CLIENT_SECRET or ""),
+    }
+
+
+@router.get("/graph-health")
+async def graph_health(token: str = Query(default=""), alert: int = Query(default=0),
+                       emp: Optional[dict] = Depends(current_employee)):
+    """Check that OneDrive/Microsoft Graph access is working. Admin session or
+    ?token=AGENT_TOKEN. Returns HTTP 200 {ok:true} when healthy, HTTP 503 {ok:false,...}
+    when not (e.g. the Azure client secret has expired). With ?alert=1 it also emails an
+    alert on failure, so a silent OneDrive outage is caught the same day instead of weeks
+    later. A daily GitHub Action pings it with &alert=1."""
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    checked = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    ident = _graph_identity()
+    res = await graph.check_access()
+    if res.get("ok"):
+        return {"ok": True, "checked_at": checked, "identity": ident}
+    detail = f"{res.get('stage')}: {res.get('detail')}"
+    if alert:
+        try:
+            from ..notify import send_alert_email
+            send_alert_email(
+                "QMS ALERT: OneDrive access is DOWN (inspections not saving to OneDrive)",
+                "The QMS app cannot reach OneDrive via Microsoft Graph.\n\n"
+                f"Checked (UTC): {checked}\n"
+                f"Failure: {detail}\n\n"
+                "Most likely the Azure AD client secret has expired. To fix:\n"
+                "  1. Microsoft Entra > App registrations > [QMS app] > Certificates & secrets\n"
+                "     > New client secret (copy the value).\n"
+                "  2. Vercel > QMS project > Settings > Environment Variables > update\n"
+                "     CLIENT_SECRET > Redeploy.\n\n"
+                "Until fixed, Inward / Quality / Shearing / Pre-delivery PDFs and log rows\n"
+                "are NOT being written to OneDrive. The database records are safe and can\n"
+                "be backfilled afterwards.")
+        except Exception:
+            pass
+    return JSONResponse(status_code=503,
+                        content={"ok": False, "checked_at": checked, "error": detail, "identity": ident})
 
 SETTINGS_PATH = f"{ONEDRIVE_BASE}/Config/settings.json"
 

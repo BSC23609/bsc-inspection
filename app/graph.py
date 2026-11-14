@@ -40,6 +40,26 @@ async def get_token() -> str:
     return tok
 
 
+async def check_access() -> dict:
+    """Health check for OneDrive/Graph access. Gets a token AND confirms Graph accepts
+    it with a cheap drive read, so an expired Azure client secret (token stage) or a
+    revoked permission (drive stage) is caught. Never raises — returns
+    {ok, stage, detail}. Used by the /admin/graph-health endpoint."""
+    try:
+        token = await get_token()
+    except Exception as e:                     # expired/invalid client secret lands here
+        return {"ok": False, "stage": "token", "detail": f"{type(e).__name__}: {str(e)[:300]}"}
+    url = f"{_GRAPH}/users/{USER_ID}/drive/root?$select=id,name"
+    try:
+        async with httpx.AsyncClient(timeout=30) as c:
+            r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+        if r.status_code == 200:
+            return {"ok": True, "stage": "drive", "detail": "ok"}
+        return {"ok": False, "stage": "drive", "detail": f"HTTP {r.status_code}: {r.text[:200]}"}
+    except Exception as e:
+        return {"ok": False, "stage": "drive", "detail": f"{type(e).__name__}: {str(e)[:300]}"}
+
+
 def _item_url(path: str, suffix: str) -> str:
     return f"{_GRAPH}/users/{USER_ID}/drive/root:/{quote(path)}:{suffix}"
 
