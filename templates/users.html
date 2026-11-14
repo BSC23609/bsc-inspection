@@ -57,6 +57,7 @@
 
 <div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('users',17) }}</span>Employees<span class="sub" id="u_cnt"></span>
   <span style="flex:1"></span>
+  <button class="btn btn-ghost" style="padding:6px 12px" onclick="openOperator()">Operators</button>
   <button class="btn btn-ghost" style="padding:6px 12px" onclick="openMaint()">Maintenance users</button></div>
 <div class="panel-body">
   <input id="u_search" oninput="uRender()" placeholder="Search name / code / mobile…" style="width:100%;padding:9px 12px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:12px">
@@ -75,6 +76,18 @@
     <div id="m_rows" class="m-list"><div class="empty">Loading…</div></div>
   </div>
   <div class="mfoot"><button class="btn btn-primary" onclick="closeMaint()">Done</button></div>
+</div></div>
+
+<!-- Operators popup -->
+<div class="scrim" id="op_scrim"><div class="mmodal">
+  <div class="mh">{{ icon('users',18) }}<b>OPERATORS</b><span style="flex:1"></span>
+    <a href="#" onclick="closeOperator();return false" style="color:var(--muted);font-size:20px;line-height:1">×</a></div>
+  <div class="mb">
+    <p class="mnote">Tick the staff who work as Operators. Operators carry out the Daily &amp; Quarterly PM checklists.</p>
+    <input id="op_search" oninput="opRender()" placeholder="Search…" style="width:100%;padding:9px 11px;border:1px solid var(--line-2);border-radius:9px;font-size:13px;margin-bottom:10px">
+    <div id="op_rows" class="m-list"><div class="empty">Loading…</div></div>
+  </div>
+  <div class="mfoot"><button class="btn btn-primary" onclick="closeOperator()">Done</button></div>
 </div></div>
 {% endblock %}
 {% block scripts %}
@@ -103,6 +116,7 @@ function uRender(){
   var g=function(a){return(a===''||a==null)?'':esc(a);};
   var body=rows.map(function(x){
     var role=(x.is_admin?'<span class="badge adm">Admin</span>':'<span class="muted" style="font-size:11px">Staff</span>')
+      +(x.is_operator?'<span class="badge" style="background:#e7f0ff;color:#0a4bbf;margin-left:4px">Operator</span>':'')
       +(x.is_maint?'<span class="badge mnt">Maint</span>':'');
     var st=x.active?'<span class="badge on">Active</span>':'<span class="badge off">Inactive</span>';
     var toggle=x.active
@@ -167,6 +181,21 @@ async function mToggle(id,on){
     var u=USERS.filter(function(z){return z.id===id;})[0];if(u)u.is_maint=on;toast('ok',on?'Marked maintenance user':'Removed');uRender();
   }catch(e){toast('err','Couldn’t update: '+((e&&e.message)||e));mRender();}}
 document.getElementById('maint_scrim').addEventListener('click',function(e){if(e.target===this)closeMaint();});
+/* ---------- operators popup ---------- */
+function openOperator(){document.getElementById('op_scrim').style.display='flex';sv('op_search','');opRender();}
+function closeOperator(){document.getElementById('op_scrim').style.display='none';}
+function opRender(){var host=document.getElementById('op_rows'),q=(v('op_search')||'').toLowerCase();
+  var rows=USERS.filter(function(x){if(!q)return true;return [x.emp_no,x.name].join(' ').toLowerCase().indexOf(q)>=0;});
+  if(!rows.length){host.innerHTML='<div class="empty">No users.</div>';return;}
+  host.innerHTML=rows.map(function(x){
+    return '<label class="m-item"><input type="checkbox" '+(x.is_operator?'checked':'')+' onchange="opToggle('+x.id+',this.checked)">'
+      +'<span class="nm">'+esc(x.name||x.emp_no)+'</span><span class="cd">'+esc(x.emp_no||'')+'</span></label>';}).join('');}
+async function opToggle(id,on){
+  try{var r=await fetch('/admin/users/operator-toggle',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,is_operator:on})});
+    var d=await r.json().catch(function(){return{};});if(!r.ok||!d.ok)throw new Error(d.detail||'failed');
+    var u=USERS.filter(function(z){return z.id===id;})[0];if(u)u.is_operator=on;toast('ok',on?'Marked operator':'Removed');uRender();
+  }catch(e){toast('err','Couldn’t update: '+((e&&e.message)||e));opRender();}}
+document.getElementById('op_scrim').addEventListener('click',function(e){if(e.target===this)closeOperator();});
 
 (function(){uReset();uLoad();})();
 </script>
