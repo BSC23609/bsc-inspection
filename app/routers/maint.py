@@ -57,6 +57,12 @@ OVERDUE_IMG_TOKEN             = (os.environ.get("OVERDUE_IMG_TOKEN")
 WATI_OVERDUE_IMG_PARAM        = (os.environ.get("WATI_OVERDUE_IMG_PARAM")
                                  or getattr(_cfg, "WATI_OVERDUE_IMG_PARAM", "") or "bsc_maint_overdue_report8")
 ONEDRIVE_BASE                 = getattr(_cfg, "ONEDRIVE_BASE", "BSC Inspections")
+# Daily "Maintenance Work" plans (Option B): a fixed daily duty for maintenance users, due at
+# the plan's due_time (default 13:00 / 1 PM). These are handled ONLY by the dedicated 1–2 PM
+# window endpoint (/maint/run-maint-work), never by the normal PM due/overdue digest, so the
+# 9 AM operator PM reminders stay completely untouched. Match is on the plan title.
+MAINT_WORK_TITLE              = "maintenance work"
+MAINT_WORK_DEFAULT_TIME       = "13:00"   # 1:00 PM IST; a per-plan due_time overrides this
 
 router = APIRouter(prefix="/maint", tags=["maintenance"])
 IST = ZoneInfo("Asia/Kolkata")
@@ -5765,6 +5771,11 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
     for s in sched_all:
         if not s.get("active"):
             continue
+        # Daily "Maintenance Work" plans are owned by the separate 1–2 PM window endpoint
+        # (/maint/run-maint-work), so they are excluded here — this keeps the 9 AM operator
+        # PM digest unchanged and avoids double-reminding the maintenance user.
+        if (s.get("title") or "").strip().lower() == MAINT_WORK_TITLE:
+            continue
         label = _asset_label(s)
         task = s.get("title") or "PM"
         assignee = s.get("assignee_name") or "unassigned"
@@ -6060,6 +6071,192 @@ async def overdue_reminder_switch(token: str = Query(default=""), state: str = Q
     return _json({"overdue_reminder": cur,
                   "sends_overdue_digest": cur != "off",
                   "note": "add &state=off to stop the bsc_pm_overdue digest, &state=on to resume"})
+
+
+# ============================================================
+#  Daily "Maintenance Work" 1–2 PM window (Option B)
+#  For each active daily plan titled "Maintenance Work" that is NOT done today:
+#    • due_time .. due_time+1h   (1:00–2:00 PM) -> remind the assigned user (every call)
+#    • after due_time+1h         (after 2:00 PM) -> OVERDUE reminder to the user, until done,
+#                                                   and the overdue image to all admins once.
+#  Completing the task (sets last_done=today) stops every reminder. Driven by an external
+#  15-minute cron-job.org pinger hitting /maint/run-maint-work, since GitHub/Vercel cannot
+#  fire every 15 min reliably. Capped to 09:00–19:00 IST so nothing sends at night.
+# ============================================================
+def _hhmm(s, dh=13, dm=0):
+    """Parse 'HH:MM' -> (hour, minute); fall back to (dh, dm) on anything unexpected."""
+    try:
+        parts = str(s or "").strip().split(":")
+        h = int(parts[0]); m = int(parts[1]) if len(parts) > 1 else 0
+        if 0 <= h < 24 and 0 <= m < 60:
+            return h, m
+    except Exception:
+        pass
+    return dh, dm
+
+
+async def _load_maintwork(today):
+    """Active daily 'Maintenance Work' plans NOT completed today, with assignee + mobile."""
+    await ensure_tables()
+    rows = await db.fetch(
+        "SELECT s.id, s.asset_id, s.title, s.due_time, s.assignee_emp_id, s.last_done, "
+        "a.code AS asset_code, a.name AS asset_name, "
+        "e.name AS assignee_name, COALESCE(e.mobile,'') AS assignee_mobile "
+        "FROM maint_schedules s "
+        "LEFT JOIN maint_assets a ON a.id=s.asset_id "
+        "LEFT JOIN employees e ON e.id=s.assignee_emp_id "
+        "WHERE COALESCE(s.active,true)=true "
+        "AND lower(btrim(coalesce(s.freq_type,'')))='daily' "
+        "AND lower(btrim(coalesce(s.title,'')))=$1", MAINT_WORK_TITLE)
+    out = []
+    for r in rows:
+        r = dict(r)
+        ld = r.get("last_done")
+        if ld and ld >= today:          # completed today -> drop (this is what stops reminders)
+            continue
+        out.append(r)
+    return out
+
+
+async def _maintwork_split(now, today, on_leave):
+    """(reminder_by_mobile, overdue_by_mobile, overdue_rows). A plan is in the reminder phase
+    from its due_time to +1h, then overdue. On-leave assignees are skipped."""
+    reminder, overdue, rows = {}, {}, []
+    for r in await _load_maintwork(today):
+        aid = r.get("assignee_emp_id")
+        if aid and aid in on_leave:
+            continue
+        dh, dm = _hhmm(r.get("due_time") or MAINT_WORK_DEFAULT_TIME)
+        due_dt = now.replace(hour=dh, minute=dm, second=0, microsecond=0)
+        over_dt = due_dt + timedelta(hours=1)
+        if now < due_dt:
+            continue                    # before the window (e.g. before 1 PM) -> nothing
+        label = (f"{r.get('asset_code') or ''} {r.get('asset_name') or ''}".strip()
+                 + " - " + (r.get("title") or "Maintenance Work")).strip(" -")
+        mob = (r.get("assignee_mobile") or "").strip()
+        nm = r.get("assignee_name") or ""
+        if now >= over_dt:
+            rows.append({"code": r.get("asset_code") or "", "name": r.get("asset_name") or "",
+                         "cat": r.get("title") or "Maintenance Work", "who": nm or "Unassigned",
+                         "date": today.strftime("%d-%m-%Y"), "status": "Overdue", "by": "-"})
+            if mob:
+                overdue.setdefault(mob, {"name": nm, "items": []})["items"].append(label)
+        elif mob:
+            reminder.setdefault(mob, {"name": nm, "items": []})["items"].append(label)
+    return reminder, overdue, rows
+
+
+def _maintwork_img_params():
+    """Overdue-template params whose header image is the Maintenance-Work PNG (not the full
+    board), so admins see exactly the machines whose 1 PM work was missed."""
+    now_ist = datetime.now(IST)
+    params = {"1": now_ist.strftime("%d %b %Y, %I:%M %p")}
+    if WATI_OVERDUE_IMG_PARAM:
+        ts = int(now_ist.timestamp())
+        tok = urllib.parse.quote(str(OVERDUE_IMG_TOKEN), safe="")
+        params[WATI_OVERDUE_IMG_PARAM] = (
+            f"https://qms.bharatsteels.in/maint/maintwork-report.png?token={tok}&t={ts}")
+    return params
+
+
+@router.get("/maintwork-report.png")
+async def maintwork_report_png(token: str = Query(default="")):
+    """Live PNG of today's INCOMPLETE daily Maintenance Work (machine, task, assignee). Used
+    as the header image of the overdue report sent to admins after 2 PM."""
+    if token != OVERDUE_IMG_TOKEN and token != AGENT_TOKEN:
+        raise HTTPException(403, "Bad token")
+    now = datetime.now(IST); today = _today()
+    rows = []
+    try:
+        on_leave = await _on_leave_ids(today)
+        _r, _o, rows = await _maintwork_split(now, today, on_leave)
+        if not rows:   # before 2 PM: show everything still pending so the image is complete
+            rows = [{"code": r.get("asset_code") or "", "name": r.get("asset_name") or "",
+                     "cat": r.get("title") or "Maintenance Work",
+                     "who": r.get("assignee_name") or "Unassigned",
+                     "date": today.strftime("%d-%m-%Y"), "status": "Pending", "by": "-"}
+                    for r in await _load_maintwork(today)]
+    except Exception:
+        rows = []
+    tdisp = now.strftime("%d-%m-%Y %I:%M %p")
+    png = overdue_img.build_overdue_png(tdisp, rows, [])
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "no-store, max-age=0",
+                             "Content-Disposition": "inline; filename=maintwork.png"})
+
+
+@router.get("/run-maint-work")
+async def run_maint_work(token: str = Query(default=""), dry: int = Query(default=0)):
+    """15-minute cron for the daily Maintenance Work duty (Option B). Safe to call often;
+    &dry=1 previews without sending. External cron-job.org pinger (every 15 min):
+    GET https://qms.bharatsteels.in/maint/run-maint-work?token=<AGENT_TOKEN> ."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(401, "bad token")
+    await ensure_tables()
+    now = datetime.now(IST); today = _today()
+    # Plant-window guard — never send at night, even though we remind "until done".
+    if not bool(dry) and not (9 <= now.hour < 19):
+        return _json({"today": today.isoformat(), "sent": [], "skipped": [
+            {"kind": "maintwork", "result":
+             f"skipped: outside 09:00–19:00 IST window (now {now.strftime('%H:%M')} IST)"}],
+            "window_blocked": True})
+    on_leave = await _on_leave_ids(today)
+    reminder, overdue, rows = await _maintwork_split(now, today, on_leave)
+    sent, skipped = [], []
+    tdisp = today.strftime("%d-%m-%Y")
+
+    async def _disp(tmpl, mobile, params, meta):
+        rec = dict(meta); rec["to"] = mobile
+        if not mobile:
+            rec["result"] = "skipped: no mobile"; skipped.append(rec); return
+        if not tmpl:
+            rec["result"] = "skipped: template not set"; skipped.append(rec); return
+        if bool(dry):
+            rec["result"] = "dry-run"; sent.append(rec); return
+        ok, detail = await _wsend(tmpl, mobile, params, name=meta.get("name") or "", kind="maintwork")
+        rec["result"] = "sent" if ok else f"failed: {detail}"
+        (sent if ok else skipped).append(rec)
+
+    # 1:00–2:00 PM -> reminder to the assigned user (each 15-min call re-sends)
+    for mob, g in reminder.items():
+        params = [_url_token(g["name"] or "User"), tdisp, _join_items(g["items"]), "", "maint"]
+        await _disp(WATI_MAINT_DUE_TEMPLATE, wati.normalize_number(mob) or mob, params,
+                    {"kind": "maintwork-due", "name": g["name"], "items": len(g["items"])})
+    # After 2:00 PM -> overdue reminder to the user, until the task is completed
+    for mob, g in overdue.items():
+        od = [x + " (OVERDUE)" for x in g["items"]]
+        params = [_url_token(g["name"] or "User"), tdisp, _join_items(od), "", "maint"]
+        await _disp(WATI_MAINT_DUE_TEMPLATE, wati.normalize_number(mob) or mob, params,
+                    {"kind": "maintwork-overdue", "name": g["name"], "items": len(g["items"])})
+    # After 2:00 PM -> overdue image to ALL admins, once per day
+    admin_sent = False
+    if rows:
+        stamp_key = f"maintwork_admin_img:{today.isoformat()}"
+        already = None if bool(dry) else await db.fetchval(
+            "SELECT 1 FROM maint_meta WHERE mkey=$1", stamp_key)
+        if already:
+            skipped.append({"kind": "maintwork-admin-img", "result": "already sent today"})
+        elif not await _overdue_reminder_enabled():
+            skipped.append({"kind": "maintwork-admin-img", "result": "overdue reminder is OFF"})
+        else:
+            params = _maintwork_img_params()
+            sups = await _overdue_recipients()
+            for sup in sups:
+                await _disp(WATI_MAINT_OVERDUE_TEMPLATE,
+                            wati.normalize_number(sup.get("mobile") or "") or sup.get("mobile"),
+                            params, {"kind": "maintwork-admin-img", "name": sup.get("name") or "Admin"})
+            if sups and not bool(dry):
+                await db.execute(
+                    "INSERT INTO maint_meta (mkey,mval) VALUES ($1,$2) "
+                    "ON CONFLICT (mkey) DO UPDATE SET mval=$2", stamp_key, now.strftime("%H:%M"))
+                admin_sent = True
+            elif not sups:
+                skipped.append({"kind": "maintwork-admin-img",
+                                "result": "no admin has a mobile number"})
+    return _json({"today": today.isoformat(), "now_ist": now.strftime("%H:%M"),
+                  "reminders": len(reminder), "overdue_users": len(overdue),
+                  "overdue_machines": len(rows), "admin_image_sent": admin_sent,
+                  "sent": sent, "skipped": skipped})
 
 
 @router.get("/admin/clear-overdue")
