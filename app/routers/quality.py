@@ -202,10 +202,15 @@ async def _write_excel(data: dict, file_name: str, strict: bool = False):
         headers = quality_headers()
         await graph.ensure_table_columns(token, item_id, QUALITY_TABLE, headers)
         row = quality_row(data, file_name)
-        # pad/truncate defensively to the header length
-        if len(row) < len(headers):
-            row += [""] * (len(headers) - len(row))
-        row = row[:len(headers)]
+        # Graph's rows/add demands the row match the TABLE's actual column count exactly.
+        # The live table can be wider/narrower than len(headers) (e.g. headers changed but the
+        # existing table kept its old width) — so size the row to the real table width, like the
+        # Inward module does. Falls back to header length only if the columns can't be read.
+        cols = await graph.table_columns(token, item_id, QUALITY_TABLE)
+        width = len(cols) if cols else len(headers)
+        if len(row) < width:
+            row += [""] * (width - len(row))
+        row = row[:width]
         await graph.add_table_row(token, item_id, QUALITY_TABLE, row)
     except Exception as e:
         print("[quality-xlsx]", e)
