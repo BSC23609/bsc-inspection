@@ -40,29 +40,51 @@ async def pool() -> asyncpg.Pool:
             dsn, sslv = _dsn_and_ssl()
             _pool = await asyncpg.create_pool(
                 dsn, ssl=sslv, min_size=1, max_size=4, command_timeout=30, init=_init_con,
+                # Neon pools connections through pgbouncer. asyncpg caches prepared
+                # statement plans per connection; after an ALTER TABLE the cached plan
+                # goes stale and every reused query raises InvalidCachedStatementError,
+                # taking the whole site down. Disabling the cache makes each query
+                # prepare fresh — no stale plans, immune to future schema changes.
+                statement_cache_size=0,
             )
     return _pool
 
 
-async def fetch(sql: str, *args):
+def _is_stale_plan(e: Exception) -> bool:
+    return isinstance(e, asyncpg.exceptions.InvalidCachedStatementError)
+
+
+async def _run(method: str, sql: str, *args):
+    """Acquire a connection and run con.<method>(sql, *args). If a stale cached plan
+    slips through (a warm connection prepared before a schema change), drop that
+    connection from the pool and retry once on a fresh one."""
     p = await pool()
-    async with p.acquire() as con:
-        return await con.fetch(sql, *args)
+    for attempt in range(2):
+        con = await p.acquire()
+        try:
+            return await getattr(con, method)(sql, *args)
+        except Exception as e:
+            if _is_stale_plan(e) and attempt == 0:
+                await p.release(con, timeout=5)
+                con = None
+                continue
+            raise
+        finally:
+            if con is not None:
+                await p.release(con)
+
+
+async def fetch(sql: str, *args):
+    return await _run("fetch", sql, *args)
 
 
 async def fetchrow(sql: str, *args):
-    p = await pool()
-    async with p.acquire() as con:
-        return await con.fetchrow(sql, *args)
+    return await _run("fetchrow", sql, *args)
 
 
 async def fetchval(sql: str, *args):
-    p = await pool()
-    async with p.acquire() as con:
-        return await con.fetchval(sql, *args)
+    return await _run("fetchval", sql, *args)
 
 
 async def execute(sql: str, *args):
-    p = await pool()
-    async with p.acquire() as con:
-        return await con.execute(sql, *args)
+    return await _run("execute", sql, *args)
