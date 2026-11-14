@@ -75,6 +75,39 @@ async def graph_health(token: str = Query(default=""), alert: int = Query(defaul
     return JSONResponse(status_code=503,
                         content={"ok": False, "checked_at": checked, "error": detail, "identity": ident})
 
+
+@router.get("/inspection-counts")
+async def inspection_counts(token: str = Query(default=""),
+                            emp: Optional[dict] = Depends(current_employee)):
+    """Diagnostic: per-module record counts, latest record, and a per-day breakdown for
+    the last 30 days — to tell whether inspections are still being SAVED (DB) after a given
+    date. Read-only. Admin session or ?token=AGENT_TOKEN."""
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    tables = {"inward": "coil_inward", "quality": "quality_inspection",
+              "shearing": "shearing_inspection", "pre_delivery": "pdi_reports"}
+    out = {}
+    for label, tbl in tables.items():      # tbl values are a fixed whitelist, not user input
+        try:
+            total = await db.fetchval(f"SELECT count(*) FROM {tbl}")
+            latest = await db.fetchval(f"SELECT max(created_at) FROM {tbl}")
+            last30 = await db.fetchval(
+                f"SELECT count(*) FROM {tbl} WHERE created_at >= now() - interval '30 days'")
+            recent = await db.fetch(
+                f"SELECT (created_at AT TIME ZONE 'Asia/Kolkata')::date AS d, count(*) AS n "
+                f"FROM {tbl} WHERE created_at >= now() - interval '40 days' GROUP BY d ORDER BY d DESC")
+            out[label] = {
+                "table": tbl,
+                "total": total,
+                "last_30_days": last30,
+                "latest_created_at": latest.isoformat() if latest else None,
+                "by_day_last_40": {str(r["d"]): r["n"] for r in recent},
+            }
+        except Exception as e:
+            out[label] = {"table": tbl, "error": f"{type(e).__name__}: {str(e)[:200]}"}
+    return out
+
+
 SETTINGS_PATH = f"{ONEDRIVE_BASE}/Config/settings.json"
 
 DEFAULT_SETTINGS = {
