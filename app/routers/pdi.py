@@ -12,8 +12,10 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
 from .. import db, graph, odsync
-from ..auth import require_employee
+from ..auth import require_employee, current_employee
 from ..config import ONEDRIVE_BASE
+from .. import config as _pcfg
+AGENT_TOKEN = getattr(_pcfg, "AGENT_TOKEN", "BSC@123")
 from ..pdfgen import build_pdi_pdf
 
 router = APIRouter(prefix="/pdi", tags=["pdi"])
@@ -22,6 +24,64 @@ _ensured = False
 
 PDI_TOL = {"thickness": 0.5, "width": 5, "length": 10}
 CSV_PATH = f"{ONEDRIVE_BASE}/Pre-Delivery/PDI_Register.csv"
+# Excel log, mirroring the Inward/Quality/Shearing logs (an Excel Table the app appends to).
+PDI_XLSX = f"{ONEDRIVE_BASE}/Pre-Delivery/PDI_Log.xlsx"
+PDI_TABLE = "PDILog"
+PDI_HEADERS = ["Report No", "Date", "Customer", "Items", "Inspected By",
+               "Reviewed By", "Approved By", "Created By", "Created At"]
+
+
+def _pdi_row(rep: dict) -> list:
+    return [rep.get("report_no", ""), rep.get("report_date", ""), rep.get("customer", ""),
+            f"{len(rep.get('items') or [])} item(s)", rep.get("inspected_by", ""),
+            rep.get("reviewed_by", ""), rep.get("approved_by", ""), rep.get("created_by", ""),
+            rep.get("created_at", "")]
+
+
+async def _write_pdi_excel(token, rep: dict, dedupe: bool = False):
+    """Append one row to PDI_Log.xlsx (PDILog table). Returns 'no-log' if the file hasn't
+    been created yet (run /pdi/admin/create-log once), or 'exists' when the report is already
+    logged (dedupe)."""
+    item_id = await graph.get_item_id(token, PDI_XLSX)
+    if not item_id:
+        return "no-log"
+    if dedupe:
+        names = {str(x).strip() for x in await graph.column_values(token, item_id, PDI_TABLE, 0)}
+        if (rep.get("report_no") or "").strip() in names:
+            return "exists"
+    row = _pdi_row(rep)
+    cols = await graph.table_columns(token, item_id, PDI_TABLE)
+    if cols:
+        row = (row + [""] * len(cols))[:len(cols)]
+    await graph.add_table_row(token, item_id, PDI_TABLE, row)
+
+
+@router.get("/admin/create-log")
+async def pdi_create_log(token: str = Query(default=""), overwrite: int = Query(default=0),
+                         emp: Optional[dict] = Depends(current_employee)):
+    """Create PDI_Log.xlsx (with the PDILog table) in the Pre-Delivery folder if it's missing,
+    so Pre-delivery gets an Excel log like the other modules. Admin or ?token=AGENT_TOKEN.
+    ?overwrite=1 replaces an existing file with a fresh empty one (headers only)."""
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    gtok = await graph.get_token()
+    existing = await graph.get_item_id(gtok, PDI_XLSX)
+    if existing and not int(overwrite or 0):
+        return {"ok": True, "status": "already exists", "path": PDI_XLSX, "table": PDI_TABLE}
+    import io
+    from openpyxl import Workbook
+    from openpyxl.worksheet.table import Table, TableStyleInfo
+    from openpyxl.utils import get_column_letter
+    wb = Workbook(); ws = wb.active; ws.title = "Sheet1"
+    ws.append(PDI_HEADERS)
+    tab = Table(displayName=PDI_TABLE, ref=f"A1:{get_column_letter(len(PDI_HEADERS))}1")
+    tab.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
+    ws.add_table(tab)
+    buf = io.BytesIO(); wb.save(buf)
+    await graph.upload_file(gtok, PDI_XLSX, buf.getvalue(),
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    return {"ok": True, "status": ("overwritten" if existing else "created"),
+            "path": PDI_XLSX, "table": PDI_TABLE, "columns": PDI_HEADERS}
 
 
 async def ensure_table():
@@ -84,8 +144,9 @@ async def _append_csv(token, row: dict):
     await graph.upload_file(token, CSV_PATH, (ex + line).encode("utf-8"), "text/csv")
 
 
-async def od_sync(rno: str, dedupe: bool = False) -> dict:
-    """PDF -> Pre-Delivery/<report no>.pdf and a line in PDI_Register.csv (awaited)."""
+async def od_sync(rno: str, dedupe: bool = False, pdf: bool = True) -> dict:
+    """PDF -> Pre-Delivery/<report no>.pdf, a line in PDI_Register.csv, and a row in
+    PDI_Log.xlsx (awaited). pdf=False skips the PDF and writes only the CSV + Excel log."""
     await ensure_table()
     st = odsync.Steps("pdi", rno)
     row = await db.fetchrow("SELECT * FROM pdi_reports WHERE report_no=$1", rno)
@@ -103,11 +164,13 @@ async def od_sync(rno: str, dedupe: bool = False) -> dict:
     path = f"{ONEDRIVE_BASE}/Pre-Delivery/{safe}.pdf"
     token = await st.run("OneDrive sign-in", graph.get_token())
     if token:
-        await st.run("PDF report", graph.upload_file(token, path, build_pdi_pdf(rep, PDI_TOL),
-                                                     "application/pdf"))
-        if "PDF report" in st.saved:
-            await db.execute("UPDATE pdi_reports SET pdf_path=$1 WHERE report_no=$2", path, rno)
+        if pdf:
+            await st.run("PDF report", graph.upload_file(token, path, build_pdi_pdf(rep, PDI_TOL),
+                                                         "application/pdf"))
+            if "PDF report" in st.saved:
+                await db.execute("UPDATE pdi_reports SET pdf_path=$1 WHERE report_no=$2", path, rno)
         await st.run("Register CSV (PDI_Register.csv)", _append_csv(token, rep))
+        await st.run("Excel log (PDI_Log.xlsx)", _write_pdi_excel(token, rep, dedupe))
     return await odsync.record(st)
 
 

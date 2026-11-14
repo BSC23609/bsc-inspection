@@ -148,7 +148,7 @@ async def backfill_onedrive(module: str = Query(default=""), token: str = Query(
         # log_only=1 skips the slow PDF/photo uploads and writes just the Excel log row —
         # much faster when the PDFs are already backfilled. Only inward/shearing take `pdf`.
         wkw = {"dedupe": True}
-        if int(log_only or 0) and mod in ("inward", "shearing"):
+        if int(log_only or 0) and mod in ("inward", "shearing", "pre_delivery"):
             wkw["pdf"] = False
         results = []
         for r in rows:
