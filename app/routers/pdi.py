@@ -70,18 +70,20 @@ async def pdi_create_log(token: str = Query(default=""), overwrite: int = Query(
         return {"ok": True, "status": "already exists", "path": PDI_XLSX, "table": PDI_TABLE}
     import io
     from openpyxl import Workbook
-    from openpyxl.worksheet.table import Table, TableStyleInfo
     from openpyxl.utils import get_column_letter
+    # Build the file with just the header row (NO openpyxl table — that triggers Excel's
+    # "workbook repaired"). Upload it, then let Graph create the real Excel table server-side.
     wb = Workbook(); ws = wb.active; ws.title = "Sheet1"
     ws.append(PDI_HEADERS)
-    tab = Table(displayName=PDI_TABLE, ref=f"A1:{get_column_letter(len(PDI_HEADERS))}1")
-    tab.tableStyleInfo = TableStyleInfo(name="TableStyleMedium2", showRowStripes=True)
-    ws.add_table(tab)
     buf = io.BytesIO(); wb.save(buf)
     await graph.upload_file(gtok, PDI_XLSX, buf.getvalue(),
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    item_id = await graph.get_item_id(gtok, PDI_XLSX)
+    addr = f"Sheet1!A1:{get_column_letter(len(PDI_HEADERS))}1"
+    tname = await graph.create_table(gtok, item_id, addr, PDI_TABLE)
     return {"ok": True, "status": ("overwritten" if existing else "created"),
-            "path": PDI_XLSX, "table": PDI_TABLE, "columns": PDI_HEADERS}
+            "path": PDI_XLSX, "table": tname or PDI_TABLE, "table_created": bool(tname),
+            "columns": PDI_HEADERS}
 
 
 async def ensure_table():

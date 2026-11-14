@@ -200,6 +200,24 @@ async def download_item(token: str, item_id: str) -> bytes | None:
 
 
 # ---- Workbook table helpers (append rows to an existing OneDrive .xlsx) ----
+async def create_table(token: str, item_id: str, address: str, name: str = "",
+                       has_headers: bool = True) -> str | None:
+    """Create a real Excel table over `address` (e.g. 'Sheet1!A1:I1') via Graph and rename it
+    to `name`. Building the table server-side avoids the 'workbook repaired' problem that a
+    hand-written (openpyxl) table can cause. Returns the table name, or None on failure."""
+    base = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook"
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.post(f"{base}/tables/add", headers=headers,
+                         json={"address": address, "hasHeaders": has_headers})
+        if r.status_code >= 300:
+            return None
+        tid = r.json().get("id") or r.json().get("name")
+        if name and tid:
+            await c.patch(f"{base}/tables/{tid}", headers=headers, json={"name": name})
+    return name or tid
+
+
 async def get_item_id(token: str, path: str) -> str | None:
     url = f"{_GRAPH}/users/{USER_ID}/drive/root:/{quote(path)}"
     async with httpx.AsyncClient(timeout=30) as c:
