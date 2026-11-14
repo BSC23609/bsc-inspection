@@ -207,6 +207,32 @@ async def get_item_id(token: str, path: str) -> str | None:
     return r.json().get("id") if r.status_code == 200 else None
 
 
+async def require_item_id(token: str, path: str) -> str:
+    """Like get_item_id, but RAISE if the item is missing. Callers that must write into an
+    existing workbook (the Excel inspection logs) need a real id, not None. Restored after a
+    refactor dropped it — its absence silently broke every Excel log-row write."""
+    item_id = await get_item_id(token, path)
+    if not item_id:
+        raise RuntimeError(f"OneDrive item not found: {path}")
+    return item_id
+
+
+async def column_values(token: str, item_id: str, table: str, col_index: int) -> list[str]:
+    """Values of one column (0-based index) in a workbook table's data body — used to dedupe
+    a backfill against rows already logged. Returns [] if the table is empty or unreadable."""
+    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}/dataBodyRange"
+    async with httpx.AsyncClient(timeout=30) as c:
+        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+    if r.status_code != 200:
+        return []
+    out = []
+    for row in (r.json().get("values") or []):
+        if 0 <= col_index < len(row):
+            v = row[col_index]
+            out.append("" if v is None else str(v))
+    return out
+
+
 async def table_columns(token: str, item_id: str, table: str) -> list[str]:
     url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}/columns?$select=name"
     async with httpx.AsyncClient(timeout=30) as c:
