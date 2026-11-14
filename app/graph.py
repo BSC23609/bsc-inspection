@@ -278,6 +278,10 @@ async def close_session(token: str, item_id: str, session_id: str):
 
 async def add_table_row(token: str, item_id: str, table: str, values: list):
     """Append one row ([[...]]) to a workbook table, using a short-lived session."""
+    # Flatten any line breaks in cell values to single spaces — embedded newlines make Excel
+    # wrap a cell over several lines, which is what produced the tall/uneven log rows.
+    values = [(v.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").strip()
+               if isinstance(v, str) else v) for v in values]
     sid = await create_session(token, item_id)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     if sid:
