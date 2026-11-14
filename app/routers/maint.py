@@ -3265,39 +3265,6 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
     if not aids:
         raise HTTPException(400, "Select at least one maintenance user")
     primary = aids[0]
-    # Block a duplicate open work order: the same machine already has an OPEN job of the
-    # same type (Breakdown / Unscheduled PM) assigned to an overlapping person. Prevents
-    # raising the same machine breakdown twice for the same assignee while one is unresolved.
-    _new_set = set(aids)
-    _dups = await db.fetch(
-        "SELECT id, assignee_emp_id, assignees, wo_type FROM maint_breakdowns "
-        "WHERE asset_id=$1 AND lower(btrim(coalesce(status,'open')))='open' "
-        "AND closed_at IS NULL", aid)
-    for _d in _dups:
-        if _wo_type(_d.get("wo_type")) != wo_type:
-            continue
-        _ex = set()
-        _ea = _d.get("assignees")
-        if isinstance(_ea, str):
-            try:
-                _ea = json.loads(_ea)
-            except Exception:
-                _ea = []
-        for _x in (_ea or []):
-            try:
-                _ex.add(int(_x))
-            except Exception:
-                pass
-        if _d.get("assignee_emp_id"):
-            try:
-                _ex.add(int(_d["assignee_emp_id"]))
-            except Exception:
-                pass
-        if _new_set & _ex:
-            _lbl = "Unscheduled PM" if wo_type != "Breakdown" else "breakdown"
-            raise HTTPException(
-                400, f"This machine already has an open {_lbl} (Work Order #{_d['id']}) "
-                     "assigned to the same person. Close or resolve it before raising a new one.")
     raised_at = _dt(body.get("raised_at"))   # user-supplied date+time; falls back to now
     reporter = emp.get("name") or emp.get("emp_no") or "staff"
     remarks = (body.get("remarks") or "").strip()
@@ -5904,6 +5871,11 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         if board_mode:  # full board PNG: one row per open breakdown, every assignee shown
             nms = [(emap.get(a) or {}).get("name") for a in aids]
             nms = [n for n in nms if n]
+            # Fallback to the primary assignee name (joined from assignee_emp_id) when the
+            # assignees list doesn't resolve — matches the web board, so the overdue image
+            # shows e.g. "Velu C" instead of "Unassigned".
+            if not nms and (b.get("assignee_name") or "").strip():
+                nms = [b.get("assignee_name").strip()]
             sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
                            "prob": prob, "who": ", ".join(nms) if nms else "Unassigned",
                            "status": "Open", "date": bdate, "by": brep,
