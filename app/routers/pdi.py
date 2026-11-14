@@ -76,9 +76,9 @@ async def pdi_create_log(token: str = Query(default=""), overwrite: int = Query(
             if cols:
                 return {"ok": True, "status": "already has table", "path": PDI_XLSX,
                         "table": PDI_TABLE, "columns": cols}
-            tname = await graph.create_table(gtok, item_id, addr, PDI_TABLE)
+            tname, detail = await graph.create_table(gtok, item_id, addr, PDI_TABLE)
             return {"ok": True, "status": "table added to existing file", "path": PDI_XLSX,
-                    "table": tname or PDI_TABLE, "table_created": bool(tname)}
+                    "table": tname or PDI_TABLE, "table_created": bool(tname), "detail": detail}
         # New file (or overwrite=1): build header-only xlsx, upload, then create the table.
         import io
         from openpyxl import Workbook
@@ -88,10 +88,10 @@ async def pdi_create_log(token: str = Query(default=""), overwrite: int = Query(
         await graph.upload_file(gtok, PDI_XLSX, buf.getvalue(),
                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
         item_id = await graph.get_item_id(gtok, PDI_XLSX)
-        tname = await graph.create_table(gtok, item_id, addr, PDI_TABLE)
+        tname, detail = await graph.create_table(gtok, item_id, addr, PDI_TABLE)
         return {"ok": True, "status": ("overwritten" if item_id else "created"),
                 "path": PDI_XLSX, "table": tname or PDI_TABLE,
-                "table_created": bool(tname), "columns": PDI_HEADERS}
+                "table_created": bool(tname), "detail": detail, "columns": PDI_HEADERS}
     except Exception as e:
         import traceback
         return JSONResponse(status_code=500,

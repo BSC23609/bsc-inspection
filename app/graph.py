@@ -201,21 +201,34 @@ async def download_item(token: str, item_id: str) -> bytes | None:
 
 # ---- Workbook table helpers (append rows to an existing OneDrive .xlsx) ----
 async def create_table(token: str, item_id: str, address: str, name: str = "",
-                       has_headers: bool = True) -> str | None:
-    """Create a real Excel table over `address` (e.g. 'Sheet1!A1:I1') via Graph and rename it
-    to `name`. Building the table server-side avoids the 'workbook repaired' problem that a
-    hand-written (openpyxl) table can cause. Returns the table name, or None on failure."""
+                       has_headers: bool = True) -> tuple:
+    """Ensure an Excel table named `name` exists. If the file already has a table (e.g. one
+    left by Excel's repair under another name), rename the first one to `name`; otherwise
+    create a table over `address` via Graph (server-side, so no 'workbook repaired'). Returns
+    (table_name_or_None, detail)."""
     base = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    hdr = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     async with httpx.AsyncClient(timeout=30) as c:
-        r = await c.post(f"{base}/tables/add", headers=headers,
+        lr = await c.get(f"{base}/tables?$select=id,name", headers={"Authorization": f"Bearer {token}"})
+        existing = (lr.json().get("value") or []) if lr.status_code == 200 else []
+        if existing:
+            t0 = existing[0]
+            tid = t0.get("id") or t0.get("name")
+            if name and t0.get("name") != name:
+                pr = await c.patch(f"{base}/tables/{tid}", headers=hdr, json={"name": name})
+                if pr.status_code >= 300:
+                    return None, f"rename HTTP {pr.status_code}: {pr.text[:250]}"
+            return (name or t0.get("name")), "renamed existing table"
+        r = await c.post(f"{base}/tables/add", headers=hdr,
                          json={"address": address, "hasHeaders": has_headers})
         if r.status_code >= 300:
-            return None
+            return None, f"tables/add HTTP {r.status_code}: {r.text[:250]}"
         tid = r.json().get("id") or r.json().get("name")
         if name and tid:
-            await c.patch(f"{base}/tables/{tid}", headers=headers, json={"name": name})
-    return name or tid
+            pr = await c.patch(f"{base}/tables/{tid}", headers=hdr, json={"name": name})
+            if pr.status_code >= 300:
+                return (r.json().get("name") or name), f"created; rename HTTP {pr.status_code}"
+    return (name or tid), "created"
 
 
 async def get_item_id(token: str, path: str) -> str | None:
