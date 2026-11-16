@@ -6252,6 +6252,37 @@ async def overdue_report_png(token: str = Query(default="")):
         bd = data.get("overdue_bd") or []
     except Exception:
         pm, bd = [], []
+    # FINAL IMAGE GUARD — enforced here, at the single step that renders the picture, so no
+    # upstream path can ever put an unassigned or duplicate row back on the overdue image:
+    #   1. a machine with no assignee is left off the image entirely (unassigned machine),
+    #   2. each machine's breakdown appears on ONE row only (no duplicate-machine breakdown
+    #      copies, even if the database holds more than one open breakdown for it), and
+    #   3. identical preventive rows (same machine + category + date) are collapsed.
+    def _img_assigned(r):
+        w = (str(r.get("who") or "")).strip().lower()
+        return bool(w) and w not in ("-", "unassigned")
+    _pm, _seen_pm = [], set()
+    for r in pm:
+        if not _img_assigned(r):
+            continue
+        k = ((str(r.get("code") or "")).strip().lower(),
+             (str(r.get("cat") or "")).strip().lower(),
+             (str(r.get("date") or "")).strip().lower())
+        if k in _seen_pm:
+            continue
+        _seen_pm.add(k); _pm.append(r)
+    pm = _pm
+    _bd, _seen_bd = [], set()
+    for r in bd:
+        if not _img_assigned(r):
+            continue
+        code = (str(r.get("code") or "")).strip().lower() or (str(r.get("name") or "")).strip().lower()
+        if code and code in _seen_bd:
+            continue
+        if code:
+            _seen_bd.add(code)
+        _bd.append(r)
+    bd = _bd
     # date AND time the report is generated (= when WhatsApp fetches it to send), so each
     # overdue report carries the exact moment it went out, e.g. "04-11-2026 03:12 PM".
     tdisp = datetime.now(IST).strftime("%d-%m-%Y %I:%M %p")
