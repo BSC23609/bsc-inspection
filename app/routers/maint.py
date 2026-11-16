@@ -6275,7 +6275,9 @@ async def setup_maintwork(token: str = Query(default=""), time: str = Query(defa
     today = _today()
     dh, dm = _hhmm(time)
     due = f"{dh:02d}:{dm:02d}"
-    # one row per machine — take the machine's Daily PM assignee as the maintenance person
+    # one row per machine — take the machine's PM assignee (Daily PM preferred, else Quarterly)
+    # as the maintenance person. Quarterly-only machines (RO Plant, cranes, transformer) are
+    # included too, so every machine with a PM plan gets a daily 1 PM Maintenance Work task.
     rows = await db.fetch(
         "SELECT DISTINCT ON (s.asset_id) s.asset_id, s.assignee_emp_id, "
         "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
@@ -6283,9 +6285,10 @@ async def setup_maintwork(token: str = Query(default=""), time: str = Query(defa
         "LEFT JOIN maint_assets a ON a.id=s.asset_id "
         "LEFT JOIN employees e ON e.id=s.assignee_emp_id "
         "WHERE COALESCE(s.active,true)=true "
-        "AND lower(btrim(coalesce(s.freq_type,'')))='daily' "
+        "AND lower(btrim(coalesce(s.freq_type,''))) IN ('daily','quarterly') "
         "AND lower(btrim(coalesce(s.title,'')))<>$1 "
-        "ORDER BY s.asset_id, (s.assignee_emp_id IS NULL), s.assignee_emp_id", MAINT_WORK_TITLE)
+        "ORDER BY s.asset_id, (s.assignee_emp_id IS NULL), "
+        "(lower(btrim(coalesce(s.freq_type,'')))<>'daily'), s.assignee_emp_id", MAINT_WORK_TITLE)
     ex = await db.fetch(
         "SELECT DISTINCT asset_id FROM maint_schedules "
         "WHERE lower(btrim(coalesce(title,'')))=$1", MAINT_WORK_TITLE)
