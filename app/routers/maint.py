@@ -3446,6 +3446,20 @@ async def breakdown_raise(body: dict, emp: dict = Depends(require_employee)):
     if not aids:
         raise HTTPException(400, "Select at least one maintenance user")
     primary = aids[0]
+    # DUPLICATE GUARD — a machine may not have two OPEN work orders of the SAME type at once.
+    # This is exactly what produced the stray EOT breakdown (#64) while #31 was still open, and
+    # what made the overdue report show the same machine twice. A new raise is blocked while an
+    # open one of the same type exists; the message names the existing work order to close first.
+    # (A Breakdown and an Unscheduled PM may still coexist — only same-type duplicates are stopped.)
+    for _ex in await db.fetch(
+            "SELECT id, raised_at, wo_type FROM maint_breakdowns "
+            "WHERE asset_id=$1 AND lower(btrim(coalesce(status,'open')))='open' "
+            "AND closed_at IS NULL", aid):
+        if _wo_type(_ex.get("wo_type")) == wo_type:
+            _ra = _ex.get("raised_at")
+            _when = _ra.astimezone(IST).strftime("%d-%b-%Y %I:%M %p") if isinstance(_ra, datetime) else "-"
+            raise HTTPException(409, f"This machine already has an open {wo_type} (#{_ex['id']}, "
+                                     f"raised {_when}). Close that one before raising a new {wo_type}.")
     raised_at = _dt(body.get("raised_at"))   # user-supplied date+time; falls back to now
     reporter = emp.get("name") or emp.get("emp_no") or "staff"
     remarks = (body.get("remarks") or "").strip()
