@@ -6189,6 +6189,17 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
     if overdue_suppressed:
         skipped.append({"kind": "overdue", "result": "skipped: outside 09:00–19:00 IST window",
                         "overdue_items": overdue_suppressed})
+    if board_mode:
+        # The board image / overdue PNG shows only work that HAS an assignee: machines with
+        # no maintenance user (e.g. RO Plant and the other unassigned machines) are kept off
+        # the picture. This filter applies to the image path only — the non-board_mode
+        # supervisor-escalation lists (sup_pm/sup_bd) still carry unassigned items so they
+        # reach a supervisor through the normal reminder digest.
+        def _has_assignee(r):
+            w = (r.get("who") or "").strip().lower()
+            return bool(w) and w != "unassigned"
+        sup_pm = [r for r in sup_pm if _has_assignee(r)]
+        sup_bd = [r for r in sup_bd if _has_assignee(r)]
     return {"today": today.isoformat(), "sent": sent, "skipped": skipped,
             "allow_overdue": allow_overdue,
             "overdue_pm": sup_pm, "overdue_bd": sup_bd,
