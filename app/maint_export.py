@@ -5,7 +5,7 @@ Machines and Lists. Returns .xlsx bytes. Pure openpyxl, values computed in Pytho
 (no Excel formulas) so the saved file is correct the moment it opens."""
 import io
 import re
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, time, timedelta, timezone
 from collections import defaultdict
 
 import openpyxl
@@ -73,8 +73,19 @@ def _work_hrs(start, end, holidays):
     return round(total, 2)
 
 
+# Stored timestamps are TIMESTAMPTZ (UTC). Convert to IST (UTC+5:30, no DST) so the log shows
+# the real plant times — e.g. a 1:23 PM raise is 13:23, not 07:53 UTC — and the 09:00–19:00
+# working-hours window is measured against IST.
+IST = timezone(timedelta(hours=5, minutes=30))
+
+
 def _d(v):
     if isinstance(v, datetime):
+        if v.tzinfo is not None:
+            try:
+                return v.astimezone(IST)
+            except Exception:
+                return v
         return v
     return None
 
