@@ -6067,9 +6067,18 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         # Who raised / assigned this work order — shown in the report's "Assigned By" column.
         brep = (b.get("reported_by") or "").strip() or "-"
         aids = b.get("assignees") or ([b["assignee_emp_id"]] if b.get("assignee_emp_id") else [])
-        if board_mode:  # full board PNG: one row per open breakdown, every assignee shown
-            nms = [(emap.get(a) or {}).get("name") for a in aids]
-            nms = [n for n in nms if n]
+        if board_mode:  # full board PNG: one row per open breakdown — resolve the assignee
+            # names EXACTLY as the Maintenance Board page (/board/matrix) does, so the PNG
+            # and the live board can never disagree: id-resolved names first, then the stored
+            # assignee_name text as a fallback (covers a breakdown whose assignees id does not
+            # resolve in the employee map but whose joined name is set), then Unassigned.
+            nms = []
+            for a in aids:
+                nm = (emap.get(a) or {}).get("name")
+                if nm:
+                    nms.append(nm)
+            if not nms and (b.get("assignee_name") or "").strip():
+                nms = [(b.get("assignee_name") or "").strip()]
             sup_bd.append({"code": b.get("asset_code") or "", "name": b.get("asset_name") or "",
                            "prob": prob, "who": ", ".join(nms) if nms else "Unassigned",
                            "status": "Open", "date": bdate, "by": brep,
