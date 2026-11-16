@@ -6301,15 +6301,18 @@ async def setup_maintwork(token: str = Query(default=""), time: str = Query(defa
             skipped.append({"machine": machine, "reason": "already has a Maintenance Work task"})
             continue
         who = r.get("assignee_name") or ""
-        if not who:
+        # Skip machines with no assigned person — a task with no one would never remind.
+        if not r.get("assignee_emp_id"):
             no_assignee += 1
+            skipped.append({"machine": machine, "reason": "no person assigned — skipped"})
+            continue
         if not bool(dry):
             await db.execute(
                 "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_type,freq_days,"
                 "assignee_emp_id,start_date,due_time,active) "
                 "VALUES ($1,'Maintenance Work',NULL,'daily',1,$2,$3,$4,true)",
                 aid, r.get("assignee_emp_id"), today, due)
-        created.append({"machine": machine, "assignee": who or "— UNASSIGNED —", "time": due})
+        created.append({"machine": machine, "assignee": who, "time": due})
         existing.add(aid)
     return _json({"mode": "DRY-RUN — nothing saved (add &dry=0 to create)" if bool(dry) else "CREATED",
                   "time": due, ("would_create" if bool(dry) else "created_count"): len(created),
