@@ -161,6 +161,59 @@ async def pdi_sync_log(token: str = Query(default=""), limit: int = Query(defaul
                                      "trace": traceback.format_exc()[-800:]})
 
 
+@router.get("/admin/rebuild-log")
+async def pdi_rebuild_log(token: str = Query(default=""), emp: Optional[dict] = Depends(current_employee)):
+    """Regenerate PDI_Log.xlsx from the database in DATE ORDER — oldest at the top, the most
+    recent report at the BOTTOM — with the Date column stored as a real Excel date (so it sorts
+    and filters as a date, not text). It rebuilds a clean, ordered, duplicate-free copy of every
+    report from the database (the source of truth), so nothing is lost. New reports keep appending
+    at the bottom, so the order stays correct. Admin or ?token=AGENT_TOKEN.
+    NOTE: close PDI_Log.xlsx in Excel/browser first, or OneDrive may report the file as locked."""
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    await ensure_table()
+    try:
+        import io
+        from openpyxl import Workbook
+        from openpyxl.utils import get_column_letter
+        # Oldest first so the newest ("current") report ends up at the bottom of the sheet.
+        rows = await db.fetch(
+            "SELECT * FROM pdi_reports ORDER BY "
+            "COALESCE(report_date, created_at::date) ASC NULLS FIRST, created_at ASC, id ASC")
+        wb = Workbook(); ws = wb.active; ws.title = "Sheet1"
+        ws.append(PDI_HEADERS)
+        for r in rows:
+            d = dict(r)
+            rd = d.get("report_date")
+            ca = d.get("created_at")
+            date_val = rd or (ca.date() if ca else None)   # real date; fall back to the created date
+            items = odsync.as_obj(d.get("items"), []) or []
+            ws.append([
+                d.get("report_no") or "", date_val, d.get("customer") or "",
+                f"{len(items)} item(s)", d.get("inspected_by") or "", d.get("reviewed_by") or "",
+                d.get("approved_by") or "", d.get("created_by") or "",
+                ca.astimezone(IST).strftime("%d-%b-%Y %H:%M") if ca else "",
+            ])
+        for cell in ws["B"][1:]:                            # Date column -> real date format
+            cell.number_format = "dd-mmm-yyyy"
+        ws.column_dimensions["B"].width = 13
+        ws.column_dimensions["I"].width = 17
+        buf = io.BytesIO(); wb.save(buf)
+        gtok = await graph.get_token()
+        await graph.upload_file(gtok, PDI_XLSX, buf.getvalue(),
+                                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        item_id = await graph.get_item_id(gtok, PDI_XLSX)
+        addr = f"Sheet1!A1:{get_column_letter(len(PDI_HEADERS))}{len(rows) + 1}"
+        tname, detail = await graph.create_table(gtok, item_id, addr, PDI_TABLE)
+        return {"ok": True, "rows": len(rows), "path": PDI_XLSX, "table": tname or PDI_TABLE,
+                "order": "oldest at top, current (newest) at bottom", "detail": detail}
+    except Exception as e:
+        import traceback
+        return JSONResponse(status_code=500,
+                            content={"ok": False, "error": f"{type(e).__name__}: {str(e)[:400]}",
+                                     "trace": traceback.format_exc()[-800:]})
+
+
 async def ensure_table():
     global _ensured
     if _ensured:
