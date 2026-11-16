@@ -6920,7 +6920,7 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
     # ---- breakdown work orders ----
     for b in await db.fetch(
             "SELECT b.id, b.reported_by, b.assignee_emp_id, b.assignees, b.status, b.raised_at, "
-            "a.code AS acode, a.name AS aname FROM maint_breakdowns b "
+            "b.wo_type, a.code AS acode, a.name AS aname FROM maint_breakdowns b "
             "LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.raised_at::date >= $1 "
             "ORDER BY b.raised_at DESC", cutoff):
         aids = []
@@ -6937,7 +6937,9 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
         rows.append({
             "date": b["raised_at"].astimezone(IST).date().isoformat()
                     if isinstance(b["raised_at"], datetime) else "",
-            "category": "BM", "machine_code": b["acode"] or "", "machine_name": b["aname"] or "",
+            # Show the real work-order type so an Unscheduled PM is not labelled a breakdown.
+            "category": ("BM" if _wo_type(b["wo_type"]) == "Breakdown" else "Unscheduled PM"),
+            "machine_code": b["acode"] or "", "machine_name": b["aname"] or "",
             "assigner": b["reported_by"] or "—",
             "statuses": [{"emp": emps.get(aid, "#%s" % aid), "emp_id": aid, "status": bstatus}
                          for aid in aids],
@@ -6962,9 +6964,9 @@ async def monitor_report(code: str = Query(default=""), name: str = Query(defaul
         raise HTTPException(403, "Admins only")
     folder = _machine_folder(code, name)
     safe = _safe_code(code)
-    if cat == "BM":
-        # BM PDFs may be in 'Breakdown Maintenance' or (after a reclassify) in
-        # 'Unscheduled Preventive Maintenance' — gather from both.
+    if bd:
+        # Any work-order ticket (Breakdown OR Unscheduled PM) is found by its breakdown id,
+        # so the lookup works whatever the row is labelled. Its PDF may be in either folder.
         subs = ["Breakdown Maintenance", "Unscheduled Preventive Maintenance"]
     elif cat == "Quarterly PM":
         subs = ["Quarterly Preventive Maintenance"]
@@ -6984,7 +6986,7 @@ async def monitor_report(code: str = Query(default=""), name: str = Query(defaul
     pdfs = [c for c in children
             if not c.get("is_folder") and (c.get("name") or "").lower().endswith(".pdf")]
     target = None
-    if cat == "BM":
+    if bd:
         suffix = f"_bm_{bd}.pdf".lower()
         target = next((c for c in pdfs if (c.get("name") or "").lower().endswith(suffix)), None)
     else:

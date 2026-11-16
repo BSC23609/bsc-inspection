@@ -16,7 +16,7 @@ table.mon th{text-align:left;padding:9px 10px;background:#1f3b5b;color:#fff;font
 table.mon td{padding:8px 10px;border-bottom:1px solid var(--line);vertical-align:top}
 table.mon tr:nth-child(even) td{background:#f7f9fc}
 .cat{display:inline-block;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 9px}
-.cat.d{background:#e7f0fb;color:#1f3b5b}.cat.q{background:#efe7fb;color:#5b3b7d}.cat.b{background:#fdeaea;color:#c23438}
+.cat.d{background:#e7f0fb;color:#1f3b5b}.cat.q{background:#efe7fb;color:#5b3b7d}.cat.b{background:#fdeaea;color:#c23438}.cat.u{background:#fff3e0;color:#b25e00}
 .asg-line{display:flex;align-items:center;gap:8px;padding:2px 0;white-space:nowrap}
 .asg-line .nm{min-width:120px}
 .st{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px}
@@ -51,7 +51,7 @@ button.rp.rp-skip:hover{background:#fff6e0;border-color:#b8860b}
     <div><label>Window</label><select id="f_days" onchange="reload()"><option value="30">Last 30 days</option><option value="60">Last 60 days</option><option value="90">Last 90 days</option><option value="180">Last 180 days</option><option value="365">Last 365 days</option></select></div>
     <div><label>From date</label><input id="f_from" type="date" oninput="apply()"></div>
     <div><label>To date</label><input id="f_to" type="date" oninput="apply()"></div>
-    <div><label>Category</label><select id="f_cat" onchange="apply()"><option value="">All</option><option>Daily PM</option><option>Quarterly PM</option><option>BM</option></select></div>
+    <div><label>Category</label><select id="f_cat" onchange="apply()"><option value="">All</option><option>Daily PM</option><option>Quarterly PM</option><option>Unscheduled PM</option><option>BM</option></select></div>
     <div><label>Machine code</label><input id="f_code" oninput="apply()" placeholder="e.g. M-C-007"></div>
     <div><label>Machine name</label><input id="f_name" oninput="apply()" placeholder="name contains…"></div>
     <div><label>Assigner</label><input id="f_asgr" oninput="apply()" placeholder="assigner contains…"></div>
@@ -89,7 +89,7 @@ function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return
 function toast(msg,bad){var t=document.createElement('div');t.textContent=msg;
   t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:999;background:'+(bad?'#c23438':'#0a7d55')+';color:#fff;padding:11px 16px;border-radius:9px;font-size:13px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:90%;text-align:center';
   document.body.appendChild(t);setTimeout(function(){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove();},400);},3400);}
-function catClass(c){return c==='Daily PM'?'d':(c==='Quarterly PM'?'q':'b');}
+function catClass(c){return c==='Daily PM'?'d':(c==='Quarterly PM'?'q':(c==='Unscheduled PM'?'u':'b'));}
 function stClass(s){return s==='Done'?'done':(s==='Absent'?'absent':'pend');}
 async function reload(){
   var days=document.getElementById('f_days').value;
@@ -150,7 +150,7 @@ function reportUrl(x,dl){
     +'&cat='+encodeURIComponent(x.category||'')
     +'&date='+encodeURIComponent(x.date||'')
     +'&dl='+(dl?1:0);
-  if(x.category==='BM'&&x.bd_id)p+='&bd='+encodeURIComponent(x.bd_id);
+  if(x.kind==='bm'&&x.bd_id)p+='&bd='+encodeURIComponent(x.bd_id);
   return p;
 }
 function reportCell(x,i){
@@ -180,9 +180,9 @@ function closeReport(){
 document.addEventListener('keydown',function(e){if(e.key==='Escape')closeReport();});
 async function monDelete(i){
   var x=(window.MON_LIST||[])[i]; if(!x)return;
-  var what=x.category==='BM'?'this breakdown ticket':'this work order (its completion log(s))';
+  var what=x.kind==='bm'?'this work order ticket':'this work order (its completion log(s))';
   if(!confirm('Delete '+what+' permanently?\n\nThis also deletes the report PDF in OneDrive and cannot be undone.'))return;
-  var body=x.category==='BM'
+  var body=x.kind==='bm'
     ?{kind:'bm',bd_id:x.bd_id,code:x.machine_code,name:x.machine_name,date:x.date}
     :{kind:'pm',checklist_id:x.checklist_id,period_key:x.period_key,code:x.machine_code,name:x.machine_name,category:x.category,date:x.date};
   try{
