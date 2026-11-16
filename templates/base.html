@@ -135,6 +135,15 @@ function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.c
 .gbd-mf textarea{resize:vertical;min-height:60px}
 .gbd-mf input:focus,.gbd-mf select:focus,.gbd-mf textarea:focus{border-color:#1f8a70;box-shadow:0 0 0 3px rgba(31,138,112,.15)}
 .gbd-row{margin-bottom:14px}
+/* AI Voice Translator mic (raise work-order modal) */
+.gbd-microw{display:flex;align-items:center;gap:9px;margin-top:7px;flex-wrap:wrap}
+.gbd-mic{display:inline-flex;align-items:center;gap:6px;min-height:34px;padding:6px 13px;border:1px solid var(--line-2,#d7dee7);border-radius:20px;background:#fff;color:var(--ink-2,#51607a);font-family:inherit;font-size:12px;font-weight:700;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.gbd-mic:hover{border-color:#1f8a70;color:#1f8a70}
+.gbd-mic:disabled{opacity:.55;cursor:default}
+.gbd-mic.rec{background:#fdecec;border-color:#e23b3b;color:#c62828;animation:gbdmicpulse 1s infinite}
+@keyframes gbdmicpulse{0%,100%{box-shadow:0 0 0 0 rgba(226,59,59,.35)}50%{box-shadow:0 0 0 5px rgba(226,59,59,0)}}
+.gbd-micstat{font-size:11.5px;color:var(--ink-2,#51607a);opacity:.9}
+.gbd-micstat.ok{color:#1b8a4b}.gbd-micstat.err{color:#c62828}
 .gbd-req{color:#e5484d}.gbd-opt{text-transform:none;color:var(--muted,#8a93a3);font-weight:400}
 .gbd-pills{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
 @media(min-width:460px){.gbd-pills{grid-template-columns:repeat(4,1fr)}}
@@ -180,7 +189,8 @@ function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.c
       <div class="gbd-chk" id="gbd_assignees"><div class="none">Pick a category above.</div></div>
       <div class="gbd-note" id="gbd_autonote" style="display:none"></div></div>
     <div class="gbd-row"><label>Detail <span class="gbd-req">*</span></label>
-      <textarea id="gbd_problem" placeholder="What has failed / what needs doing?"></textarea></div>
+      <textarea id="gbd_problem" placeholder="What has failed / what needs doing?"></textarea>
+      <div class="gbd-microw"><button type="button" class="gbd-mic" data-f="gbd_problem" onclick="gbdMic(this)"><span class="gi">🎤</span><span class="gl">Speak</span></button><span class="gbd-micstat" id="gbdmic_gbd_problem"></span></div></div>
     <div class="gbd-row"><label>Date &amp; time <span class="gbd-req">*</span></label>
       <input id="gbd_when" type="datetime-local"></div>
     <div class="gbd-row"><label>Remarks <span class="gbd-opt">(optional)</span></label>
@@ -200,6 +210,40 @@ function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.c
   function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
   function val(id){var e=$(id);return e?e.value:'';}
   function setv(id,x){var e=$(id);if(e)e.value=(x==null?'':x);}
+  /* AI Voice Translator for the raise work-order modal's Detail field (Breakdown + Unscheduled PM) */
+  function _gbdMicLbl(btn,t){var l=btn.querySelector('.gl');if(l)l.textContent=t;}
+  function _gbdMicStat(fid,msg,cls){var s=$('gbdmic_'+fid);if(s){s.textContent=msg||'';s.className='gbd-micstat'+(cls?(' '+cls):'');}}
+  window.gbdMic=async function(btn){
+    var fid=btn.getAttribute('data-f');
+    if(btn._rec&&btn._rec.state==='recording'){btn._rec.stop();return;}
+    if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia||!window.MediaRecorder){_gbdMicStat(fid,'Voice not supported on this browser','err');return;}
+    var stream;try{stream=await navigator.mediaDevices.getUserMedia({audio:true});}catch(e){_gbdMicStat(fid,'Microphone blocked — allow mic access','err');return;}
+    var mime='';try{if(MediaRecorder.isTypeSupported('audio/webm'))mime='audio/webm';else if(MediaRecorder.isTypeSupported('audio/mp4'))mime='audio/mp4';}catch(e){}
+    var rec;try{rec=new MediaRecorder(stream,mime?{mimeType:mime}:undefined);}catch(e){rec=new MediaRecorder(stream);}
+    var chunks=[];btn._rec=rec;
+    rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data);};
+    rec.onstart=function(){btn.classList.add('rec');_gbdMicLbl(btn,'Stop');_gbdMicStat(fid,'Recording… tap Stop when done','');};
+    rec.onstop=async function(){
+      btn.classList.remove('rec');_gbdMicLbl(btn,'Speak');btn._rec=null;
+      try{stream.getTracks().forEach(function(t){t.stop();});}catch(e){}
+      var blob=new Blob(chunks,{type:mime||'audio/webm'});
+      if(!blob.size){_gbdMicStat(fid,'Nothing recorded — try again','err');return;}
+      _gbdMicStat(fid,'Transcribing & translating…','');btn.disabled=true;
+      var fd=new FormData();fd.append('audio',blob,'voice.webm');fd.append('field',fid);
+      try{
+        var r=await fetch('/maint/voice-translate',{method:'POST',body:fd});
+        var d=await r.json().catch(function(){return{};});
+        if(!r.ok||!d.ok)throw new Error(d.detail||'Could not process the voice note');
+        var txt=(d.english||'').trim();
+        if(!txt){_gbdMicStat(fid,d.note||'No speech detected — try again','err');return;}
+        var el=$(fid);var cur=(el.value||'').trim();el.value=cur?(cur+' '+txt):txt;el.focus();
+        _gbdMicStat(fid,'✓ Added in English — review & edit if needed','ok');
+      }catch(e){_gbdMicStat(fid,(e&&e.message)||'Voice translate failed','err');}
+      finally{btn.disabled=false;}
+    };
+    try{rec.start();}catch(e){_gbdMicStat(fid,'Could not start recording','err');return;}
+    setTimeout(function(){if(btn._rec&&btn._rec.state==='recording')btn._rec.stop();},60000);
+  };
   function opt(v,t,sel){return '<option value="'+esc(v)+'"'+(String(sel)===String(v)?' selected':'')+'>'+esc(t)+'</option>';}
   function nowLocal(){var d=new Date();d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16);}
   function maintUsers(){return GE.filter(function(e){return (e.is_maint||e.is_admin)&&e.active!==false;});}
@@ -227,7 +271,7 @@ function toast(kind,msg){var t=document.getElementById('toast');if(!t)return;t.c
     var a=$('gbd_asset');if(a)a.innerHTML='<option value="">Select machine…</option>'+GA.filter(function(x){return x.active;}).map(function(x){return opt(x.id,(x.code?x.code+' — ':'')+x.name);}).join('');
     GREADY=true;
   }
-  window.gbdOpen=function(woType){woType=(woType==='Unscheduled PM')?'Unscheduled PM':'Breakdown';GPH=[];$('gbd_thumbs').innerHTML='';setv('gbd_type','');setv('gbd_wotype',woType);var _wl=$('gbd_wotype_lbl');if(_wl)_wl.textContent=(woType==='Unscheduled PM'?'Unscheduled Preventive Maintenance':'Breakdown');var _ht=$('gbd_modal_title');if(_ht)_ht.textContent=(woType==='Unscheduled PM'?'UNSCHEDULED PM WORK ORDER':'BREAKDOWN WORK ORDER');setv('gbd_asset','');setv('gbd_problem','');setv('gbd_remarks','');setv('gbd_files','');
+  window.gbdOpen=function(woType){woType=(woType==='Unscheduled PM')?'Unscheduled PM':'Breakdown';GPH=[];$('gbd_thumbs').innerHTML='';setv('gbd_type','');setv('gbd_wotype',woType);var _wl=$('gbd_wotype_lbl');if(_wl)_wl.textContent=(woType==='Unscheduled PM'?'Unscheduled Preventive Maintenance':'Breakdown');var _ht=$('gbd_modal_title');if(_ht)_ht.textContent=(woType==='Unscheduled PM'?'UNSCHEDULED PM WORK ORDER':'BREAKDOWN WORK ORDER');setv('gbd_asset','');setv('gbd_problem','');setv('gbd_remarks','');setv('gbd_files','');_gbdMicStat('gbd_problem','');
     $('gbd_autonote').style.display='none';var sf=$('gbd_self');if(sf)sf.checked=false;
     $('gbd_assignees').innerHTML='<div class="none">Pick a category above.</div>';
     [].forEach.call(document.querySelectorAll('#gbd_scrim .gbd-pill'),function(p){p.classList.remove('on');});

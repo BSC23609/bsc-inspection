@@ -54,7 +54,7 @@ OPENAI_STT_MODEL              = (os.environ.get("OPENAI_STT_MODEL")
                                  or getattr(_cfg, "OPENAI_STT_MODEL", "") or "whisper-1")
 ANTHROPIC_API_KEY             = os.environ.get("ANTHROPIC_API_KEY") or getattr(_cfg, "ANTHROPIC_API_KEY", "")
 ANTHROPIC_MODEL               = (os.environ.get("ANTHROPIC_MODEL")
-                                 or getattr(_cfg, "ANTHROPIC_MODEL", "") or "claude-3-5-sonnet-20241022")
+                                 or getattr(_cfg, "ANTHROPIC_MODEL", "") or "claude-sonnet-5-5")
 # Token for the public overdue PNG (baked into the WhatsApp template's image URL). Defaults
 # to AGENT_TOKEN so it works out of the box; set env OVERDUE_IMG_TOKEN to a URL-safe value
 # (e.g. letters/digits, no '@') to avoid exposing AGENT_TOKEN in WATI's template store.

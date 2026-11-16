@@ -61,7 +61,7 @@ OPENAI_STT_MODEL  = os.environ.get("OPENAI_STT_MODEL", "whisper-1")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 # A current, stable model; override with env ANTHROPIC_MODEL if you prefer another (e.g. a
 # cheaper haiku model). Short calls, so cost per translation is negligible.
-ANTHROPIC_MODEL   = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+ANTHROPIC_MODEL   = os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5")
 
 # ---- Consumer Store — live SAP mirror via the BSC MIS data pipeline (READ-ONLY) ----
 # QMS never talks to SAP directly. Exactly like the stock MIS, a PowerShell job on the
