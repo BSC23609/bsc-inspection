@@ -6259,6 +6259,61 @@ async def run_maint_work(token: str = Query(default=""), dry: int = Query(defaul
                   "sent": sent, "skipped": skipped})
 
 
+@router.get("/admin/setup-maintwork")
+async def setup_maintwork(token: str = Query(default=""), time: str = Query(default="13:00"),
+                          dry: int = Query(default=1)):
+    """Create a plain daily "Maintenance Work" task at `time` (default 13:00 / 1 PM) for every
+    machine, assigned to the person already handling that machine (its Daily PM assignee). It is
+    NOT a copy of the PM checklist — it has no checkpoints, just a 1 PM reminder to do the
+    maintenance work and mark it done. The 9 AM PM checks, the existing assignments and the
+    reminder flow are all left untouched. Idempotent: a machine that already has a Maintenance
+    Work task is skipped. &dry=1 (the default) previews without saving; add &dry=0 to create."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(401, "bad token")
+    await ensure_tables()
+    await _ensure_schedule_assignees()
+    today = _today()
+    dh, dm = _hhmm(time)
+    due = f"{dh:02d}:{dm:02d}"
+    # one row per machine — take the machine's Daily PM assignee as the maintenance person
+    rows = await db.fetch(
+        "SELECT DISTINCT ON (s.asset_id) s.asset_id, s.assignee_emp_id, "
+        "a.code AS asset_code, a.name AS asset_name, e.name AS assignee_name "
+        "FROM maint_schedules s "
+        "LEFT JOIN maint_assets a ON a.id=s.asset_id "
+        "LEFT JOIN employees e ON e.id=s.assignee_emp_id "
+        "WHERE COALESCE(s.active,true)=true "
+        "AND lower(btrim(coalesce(s.freq_type,'')))='daily' "
+        "AND lower(btrim(coalesce(s.title,'')))<>$1 "
+        "ORDER BY s.asset_id, (s.assignee_emp_id IS NULL), s.assignee_emp_id", MAINT_WORK_TITLE)
+    ex = await db.fetch(
+        "SELECT DISTINCT asset_id FROM maint_schedules "
+        "WHERE lower(btrim(coalesce(title,'')))=$1", MAINT_WORK_TITLE)
+    existing = {r["asset_id"] for r in ex}
+    created, skipped, no_assignee = [], [], 0
+    for r in rows:
+        r = dict(r); aid = r["asset_id"]
+        machine = (f"{r.get('asset_code') or ''} {r.get('asset_name') or ''}").strip() or f"#{aid}"
+        if aid in existing:
+            skipped.append({"machine": machine, "reason": "already has a Maintenance Work task"})
+            continue
+        who = r.get("assignee_name") or ""
+        if not who:
+            no_assignee += 1
+        if not bool(dry):
+            await db.execute(
+                "INSERT INTO maint_schedules (asset_id,title,checklist_id,freq_type,freq_days,"
+                "assignee_emp_id,start_date,due_time,active) "
+                "VALUES ($1,'Maintenance Work',NULL,'daily',1,$2,$3,$4,true)",
+                aid, r.get("assignee_emp_id"), today, due)
+        created.append({"machine": machine, "assignee": who or "— UNASSIGNED —", "time": due})
+        existing.add(aid)
+    return _json({"mode": "DRY-RUN — nothing saved (add &dry=0 to create)" if bool(dry) else "CREATED",
+                  "time": due, ("would_create" if bool(dry) else "created_count"): len(created),
+                  "skipped_already_have": len(skipped), "without_assignee": no_assignee,
+                  "created": created, "skipped": skipped})
+
+
 @router.get("/admin/clear-overdue")
 async def clear_overdue(token: str = Query(default=""), before: str = Query(default=""),
                         dry: int = Query(default=0), emp: dict = Depends(current_employee)):
