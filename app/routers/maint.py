@@ -2454,6 +2454,134 @@ async def _emp_map():
         return {}
 
 
+# ============================================================
+#  Leave cover / auto-reassignment
+#  While a person is on leave, their PM checkpoints and schedules (Daily PM, Quarterly PM and
+#  the 1 PM Maintenance Work) are temporarily moved to their configured cover, and restored the
+#  moment they return. Because it changes the stored assignee, reminders, the Maintenance Board,
+#  My Checklist, overdue reports, the admin image and notifications all follow automatically —
+#  no other logic is touched. Pairs (both ways): Ragupathi<->Mohan, Surajit<->Velu.
+# ============================================================
+async def _ensure_cover_tables():
+    await db.execute("CREATE TABLE IF NOT EXISTS maint_cover ("
+                     "emp_id INT PRIMARY KEY, cover_emp_id INT)")
+    await db.execute("CREATE TABLE IF NOT EXISTS maint_cover_active ("
+                     "kind TEXT, ref_id INT, orig_emp_id INT, cover_emp_id INT, since DATE, "
+                     "PRIMARY KEY (kind, ref_id))")
+
+
+async def _cover_map():
+    """{emp_id: cover_emp_id} — who covers whom while on leave."""
+    try:
+        await _ensure_cover_tables()
+        rows = await db.fetch("SELECT emp_id, cover_emp_id FROM maint_cover "
+                              "WHERE cover_emp_id IS NOT NULL")
+        return {r["emp_id"]: r["cover_emp_id"] for r in rows}
+    except Exception:
+        return {}
+
+
+async def _sync_leave_covers(today):
+    """Move an on-leave person's PM checkpoints + schedules to their cover; restore when back.
+    Idempotent (safe to run every cron tick); no-op unless covers are configured; never raises."""
+    moved = {"activated": 0, "restored": 0}
+    try:
+        cover = await _cover_map()
+        if not cover:
+            return moved
+        on_leave = await _on_leave_ids(today)
+        # ACTIVATE — for each X on leave whose cover Y is available, move X's work to Y
+        for x, y in cover.items():
+            if x not in on_leave or not y or y in on_leave:
+                continue
+            for c in await db.fetch("SELECT id FROM maint_checkpoints WHERE assigned_emp_id=$1", x):
+                await db.execute(
+                    "INSERT INTO maint_cover_active (kind,ref_id,orig_emp_id,cover_emp_id,since) "
+                    "VALUES ('cp',$1,$2,$3,$4) ON CONFLICT (kind,ref_id) DO NOTHING",
+                    c["id"], x, y, today)
+                await db.execute("UPDATE maint_checkpoints SET assigned_emp_id=$1 "
+                                 "WHERE id=$2 AND assigned_emp_id=$3", y, c["id"], x)
+                moved["activated"] += 1
+            for sc in await db.fetch("SELECT id FROM maint_schedules WHERE assignee_emp_id=$1", x):
+                await db.execute(
+                    "INSERT INTO maint_cover_active (kind,ref_id,orig_emp_id,cover_emp_id,since) "
+                    "VALUES ('sched',$1,$2,$3,$4) ON CONFLICT (kind,ref_id) DO NOTHING",
+                    sc["id"], x, y, today)
+                await db.execute("UPDATE maint_schedules SET assignee_emp_id=$1 "
+                                 "WHERE id=$2 AND assignee_emp_id=$3", y, sc["id"], x)
+        # RESTORE — any tracked move whose original is back (or whose cover is now on leave)
+        for row in await db.fetch(
+                "SELECT kind,ref_id,orig_emp_id,cover_emp_id FROM maint_cover_active"):
+            o, cv = row["orig_emp_id"], row["cover_emp_id"]
+            if (o in on_leave) and (cover.get(o) == cv) and (cv not in on_leave):
+                continue                       # still legitimately covered — leave as is
+            if row["kind"] == "cp":
+                await db.execute("UPDATE maint_checkpoints SET assigned_emp_id=$1 "
+                                 "WHERE id=$2 AND assigned_emp_id=$3", o, row["ref_id"], cv)
+            elif row["kind"] == "sched":
+                await db.execute("UPDATE maint_schedules SET assignee_emp_id=$1 "
+                                 "WHERE id=$2 AND assignee_emp_id=$3", o, row["ref_id"], cv)
+            await db.execute("DELETE FROM maint_cover_active WHERE kind=$1 AND ref_id=$2",
+                             row["kind"], row["ref_id"])
+            moved["restored"] += 1
+    except Exception as e:
+        print("[maint] cover sync skipped:", e)
+    return moved
+
+
+@router.get("/admin/setup-covers")
+async def setup_covers(token: str = Query(default="")):
+    """Configure the leave-cover pairs (both ways): Ragupathi<->Mohan, Surajit<->Velu. Matches
+    employees by name. Run once; re-running just refreshes the mapping."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(401, "bad token")
+    await _ensure_cover_tables()
+
+    async def _find(name):
+        r = await db.fetchrow("SELECT id, name FROM employees WHERE lower(name) LIKE $1 "
+                              "AND COALESCE(active,true)=true ORDER BY id LIMIT 1", f"%{name.lower()}%")
+        return (r["id"], r["name"]) if r else (None, None)
+
+    done, missing = [], []
+    for a_name, b_name in (("ragupathi", "mohan"), ("surajit", "velu")):
+        aid, an = await _find(a_name)
+        bid, bn = await _find(b_name)
+        if not aid or not bid:
+            missing.append({a_name: an, b_name: bn})
+            continue
+        for u, v, un, vn in ((aid, bid, an, bn), (bid, aid, bn, an)):
+            await db.execute("INSERT INTO maint_cover (emp_id,cover_emp_id) VALUES ($1,$2) "
+                             "ON CONFLICT (emp_id) DO UPDATE SET cover_emp_id=$2", u, v)
+            done.append({"on_leave": un, "covered_by": vn})
+    return _json({"ok": True, "pairs": done, "not_found": missing})
+
+
+@router.get("/admin/cover-status")
+async def cover_status(token: str = Query(default=""), sync: int = Query(default=0)):
+    """Show the cover pairs, who is on leave today, and any active reassignments. &sync=1 runs
+    the reassignment now (otherwise it runs on each reminder cron tick)."""
+    if not AGENT_TOKEN or token != AGENT_TOKEN:
+        raise HTTPException(401, "bad token")
+    await _ensure_cover_tables()
+    today = _today()
+    out = {}
+    if int(sync):
+        out["sync"] = await _sync_leave_covers(today)
+    emap = await _emp_map()
+
+    def _nm(i):
+        return (emap.get(i) or {}).get("name") or (str(i) if i else "—")
+
+    out["pairs"] = [{"on_leave": _nm(r["emp_id"]), "covered_by": _nm(r["cover_emp_id"])}
+                    for r in await db.fetch("SELECT emp_id, cover_emp_id FROM maint_cover")]
+    out["on_leave_today"] = sorted(_nm(i) for i in await _on_leave_ids(today))
+    out["active_reassignments"] = [
+        {"kind": r["kind"], "ref_id": r["ref_id"], "from": _nm(r["orig_emp_id"]),
+         "to": _nm(r["cover_emp_id"]), "since": str(r["since"])}
+        for r in await db.fetch("SELECT * FROM maint_cover_active ORDER BY kind, ref_id")]
+    return _json(out)
+
+
 BREAKDOWN_TYPES = ["Electrical", "Mechanical", "Hydraulic", "Other"]
 
 
@@ -6011,6 +6139,9 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
     if not AGENT_TOKEN or token != AGENT_TOKEN:
         raise HTTPException(401, "bad token")
     k = kind if kind in ("due", "overdue", "all") else "all"
+    # Keep leave-cover reassignments in sync before computing reminders (real runs only).
+    if not bool(dry):
+        await _sync_leave_covers(_today())
     # HARD WINDOW GUARD — the single chokepoint that makes off-hours sends impossible.
     # GitHub Actions can execute a scheduled run hours late (even at night), so a real
     # (non-dry) run outside 09:00–before 19:00 IST sends NOTHING AT ALL and returns early,
@@ -6194,6 +6325,9 @@ async def run_maint_work(token: str = Query(default=""), dry: int = Query(defaul
         raise HTTPException(401, "bad token")
     await ensure_tables()
     now = datetime.now(IST); today = _today()
+    # Keep leave-cover reassignments in sync before computing (real runs only).
+    if not bool(dry):
+        await _sync_leave_covers(today)
     # Plant-window guard — never send at night, even though we remind "until done".
     if not bool(dry) and not (9 <= now.hour < 19):
         return _json({"today": today.isoformat(), "sent": [], "skipped": [
