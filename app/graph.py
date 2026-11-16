@@ -307,12 +307,16 @@ async def close_session(token: str, item_id: str, session_id: str):
         pass
 
 
-async def add_table_row(token: str, item_id: str, table: str, values: list):
-    """Append one row ([[...]]) to a workbook table, using a short-lived session."""
+def _clean_row(values: list) -> list:
     # Flatten any line breaks in cell values to single spaces — embedded newlines make Excel
     # wrap a cell over several lines, which is what produced the tall/uneven log rows.
-    values = [(v.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").strip()
-               if isinstance(v, str) else v) for v in values]
+    return [(v.replace("\r\n", " ").replace("\r", " ").replace("\n", " ").strip()
+             if isinstance(v, str) else v) for v in values]
+
+
+async def add_table_row(token: str, item_id: str, table: str, values: list):
+    """Append one row ([[...]]) to a workbook table, using a short-lived session."""
+    values = _clean_row(values)
     sid = await create_session(token, item_id)
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     if sid:
@@ -323,6 +327,30 @@ async def add_table_row(token: str, item_id: str, table: str, values: list):
             r = await c.post(url, headers=headers, json={"values": [values]})
         if r.status_code >= 300:
             raise RuntimeError(f"rows/add failed ({r.status_code}): {r.text[:300]}")
+    finally:
+        if sid:
+            await close_session(token, item_id, sid)
+
+
+async def add_table_rows(token: str, item_id: str, table: str, rows: list):
+    """Append MANY rows to a workbook table in ONE request (one short-lived session), so a
+    backfill of dozens/hundreds of rows is a single call instead of one-per-row. Rows are
+    posted in chunks to keep each request small."""
+    rows = [_clean_row(r) for r in (rows or []) if r is not None]
+    if not rows:
+        return
+    url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}/rows/add"
+    sid = await create_session(token, item_id)
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    if sid:
+        headers["workbook-session-id"] = sid
+    try:
+        async with httpx.AsyncClient(timeout=120) as c:
+            for i in range(0, len(rows), 100):          # chunk so a big backfill stays reliable
+                chunk = rows[i:i + 100]
+                r = await c.post(url, headers=headers, json={"values": chunk})
+                if r.status_code >= 300:
+                    raise RuntimeError(f"rows/add (bulk) failed ({r.status_code}): {r.text[:300]}")
     finally:
         if sid:
             await close_session(token, item_id, sid)

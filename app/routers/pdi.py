@@ -99,6 +99,68 @@ async def pdi_create_log(token: str = Query(default=""), overwrite: int = Query(
                                      "trace": traceback.format_exc()[-800:]})
 
 
+def _rep_from_row(d: dict) -> dict:
+    """Build the log/PDF 'rep' dict from a pdi_reports DB row (same shape od_sync uses)."""
+    ca = d.get("created_at")
+    return {"report_no": d.get("report_no") or "", "report_date": str(d.get("report_date") or ""),
+            "customer": d.get("customer") or "", "items": odsync.as_obj(d.get("items"), []) or [],
+            "inspected_by": d.get("inspected_by") or "", "reviewed_by": d.get("reviewed_by") or "",
+            "approved_by": d.get("approved_by") or "", "created_by": d.get("created_by") or "",
+            "created_at": ca.astimezone(IST).strftime("%d-%b-%Y %H:%M") if ca else ""}
+
+
+@router.get("/admin/sync-log")
+async def pdi_sync_log(token: str = Query(default=""), limit: int = Query(default=0),
+                       emp: Optional[dict] = Depends(current_employee)):
+    """Reconcile PDI_Log.xlsx with the database: append EVERY pdi_reports entry that is not yet
+    in the log, and skip any already present (matched by Report No). Idempotent and safe to
+    re-run — it never creates a duplicate and never misses a report, so running it once
+    back-fills all existing reports and running it any time catches a report a live save missed.
+    Admin or ?token=AGENT_TOKEN. Optional &limit=N caps how many are added in one run (re-run to
+    continue); 0 = no cap. Returns a summary."""
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    await ensure_table()
+    try:
+        gtok = await graph.get_token()
+        item_id = await graph.get_item_id(gtok, PDI_XLSX)
+        if not item_id:
+            raise HTTPException(400, "PDI_Log.xlsx not found — run /pdi/admin/create-log first.")
+        # One read of the existing Report No column -> the dedupe set (never duplicate a report).
+        existing = {str(x).strip() for x in await graph.column_values(gtok, item_id, PDI_TABLE, 0)}
+        cols = await graph.table_columns(gtok, item_id, PDI_TABLE)
+        width = len(cols) if cols else len(PDI_HEADERS)
+        rows = await db.fetch("SELECT * FROM pdi_reports ORDER BY created_at ASC NULLS FIRST, id ASC")
+        to_add, added_nos, skipped = [], [], 0
+        for r in rows:
+            d = dict(r)
+            rno = (d.get("report_no") or "").strip()
+            if not rno:
+                continue
+            if rno in existing:            # already logged -> never add a second time
+                skipped += 1
+                continue
+            existing.add(rno)              # guard against any duplicate within this run too
+            to_add.append((_pdi_row(_rep_from_row(d)) + [""] * width)[:width])
+            added_nos.append(rno)
+            if limit and len(to_add) >= limit:
+                break
+        if to_add:
+            await graph.add_table_rows(gtok, item_id, PDI_TABLE, to_add)
+        remaining = max(0, len([r for r in rows if (dict(r).get("report_no") or "").strip()])
+                        - skipped - len(added_nos)) if limit else 0
+        return {"ok": True, "db_reports": len(rows), "already_in_log": skipped,
+                "added": len(added_nos), "remaining": remaining,
+                "added_report_nos": added_nos[:100]}
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        return JSONResponse(status_code=500,
+                            content={"ok": False, "error": f"{type(e).__name__}: {str(e)[:400]}",
+                                     "trace": traceback.format_exc()[-800:]})
+
+
 async def ensure_table():
     global _ensured
     if _ensured:
@@ -260,7 +322,9 @@ async def pdi_submit(body: PdiIn, emp: dict = Depends(require_employee)):
     except Exception as e:
         print("[pdi-submit]", repr(e))
         raise HTTPException(500, f"Save failed: {e}")
-    od = await od_sync(rno)              # awaited: Vercel kills post-response work
+    # dedupe=True so a re-submit / edit of the same report never appends a SECOND Excel-log row
+    # (the first row stays; the DB row is updated). This is what keeps PDI_Log.xlsx duplicate-free.
+    od = await od_sync(rno, dedupe=True)  # awaited: Vercel kills post-response work
     return {"ok": True, "report_no": rno, "onedrive": od}
 
 
