@@ -46,6 +46,23 @@ MAINT_SUPERVISOR_MOBILE      = os.environ.get("MAINT_SUPERVISOR_MOBILE", "")  # 
 # Shared agent token for protected cron endpoints (reminders) — matches the Node app
 AGENT_TOKEN = os.environ.get("AGENT_TOKEN", "BSC@123")
 
+# ---- AI Voice Translator (mic on breakdown / unscheduled PM / close forms) ----
+# Pipeline: spoken audio (any language) -> speech-to-text -> Claude polishes it into
+# professional English preserving technical detail -> fills the text field. Keys are read from
+# the environment only (never exposed to the browser). Leave the keys blank to disable it.
+#
+# Speech-to-text provider: "sarvam" (best for Tamil/Telugu/Hindi) or "whisper" (OpenAI). If
+# STT_PROVIDER is blank it auto-picks: Sarvam when SARVAM_API_KEY is set, else Whisper.
+STT_PROVIDER      = os.environ.get("STT_PROVIDER", "")          # "sarvam" | "whisper" | "" (auto)
+SARVAM_API_KEY    = os.environ.get("SARVAM_API_KEY", "")        # from dashboard.sarvam.ai
+SARVAM_STT_MODEL  = os.environ.get("SARVAM_STT_MODEL", "saaras:v4")
+OPENAI_API_KEY    = os.environ.get("OPENAI_API_KEY", "")
+OPENAI_STT_MODEL  = os.environ.get("OPENAI_STT_MODEL", "whisper-1")
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
+# A current, stable model; override with env ANTHROPIC_MODEL if you prefer another (e.g. a
+# cheaper haiku model). Short calls, so cost per translation is negligible.
+ANTHROPIC_MODEL   = os.environ.get("ANTHROPIC_MODEL", "claude-3-5-sonnet-20241022")
+
 # ---- Consumer Store — live SAP mirror via the BSC MIS data pipeline (READ-ONLY) ----
 # QMS never talks to SAP directly. Exactly like the stock MIS, a PowerShell job on the
 # SAP box (refresh_consumer.ps1) reads the Consumer Store warehouse from SAP and pushes

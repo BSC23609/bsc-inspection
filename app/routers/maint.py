@@ -20,8 +20,9 @@ from datetime import date, datetime, timedelta, time
 from datetime import date as _dt_date   # alias for use where a param named `date` shadows it
 from zoneinfo import ZoneInfo
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form
 from fastapi.responses import JSONResponse, Response
+import httpx
 
 from .. import db, wati, graph
 from .. import config as _cfg
@@ -43,6 +44,17 @@ WATI_MAINT_HOLD_TEMPLATE      = os.environ.get("WATI_MAINT_HOLD_TEMPLATE") or "b
 WATI_MAINT_RESUME_TEMPLATE    = os.environ.get("WATI_MAINT_RESUME_TEMPLATE") or "bsc_maint_resume"
 MAINT_SUPERVISOR_MOBILE       = getattr(_cfg, "MAINT_SUPERVISOR_MOBILE", "")
 AGENT_TOKEN                   = getattr(_cfg, "AGENT_TOKEN", "BSC@123")
+# AI Voice Translator keys (read from env/config; blank disables the mic feature cleanly).
+STT_PROVIDER                  = (os.environ.get("STT_PROVIDER") or getattr(_cfg, "STT_PROVIDER", "")).strip().lower()
+SARVAM_API_KEY                = os.environ.get("SARVAM_API_KEY") or getattr(_cfg, "SARVAM_API_KEY", "")
+SARVAM_STT_MODEL              = (os.environ.get("SARVAM_STT_MODEL")
+                                 or getattr(_cfg, "SARVAM_STT_MODEL", "") or "saaras:v4")
+OPENAI_API_KEY                = os.environ.get("OPENAI_API_KEY") or getattr(_cfg, "OPENAI_API_KEY", "")
+OPENAI_STT_MODEL              = (os.environ.get("OPENAI_STT_MODEL")
+                                 or getattr(_cfg, "OPENAI_STT_MODEL", "") or "whisper-1")
+ANTHROPIC_API_KEY             = os.environ.get("ANTHROPIC_API_KEY") or getattr(_cfg, "ANTHROPIC_API_KEY", "")
+ANTHROPIC_MODEL               = (os.environ.get("ANTHROPIC_MODEL")
+                                 or getattr(_cfg, "ANTHROPIC_MODEL", "") or "claude-3-5-sonnet-20241022")
 # Token for the public overdue PNG (baked into the WhatsApp template's image URL). Defaults
 # to AGENT_TOKEN so it works out of the box; set env OVERDUE_IMG_TOKEN to a URL-safe value
 # (e.g. letters/digits, no '@') to avoid exposing AGENT_TOKEN in WATI's template store.
@@ -3412,6 +3424,110 @@ def _wo_type(v):
     if s in ("unscheduled pm", "unscheduled preventive maintenance", "unscheduled", "upm", "pm"):
         return "Unscheduled PM"
     return "Breakdown"
+
+
+# ============================================================
+#  AI Voice Translator  (mic -> Whisper transcription -> Claude -> professional English)
+#  Used by the mic buttons on the Breakdown / Unscheduled PM raise form and the Close form.
+#  The browser records a short clip and POSTs it here; this returns the polished English text,
+#  which the form drops into the field for the user to review/edit before saving. The text is
+#  then saved and shown in PDFs/reports by the EXISTING flow — no schema or report change.
+# ============================================================
+async def _sarvam_transcribe(data: bytes, filename: str, content_type: str) -> str:
+    """Sarvam AI speech-to-text (saaras model). Built for Indian languages — Tamil, Telugu,
+    Hindi, English and mixed — with language_code='unknown' so it auto-detects. Returns the
+    transcript in the spoken language; Claude then renders it in English."""
+    if not SARVAM_API_KEY:
+        raise HTTPException(503, "Voice feature not configured: SARVAM_API_KEY is not set.")
+    files = {"file": (filename or "voice.webm", data, content_type or "audio/webm")}
+    form = {"model": SARVAM_STT_MODEL, "language_code": "unknown"}
+    headers = {"api-subscription-key": SARVAM_API_KEY}
+    try:
+        async with httpx.AsyncClient(timeout=90) as c:
+            r = await c.post("https://api.sarvam.ai/speech-to-text",
+                             headers=headers, data=form, files=files)
+    except Exception as e:
+        raise HTTPException(502, f"Transcription service unreachable: {e}")
+    if r.status_code >= 400:
+        raise HTTPException(502, f"Transcription failed ({r.status_code}): {r.text[:200]}")
+    return ((r.json() or {}).get("transcript") or "").strip()
+
+
+async def _whisper_transcribe(data: bytes, filename: str, content_type: str) -> str:
+    """OpenAI Whisper speech-to-text. Auto-detects the spoken language (Tamil, Hindi, Telugu,
+    English, mixed) and returns the transcript in that original language."""
+    if not OPENAI_API_KEY:
+        raise HTTPException(503, "Voice feature not configured: OPENAI_API_KEY is not set.")
+    files = {"file": (filename or "voice.webm", data, content_type or "audio/webm")}
+    form = {"model": OPENAI_STT_MODEL}
+    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+    try:
+        async with httpx.AsyncClient(timeout=90) as c:
+            r = await c.post("https://api.openai.com/v1/audio/transcriptions",
+                             headers=headers, data=form, files=files)
+    except Exception as e:
+        raise HTTPException(502, f"Transcription service unreachable: {e}")
+    if r.status_code >= 400:
+        raise HTTPException(502, f"Transcription failed ({r.status_code}): {r.text[:200]}")
+    return ((r.json() or {}).get("text") or "").strip()
+
+
+async def _transcribe(data: bytes, filename: str, content_type: str) -> str:
+    """Route to the configured speech-to-text provider. STT_PROVIDER forces one ('sarvam' or
+    'whisper'); left blank it auto-picks Sarvam when its key is set, otherwise Whisper."""
+    provider = STT_PROVIDER or ("sarvam" if SARVAM_API_KEY else "whisper")
+    if provider == "sarvam":
+        return await _sarvam_transcribe(data, filename, content_type)
+    return await _whisper_transcribe(data, filename, content_type)
+
+
+async def _claude_translate(text: str) -> str:
+    """Claude turns a raw spoken note into clear, professional maintenance English, preserving
+    every technical detail / number / part name. Falls back to the transcript if no key is set."""
+    text = (text or "").strip()
+    if not text or not ANTHROPIC_API_KEY:
+        return text
+    prompt = (
+        "You are assisting a maintenance engineer at a steel plant. Rewrite the following spoken "
+        "note — which may be in Tamil, Hindi, Telugu, English or a mix — as clear, professional "
+        "English for a maintenance work order. Rules: preserve EVERY technical detail, machine/part "
+        "name, measurement and number exactly; do not add any information that is not in the note; "
+        "do not include commentary, options or notes; keep it concise and factual. "
+        "Return ONLY the finished English text.\n\nSpoken note:\n" + text)
+    body = {"model": ANTHROPIC_MODEL, "max_tokens": 600,
+            "messages": [{"role": "user", "content": prompt}]}
+    headers = {"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01",
+               "content-type": "application/json"}
+    try:
+        async with httpx.AsyncClient(timeout=90) as c:
+            r = await c.post("https://api.anthropic.com/v1/messages", headers=headers, json=body)
+    except Exception as e:
+        raise HTTPException(502, f"Translation service unreachable: {e}")
+    if r.status_code >= 400:
+        raise HTTPException(502, f"Translation failed ({r.status_code}): {r.text[:200]}")
+    d = r.json()
+    out = "".join(p.get("text", "") for p in (d.get("content") or [])
+                  if p.get("type") == "text").strip()
+    return out or text
+
+
+@router.post("/voice-translate")
+async def voice_translate(audio: UploadFile = File(...), field: str = Form(default=""),
+                          emp: dict = Depends(require_employee)):
+    """Receive a voice clip, transcribe it (any language) and return professional English for
+    the given form field. Keys live only on the server; the browser never sees them."""
+    data = await audio.read()
+    if not data:
+        raise HTTPException(400, "No audio received — please record again.")
+    if len(data) > 24 * 1024 * 1024:
+        raise HTTPException(413, "Recording is too long. Please keep it under about a minute.")
+    original = await _transcribe(data, audio.filename or "voice.webm",
+                                 audio.content_type or "audio/webm")
+    if not original:
+        return {"ok": True, "field": field, "original": "", "english": "",
+                "note": "No speech detected — please try again."}
+    english = await _claude_translate(original)
+    return {"ok": True, "field": field, "original": original, "english": english}
 
 
 @router.post("/breakdown/raise")
