@@ -116,6 +116,8 @@
         <div class="pill" data-t="Other" onclick="setType('Other')">Other</div>
       </div>
     </div>
+    <div id="b_type_other_row" style="display:none;margin-bottom:14px"><label>Specify type <span class="req">*</span></label>
+      <input id="b_type_other" placeholder="Type the breakdown type (e.g. Pneumatic, Civil)"></div>
     {% if emp.is_admin or emp.is_maint %}
     <div style="margin-bottom:14px">
       <label style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
@@ -152,6 +154,8 @@
       <div id="cl_types" class="cl-chk"></div></div>
     <div style="margin-bottom:14px"><label>Cause <span class="req">*</span> <span class="opt">(select all that apply)</span></label>
       <div id="cl_causes" class="cl-chk"><div class="cl-none">Select a type above to see causes.</div></div></div>
+    <div id="cl_cause_other_row" style="display:none;margin-bottom:14px"><label>Other cause <span class="req">*</span></label>
+      <input id="cl_cause_other" placeholder="Type the cause"></div>
     <div style="margin-bottom:14px"><label>Action taken <span class="req">*</span></label>
       <textarea id="cl_action" placeholder="What was done to fix it?"></textarea></div>
     <div style="margin-bottom:14px"><label>Remarks <span class="opt">(optional)</span></label>
@@ -289,6 +293,7 @@ function toggleSelf(){var on=document.getElementById('b_self').checked;
   else{var tt=v('b_type');if(tt)setType(tt);
     else{document.getElementById('b_assignees').innerHTML='<div class="none">Pick a breakdown type above.</div>';document.getElementById('b_autonote').style.display='none';}}}
 function setType(t){sv('b_type',t);[].forEach.call(document.querySelectorAll('#bd_scrim .pill'),function(p){p.classList.toggle('on',p.getAttribute('data-t')===t);});
+  var _otr=document.getElementById('b_type_other_row');if(_otr)_otr.style.display=(t==='Other')?'':'none';
   var note=document.getElementById('b_autonote');
   var _self=document.getElementById('b_self');
   if(_self&&_self.checked){renderSelf();note.textContent='Assigned to you ('+(ME.name||'me')+').';note.style.display='';return;}
@@ -314,6 +319,7 @@ async function bdRaise(){var aid=v('b_asset'),bt=v('b_type'),prob=v('b_problem')
   if(!aid){toast('err','Select a machine');return;}if(!bt){toast('err','Select a breakdown type');return;}
   if(!prob){toast('err','Enter the breakdown detail');return;}if(!asg.length){toast('err','Select at least one maintenance user');return;}
   if(!when){toast('err','Pick the breakdown date & time');return;}
+  if(bt==='Other'){var _ot=v('b_type_other').trim();if(!_ot){toast('err','Specify the breakdown type');return;}prob='['+_ot+'] '+prob;}
   var btn=document.getElementById('b_save');btn.disabled=true;var l=btn.textContent;btn.textContent='Sending…';
   try{var r=await fetch('/maint/breakdown/raise',{method:'POST',headers:{'Content-Type':'application/json'},
       body:JSON.stringify({asset_id:aid,btype:bt,problem:prob,assignees:asg,raised_at:when,remarks:rm,photos:PHOTOS})});
@@ -421,9 +427,13 @@ function clRenderCauses(){var ts=clCheckedTypes(),host=document.getElementById('
   var prev={};clCheckedCauses().forEach(function(c){prev[c]=1;});var html='';
   ts.forEach(function(t){html+='<div class="cl-grp">'+esc(t)+'</div>';
     (WO_CAUSES[t]||[]).forEach(function(c){html+='<label class="cl-opt"><input type="checkbox" class="cl-cause" value="'+esc(c)+'"'+(prev[c]?' checked':'')+'>'+esc(c)+'</label>';});});
-  host.innerHTML=html;}
+  html+='<div class="cl-grp">Other</div><label class="cl-opt"><input type="checkbox" class="cl-cause" value="Other"'+(prev['Other']?' checked':'')+' onchange="clOtherToggle()">Other (type below)</label>';
+  host.innerHTML=html;clOtherToggle();}
+function clOtherToggle(){var on=[].some.call(document.querySelectorAll('#cl_causes .cl-cause'),function(c){return c.value==='Other'&&c.checked;});
+  var row=document.getElementById('cl_cause_other_row');if(row)row.style.display=on?'':'none';}
 function openClose(id){document.getElementById('cl_id').value=id;sv('cl_action','');sv('cl_remarks','');sv('cl_when_date','');sv('cl_when_hr','');sv('cl_when_min','');sv('cl_when_ap',(new Date().getHours()>=12?'PM':'AM'));
   clRenderTypes();document.getElementById('cl_causes').innerHTML='<div class="cl-none">Select a type above to see causes.</div>';
+  sv('cl_cause_other','');var _cor=document.getElementById('cl_cause_other_row');if(_cor)_cor.style.display='none';
   var ctx=document.getElementById('cl_ctx');if(ctx)ctx.textContent='Work Order Ref #'+id;
   document.getElementById('cl_scrim').style.display='flex';}
 function closeCloseModal(){document.getElementById('cl_scrim').style.display='none';}
@@ -432,6 +442,8 @@ async function doClose(){var id=v('cl_id'),action=v('cl_action').trim(),rm=v('cl
   var types=clCheckedTypes(),causes=clCheckedCauses();
   if(!types.length){toast('err','Select at least one Type');return;}
   if(!causes.length){toast('err','Select at least one Cause');return;}
+  if(causes.indexOf('Other')>=0){var _co=v('cl_cause_other').trim();if(!_co){toast('err','Type the Other cause');return;}
+    causes=causes.map(function(c){return c==='Other'?('Other: '+_co):c;});}
   if(!action){toast('err','Enter the action taken');return;}
   if(!wd){toast('err','Pick the completion date');return;}
   if(!wh){toast('err','Pick the completion hour');return;}
