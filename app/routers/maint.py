@@ -3091,6 +3091,12 @@ async def _send_hold_resume_alert(bd: dict, action: str, reason: str = ""):
         m = wati.normalize_number(info.get("mobile") or "")
         if m and m not in seen:
             targets.append((m, info.get("name") or "")); seen.add(m)
+    rb = bd.get("reported_by_emp_id")              # the person who RAISED the work order
+    if rb:
+        info = emap.get(rb) or {}
+        m = wati.normalize_number(info.get("mobile") or "")
+        if m and m not in seen:
+            targets.append((m, info.get("name") or "")); seen.add(m)
     try:                                           # every admin with a mobile
         for r in await db.fetch(
                 "SELECT COALESCE(name,'') AS name, COALESCE(mobile,'') AS mobile FROM employees "
@@ -3537,7 +3543,17 @@ async def breakdown_close(body: dict, emp: dict = Depends(require_employee)):
         pdf_path = await _regen_breakdown_pdf(bid)
     except Exception as e:
         print("[maint] breakdown close PDF regen skipped:", e)
-    return {"ok": True, "pdf": pdf_path}
+    # Total working hours = time from raise to close counting ONLY the 09:00–19:00 plant
+    # window on working days (skips after 7 PM, resumes 9 AM next day, skips Sundays/holidays).
+    work_hours = None
+    try:
+        _r = await db.fetchrow("SELECT raised_at, closed_at FROM maint_breakdowns WHERE id=$1", bid)
+        if _r:
+            await _refresh_holidays()
+            work_hours = _working_hours(_r["raised_at"], _r["closed_at"])
+    except Exception as e:
+        print("[maint] working-hours calc skipped:", e)
+    return {"ok": True, "pdf": pdf_path, "working_hours": work_hours}
 
 
 @router.post("/breakdown/hold")
