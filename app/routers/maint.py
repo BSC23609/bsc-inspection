@@ -2468,6 +2468,10 @@ async def _ensure_cover_tables():
     await db.execute("CREATE TABLE IF NOT EXISTS maint_cover_active ("
                      "kind TEXT, ref_id INT, orig_emp_id INT, cover_emp_id INT, since DATE, "
                      "PRIMARY KEY (kind, ref_id))")
+    try:
+        await db.execute("ALTER TABLE maint_cover_active ADD COLUMN IF NOT EXISTS detail TEXT")
+    except Exception:
+        pass
 
 
 async def _cover_map():
@@ -2509,9 +2513,37 @@ async def _sync_leave_covers(today):
                     sc["id"], x, y, today)
                 await db.execute("UPDATE maint_schedules SET assignee_emp_id=$1 "
                                  "WHERE id=$2 AND assignee_emp_id=$3", y, sc["id"], x)
+            # open breakdowns (work orders) assigned to X — primary assignee and the
+            # multi-assignee list both get X swapped to Y; the original is snapshotted so it
+            # restores exactly on return.
+            for b in await db.fetch(
+                    "SELECT id, assignees, assignee_emp_id FROM maint_breakdowns "
+                    "WHERE lower(coalesce(status,''))<>'closed' "
+                    "AND (assignee_emp_id=$1 OR assignees @> $2::jsonb)", x, json.dumps([x])):
+                arr = b["assignees"]
+                if isinstance(arr, str):
+                    try:
+                        arr = json.loads(arr)
+                    except Exception:
+                        arr = []
+                arr = arr or []
+                await db.execute(
+                    "INSERT INTO maint_cover_active (kind,ref_id,orig_emp_id,cover_emp_id,since,detail) "
+                    "VALUES ('bd',$1,$2,$3,$4,$5) ON CONFLICT (kind,ref_id) DO NOTHING",
+                    b["id"], x, y, today,
+                    json.dumps({"assignees": arr, "primary": b["assignee_emp_id"]}))
+                newarr = []
+                for a in arr:
+                    na = y if a == x else a
+                    if na not in newarr:
+                        newarr.append(na)
+                new_primary = y if b["assignee_emp_id"] == x else b["assignee_emp_id"]
+                await db.execute("UPDATE maint_breakdowns SET assignees=$1::jsonb, assignee_emp_id=$2 "
+                                 "WHERE id=$3", json.dumps(newarr), new_primary, b["id"])
+                moved["activated"] += 1
         # RESTORE — any tracked move whose original is back (or whose cover is now on leave)
         for row in await db.fetch(
-                "SELECT kind,ref_id,orig_emp_id,cover_emp_id FROM maint_cover_active"):
+                "SELECT kind,ref_id,orig_emp_id,cover_emp_id,detail FROM maint_cover_active"):
             o, cv = row["orig_emp_id"], row["cover_emp_id"]
             if (o in on_leave) and (cover.get(o) == cv) and (cv not in on_leave):
                 continue                       # still legitimately covered — leave as is
@@ -2521,6 +2553,15 @@ async def _sync_leave_covers(today):
             elif row["kind"] == "sched":
                 await db.execute("UPDATE maint_schedules SET assignee_emp_id=$1 "
                                  "WHERE id=$2 AND assignee_emp_id=$3", o, row["ref_id"], cv)
+            elif row["kind"] == "bd":
+                snap = {}
+                try:
+                    snap = json.loads(row["detail"] or "{}")
+                except Exception:
+                    snap = {}
+                await db.execute("UPDATE maint_breakdowns SET assignees=$1::jsonb, assignee_emp_id=$2 "
+                                 "WHERE id=$3", json.dumps(snap.get("assignees") or []),
+                                 snap.get("primary"), row["ref_id"])
             await db.execute("DELETE FROM maint_cover_active WHERE kind=$1 AND ref_id=$2",
                              row["kind"], row["ref_id"])
             moved["restored"] += 1
