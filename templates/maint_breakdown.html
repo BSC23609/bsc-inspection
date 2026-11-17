@@ -213,7 +213,8 @@
         <option value="Other">Other</option>
       </select></div>
     <div id="hd_other_row" style="display:none;margin-bottom:14px"><label>Reason detail <span class="req">*</span></label>
-      <textarea id="hd_other" placeholder="Type the reason for holding this work order"></textarea></div>
+      <textarea id="hd_other" placeholder="Type the reason for holding this work order"></textarea>
+      <div class="microw"><button type="button" class="micbtn" data-f="hd_other" onclick="voiceMic(this)"><span class="mic-ico">🎤</span><span class="mic-lbl">Speak</span></button><span class="micstat" id="micstat_hd_other"></span></div></div>
     <div style="margin-bottom:4px"><label>Expected resolution time</label>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <input type="date" id="hd_eta_date" style="flex:1 1 150px" title="Expected date">
