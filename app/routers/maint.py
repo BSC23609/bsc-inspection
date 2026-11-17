@@ -3808,7 +3808,8 @@ async def breakdown_audit(token: str = Query(default=""), code: str = Query(defa
         args.append(code.strip()); where.append(f"upper(a.code)=upper(${len(args)})")
     if only_open:
         where.append("lower(coalesce(b.status,'open'))='open'")
-    sql = ("SELECT b.id, a.code AS asset_code, a.name AS asset_name, b.status, "
+    sql = ("SELECT b.id, a.code AS asset_code, a.name AS asset_name, b.status, b.wo_type, "
+           "b.hold_status, b.hold_reason, b.hold_at, b.hold_eta, "
            "b.raised_at, b.closed_at, b.closed_by, b.reported_by, b.assignee_emp_id, b.assignees, "
            "e.name AS assignee_name "
            "FROM maint_breakdowns b LEFT JOIN maint_assets a ON a.id=b.asset_id "
@@ -3823,8 +3824,17 @@ async def breakdown_audit(token: str = Query(default=""), code: str = Query(defa
         st = (d.get("status") or "")
         out.append({
             "id": d["id"], "machine": ((d.get("asset_code") or "") + " " + (d.get("asset_name") or "")).strip(),
+            "wo_type": _wo_type(d.get("wo_type")),
             "status_stored": st,
-            "shows_on_board": st == "open",   # board uses an exact 'open' match
+            "hold_status": (d.get("hold_status") or ""),
+            "on_hold": str(d.get("hold_status") or "").strip().lower() == "hold",
+            "hold_reason": d.get("hold_reason"),
+            "hold_at": str(d.get("hold_at") or "")[:16] or None,
+            "hold_eta": str(d.get("hold_eta") or "")[:16] or None,
+            # The board shows an OPEN breakdown in Overdue only when it is NOT on hold; a held
+            # one moves to the On Hold section instead.
+            "shows_on_board": st == "open",
+            "in_overdue": st == "open" and str(d.get("hold_status") or "").strip().lower() != "hold",
             "raised_at": str(d.get("raised_at") or "")[:16],
             "closed_at": str(d.get("closed_at") or "") or None,
             "closed_by": d.get("closed_by"),
