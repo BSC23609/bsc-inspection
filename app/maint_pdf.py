@@ -207,6 +207,8 @@ def build_breakdown_report(meta: dict) -> bytes:
         ("1", "Problem reported", meta.get("problem", "--") or "--", _fmt_dt(meta.get("raised"))),
         ("2", "Action taken", meta.get("resolution", "--") or "--",
          _fmt_dt(meta.get("closed")) if meta.get("closed") else "pending"),
+        ("3", "Reason for cause", meta.get("cause", "--") or "--",
+         _fmt_dt(meta.get("closed")) if meta.get("closed") else "pending"),
     ]
     # Unscheduled PM: "Closed by" shows the assigned person (who did the work), not whoever
     # clicked close; the section heading reads "Unscheduled Preventive Maintenance Details".

@@ -2895,6 +2895,15 @@ async def _file_breakdown_report(bd: dict, assignee_names: str):
         raised = bd.get("raised_at") or now
         _wl = _wo_type(bd.get("wo_type"))   # 'Breakdown' or 'Unscheduled PM'
         _cat = "Breakdown Maintenance" if _wl == "Breakdown" else "Unscheduled Preventive Maintenance"
+        # Cause(s) chosen when the work order was closed (stored as a JSONB list) -> one string
+        _causes = bd.get("close_causes") or []
+        if isinstance(_causes, str):
+            try:
+                _causes = json.loads(_causes)
+            except Exception:
+                _causes = [_causes]
+        cause_txt = (", ".join(str(c).strip() for c in _causes if str(c).strip())
+                     if isinstance(_causes, list) else str(_causes or ""))
         meta = {"doc_no": str(bd.get("id") or now.strftime("%y%m%d%H%M")),
                 "asset_code": bd.get("asset_code") or "", "asset_name": bd.get("asset_name") or "",
                 "raised": raised, "raised_by": bd.get("reported_by") or "—",
@@ -2902,7 +2911,7 @@ async def _file_breakdown_report(bd: dict, assignee_names: str):
                 "assignees": assignee_names or "--", "location": bd.get("location") or "--",
                 "status": (bd.get("status") or "open").title(),
                 "closed": bd.get("closed_at"), "closed_by": bd.get("closed_by"),
-                "resolution": bd.get("resolution"),
+                "resolution": bd.get("resolution"), "cause": cause_txt or "--",
                 "wo_label": _wl, "category": _cat,
                 "qr_url": "https://qms.bharatsteels.in/maint"}
         pdf = maint_pdf.build_breakdown_report(meta)
