@@ -215,7 +215,7 @@
     <div id="hd_other_row" style="display:none;margin-bottom:14px"><label>Reason detail <span class="req">*</span></label>
       <textarea id="hd_other" placeholder="Type the reason for holding this work order"></textarea>
       <div class="microw"><button type="button" class="micbtn" data-f="hd_other" onclick="voiceMic(this)"><span class="mic-ico">🎤</span><span class="mic-lbl">Speak</span></button><span class="micstat" id="micstat_hd_other"></span></div></div>
-    <div style="margin-bottom:4px"><label>Expected resolution time</label>
+    <div style="margin-bottom:4px"><label>Expected resolution date &amp; time <span class="req">*</span></label>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <input type="date" id="hd_eta_date" style="flex:1 1 150px" title="Expected date">
         <select id="hd_eta_hr" style="flex:1 1 60px" title="Hour">
@@ -533,11 +533,9 @@ async function doHold(){var id=v('hd_id'),r=v('hd_reason');
   var reason=r;
   if(r==='Other'){var o=v('hd_other').trim();if(!o){toast('err','Type the reason');return;}reason='Other: '+o;}
   var ed=v('hd_eta_date'),eh=v('hd_eta_hr'),em=v('hd_eta_min'),ap=v('hd_eta_ap');
-  var eta='';
-  if(ed){
-    if(eh&&ap){var hh=parseInt(eh,10)%12;if(ap==='PM')hh+=12;eta=ed+'T'+('0'+hh).slice(-2)+':'+(em||'00');}
-    else{eta=ed+'T00:00';}
-  }
+  if(!ed||!eh||!em||!ap){toast('err','Select the expected resolution date & time');return;}
+  var hh=parseInt(eh,10)%12;if(ap==='PM')hh+=12;
+  var eta=ed+'T'+('0'+hh).slice(-2)+':'+em;
   var b=document.getElementById('hd_save');b.disabled=true;var l=b.textContent;b.textContent='Holding…';
   try{var res=await fetch('/maint/breakdown/hold',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id,reason:reason,eta:eta})});
     var d=await res.json().catch(function(){return{};});if(!res.ok||!d.ok)throw new Error(d.detail||'Failed');
