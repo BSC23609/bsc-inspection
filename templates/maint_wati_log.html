@@ -17,6 +17,10 @@
 .wl-f label{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)}
 .wl-f input,.wl-f select{padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;font-family:inherit;background:#fff;min-width:150px}
 .wl-ref{margin-left:auto}
+.wl-test{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.wl-test input{padding:8px 10px;border:1px solid var(--line-2);border-radius:8px;font-size:12.5px;font-family:inherit;background:#fff;min-width:140px;font-variant-numeric:tabular-nums}
+.wl-testmsg{font-size:12px;padding:0 16px 8px;min-height:16px}
+.wl-testmsg.ok{color:#2f6b27}.wl-testmsg.err{color:#c0241c}
 .wl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
 .wtbl{width:100%;border-collapse:collapse;font-size:12.5px;min-width:620px}
 .wtbl th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);padding:9px 12px;white-space:nowrap}
@@ -33,8 +37,13 @@
   <div class="wl-top">
     <div class="ttl"><h1>WhatsApp Delivery Log</h1>
       <p>Every maintenance WATI send and its outcome — so a silent failure is visible here.</p></div>
-    <button class="btn btn-ghost wl-ref" onclick="wlLoad()">↻ Refresh</button>
+    <div class="wl-test wl-ref">
+      <input id="wl_test_to" placeholder="9198XXXXXXXX" inputmode="tel" autocomplete="off">
+      <button class="btn btn-primary" id="wl_test_btn" onclick="wlTest()">Send test</button>
+      <button class="btn btn-ghost" onclick="wlLoad()">↻ Refresh</button>
+    </div>
   </div>
+  <div class="wl-testmsg" id="wl_test_msg"></div>
   <div class="wl-sum"><span>Last 24h:</span><span id="wl_summary">—</span></div>
   <div class="wl-filters">
     <div class="wl-f"><label>Result</label>
@@ -85,6 +94,21 @@ async function wlLoad(){
         +'<td><span class="wl-chip '+esc(rc)+'">'+esc(rc||'—')+'</span></td>'
         +'<td class="det">'+(rc==='sent'?'':esc(x.detail||''))+'</td></tr>';
     }).join('')+'</tbody></table>';
+}
+async function wlTest(){
+  var to=document.getElementById('wl_test_to').value.trim();
+  var msg=document.getElementById('wl_test_msg');
+  if(!to){msg.textContent='Enter a WhatsApp number first, e.g. 919840299625.';msg.className='wl-testmsg err';return;}
+  var btn=document.getElementById('wl_test_btn');btn.disabled=true;var ol=btn.textContent;btn.textContent='Sending…';
+  msg.textContent='Sending test message…';msg.className='wl-testmsg';
+  try{
+    var res=await fetch('/maint/wati-test?to='+encodeURIComponent(to),{cache:'no-store'});
+    if(res.status===401){location.href='/login';return;}
+    var d=await res.json();
+    if(d.ok){msg.textContent='✓ Test sent to '+(d.sent_to||to)+' using '+(d.template||'template')+' — see the new row below, and check WhatsApp.';msg.className='wl-testmsg ok';}
+    else{msg.textContent='✗ Failed: '+(d.detail||d.wati_reply||'WATI did not accept it');msg.className='wl-testmsg err';}
+  }catch(e){msg.textContent='✗ Could not send the test.';msg.className='wl-testmsg err';}
+  finally{btn.disabled=false;btn.textContent=ol;await wlLoad();}
 }
 wlLoad();
 </script>
