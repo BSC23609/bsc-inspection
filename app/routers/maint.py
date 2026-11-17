@@ -6402,8 +6402,14 @@ async def _board_png_rows():
 
     def _who(obj):
         ast = obj.get("assignee_status") or []
-        names = ([a.get("emp") for a in ast if a.get("emp")] if ast
-                 else (obj.get("assignees") or []))
+        if ast:
+            # Only the people whose checkpoint is still PENDING (not Done ✓, not Absent –) —
+            # the overdue report lists who it is actually waiting on, so a person who already
+            # completed their check, or is on leave/absent, is left out.
+            names = [a.get("emp") for a in ast
+                     if a.get("emp") and a.get("status") not in ("Done", "Absent")]
+        else:
+            names = obj.get("assignees") or []
         names = [n for n in names if n]
         return ", ".join(names) if names else "Unassigned"
 
