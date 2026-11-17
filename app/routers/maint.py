@@ -6421,22 +6421,23 @@ async def _board_png_rows():
     for m in rows:
         code = m.get("code") or ""
         name = m.get("name") or ""
+        # The WhatsApp overdue image carries ONLY overdue items (the report is titled
+        # "Maintenance overdue") — a machine that is merely DUE TODAY is not yet overdue, so it
+        # is left off the image. (The board still shows due-today; this is image-only.)
         d = m.get("daily") or {}
-        if d.get("state") in ("overdue", "due"):
+        if d.get("state") == "overdue":
             who = _who(d)
             if _assigned(who):
                 pm.append({"code": code, "name": name, "cat": "Daily Maintenance",
                            "who": who, "date": _fmtd(d.get("due")),
-                           "status": "Overdue" if d.get("state") == "overdue" else "Due today",
-                           "by": "-"})
+                           "status": "Overdue", "by": "-"})
         q = m.get("quarterly") or {}
-        if q.get("state") in ("overdue", "due"):
+        if q.get("state") == "overdue":
             who = _who(q)
             if _assigned(who):
                 pm.append({"code": code, "name": name, "cat": "Quarterly Maintenance",
                            "who": who, "date": _fmtd(q.get("due")),
-                           "status": "Overdue" if q.get("state") == "overdue" else "Due today",
-                           "by": "-"})
+                           "status": "Overdue", "by": "-"})
         for b in (m.get("breakdowns") or []):
             nms = [n for n in (b.get("assignees") or []) if n]
             who = ", ".join(nms) if nms else "Unassigned"
