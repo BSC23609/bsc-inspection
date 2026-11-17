@@ -26,7 +26,9 @@ import httpx
 
 from .. import db, wati, graph
 from .. import config as _cfg
-from .. import overdue_img
+# overdue_img pulls in Pillow (~60ms + the native lib) and is only needed by the two
+# PNG-report endpoints, not by any hot page. It is imported lazily at those call sites
+# so the common request path (and every cold start) doesn't pay to load Pillow.
 from ..auth import require_employee, current_employee
 
 # Read config defensively so a slightly older app/config.py (missing one of the
@@ -2064,19 +2066,22 @@ async def my_checklist(emp: dict = Depends(require_employee)):
         "s.id, s.freq_type, s.day_of_month, s.freq_days, s.start_date, s.last_done, "
         "s.end_date, s.hours_interval, s.last_done_hours "
         "ORDER BY a.name NULLS LAST, c.name", eid)
-    # how many of my checkpoints are already done, per checklist + period
-    donemap = {}
-    for r in await db.fetch(
+    # Perf: these two reads are independent of each other, so overlap their round-trips.
+    #  - donemap: how many of my checkpoints are already done, per checklist + period
+    #  - cp_rows: the actual checkpoint points assigned to me (text, not just a count)
+    donemap_rows, cp_rows = await asyncio.gather(
+        db.fetch(
             "SELECT p.checklist_id AS cid, d.period_key AS pk, COUNT(*) AS n "
             "FROM maint_checkpoint_done d JOIN maint_checkpoints p ON p.id=d.checkpoint_id "
-            "WHERE p.assigned_emp_id=$1 GROUP BY p.checklist_id, d.period_key", eid):
-        donemap[(r["cid"], r["pk"])] = r["n"]
-    # The actual checkpoint points assigned to this person, per checklist, so the list
-    # can show the point descriptions (not just a count), each with its done time.
-    cps_by_cl, cp_ids = {}, []
-    for cp in await db.fetch(
+            "WHERE p.assigned_emp_id=$1 GROUP BY p.checklist_id, d.period_key", eid),
+        db.fetch(
             "SELECT id, checklist_id, seq, text, category FROM maint_checkpoints "
-            "WHERE assigned_emp_id=$1 ORDER BY seq, id", eid):
+            "WHERE assigned_emp_id=$1 ORDER BY seq, id", eid))
+    donemap = {}
+    for r in donemap_rows:
+        donemap[(r["cid"], r["pk"])] = r["n"]
+    cps_by_cl, cp_ids = {}, []
+    for cp in cp_rows:
         cps_by_cl.setdefault(cp["checklist_id"], []).append(dict(cp))
         cp_ids.append(cp["id"])
     done_cp = {}
@@ -5229,12 +5234,16 @@ async def board_matrix(emp: dict = Depends(require_employee)):
     """One row per machine for the single-list board: each machine's Daily PM, Quarterly PM
     and Breakdown status in its own column. Status uses the SAME per-person logic as the
     board (daily look-back, quarterly current-quarter completion)."""
+    # Perf: these setup reads are independent of one another, so overlap their
+    # database round-trips instead of awaiting them one at a time. The schema guards
+    # run first (idempotent), then the three independent reads together. Each helper
+    # already returns a safe default on error, so gather() behaves exactly like the
+    # previous sequential version — only the latency now overlaps.
     await ensure_tables()
-    await _refresh_holidays()
     await _ensure_absent_table()
     today = _today()
-    on_leave = await _on_leave_ids(today)
-    sched_all = await _schedule_rows()
+    _, on_leave, sched_all = await asyncio.gather(
+        _refresh_holidays(), _on_leave_ids(today), _schedule_rows())
     # Visibility: admins see every machine's overdues; a normal user sees only the
     # work that is assigned to them (their checkpoint on a daily/quarterly checklist,
     # or a breakdown assigned to them).
@@ -5256,10 +5265,13 @@ async def board_matrix(emp: dict = Depends(require_employee)):
 
     daily_cl_ids = sorted({s["checklist_id"] for s in sched_all
                            if s.get("active") and s.get("checklist_id") and _is_daily(s)})
-    cps_by_cl, done_set, absent_set, log_set, window_days = await _daily_window_state(
-        sched_all, daily_cl_ids, today)
+    # Daily-window state and quarterly state are independent (both derive from
+    # sched_all); compute them concurrently to overlap their queries.
+    (cps_by_cl, done_set, absent_set, log_set, window_days), \
+        (q_cps, q_pk, q_done, q_absent, q_skip) = await asyncio.gather(
+            _daily_window_state(sched_all, daily_cl_ids, today),
+            _quarterly_state(sched_all, today))
     cur_due = window_days[0] if window_days else today
-    q_cps, q_pk, q_done, q_absent, q_skip = await _quarterly_state(sched_all, today)
 
     def _day_overdue(clid, piso, cps, is_cur):
         if not cps:
@@ -6479,6 +6491,7 @@ async def overdue_report_png(token: str = Query(default=""), debug: int = Query(
     # date AND time the report is generated (= when WhatsApp fetches it to send), so each
     # overdue report carries the exact moment it went out, e.g. "04-11-2026 03:12 PM".
     tdisp = datetime.now(IST).strftime("%d-%m-%Y %I:%M %p")
+    from .. import overdue_img
     png = overdue_img.build_overdue_png(tdisp, pm, bd)
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "no-store, max-age=0",
@@ -6611,6 +6624,7 @@ async def maintwork_report_png(token: str = Query(default="")):
     except Exception:
         rows = []
     tdisp = now.strftime("%d-%m-%Y %I:%M %p")
+    from .. import overdue_img
     png = overdue_img.build_overdue_png(tdisp, rows, [])
     return Response(content=png, media_type="image/png",
                     headers={"Cache-Control": "no-store, max-age=0",

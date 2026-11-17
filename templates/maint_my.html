@@ -87,9 +87,14 @@ function fdate(s){if(!s)return'';var d=new Date(s);if(isNaN(d))return String(s).
 function fdatetime(s){if(!s)return'';var d=new Date(s);if(isNaN(d))return String(s).slice(0,16);return ('0'+d.getDate()).slice(-2)+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+d.getFullYear()+' '+('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);}
 function aidsOf(b){var ag=b.assignees;if(typeof ag==='string'){try{ag=JSON.parse(ag);}catch(e){ag=[];}}if(!ag||!ag.length){ag=(b.assignee_emp_id!=null)?[b.assignee_emp_id]:[];}return (ag||[]).map(Number).filter(function(n){return !isNaN(n);});}
 async function boot(){
-  try{var r=await fetch('/maint/my/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();ITEMS=d.items||[];}
+  // Fire both independent requests together so they travel in parallel (one combined
+  // wait instead of two back-to-back round-trips), then read each result in order.
+  var pList=fetch('/maint/my/list',{cache:'no-store'});
+  var pBd=fetch('/maint/breakdowns/list',{cache:'no-store'});
+  pBd.catch(function(){});   // keep the console clean if we return early below
+  try{var r=await pList;if(r.status===401){location.href='/login';return;}var d=await r.json();ITEMS=d.items||[];}
   catch(e){document.getElementById('my_body').innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
-  try{var d2=await (await fetch('/maint/breakdowns/list',{cache:'no-store'})).json();
+  try{var d2=await (await pBd).json();
     var pool=d2.is_admin?(d2.all||[]):(d2.assigned||[]);
     BDS=d2.is_admin?pool.filter(function(b){return aidsOf(b).indexOf(d2.uid)>=0;}):pool;
   }catch(e){BDS=[];}
