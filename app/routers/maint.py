@@ -5296,9 +5296,11 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                 if _pd < today and _day_overdue(clid, _pd.isoformat(), cps, False):
                     return {"state": "overdue", "due": _pd.isoformat()}
         else:
-            ld = s.get("last_done"); aid = s.get("assignee_emp_id")
-            today_pending = (in_window and (not ld or ld < cur_due)
-                             and not (aid and aid in on_leave))
+            # No daily checkpoints -> there is no daily PM to perform on this machine, so it
+            # must NOT appear as a daily due/overdue (a machine with only a QUARTERLY checklist
+            # was showing a phantom "Daily - Due today" via the last-done fallback). Hidden here
+            # for the board AND the WhatsApp image (both read this state); quarterly is separate.
+            return {"state": "ok", "due": None}
         info = compute_due(s, s.get("asset_hours"), today)
         if today_pending:
             # Today's daily is still pending -> "due today".
@@ -6119,10 +6121,10 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
                     if _day_pending(clid, d.isoformat(), cps, d == cur_due):
                         incomplete.append(d)
             else:
-                ld = s.get("last_done")
-                if (not (start_d and start_d > cur_due) and not (end_d and cur_due > end_d)
-                        and (not ld or ld < cur_due) and not (aid and aid in on_leave)):
-                    incomplete.append(cur_due)
+                # No daily checkpoints -> no daily PM to perform (e.g. a quarterly-only machine
+                # with a stray daily schedule). Skip it entirely, so it is never a daily reminder
+                # nor a board/image row — matching _daily_state, which hides the same case.
+                continue
             if not incomplete:
                 continue
             # A daily is only ever "due today" — remind while TODAY's check is still pending,
