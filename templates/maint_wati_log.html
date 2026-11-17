@@ -102,10 +102,10 @@ async function wlTest(){
   var btn=document.getElementById('wl_test_btn');btn.disabled=true;var ol=btn.textContent;btn.textContent='Sending…';
   msg.textContent='Sending test message…';msg.className='wl-testmsg';
   try{
-    var res=await fetch('/maint/wati-test?to='+encodeURIComponent(to),{cache:'no-store'});
+    var res=await fetch('/maint/admin/test-overdue?to='+encodeURIComponent(to),{cache:'no-store'});
     if(res.status===401){location.href='/login';return;}
     var d=await res.json();
-    if(d.ok){msg.textContent='✓ Test sent to '+(d.sent_to||to)+' using '+(d.template||'template')+' — see the new row below, and check WhatsApp.';msg.className='wl-testmsg ok';}
+    if(d.ok){msg.textContent='✓ Live board report image sent to '+(d.sent_to||to)+' ('+(d.template||'template')+') — see the new row below, and check WhatsApp for the board image.';msg.className='wl-testmsg ok';}
     else{msg.textContent='✗ Failed: '+(d.detail||d.wati_reply||'WATI did not accept it');msg.className='wl-testmsg err';}
   }catch(e){msg.textContent='✗ Could not send the test.';msg.className='wl-testmsg err';}
   finally{btn.disabled=false;btn.textContent=ol;await wlLoad();}
