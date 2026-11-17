@@ -6376,7 +6376,7 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
 
 
 @router.get("/overdue-report.png")
-async def overdue_report_png(token: str = Query(default="")):
+async def overdue_report_png(token: str = Query(default=""), debug: int = Query(default=0)):
     """Live PNG of the maintenance overdue board (S.No, Date, M/C Code, Machine Name,
     Category, Status, Assigned To), rendered like the daily stock report. This URL is the
     image header of the bsc_maint_overdue_report WhatsApp template, so WhatsApp fetches a
@@ -6435,6 +6435,9 @@ async def overdue_report_png(token: str = Query(default="")):
             continue
         _bd_by_code[code] = r; _bd_order.append(code)
     bd = [_bd_by_code[k] for k in _bd_order]
+    if debug:   # ?debug=1 -> see exactly which rows the image contains (diagnostics)
+        return _json({"rows_pm": pm, "rows_bd": bd,
+                      "counts": {"pm": len(pm), "bd": len(bd)}})
     # date AND time the report is generated (= when WhatsApp fetches it to send), so each
     # overdue report carries the exact moment it went out, e.g. "04-11-2026 03:12 PM".
     tdisp = datetime.now(IST).strftime("%d-%m-%Y %I:%M %p")
