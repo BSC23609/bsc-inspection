@@ -5312,6 +5312,11 @@ async def board_matrix(emp: dict = Depends(require_employee)):
 
     def _q_state(s):
         clid = s.get("checklist_id")
+        # No quarterly checkpoints -> nothing to perform, so this machine must NOT show a
+        # quarterly due/overdue (e.g. M/C-009 RO PLANT with a quarterly schedule but no
+        # checklist items). Hidden on the board AND the image, which both read this state.
+        if not clid or not (q_cps.get(clid)):
+            return {"state": "ok", "due": None}
         info = compute_due(s, s.get("asset_hours"), today)
         fully, started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent, q_skip) if clid else (None, None)
         if fully:
@@ -6150,6 +6155,11 @@ async def _run_reminders(dry: bool = False, kind: str = "all",
         # quarterly / periodic -> date model, plus per-person completion for quarterly
         info = compute_due(s, s.get("asset_hours"), today)
         clid = s.get("checklist_id")
+        # A quarterly schedule with no checkpoints has nothing to perform -> never flag it
+        # (board/image hide the same case via _q_state). Other periodic freqs keep their
+        # date-based behaviour, so this only affects empty quarterly checklists.
+        if (s.get("freq_type") or "").lower() == "quarterly" and (not clid or not q_cps.get(clid)):
+            continue
         q_fully, q_started = _quarterly_progress(clid, q_cps, q_pk, q_done, q_absent, q_skip) \
             if ((s.get("freq_type") or "").lower() == "quarterly" and clid) else (None, None)
         if q_fully:
@@ -6428,15 +6438,16 @@ async def _board_png_rows():
                            "status": "Overdue" if q.get("state") == "overdue" else "Due today",
                            "by": "-"})
         for b in (m.get("breakdowns") or []):
-            if b.get("hold"):                       # held -> On Hold section, not the overdue image
-                continue
             nms = [n for n in (b.get("assignees") or []) if n]
             who = ", ".join(nms) if nms else "Unassigned"
-            if _assigned(who):
-                bd.append({"code": code, "name": name, "prob": b.get("problem") or "",
-                           "who": who, "status": "Open",
-                           "date": _fmtd(b.get("date")), "by": (b.get("by") or "-"),
-                           "wo_type": _wo_type(b.get("wo_type"))})
+            if not _assigned(who):
+                continue
+            # A paused breakdown shows with an "On Hold" status (the board keeps these in its
+            # On Hold section); an active one shows as Overdue.
+            bd.append({"code": code, "name": name, "prob": b.get("problem") or "",
+                       "who": who, "status": "On Hold" if b.get("hold") else "Overdue",
+                       "date": _fmtd(b.get("date")), "by": (b.get("by") or "-"),
+                       "wo_type": _wo_type(b.get("wo_type"))})
     return pm, bd
 
 

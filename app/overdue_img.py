@@ -27,6 +27,8 @@ RED_BG = (253, 232, 232)
 AMBER = (146, 94, 7)
 AMBER_BG = (255, 243, 214)
 GREY_BG = (236, 240, 245)
+ORANGE = (180, 83, 9)        # On Hold (matches the board's hold badge)
+ORANGE_BG = (255, 243, 224)
 
 # columns: (key, header, width)
 COLS = [
@@ -120,11 +122,12 @@ def _rows(pm, bd):
             "code": (it.get("code") or "").strip() or "-",
             "name": (it.get("name") or "").strip() or "-",
             "cat": "Unscheduled PM" if is_upm else "Breakdown",
-            "status": "Overdue",
+            # carry the breakdown's own status so a paused one shows "On Hold", not "Overdue"
+            "status": it.get("status") or "Overdue",
             "who": (it.get("who") or "-").strip() or "-",
             "by": (it.get("by") or "-").strip() or "-",
         })
-    prio = {"Overdue": 0, "Open": 1, "Due today": 2}
+    prio = {"Overdue": 0, "Open": 1, "On Hold": 3, "Due today": 2}
     rows.sort(key=lambda r: prio.get(r["status"], 1))
     for i, r in enumerate(rows, 1):
         r["sno"] = str(i)
@@ -133,6 +136,8 @@ def _rows(pm, bd):
 
 def _status_style(s):
     s = (s or "").lower()
+    if "hold" in s:
+        return ORANGE, ORANGE_BG   # On Hold
     if "due today" in s:
         return AMBER, AMBER_BG
     if "open" in s:
