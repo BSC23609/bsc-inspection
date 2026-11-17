@@ -6375,6 +6375,69 @@ async def run_reminders(token: str = Query(default=""), dry: int = Query(default
     return _json(await _run_reminders(dry=bool(dry), kind=k))
 
 
+async def _board_png_rows():
+    """Build the overdue-image rows from the SAME data the Maintenance Board page uses
+    (/board/matrix), flattened EXACTLY like the board flattens it client-side — so the
+    WhatsApp image can never disagree with the board. It carries every Daily and Quarterly
+    PM that the board shows as Overdue or Due today, and every open breakdown / unscheduled
+    PM that is NOT on hold (held ones sit in the board's On Hold section, so they stay off
+    the overdue image), with the board's own dates, statuses and assignee names."""
+    def _fmtd(iso):
+        try:
+            return datetime.fromisoformat(str(iso)[:10]).strftime("%d-%m-%Y")
+        except Exception:
+            return str(iso or "")
+
+    def _who(obj):
+        ast = obj.get("assignee_status") or []
+        names = ([a.get("emp") for a in ast if a.get("emp")] if ast
+                 else (obj.get("assignees") or []))
+        names = [n for n in names if n]
+        return ", ".join(names) if names else "Unassigned"
+
+    try:
+        resp = await board_matrix({"id": None, "is_admin": True})
+        data = json.loads(resp.body) if hasattr(resp, "body") else (resp or {})
+    except Exception:
+        return [], []
+    def _assigned(who):   # keep unassigned machines off the image (an earlier explicit ask)
+        w = (who or "").strip().lower()
+        return bool(w) and w != "unassigned"
+
+    rows = data.get("rows") or []
+    pm, bd = [], []
+    for m in rows:
+        code = m.get("code") or ""
+        name = m.get("name") or ""
+        d = m.get("daily") or {}
+        if d.get("state") in ("overdue", "due"):
+            who = _who(d)
+            if _assigned(who):
+                pm.append({"code": code, "name": name, "cat": "Daily Maintenance",
+                           "who": who, "date": _fmtd(d.get("due")),
+                           "status": "Overdue" if d.get("state") == "overdue" else "Due today",
+                           "by": "-"})
+        q = m.get("quarterly") or {}
+        if q.get("state") in ("overdue", "due"):
+            who = _who(q)
+            if _assigned(who):
+                pm.append({"code": code, "name": name, "cat": "Quarterly Maintenance",
+                           "who": who, "date": _fmtd(q.get("due")),
+                           "status": "Overdue" if q.get("state") == "overdue" else "Due today",
+                           "by": "-"})
+        for b in (m.get("breakdowns") or []):
+            if b.get("hold"):                       # held -> On Hold section, not the overdue image
+                continue
+            nms = [n for n in (b.get("assignees") or []) if n]
+            who = ", ".join(nms) if nms else "Unassigned"
+            if _assigned(who):
+                bd.append({"code": code, "name": name, "prob": b.get("problem") or "",
+                           "who": who, "status": "Open",
+                           "date": _fmtd(b.get("date")), "by": (b.get("by") or "-"),
+                           "wo_type": _wo_type(b.get("wo_type"))})
+    return pm, bd
+
+
 @router.get("/overdue-report.png")
 async def overdue_report_png(token: str = Query(default=""), debug: int = Query(default=0)):
     """Live PNG of the maintenance overdue board (S.No, Date, M/C Code, Machine Name,
@@ -6386,55 +6449,10 @@ async def overdue_report_png(token: str = Query(default=""), debug: int = Query(
     complete at any hour."""
     if token != OVERDUE_IMG_TOKEN and token != AGENT_TOKEN:
         raise HTTPException(403, "Bad token")
-    try:
-        data = await _run_reminders(dry=True, kind="overdue", force_overdue=True, board_mode=True)
-        pm = data.get("overdue_pm") or []
-        bd = data.get("overdue_bd") or []
-    except Exception:
-        pm, bd = [], []
-    # FINAL IMAGE GUARD — enforced here, at the single step that renders the picture, so no
-    # upstream path can ever put an unassigned or duplicate row back on the overdue image:
-    #   1. a machine with no assignee is left off the image entirely (unassigned machine),
-    #   2. each machine's breakdown appears on ONE row only, and when the database holds more
-    #      than one open breakdown for a machine the ORIGINAL (earliest-raised) one is kept —
-    #      so the crane that broke down on 03-Nov shows 03-Nov, not a later stray record, and
-    #   3. identical preventive rows (same machine + category + date) are collapsed.
-    def _img_assigned(r):
-        w = (str(r.get("who") or "")).strip().lower()
-        return bool(w) and w not in ("-", "unassigned")
-    def _img_date(r):
-        try:
-            return datetime.strptime((str(r.get("date") or "")).strip(), "%d-%b-%Y")
-        except Exception:
-            return None
-    _pm, _seen_pm = [], set()
-    for r in pm:
-        if not _img_assigned(r):
-            continue
-        k = ((str(r.get("code") or "")).strip().lower(),
-             (str(r.get("cat") or "")).strip().lower(),
-             (str(r.get("date") or "")).strip().lower())
-        if k in _seen_pm:
-            continue
-        _seen_pm.add(k); _pm.append(r)
-    pm = _pm
-    _bd_by_code, _bd_order = {}, []
-    for r in bd:
-        if not _img_assigned(r):
-            continue
-        code = (str(r.get("code") or "")).strip().lower() or (str(r.get("name") or "")).strip().lower()
-        if not code:
-            _bd_order.append(id(r)); _bd_by_code[id(r)] = r
-            continue
-        if code in _bd_by_code:
-            # same machine already seen — keep whichever breakdown was raised EARLIEST
-            prev = _bd_by_code[code]
-            dn, dp = _img_date(r), _img_date(prev)
-            if dn is not None and (dp is None or dn < dp):
-                _bd_by_code[code] = r
-            continue
-        _bd_by_code[code] = r; _bd_order.append(code)
-    bd = [_bd_by_code[k] for k in _bd_order]
+    # The overdue image is now rendered from the SAME data as the Maintenance Board page, so
+    # the two always match: every daily/quarterly PM the board shows as Overdue or Due today,
+    # and every non-held breakdown / unscheduled PM — with the board's own dates and assignees.
+    pm, bd = await _board_png_rows()
     if debug:   # ?debug=1 -> see exactly which rows the image contains (diagnostics)
         return _json({"rows_pm": pm, "rows_bd": bd,
                       "counts": {"pm": len(pm), "bd": len(bd)}})
