@@ -2044,6 +2044,94 @@ async def _seed_assignments():
 # =======================================================================
 #  MY CHECKLIST  (per-user assigned checkpoints + tick-to-complete)
 # =======================================================================
+async def _my_daily_board_state(cl_ids, today):
+    """Return {checklist_id: {'state','due'}} for DAILY checklists using the SAME overdue
+    rule as the Maintenance Board: scan the recent working-day window for the oldest day that
+    was started but left incomplete (that becomes the overdue date), else today if still
+    pending. This keeps My Checklist's daily date in step with the board (e.g. a daily missed
+    on 17-Nov shows 17-Nov, not today). Evidence is checklist-wide, exactly like the board."""
+    out = {}
+    if not cl_ids:
+        return out
+    await _refresh_holidays()
+    window_days = []
+    d = today
+    for _ in range(DAILY_LOOKBACK_DAYS):
+        if not _is_offday(d):
+            window_days.append(d)
+        d = d - timedelta(days=1)
+    window_isos = [x.isoformat() for x in window_days]
+    on_leave = await _on_leave_ids(today)
+    cps_by_cl = {}
+    for cp in await db.fetch(
+            "SELECT id, checklist_id, assigned_emp_id FROM maint_checkpoints "
+            "WHERE checklist_id = ANY($1::int[])", cl_ids):
+        cps_by_cl.setdefault(cp["checklist_id"], []).append(dict(cp))
+    all_cp_ids = [cp["id"] for lst in cps_by_cl.values() for cp in lst]
+    done_set = set()
+    if all_cp_ids and window_isos:
+        for r in await db.fetch(
+                "SELECT checkpoint_id, period_key FROM maint_checkpoint_done "
+                "WHERE period_key = ANY($1::text[]) AND checkpoint_id = ANY($2::int[])",
+                window_isos, all_cp_ids):
+            done_set.add((r["checkpoint_id"], r["period_key"]))
+    absent_set = set()
+    if window_isos:
+        for a in await db.fetch(
+                "SELECT checklist_id, emp_id, period_key FROM maint_wo_absent "
+                "WHERE checklist_id = ANY($1::int[]) AND period_key = ANY($2::text[])",
+                cl_ids, window_isos):
+            absent_set.add((a["checklist_id"], a["emp_id"], a["period_key"]))
+    log_set = set()
+    if window_days:
+        win_start = datetime.combine(window_days[-1], time(0, 0), tzinfo=IST)
+        for r in await db.fetch(
+                "SELECT checklist_id, done_at FROM maint_logs "
+                "WHERE checklist_id = ANY($1::int[]) AND done_at >= $2", cl_ids, win_start):
+            da = r["done_at"]
+            if isinstance(da, datetime):
+                log_set.add((r["checklist_id"], da.astimezone(IST).date().isoformat()))
+    today_iso = today.isoformat()
+
+    def _day_overdue(clid, period_iso, cps, is_current):
+        if not cps:
+            return False
+        has_cpdone = any((cp["id"], period_iso) in done_set for cp in cps)
+        has_log = (clid, period_iso) in log_set
+        pending = 0
+        for cp in cps:
+            aid = cp.get("assigned_emp_id")
+            excused = aid and ((clid, aid, period_iso) in absent_set
+                               or (period_iso == today_iso and aid in on_leave))
+            if excused:
+                continue
+            if (cp["id"], period_iso) not in done_set:
+                pending += 1
+        if pending == 0:
+            return False
+        if not has_cpdone and has_log:
+            return False
+        if has_cpdone or has_log or is_current:
+            return True
+        return False
+
+    for clid in cl_ids:
+        cps = cps_by_cl.get(clid) or []
+        if not cps:
+            out[clid] = {"state": "ok", "due": None}
+            continue
+        today_pending = _day_overdue(clid, today_iso, cps, True)
+        res = None
+        for pd in sorted(window_days):   # oldest -> newest
+            if pd < today and _day_overdue(clid, pd.isoformat(), cps, False):
+                res = {"state": "overdue", "due": pd.isoformat()}
+                break
+        if res is None:
+            res = {"state": "due", "due": today_iso} if today_pending else {"state": "ok", "due": None}
+        out[clid] = res
+    return out
+
+
 @router.get("/my/list")
 async def my_checklist(emp: dict = Depends(require_employee)):
     """The logged-in person's assigned work, grouped by machine + Daily/Quarterly,
@@ -2090,6 +2178,11 @@ async def my_checklist(emp: dict = Depends(require_employee)):
                 "SELECT checkpoint_id, period_key, result, done_at FROM maint_checkpoint_done "
                 "WHERE checkpoint_id = ANY($1::int[])", cp_ids):
             done_cp[(d["checkpoint_id"], d["period_key"])] = d
+    # Daily overdue dates must match the Maintenance Board (oldest started-but-incomplete
+    # day), so compute the board-style daily state for my daily checklists up front.
+    daily_cl_ids = [g["checklist_id"] for g in groups
+                    if _freq_label(g["checklist_name"]) == "Daily"]
+    daily_board_state = await _my_daily_board_state(daily_cl_ids, today)
     items = []
     for g in groups:
         g = dict(g)
@@ -2100,17 +2193,27 @@ async def my_checklist(emp: dict = Depends(require_employee)):
         next_due = None
         overdue = due = False
         if freq == "Daily":
-            # daily resets every day; due today unless it's Sunday (plant off)
-            due = today.weekday() != 6
-            if done or not due:
-                # done for today (or today is an off day) -> next due is the next working
-                # day, so a completed daily doesn't keep showing today's date as "next due"
+            if done:
+                # finished my part for today -> next due is the next working day
                 nd = today + timedelta(days=1)
-                while nd.weekday() == 6:   # skip Sundays
+                while _is_offday(nd):
                     nd += timedelta(days=1)
                 next_due = nd.isoformat()
             else:
-                next_due = today.isoformat()
+                bs = daily_board_state.get(g["checklist_id"]) or {}
+                if bs.get("state") == "overdue" and bs.get("due"):
+                    # the board flags this daily as overdue from an earlier missed day;
+                    # show that same overdue date here instead of today's date
+                    overdue = True
+                    next_due = bs.get("due")
+                elif not _is_offday(today):
+                    due = True
+                    next_due = today.isoformat()
+                else:
+                    nd = today + timedelta(days=1)
+                    while _is_offday(nd):
+                        nd += timedelta(days=1)
+                    next_due = nd.isoformat()
         elif g.get("schedule_id"):
             info = compute_due(g, g.get("asset_hours"), today)
             overdue = bool(info.get("overdue"))
