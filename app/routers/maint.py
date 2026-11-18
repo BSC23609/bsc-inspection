@@ -4223,6 +4223,67 @@ async def breakdown_regen_pdf(token: str = Query(default=""), id: int = Query(de
     return _json({"count": len(out), "regenerated": out})
 
 
+@router.get("/breakdown/reassign")
+async def breakdown_reassign(token: str = Query(default=""), id: int = Query(default=0),
+                             to: str = Query(default=""), closed_by: str = Query(default=""),
+                             regen: int = Query(default=1), emp: dict = Depends(current_employee)):
+    """Correct who a breakdown is ASSIGNED TO and/or who CLOSED it, then (by default) rebuild
+    its OneDrive PDF so the report shows the right names. Admin session or ?token=AGENT_TOKEN.
+      ?id=67&to=Ragupathi C                 reassign; Closed by is set to the same person too
+                                            (only if the breakdown is already closed)
+      ?id=67&to=Ragupathi C&closed_by=Velu C  set a different Closed by name
+      ?id=67&closed_by=Ragupathi C          change only Closed by
+      ?id=67&to=...&regen=0                 change the record without rebuilding the PDF
+    'to' matches an employee by exact name or emp_no (case-insensitive); a single partial
+    name match is also accepted."""
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    if not id:
+        raise HTTPException(400, "id is required (e.g. ?id=67)")
+    row = await db.fetchrow("SELECT id, closed_by, status FROM maint_breakdowns WHERE id=$1", id)
+    if not row:
+        raise HTTPException(404, f"breakdown #{id} not found")
+    changed = {}
+    t = (to or "").strip()
+    if t:
+        ne = await db.fetchrow(
+            "SELECT id, name, emp_no FROM employees "
+            "WHERE lower(btrim(name))=lower(btrim($1)) OR lower(btrim(emp_no))=lower(btrim($1)) "
+            "ORDER BY id LIMIT 1", t)
+        if not ne:
+            cand = await db.fetch("SELECT id, name, emp_no FROM employees WHERE name ILIKE '%'||$1||'%'", t)
+            if len(cand) == 1:
+                ne = cand[0]
+            elif len(cand) > 1:
+                raise HTTPException(400, f"more than one employee matches '{t}' — use the exact name or emp_no")
+        if not ne:
+            raise HTTPException(404, f"no employee matches '{t}'")
+        await db.execute(
+            "UPDATE maint_breakdowns SET assignee_emp_id=$2, assignees=$3::jsonb WHERE id=$1",
+            id, ne["id"], json.dumps([ne["id"]]))
+        changed["assigned_to"] = ne["name"] or ne["emp_no"]
+    # Closed by: use the explicit value, else mirror the new assignee — but only when the
+    # breakdown already HAS a closer (don't invent one for a still-open breakdown).
+    cur_cb = (row.get("closed_by") or "").strip()
+    cb = (closed_by or "").strip()
+    if not cb and t and cur_cb:
+        cb = changed["assigned_to"]
+    if cb:
+        await db.execute("UPDATE maint_breakdowns SET closed_by=$2 WHERE id=$1", id, cb)
+        changed["closed_by"] = cb
+    if not changed:
+        raise HTTPException(400, "nothing to change — pass ?to= and/or ?closed_by=")
+    pdf = None
+    if regen:
+        try:
+            pdf = await _regen_breakdown_pdf(id)
+        except Exception as e:
+            return _json({"id": id, "changed": changed, "pdf_regenerated": False,
+                          "regen_error": str(e)[:160]})
+    return _json({"id": id, "changed": changed, "pdf_regenerated": bool(pdf), "pdf": pdf})
+
+
 @router.get("/breakdown/set-action")
 async def breakdown_set_action(token: str = Query(default=""), id: int = Query(default=0),
                                action: str = Query(default=""),
