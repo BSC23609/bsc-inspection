@@ -3495,6 +3495,33 @@ async def _transcribe(data: bytes, filename: str, content_type: str) -> str:
     return await _whisper_transcribe(data, filename, content_type)
 
 
+def _strip_translator_preamble(s: str) -> str:
+    """Remove any meta preamble the translation model may prepend (e.g. 'The note is in
+    Bengali, not one of the listed languages, ... here is the rewrite:') so only the finished
+    maintenance text is kept. Conservative — it strips only when a clear translator marker sits
+    near the start, so ordinary action text is never touched."""
+    s = (s or "").strip()
+    if not s:
+        return s
+    low = s.lower()
+    cut = -1
+    for m in ("here is the rewrite:", "here's the rewrite:", "here is the translation:",
+              "here's the translation:", "the rewrite:", "rewritten:", "translation:"):
+        i = low.find(m)
+        if i != -1 and i < 220:
+            cut = max(cut, i + len(m))
+    if cut != -1:
+        return s[cut:].strip()
+    # Fallback: a short leading clause that talks about the note's language / translating it
+    first, sep, rest = s.partition(":")
+    fl = first.lower()
+    if sep and rest.strip() and len(first) < 160 and (
+            "note is in" in fl or "not one of the listed" in fl
+            or "translat" in fl or ("language" in fl and "rewrite" in fl)):
+        return rest.strip()
+    return s
+
+
 async def _claude_translate(text: str) -> str:
     """Claude turns a raw spoken note into clear, professional maintenance English, preserving
     every technical detail / number / part name. Falls back to the transcript if no key is set."""
@@ -3503,11 +3530,13 @@ async def _claude_translate(text: str) -> str:
         return text
     prompt = (
         "You are assisting a maintenance engineer at a steel plant. Rewrite the following spoken "
-        "note — which may be in Tamil, Hindi, Telugu, English or a mix — as clear, professional "
-        "English for a maintenance work order. Rules: preserve EVERY technical detail, machine/part "
-        "name, measurement and number exactly; do not add any information that is not in the note; "
-        "do not include commentary, options or notes; keep it concise and factual. "
-        "Return ONLY the finished English text.\n\nSpoken note:\n" + text)
+        "note as clear, professional English for a maintenance work order. The note may be in ANY "
+        "language (for example Tamil, Hindi, Telugu, Bengali, English or a mix) — always translate "
+        "it into English. Rules: preserve EVERY technical detail, machine/part name, measurement "
+        "and number exactly; do not add any information that is not in the note; do NOT mention the "
+        "language, do NOT say that you are translating, and do NOT add any preamble, heading, "
+        "commentary, options or notes. Output the finished English text ONLY — nothing before or "
+        "after it.\n\nSpoken note:\n" + text)
     body = {"model": ANTHROPIC_MODEL, "max_tokens": 600,
             "messages": [{"role": "user", "content": prompt}]}
     headers = {"x-api-key": ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01",
@@ -3522,7 +3551,8 @@ async def _claude_translate(text: str) -> str:
     d = r.json()
     out = "".join(p.get("text", "") for p in (d.get("content") or [])
                   if p.get("type") == "text").strip()
-    return out or text
+    # Safety net: if the model still slips in a meta preamble, drop it before storing.
+    return _strip_translator_preamble(out) or text
 
 
 @router.post("/voice-translate")
@@ -4089,6 +4119,7 @@ async def breakdown_regen_pdf(token: str = Query(default=""), id: int = Query(de
 async def breakdown_set_action(token: str = Query(default=""), id: int = Query(default=0),
                                action: str = Query(default=""),
                                closed_by: str = Query(default=""),
+                               clean: int = Query(default=0),
                                apply: int = Query(default=0),
                                emp: dict = Depends(current_employee)):
     """Set the 'Action taken' (resolution) text and/or the 'Closed by' name on a breakdown
@@ -4098,17 +4129,25 @@ async def breakdown_set_action(token: str = Query(default=""), id: int = Query(d
       ?id=15&action=<text>                  set the Action taken text
       ?id=15&closed_by=assignee             set Closed by = the assigned person's name(s)
       ?id=15&closed_by=<name>               set Closed by = a specific name
+      ?id=15&clean=1                        strip a leaked translator preamble from the
+                                            existing Action taken (no text to type)
       add &apply=1 to apply and regenerate the OneDrive PDF."""
     await ensure_tables()
     if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
-    if not id or (not action.strip() and not closed_by.strip()):
-        raise HTTPException(400, "id and at least one of action / closed_by are required")
+    if not id or (not action.strip() and not closed_by.strip() and not clean):
+        raise HTTPException(400, "id and at least one of action / closed_by / clean are required")
     row = await db.fetchrow("SELECT * FROM maint_breakdowns WHERE id=$1", id)
     if not row:
         return _json({"ok": False, "id": id, "reason": "row not found"})
     bd = dict(row)
     new_action = action.strip() or None
+    # clean=1 with no explicit action: strip any leaked translator preamble from what's stored
+    if clean and new_action is None:
+        _cur = bd.get("resolution") or ""
+        _cleaned = _strip_translator_preamble(_cur)
+        if _cleaned and _cleaned != _cur:
+            new_action = _cleaned
     # Resolve closed_by; the keyword 'assignee' pulls the assigned person's name(s).
     new_closed_by = None
     if closed_by.strip():
