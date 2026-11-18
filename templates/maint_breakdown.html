@@ -86,6 +86,7 @@
 .wo-act-close{color:var(--acc-ink)}.wo-act-del{color:#c23438}
 .wo-act-hold{color:#b45309}.wo-act-resume{color:#0a7d55}
 .bd-item .act-hold{color:#b45309}.bd-item .act-resume{color:#0a7d55}
+.bd-item .act-send{color:#0a6ed1}
 .chip.hold{background:#fff3e0;color:#b45309}
 .hold-badge{display:inline-block;font-size:11px;font-weight:700;color:#b45309;background:#fff3e0;border-radius:20px;padding:2px 9px}
 .wo-closed-tag{display:inline-block;font-size:11px;font-weight:700;color:#2f6b27;background:#e2efda;border-radius:20px;padding:2px 9px;margin-right:8px}
@@ -456,6 +457,7 @@ function adminList(ls){
     var acts='<div class="acts">'
       +(isOpen?(isHeld(b)?('<a class="act-resume" onclick="doResume('+b.id+')">Resume</a>'):('<a class="act-hold" onclick="openHold('+b.id+')">Hold</a>')):'')
       +(isOpen?('<a class="act-close" onclick="openClose('+b.id+')">Close</a>'):'')
+      +((IS_ADMIN&&isHeld(b))?('<a class="act-send" onclick="sendStatus('+b.id+')">Send status</a>'):'')
       +(IS_ADMIN?('<a class="act-del" onclick="bdDelete('+b.id+')">Delete</a>'):'')
       +'</div>';
     var woLbl=(String(b.wo_type||'').toLowerCase().indexOf('unscheduled')===0)?'Unscheduled PM':'Breakdown';
@@ -546,6 +548,16 @@ async function doResume(id){
     var d=await res.json().catch(function(){return{};});if(!res.ok||!d.ok)throw new Error(d.detail||'Failed');
     toast('ok','Work order resumed');await bdLoad();}
   catch(e){toast('err',(e&&e.message)||'Failed');}}
+// Admin only, on-hold only: WhatsApp the hold status (reason, hold time, expected time)
+// to the person who raised the work order.
+function sendStatus(id){
+  askConfirm('Send the hold status (reason, hold time and expected completion) on WhatsApp to the person who raised this work order?',
+    function(){doSendStatus(id);},'Send');}
+async function doSendStatus(id){
+  try{var res=await fetch('/maint/breakdown/send-status',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+    var d=await res.json().catch(function(){return{};});if(!res.ok||!d.ok)throw new Error(d.detail||'Failed');
+    toast('ok','Hold status sent to '+(d.sent_to_name||d.sent_to||'the raised person'));}
+  catch(e){toast('err',(e&&e.message)||'Could not send');}}
 var _hdsc=document.getElementById('hd_scrim');if(_hdsc)_hdsc.addEventListener('click',function(e){if(e.target===this)closeHold();});
 // in-page confirm (works on mobile where window.confirm is blocked)
 var _cfCb=null;

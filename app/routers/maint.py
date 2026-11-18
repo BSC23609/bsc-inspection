@@ -3834,6 +3834,71 @@ async def breakdown_resume(body: dict, emp: dict = Depends(require_employee)):
     return {"ok": True, "resumed": True, "alerts": alert}
 
 
+@router.post("/breakdown/send-status")
+async def breakdown_send_status(body: dict, emp: dict = Depends(require_employee)):
+    """Admin-only action from the Work Order list: WhatsApp the current HOLD status of a
+    paused breakdown to the person who RAISED it — the hold reason, when it was put on hold,
+    and the expected completion date & time. Valid only while the work order is on hold.
+    Best-effort send; it never changes the work order or touches any other reminder logic."""
+    await ensure_tables()
+    if not emp.get("is_admin"):
+        raise HTTPException(403, "Admins only")
+    try:
+        bid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Missing id")
+    full = await db.fetchrow(
+        "SELECT b.*, a.code AS asset_code, a.name AS asset_name FROM maint_breakdowns b "
+        "LEFT JOIN maint_assets a ON a.id=b.asset_id WHERE b.id=$1", bid)
+    if not full:
+        raise HTTPException(404, "Work order not found")
+    bd = dict(full)
+    if str(bd.get("hold_status") or "").strip().lower() != "hold":
+        raise HTTPException(400, "This work order is not on hold")
+    tmpl = WATI_MAINT_HOLD_TEMPLATE
+    if not tmpl:
+        raise HTTPException(400, "Hold WhatsApp template is not configured")
+    # Recipient = the person who RAISED the work order, and their WhatsApp number.
+    emap = await _emp_map()
+    rb = bd.get("reported_by_emp_id")
+    info = (emap.get(rb) or {}) if rb else {}
+    to = wati.normalize_number(info.get("mobile") or "")
+    rname = info.get("name") or (bd.get("reported_by") or "")
+    if not to:
+        raise HTTPException(400, "The person who raised this work order has no WhatsApp number on file")
+
+    def _fmt(ts):
+        if not ts:
+            return ""
+        try:
+            return datetime.fromisoformat(str(ts)).astimezone(IST).strftime("%d-%m-%Y %I:%M %p")
+        except Exception:
+            try:
+                return ts.strftime("%d-%m-%Y %I:%M %p")
+            except Exception:
+                return str(ts)
+    reason = (bd.get("hold_reason") or "").strip() or "reason not given"
+    held = _fmt(bd.get("hold_at")) or "-"
+    eta = _fmt(bd.get("hold_eta")) or "not set"
+    # All three details ride in the status slot so no new WhatsApp template is needed.
+    status = f"ON HOLD - {reason} (held on {held}; expected completion {eta})"
+    label = (str(bd.get("asset_code") or "") + " " + str(bd.get("asset_name") or "")).strip() or "—"
+    aids = _bd_aids(bd)
+    who = ", ".join([(emap.get(a) or {}).get("name") for a in aids
+                     if (emap.get(a) or {}).get("name")]) or "Unassigned"
+    tm = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
+    # Same 5-slot layout as the hold alert: {{1}}=Ref {{2}}=Machine {{3}}=status {{4}}=Assigned {{5}}=Time
+    params = [str(bd.get("id") or ""), label, status, who, tm]
+    try:
+        ok, detail = await _wsend(tmpl, to, params, name=rname, kind="hold-status")
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(502, f"WhatsApp send failed: {str(e)[:120]}")
+    if not ok:
+        return _json({"ok": False, "detail": f"WATI did not accept it: {detail}", "sent_to": to})
+    return _json({"ok": True, "sent_to": to, "sent_to_name": rname,
+                  "reason": reason, "held_at": held, "expected": eta})
+
+
 @router.get("/breakdown/audit")
 async def breakdown_audit(token: str = Query(default=""), code: str = Query(default=""),
                           only_open: int = Query(default=0),
