@@ -6000,6 +6000,14 @@ async def daily_close(token: str = Query(default=""), date: str = Query(default=
     except Exception:
         tdate = _today()
     pk = tdate.isoformat()
+    # Safety: a daily is OPEN until 7 PM on its own day. Never close/finalize/delete a day that is
+    # still open — users can still finish before 7 PM. Today before 7 PM -> no-op; today at/after
+    # 7 PM, or any past day -> proceed. Prevents a manual/early run from wiping in-progress work.
+    if not _daily_closed(tdate):
+        return _json({"date": pk, "open": True,
+                      "note": "Day is still open (before 7 PM) — nothing to close yet.",
+                      "already_complete": 0, "deleted_single_or_empty": [],
+                      "finalized_multi_incomplete": []})
     if _is_offday(tdate):
         return _json({"date": pk, "skipped": "off-day (Sunday/holiday) — no daily PM",
                       "deleted": [], "finalized": [], "already_complete": 0})
