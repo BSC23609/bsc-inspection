@@ -3085,6 +3085,19 @@ def _can_close_bd(emp: dict, row) -> bool:
     return bool(emp.get("is_admin")) or (emp.get("id") in _bd_aids(row))
 
 
+def _fmt_ist(ts):
+    """Format a stored timestamp as 'dd-mm-YYYY hh:mm AM/PM' in IST; '' when empty."""
+    if not ts:
+        return ""
+    try:
+        return datetime.fromisoformat(str(ts)).astimezone(IST).strftime("%d-%m-%Y %I:%M %p")
+    except Exception:
+        try:
+            return ts.strftime("%d-%m-%Y %I:%M %p")
+        except Exception:
+            return str(ts)
+
+
 async def _send_hold_resume_alert(bd: dict, action: str, reason: str = ""):
     """Notify the work order's OWN assigned user + EVERY admin when a breakdown is put on
     hold or resumed. Reuses the breakdown-alert template (bsc_breakdown_alert2); the status
@@ -3105,11 +3118,17 @@ async def _send_hold_resume_alert(bd: dict, action: str, reason: str = ""):
     who = ", ".join([(emap.get(a) or {}).get("name") for a in aids
                      if (emap.get(a) or {}).get("name")]) or "Unassigned"
     # hold -> {{3}} = reason; resume -> {{3}} = the original problem / description.
-    middle = ((reason or "").strip() or "reason not given") if action == "hold" else problem
     tm = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
     ref = str(bd.get("id") or "")
-    # Template slots: {{1}}=Ref, {{2}}=Machine, {{3}}=reason/problem, {{4}}=Assigned to, {{5}}=Time.
-    params = [ref, label, middle, who, tm]
+    if action == "hold":
+        # Hold template (6 slots): {{1}}=Ref {{2}}=Machine {{3}}=Hold reason {{4}}=Assigned to
+        #                          {{5}}=On hold since {{6}}=Expected completion
+        held = _fmt_ist(bd.get("hold_at")) or tm
+        exp = _fmt_ist(bd.get("hold_eta")) or "not set"
+        params = [ref, label, (reason or "").strip() or "reason not given", who, held, exp]
+    else:
+        # Resume template (5 slots): {{1}}=Ref {{2}}=Machine {{3}}=Problem {{4}}=Assigned to {{5}}=Time
+        params = [ref, label, problem, who, tm]
     targets, seen = [], set()
     emap = await _emp_map()
     for aid in _bd_aids(bd):                       # the assigned user(s) — their own ticket
@@ -3867,28 +3886,16 @@ async def breakdown_send_status(body: dict, emp: dict = Depends(require_employee
     if not to:
         raise HTTPException(400, "The person who raised this work order has no WhatsApp number on file")
 
-    def _fmt(ts):
-        if not ts:
-            return ""
-        try:
-            return datetime.fromisoformat(str(ts)).astimezone(IST).strftime("%d-%m-%Y %I:%M %p")
-        except Exception:
-            try:
-                return ts.strftime("%d-%m-%Y %I:%M %p")
-            except Exception:
-                return str(ts)
     reason = (bd.get("hold_reason") or "").strip() or "reason not given"
-    held = _fmt(bd.get("hold_at")) or "-"
-    eta = _fmt(bd.get("hold_eta")) or "not set"
-    # All three details ride in the status slot so no new WhatsApp template is needed.
-    status = f"ON HOLD - {reason} (held on {held}; expected completion {eta})"
+    held = _fmt_ist(bd.get("hold_at")) or "-"
+    eta = _fmt_ist(bd.get("hold_eta")) or "not set"
     label = (str(bd.get("asset_code") or "") + " " + str(bd.get("asset_name") or "")).strip() or "—"
     aids = _bd_aids(bd)
     who = ", ".join([(emap.get(a) or {}).get("name") for a in aids
                      if (emap.get(a) or {}).get("name")]) or "Unassigned"
-    tm = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
-    # Same 5-slot layout as the hold alert: {{1}}=Ref {{2}}=Machine {{3}}=status {{4}}=Assigned {{5}}=Time
-    params = [str(bd.get("id") or ""), label, status, who, tm]
+    # Hold template (6 slots): {{1}}=Ref {{2}}=Machine {{3}}=Hold reason {{4}}=Assigned to
+    #                          {{5}}=On hold since {{6}}=Expected completion
+    params = [str(bd.get("id") or ""), label, reason, who, held, eta]
     try:
         ok, detail = await _wsend(tmpl, to, params, name=rname, kind="hold-status")
     except Exception as e:  # noqa: BLE001
