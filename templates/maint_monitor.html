@@ -21,6 +21,7 @@ table.mon tr:nth-child(even) td{background:#f7f9fc}
 .asg-line .nm{min-width:120px}
 .st{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 8px}
 .st.done{background:#e3f6ee;color:#0a7d55}.st.pend{background:#fff3d6;color:#9a6a00}.st.absent{background:#eef1f4;color:#6b7280}
+.st.incomplete{background:#fde0e1;color:#c0241c}
 .btn-abs{font-size:10.5px;font-weight:700;border:1px solid #e3b7b9;color:#c23438;background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer}
 .btn-abs:hover{background:#fdeaea}
 .btn-done{font-size:10.5px;font-weight:700;border:1px solid #a9ddc4;color:#0a7d55;background:#fff;border-radius:7px;padding:2px 8px;cursor:pointer}
@@ -90,7 +91,7 @@ function toast(msg,bad){var t=document.createElement('div');t.textContent=msg;
   t.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:999;background:'+(bad?'#c23438':'#0a7d55')+';color:#fff;padding:11px 16px;border-radius:9px;font-size:13px;font-weight:600;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:90%;text-align:center';
   document.body.appendChild(t);setTimeout(function(){t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(function(){t.remove();},400);},3400);}
 function catClass(c){return c==='Daily PM'?'d':(c==='Quarterly PM'?'q':(c==='Unscheduled PM'?'u':'b'));}
-function stClass(s){return s==='Done'?'done':(s==='Absent'?'absent':'pend');}
+function stClass(s){return s==='Done'?'done':(s==='Absent'?'absent':(s==='Incomplete'?'incomplete':'pend'));}
 async function reload(){
   var days=document.getElementById('f_days').value;
   document.getElementById('mon_rows').innerHTML='<tr><td colspan="8" style="padding:18px;color:var(--muted)">Loading…</td></tr>';

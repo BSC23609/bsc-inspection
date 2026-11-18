@@ -1097,6 +1097,23 @@ def _is_offday(d):
     return d.weekday() == 6 or d.isoformat() in HOLIDAYS   # Sunday (6) or a holiday
 
 
+DAILY_CLOSE_HOUR = 19   # plant close 7 PM IST — a daily PM locks (becomes Incomplete) after this
+
+
+def _daily_closed(day, now=None):
+    """A daily PM for `day` is OPEN only on its own date before 19:00 IST (plant close);
+    otherwise it is CLOSED and locked — nobody (user or admin) can complete it, and it is
+    treated as Incomplete. `day` is a date. Used everywhere the daily same-day rule applies."""
+    now = now or datetime.now(IST)
+    try:
+        today = now.date()
+    except Exception:
+        return False
+    if day < today:
+        return True
+    return day == today and now.hour >= DAILY_CLOSE_HOUR
+
+
 # Plant working window for breakdown-hour (downtime) calculation.
 WORK_START_H = 9      # 09:00
 WORK_END_H = 19       # 19:00 (7 PM)
@@ -2044,93 +2061,6 @@ async def _seed_assignments():
 # =======================================================================
 #  MY CHECKLIST  (per-user assigned checkpoints + tick-to-complete)
 # =======================================================================
-async def _my_daily_board_state(cl_ids, today):
-    """Return {checklist_id: {'state','due'}} for DAILY checklists using the SAME overdue
-    rule as the Maintenance Board: scan the recent working-day window for the oldest day that
-    was started but left incomplete (that becomes the overdue date), else today if still
-    pending. This keeps My Checklist's daily date in step with the board (e.g. a daily missed
-    on 17-Nov shows 17-Nov, not today). Evidence is checklist-wide, exactly like the board."""
-    out = {}
-    if not cl_ids:
-        return out
-    await _refresh_holidays()
-    window_days = []
-    d = today
-    for _ in range(DAILY_LOOKBACK_DAYS):
-        if not _is_offday(d):
-            window_days.append(d)
-        d = d - timedelta(days=1)
-    window_isos = [x.isoformat() for x in window_days]
-    on_leave = await _on_leave_ids(today)
-    cps_by_cl = {}
-    for cp in await db.fetch(
-            "SELECT id, checklist_id, assigned_emp_id FROM maint_checkpoints "
-            "WHERE checklist_id = ANY($1::int[])", cl_ids):
-        cps_by_cl.setdefault(cp["checklist_id"], []).append(dict(cp))
-    all_cp_ids = [cp["id"] for lst in cps_by_cl.values() for cp in lst]
-    done_set = set()
-    if all_cp_ids and window_isos:
-        for r in await db.fetch(
-                "SELECT checkpoint_id, period_key FROM maint_checkpoint_done "
-                "WHERE period_key = ANY($1::text[]) AND checkpoint_id = ANY($2::int[])",
-                window_isos, all_cp_ids):
-            done_set.add((r["checkpoint_id"], r["period_key"]))
-    absent_set = set()
-    if window_isos:
-        for a in await db.fetch(
-                "SELECT checklist_id, emp_id, period_key FROM maint_wo_absent "
-                "WHERE checklist_id = ANY($1::int[]) AND period_key = ANY($2::text[])",
-                cl_ids, window_isos):
-            absent_set.add((a["checklist_id"], a["emp_id"], a["period_key"]))
-    log_set = set()
-    if window_days:
-        win_start = datetime.combine(window_days[-1], time(0, 0), tzinfo=IST)
-        for r in await db.fetch(
-                "SELECT checklist_id, done_at FROM maint_logs "
-                "WHERE checklist_id = ANY($1::int[]) AND done_at >= $2", cl_ids, win_start):
-            da = r["done_at"]
-            if isinstance(da, datetime):
-                log_set.add((r["checklist_id"], da.astimezone(IST).date().isoformat()))
-    today_iso = today.isoformat()
-
-    def _day_overdue(clid, period_iso, cps, is_current):
-        if not cps:
-            return False
-        has_cpdone = any((cp["id"], period_iso) in done_set for cp in cps)
-        has_log = (clid, period_iso) in log_set
-        pending = 0
-        for cp in cps:
-            aid = cp.get("assigned_emp_id")
-            excused = aid and ((clid, aid, period_iso) in absent_set
-                               or (period_iso == today_iso and aid in on_leave))
-            if excused:
-                continue
-            if (cp["id"], period_iso) not in done_set:
-                pending += 1
-        if pending == 0:
-            return False
-        if not has_cpdone and has_log:
-            return False
-        if has_cpdone or has_log or is_current:
-            return True
-        return False
-
-    for clid in cl_ids:
-        cps = cps_by_cl.get(clid) or []
-        if not cps:
-            out[clid] = {"state": "ok", "due": None}
-            continue
-        today_pending = _day_overdue(clid, today_iso, cps, True)
-        res = None
-        for pd in sorted(window_days):   # oldest -> newest
-            if pd < today and _day_overdue(clid, pd.isoformat(), cps, False):
-                res = {"state": "overdue", "due": pd.isoformat()}
-                break
-        if res is None:
-            res = {"state": "due", "due": today_iso} if today_pending else {"state": "ok", "due": None}
-        out[clid] = res
-    return out
-
 
 @router.get("/my/list")
 async def my_checklist(emp: dict = Depends(require_employee)):
@@ -2178,11 +2108,6 @@ async def my_checklist(emp: dict = Depends(require_employee)):
                 "SELECT checkpoint_id, period_key, result, done_at FROM maint_checkpoint_done "
                 "WHERE checkpoint_id = ANY($1::int[])", cp_ids):
             done_cp[(d["checkpoint_id"], d["period_key"])] = d
-    # Daily overdue dates must match the Maintenance Board (oldest started-but-incomplete
-    # day), so compute the board-style daily state for my daily checklists up front.
-    daily_cl_ids = [g["checklist_id"] for g in groups
-                    if _freq_label(g["checklist_name"]) == "Daily"]
-    daily_board_state = await _my_daily_board_state(daily_cl_ids, today)
     items = []
     for g in groups:
         g = dict(g)
@@ -2191,29 +2116,21 @@ async def my_checklist(emp: dict = Depends(require_employee)):
         done_n = donemap.get((g["checklist_id"], pk), 0)
         done = done_n >= g["my_count"] and g["my_count"] > 0
         next_due = None
-        overdue = due = False
+        overdue = due = incomplete = False
         if freq == "Daily":
+            # Daily PM is strictly same-day (today's date only). My part done -> Done; else if
+            # the day has CLOSED (after 7 PM, or a past date) -> Incomplete (locked, cannot be
+            # filled later); else Due today. Missed days are never carried forward as overdue.
+            next_due = today.isoformat()
             if done:
-                # finished my part for today -> next due is the next working day
                 nd = today + timedelta(days=1)
                 while _is_offday(nd):
                     nd += timedelta(days=1)
                 next_due = nd.isoformat()
+            elif _daily_closed(today):
+                incomplete = True
             else:
-                bs = daily_board_state.get(g["checklist_id"]) or {}
-                if bs.get("state") == "overdue" and bs.get("due"):
-                    # the board flags this daily as overdue from an earlier missed day;
-                    # show that same overdue date here instead of today's date
-                    overdue = True
-                    next_due = bs.get("due")
-                elif not _is_offday(today):
-                    due = True
-                    next_due = today.isoformat()
-                else:
-                    nd = today + timedelta(days=1)
-                    while _is_offday(nd):
-                        nd += timedelta(days=1)
-                    next_due = nd.isoformat()
+                due = True
         elif g.get("schedule_id"):
             info = compute_due(g, g.get("asset_hours"), today)
             overdue = bool(info.get("overdue"))
@@ -2222,7 +2139,8 @@ async def my_checklist(emp: dict = Depends(require_employee)):
             next_due = nd.isoformat() if hasattr(nd, "isoformat") else (nd or None)
         else:
             due = True  # quarterly with no schedule -> due this period
-        status = "done" if done else ("overdue" if overdue else ("due" if due else "upcoming"))
+        status = ("done" if done else ("incomplete" if incomplete
+                  else ("overdue" if overdue else ("due" if due else "upcoming"))))
         # the point descriptions assigned to me on this checklist, with done time
         points = []
         for cp in cps_by_cl.get(g["checklist_id"], []):
@@ -2289,6 +2207,12 @@ async def my_checklist_submit(body: dict, emp: dict = Depends(require_employee))
     c = await db.fetchrow("SELECT id, name, asset_id FROM maint_checklists WHERE id=$1", cid)
     if not c:
         raise HTTPException(404, "Checklist not found")
+    # Daily PM is same-day only: once the day has closed (after 7 PM plant close, or a past
+    # date) it is locked as Incomplete and can no longer be filled. Quarterly / unscheduled
+    # submits are unaffected.
+    if _freq_label(c["name"]) == "Daily" and _daily_closed(_today()):
+        raise HTTPException(400, "This daily checklist is closed for today (after 7 PM) "
+                                 "and is marked Incomplete. It can no longer be completed.")
     pk = _period_key(c["name"])
     mine = {r["id"] for r in await db.fetch(
         "SELECT id FROM maint_checkpoints WHERE checklist_id=$1 AND assigned_emp_id=$2", cid, eid)}
@@ -2881,14 +2805,18 @@ async def _absent_emp_ids(checklist_id, period_key) -> set:
         return set()
 
 
-async def _pm_rows_full(checklist_id, period_key):
+async def _pm_rows_full(checklist_id, period_key, closed=False):
     """Build the inspection rows from the FULL checklist state for one period:
     EVERY checkpoint of the checklist, each with its result and who marked it; a
     checkpoint not yet done shows 'Pending' with the person it is assigned to. This
     is what makes one combined report fill up as each assigned person submits their
     own checkpoints. Checkpoints assigned to anyone marked ABSENT for this period are
     left out entirely, so an absent person's points don't hold up or clutter the
-    report. Returns (rows, contributors, pending_count)."""
+    report. Returns (rows, contributors, pending_count).
+
+    closed=True finalizes a daily report at the 7 PM close: a not-done checkpoint reads
+    'Incomplete' (locked) instead of 'Pending'. Completed checkpoints are never changed,
+    so only the person(s) who missed their checks show Incomplete."""
     cps = await db.fetch(
         "SELECT id, seq, text, assigned_to, assigned_emp_id FROM maint_checkpoints "
         "WHERE checklist_id=$1 ORDER BY seq, id", checklist_id)
@@ -2926,14 +2854,14 @@ async def _pm_rows_full(checklist_id, period_key):
                 contributors.append(who)
         else:
             pending += 1
-            res = "Pending"
+            res = "Incomplete" if closed else "Pending"
             rec = cp["assigned_to"] or "—"
         rows.append((str(i), cp["text"], res, rec))
     return rows, contributors, pending
 
 
 async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
-                          results, checklist_id, location="", when=None):
+                          results, checklist_id, location="", when=None, closed=False):
     """Generate a preventive-maintenance work-order PDF and save it to
     OneDrive/<base>/Maintenance/Reports/<machine>/<Daily|Quarterly Preventive
     Maintenance>/<dd-mm-yy>_<code>_pm.pdf. The filename is fixed per machine+day, so a
@@ -2950,7 +2878,7 @@ async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
         rows, contributors, pending = [], [], 0
         if checklist_id:
             pk = _period_key(checklist, wdate)
-            rows, contributors, pending = await _pm_rows_full(checklist_id, pk)
+            rows, contributors, pending = await _pm_rows_full(checklist_id, pk, closed=closed)
         if not rows:
             # fallback: no per-checkpoint data for this period (e.g. older history) —
             # build from the submitter's / log's own results, as before.
@@ -2961,7 +2889,12 @@ async def _file_pm_report(asset_code, asset_name, checklist, doc_no, done_by,
                     texts[r["id"]] = r["text"]
             rows = _pm_rows(results, texts, done_by or "—", when.strftime("%d %b %H:%M"))
         completed_by = ", ".join(contributors) if contributors else (done_by or "—")
-        status = "Completed" if pending == 0 else f"In progress — {pending} pending"
+        if pending == 0:
+            status = "Completed"
+        elif closed:
+            status = f"Incomplete — {pending} not done"
+        else:
+            status = f"In progress — {pending} pending"
         meta = {"doc_no": doc_no or when.strftime("%y%m%d%H%M"),
                 "asset_code": asset_code or "", "asset_name": asset_name or "",
                 "checklist": checklist or "Checklist", "started": None, "completed": when,
@@ -5518,27 +5451,19 @@ async def board_matrix(emp: dict = Depends(require_employee)):
         clid = s.get("checklist_id"); cps = cps_by_cl.get(clid) or []
         start_d = s.get("start_date"); end_d = s.get("end_date")
         in_window = not ((start_d and start_d > cur_due) or (end_d and cur_due > end_d))
-        # A daily is on the board ONLY while TODAY's check is still pending. Once today's
-        # is done the machine clears, even if an earlier day was missed — a completed
-        # daily must not keep showing an old date as overdue.
+        # Daily PM is STRICTLY same-day: it shows as "Due today" only while TODAY's check is
+        # still pending AND the day is still open (before the 7 PM plant close). A missed daily
+        # is NEVER carried forward as overdue — after close it becomes Incomplete (surfaced in
+        # My Checklist / Monitor / the close job), not a board or WhatsApp-image row.
         if clid and cps:
             today_pending = in_window and _day_overdue(clid, cur_due.isoformat(), cps, True)
-            # A PAST day that was STARTED but left incomplete stays on the board as OVERDUE
-            # (earliest missed day) until it is marked done / absent on the Monitor. A day
-            # with no record at all is not flagged (see _day_overdue), so untouched days /
-            # off-days never clutter the board.
-            for _pd in sorted(window_days):          # oldest -> newest
-                if _pd < today and _day_overdue(clid, _pd.isoformat(), cps, False):
-                    return {"state": "overdue", "due": _pd.isoformat()}
         else:
-            # No daily checkpoints -> there is no daily PM to perform on this machine, so it
-            # must NOT appear as a daily due/overdue (a machine with only a QUARTERLY checklist
-            # was showing a phantom "Daily - Due today" via the last-done fallback). Hidden here
-            # for the board AND the WhatsApp image (both read this state); quarterly is separate.
+            # No daily checkpoints -> nothing to perform -> never a daily due/overdue row
+            # (e.g. a machine that only has a QUARTERLY checklist). Quarterly is separate.
             return {"state": "ok", "due": None}
         info = compute_due(s, s.get("asset_hours"), today)
-        if today_pending:
-            # Today's daily is still pending -> "due today".
+        if today_pending and not _daily_closed(today):
+            # Today's daily is still pending and the day is open -> "due today".
             return {"state": "due", "due": today.isoformat()}
         nd = _d(info["next_due"]) if info.get("next_due") else None
         if nd and nd <= today + timedelta(days=7):
@@ -5927,6 +5852,11 @@ async def mark_daily_done(token: str = Query(default=""),
         tdate = _dt_date.fromisoformat(target)
     except Exception:
         raise HTTPException(400, "Bad date (use YYYY-MM-DD)")
+    # Daily PM is same-day and locked after the 7 PM close — a closed/past day can no longer
+    # be marked done by anyone (admins included).
+    if _daily_closed(tdate):
+        raise HTTPException(403, f"Daily PM for {target} is closed (past the 7 PM plant "
+                                 "close) and locked — it can no longer be marked done.")
 
     sched = await _schedule_rows()
     daily = {}
@@ -6046,6 +5976,91 @@ async def mark_daily_done(token: str = Query(default=""),
                   "machines": len(items), "checkpoints_marked_done": marked,
                   "checkpoints_normalised_to_ok": normalized,
                   "onedrive_reports_generated": reports, "items": slim})
+
+
+@router.get("/daily-close")
+async def daily_close(token: str = Query(default=""), date: str = Query(default=""),
+                      dry: int = Query(default=0), emp: dict = Depends(current_employee)):
+    """7 PM plant close for DAILY PM. For each active daily checklist whose day (today, or the
+    given ?date=YYYY-MM-DD) is NOT fully complete:
+      - a SINGLE-assignee machine, OR a multi-assignee machine with NO completions -> DELETE the
+        day's work order (its logs, per-checkpoint done rows and absent marks) so nothing
+        incomplete lingers in the Monitor or as a PDF;
+      - a MULTI-assignee machine with at least one completer -> FINALIZE the OneDrive PDF with the
+        missing person(s) shown as 'Incomplete' and the completed results kept unchanged.
+    Fully-complete days already filed their PDF at completion and are skipped. Idempotent.
+    Admin session or ?token=AGENT_TOKEN. Quarterly / Unscheduled / Breakdown are never touched.
+    Called by the maint-daily-close workflow at ~7:05 PM IST; add &dry=1 to preview."""
+    await ensure_tables()
+    await _ensure_absent_table()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    try:
+        tdate = _dt_date.fromisoformat(date.strip()[:10]) if date.strip() else _today()
+    except Exception:
+        tdate = _today()
+    pk = tdate.isoformat()
+    if _is_offday(tdate):
+        return _json({"date": pk, "skipped": "off-day (Sunday/holiday) — no daily PM",
+                      "deleted": [], "finalized": [], "already_complete": 0})
+    sched = await _schedule_rows()
+    seen = set()
+    deleted, finalized, complete = [], [], 0
+    for s in sched:
+        if not s.get("active"):
+            continue
+        ft = (s.get("freq_type") or "").lower()
+        is_daily = ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
+        clid = s.get("checklist_id")
+        if not is_daily or not clid or clid in seen:
+            continue
+        seen.add(clid)
+        cname = s.get("checklist_name") or ""
+        cps = await db.fetch(
+            "SELECT id, assigned_emp_id FROM maint_checkpoints WHERE checklist_id=$1", clid)
+        if not cps:
+            continue
+        absent = await _absent_emp_ids(clid, pk)
+        required = [r["id"] for r in cps
+                    if r["assigned_emp_id"] and r["assigned_emp_id"] not in absent]
+        if not required:
+            continue   # nothing assigned to require -> no incomplete to process
+        done_ids = {d["checkpoint_id"] for d in await db.fetch(
+            "SELECT checkpoint_id FROM maint_checkpoint_done "
+            "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])",
+            pk, [r["id"] for r in cps])}
+        if all(cid_ in done_ids for cid_ in required):
+            complete += 1                      # fully done -> PDF already filed at completion
+            continue
+        assignees = {r["assigned_emp_id"] for r in cps
+                     if r["assigned_emp_id"] and r["assigned_emp_id"] not in absent}
+        any_completer = any(cid_ in done_ids for cid_ in required)
+        label = s.get("asset_code") or str(clid)
+        if len(assignees) <= 1 or not any_completer:
+            # single-assignee incomplete, OR multi-assignee with zero completions -> delete the day
+            if not dry:
+                try:
+                    await _delete_pm_workorder(clid, pk, cname, s.get("asset_id"))
+                except Exception as e:  # noqa: BLE001
+                    deleted.append({"machine": label, "ok": False, "reason": str(e)[:120]})
+                    continue
+            deleted.append({"machine": label, "assignees": len(assignees)})
+        else:
+            # multi-assignee, some done -> finalize PDF with missers shown Incomplete
+            if not dry:
+                try:
+                    when = datetime.combine(tdate, time(DAILY_CLOSE_HOUR, 0), tzinfo=IST)
+                    await _file_pm_report(
+                        asset_code=s.get("asset_code") or "", asset_name=s.get("asset_name") or "",
+                        checklist=cname, doc_no="", done_by="", results=[], checklist_id=clid,
+                        location=s.get("asset_location") or "", when=when, closed=True)
+                except Exception as e:  # noqa: BLE001
+                    finalized.append({"machine": label, "ok": False, "reason": str(e)[:120]})
+                    continue
+            finalized.append({"machine": label})
+    return _json({"date": pk, "dry": bool(dry), "already_complete": complete,
+                  "deleted_single_or_empty": deleted,
+                  "finalized_multi_incomplete": finalized})
 
 
 @router.get("/board-debug")
@@ -7365,6 +7380,15 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
             continue
         # is there any precise per-checkpoint 'done' data for this work order's period?
         has_cpdone = any((cp["id"], pk) in done_set for cp in cps)
+        # A DAILY period that has CLOSED (after the 7 PM plant close, or a past date) shows its
+        # not-done assignees as "Incomplete" (locked) rather than "Pending". Quarterly unaffected.
+        _pd = None
+        if is_daily:
+            try:
+                _pd = _dt_date.fromisoformat(pk[:10])
+            except ValueError:
+                _pd = None
+        pending_lbl = "Incomplete" if (is_daily and _pd and _daily_closed(_pd)) else "Pending"
         statuses = []
         for aid in assignee_ids:
             if (checklist_id, pk, aid) in absent_set:
@@ -7379,7 +7403,7 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
                     # or checkpoints re-created since) — treat as Done, not falsely Pending
                     st = "Done"
                 else:
-                    st = "Pending"
+                    st = pending_lbl
             statuses.append({"emp": emps.get(aid, "#%s" % aid), "emp_id": aid, "status": st})
         # Checkpoints with NO assignee can never be completed by a user, so they keep a
         # report stuck on "pending" forever. Surface them as a single "Unassigned" row the
@@ -7387,7 +7411,7 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
         unassigned = [cp["id"] for cp in cps if not cp["assigned_emp_id"]]
         if unassigned and not all((uid, pk) in done_set for uid in unassigned) \
                 and not (g.get("has_log") and not has_cpdone):
-            statuses.append({"emp": "Unassigned", "emp_id": 0, "status": "Pending"})
+            statuses.append({"emp": "Unassigned", "emp_id": 0, "status": pending_lbl})
         # For a quarterly, the Date column is the machine's SCHEDULED date this quarter
         # (from the annual plan) — not the day it happened to be completed on.
         row_date = g["date"]
@@ -7682,6 +7706,14 @@ async def monitor_mark_absent(body: dict, emp: dict = Depends(require_employee))
     cname = await db.fetchval("SELECT name FROM maint_checklists WHERE id=$1", cid) or ""
     if "quarter" in cname.lower():
         raise HTTPException(400, "Mark absent is only for Daily PM.")
+    # Daily PM locks after the 7 PM close — a closed/past day can no longer be changed.
+    try:
+        _pd = _dt_date.fromisoformat(pk[:10])
+    except ValueError:
+        _pd = None
+    if _pd and _daily_closed(_pd):
+        raise HTTPException(403, f"Daily PM for {pk[:10]} is closed (past the 7 PM plant "
+                                 "close) and locked — it can no longer be changed.")
     await db.execute(
         "INSERT INTO maint_wo_absent (checklist_id, period_key, emp_id, marked_by) "
         "VALUES ($1,$2,$3,$4) ON CONFLICT (checklist_id, period_key, emp_id) DO NOTHING",
@@ -7734,6 +7766,17 @@ async def monitor_mark_done(body: dict, emp: dict = Depends(require_employee)):
     pk = (body.get("period_key") or "").strip()
     if not pk:
         raise HTTPException(400, "Missing period")
+    # Daily PM is same-day and locked after the 7 PM close — nobody (admins included) can
+    # mark a closed/past daily day done. Quarterly periods are unaffected.
+    _cl = await db.fetchrow("SELECT name FROM maint_checklists WHERE id=$1", cid)
+    if _cl and _freq_label(_cl["name"]) == "Daily":
+        try:
+            _pd = _dt_date.fromisoformat(pk[:10])
+        except ValueError:
+            _pd = None
+        if _pd and _daily_closed(_pd):
+            raise HTTPException(403, f"Daily PM for {pk[:10]} is closed (past the 7 PM plant "
+                                     "close) and locked — it can no longer be marked done.")
 
     # period date (noon IST) for the done_at stamp
     try:
