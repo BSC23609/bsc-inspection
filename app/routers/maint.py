@@ -6649,9 +6649,9 @@ async def _board_png_rows():
     """Build the overdue-image rows from the SAME data the Maintenance Board page uses
     (/board/matrix), flattened EXACTLY like the board flattens it client-side — so the
     WhatsApp image can never disagree with the board. It carries every Daily and Quarterly
-    PM that the board shows as Overdue or Due today, and every open breakdown / unscheduled
-    PM — active ones as Overdue and paused ones as On Hold (with the hold reason) — using
-    the board's own dates, statuses and assignee names."""
+    PM that the board shows as Overdue or Due today, and every ACTIVE breakdown / unscheduled
+    PM as Overdue. A breakdown that is On Hold is left OFF the image until it is resumed; it
+    uses the board's own dates, statuses and assignee names."""
     def _fmtd(iso):
         try:
             return datetime.fromisoformat(str(iso)[:10]).strftime("%d-%m-%Y")
@@ -6704,18 +6704,18 @@ async def _board_png_rows():
                            "who": who, "date": _fmtd(q.get("due")),
                            "status": "Due today" if _qs == "due" else "Overdue", "by": "-"})
         for b in (m.get("breakdowns") or []):
+            # A paused (On Hold) breakdown is NOT shown on the WhatsApp image — only ACTIVE
+            # breakdowns, as Overdue. When it is resumed it becomes active again and reappears.
+            if b.get("hold"):
+                continue
             nms = [n for n in (b.get("assignees") or []) if n]
             who = ", ".join(nms) if nms else "Unassigned"
             if not _assigned(who):
                 continue
-            # A paused breakdown shows with an "On Hold" status (the board keeps these in its
-            # On Hold section); an active one shows as Overdue.
             bd.append({"code": code, "name": name, "prob": b.get("problem") or "",
-                       "who": who, "status": "On Hold" if b.get("hold") else "Overdue",
+                       "who": who, "status": "Overdue",
                        "date": _fmtd(b.get("date")), "by": (b.get("by") or "-"),
-                       "wo_type": _wo_type(b.get("wo_type")),
-                       # why it is paused — shown under the machine name on the image
-                       "hold_reason": (b.get("hold_reason") or "").strip()})
+                       "wo_type": _wo_type(b.get("wo_type")), "hold_reason": ""})
     return pm, bd
 
 
