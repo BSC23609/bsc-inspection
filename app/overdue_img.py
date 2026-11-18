@@ -208,7 +208,7 @@ def build_overdue_png(tdisp, pm, bd):
     except Exception:
         logo_w = 0
     d.text((MARGIN + logo_w, y + 6), "BSC MAINTENANCE", font=f_title, fill=NAVY)
-    d.text((MARGIN + logo_w, y + 48), f"Maintenance overdue as of {tdisp}", font=f_sub, fill=MUT)
+    d.text((MARGIN + logo_w, y + 48), f"Maintenance due & overdue as of {tdisp}", font=f_sub, fill=MUT)
     y += HEADER_H
 
     # ---- table header ----
