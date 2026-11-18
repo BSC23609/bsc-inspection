@@ -111,21 +111,26 @@ def _rows(pm, bd):
             "status": it.get("status") or "Overdue",
             "who": (it.get("who") or "-").strip() or "-",
             "by": (it.get("by") or "-").strip() or "-",
+            "sub": "",   # PM rows have no hold reason
         })
     for it in (bd or []):
         # Match the board: an Unscheduled PM work order is labelled "Unscheduled PM", a real
         # breakdown "Breakdown"; both show as Overdue (they are on the overdue board).
         wl = str(it.get("wo_type") or "Breakdown")
         is_upm = wl.strip().lower().startswith("unscheduled")
+        st = it.get("status") or "Overdue"
+        hr = (it.get("hold_reason") or "").strip()
         rows.append({
             "date": it.get("date") or "-",
             "code": (it.get("code") or "").strip() or "-",
             "name": (it.get("name") or "").strip() or "-",
             "cat": "Unscheduled PM" if is_upm else "Breakdown",
             # carry the breakdown's own status so a paused one shows "On Hold", not "Overdue"
-            "status": it.get("status") or "Overdue",
+            "status": st,
             "who": (it.get("who") or "-").strip() or "-",
             "by": (it.get("by") or "-").strip() or "-",
+            # for a paused breakdown, show WHY it is on hold under the machine name
+            "sub": ("Hold: " + hr) if (st == "On Hold" and hr) else "",
         })
     prio = {"Overdue": 0, "Open": 1, "On Hold": 3, "Due today": 2}
     rows.sort(key=lambda r: prio.get(r["status"], 1))
@@ -153,6 +158,7 @@ def build_overdue_png(tdisp, pm, bd):
     f_title = _font(bold=True, size=30)
     f_sub = _font(bold=False, size=20)
     f_foot = _font(bold=True, size=18)
+    f_hold = _font(bold=False, size=16)   # muted hold-reason line under the machine name
     line_h = 25
 
     table_w = sum(c[2] for c in COLS)
@@ -163,6 +169,7 @@ def build_overdue_png(tdisp, pm, bd):
 
     # pre-compute wrapped lines + row heights
     wrap_cols = {"name", "cat", "who", "by"}
+    name_w = next((w for k, _h, w in COLS if k == "name"), 218)
     prepared = []
     for r in rows:
         cell_lines, max_lines = {}, 1
@@ -174,10 +181,14 @@ def build_overdue_png(tdisp, pm, bd):
                 ls = [str(r[key])]
             cell_lines[key] = ls
             max_lines = max(max_lines, len(ls))
+        # hold reason (if any) wraps under the Machine Name as muted line(s)
+        sub = (r.get("sub") or "").strip()
+        sub_lines = _wrap(d0, sub, f_hold, name_w - 2 * PAD) if sub else []
+        max_lines = max(max_lines, len(cell_lines["name"]) + len(sub_lines))
         rh = max_lines * line_h + 2 * VPAD
-        prepared.append((r, cell_lines, rh))
+        prepared.append((r, cell_lines, sub_lines, rh))
 
-    body_h = sum(p[2] for p in prepared) if prepared else 60
+    body_h = sum(p[3] for p in prepared) if prepared else 60
     H = MARGIN + HEADER_H + ROWH_HDR + body_h + 54  # +footer band
 
     img = Image.new("RGB", (W, H), WHITE)
@@ -214,7 +225,7 @@ def build_overdue_png(tdisp, pm, bd):
         d.text((MARGIN + PAD, y + 20), "No overdue or due items right now.",
                font=f_cell, fill=MUT)
         y += 60
-    for idx, (r, cell_lines, rh) in enumerate(prepared):
+    for idx, (r, cell_lines, sub_lines, rh) in enumerate(prepared):
         bg = WHITE if idx % 2 == 0 else SOFT
         d.rectangle([MARGIN, y, MARGIN + table_w, y + rh], fill=bg)
         x = MARGIN
@@ -235,6 +246,11 @@ def build_overdue_png(tdisp, pm, bd):
                 for ln in cell_lines[key]:
                     d.text((x + PAD, cy), ln, font=fnt, fill=col)
                     cy += line_h
+                # the hold reason sits just under the Machine Name, in muted grey
+                if key == "name" and sub_lines:
+                    for ln in sub_lines:
+                        d.text((x + PAD, cy), ln, font=f_hold, fill=MUT)
+                        cy += line_h
             x += w
         # row separator
         d.line([MARGIN, y + rh, MARGIN + table_w, y + rh], fill=LINEC, width=1)

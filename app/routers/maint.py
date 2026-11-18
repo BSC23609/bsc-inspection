@@ -6514,7 +6514,9 @@ async def _board_png_rows():
             bd.append({"code": code, "name": name, "prob": b.get("problem") or "",
                        "who": who, "status": "On Hold" if b.get("hold") else "Overdue",
                        "date": _fmtd(b.get("date")), "by": (b.get("by") or "-"),
-                       "wo_type": _wo_type(b.get("wo_type"))})
+                       "wo_type": _wo_type(b.get("wo_type")),
+                       # why it is paused — shown under the machine name on the image
+                       "hold_reason": (b.get("hold_reason") or "").strip()})
     return pm, bd
 
 
