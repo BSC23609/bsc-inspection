@@ -116,9 +116,32 @@ function dateKey(s){
   var d=new Date(s);
   return isNaN(d)?8.64e15:d.getTime();                   // unknown -> sort to the end
 }
+function _sleep(ms){return new Promise(function(res){setTimeout(res,ms);});}
 async function load(){
-  try{var r=await fetch('/maint/board/matrix',{cache:'no-store'});if(r.status===401){location.href='/login';return;}var d=await r.json();}
-  catch(e){document.getElementById('b_sub').textContent='Couldn’t load the board.';return;}
+  // The board query can be slow on a cold Vercel start; a single slow hit used to show a
+  // dead "Couldn't load". Retry a few times, then show the real reason + a Retry link so the
+  // page always recovers on its own and we are never left guessing.
+  var sub=document.getElementById('b_sub');
+  var lastErr='';
+  for(var attempt=1; attempt<=4; attempt++){
+    if(attempt>1)sub.textContent='Loading the board… (retry '+(attempt-1)+')';
+    try{
+      var r=await fetch('/maint/board/matrix',{cache:'no-store'});
+      if(r.status===401){location.href='/login';return;}
+      if(!r.ok){lastErr='HTTP '+r.status;await _sleep(1300);continue;}
+      var d=await r.json();
+      renderBoard(d);
+      return;
+    }catch(e){
+      lastErr=(e&&e.message)||'network/timeout';
+      await _sleep(1300);
+    }
+  }
+  sub.innerHTML='Couldn’t load the board ('+lastErr+'). '
+    +'<a href="#" onclick="load();return false;" style="color:#0a66c2;font-weight:700">Retry</a>';
+}
+function renderBoard(d){
+  var sub=document.getElementById('b_sub');
   OV=[];
   (d.rows||[]).forEach(function(m){
     var mac=((m.code?m.code+' ':'')+(m.name||'')).trim()||'—';
@@ -131,7 +154,10 @@ async function load(){
     });
   });
   OV.sort(function(a,b){return dateKey(a.date)-dateKey(b.date)||a.machine.localeCompare(b.machine);});
-  document.getElementById('b_sub').textContent='Today '+d.today+' — overdue and today’s pending maintenance.';
+  // If the server degraded to an empty board because of an error, say so instead of implying all-clear.
+  if(d.error){sub.innerHTML='Board had trouble loading ('+String(d.error).slice(0,120)+'). '
+    +'<a href="#" onclick="load();return false;" style="color:#0a66c2;font-weight:700">Retry</a>';}
+  else{document.getElementById('b_sub').textContent='Today '+d.today+' — overdue and today’s pending maintenance.';}
   apply();
 }
 function apply(){

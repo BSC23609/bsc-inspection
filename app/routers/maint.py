@@ -5455,6 +5455,20 @@ async def board(emp: dict = Depends(require_employee)):
 
 @router.get("/board/matrix")
 async def board_matrix(emp: dict = Depends(require_employee)):
+    # The board must NEVER hard-fail. If any part throws, return a valid (empty) board plus
+    # the reason, so the page shows a clear message + Retry instead of a dead "Couldn't load".
+    # A real auth problem (401/403) is still raised so the page can redirect to login.
+    try:
+        return await _board_matrix_impl(emp)
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return _json({"today": _today().isoformat(), "rows": [], "error": str(e)[:200]})
+
+
+async def _board_matrix_impl(emp: dict):
     """One row per machine for the single-list board: each machine's Daily PM, Quarterly PM
     and Breakdown status in its own column. Status uses the SAME per-person logic as the
     board (daily look-back, quarterly current-quarter completion)."""
@@ -5491,10 +5505,16 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                            if s.get("active") and s.get("checklist_id") and _is_daily(s)})
     # Daily-window state and quarterly state are independent (both derive from
     # sched_all); compute them concurrently to overlap their queries.
+    # These four are independent of one another — overlap their DB round-trips so the whole
+    # board builds in roughly one query's latency instead of four in series. (On a cold start
+    # with the DB in another region, serial round-trips are what tips this over Vercel's limit.)
     (cps_by_cl, done_set, absent_set, log_set, window_days), \
-        (q_cps, q_pk, q_done, q_absent, q_skip) = await asyncio.gather(
+        (q_cps, q_pk, q_done, q_absent, q_skip), \
+        _emp_rows, _bd_rows = await asyncio.gather(
             _daily_window_state(sched_all, daily_cl_ids, today),
-            _quarterly_state(sched_all, today))
+            _quarterly_state(sched_all, today),
+            db.fetch("SELECT id, name, emp_no FROM employees"),
+            _open_breakdowns())
     cur_due = window_days[0] if window_days else today
 
     def _day_overdue(clid, piso, cps, is_cur):
@@ -5563,8 +5583,7 @@ async def board_matrix(emp: dict = Depends(require_employee)):
             return {"state": "upcoming", "due": info.get("next_due")}
         return {"state": "ok", "due": info.get("next_due")}
 
-    emp_name = {e["id"]: (e["name"] or e["emp_no"])
-                for e in await db.fetch("SELECT id, name, emp_no FROM employees")}
+    emp_name = {e["id"]: (e["name"] or e["emp_no"]) for e in _emp_rows}
 
     def _assignees(clid):
         """Distinct assignee names on a checklist's checkpoints."""
@@ -5626,7 +5645,7 @@ async def board_matrix(emp: dict = Depends(require_employee)):
                 g["quarterly"]["assignee_status"] = _assignee_status(
                     clid, q_cps.get(clid) or [], q_done, q_pk.get(clid), q_absent)
 
-    for b in await _open_breakdowns():
+    for b in _bd_rows:
         b_aids = b.get("assignees") or ([b.get("assignee_emp_id")] if b.get("assignee_emp_id") else [])
         if not is_admin and uid not in b_aids:
             continue
