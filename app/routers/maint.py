@@ -5753,6 +5753,30 @@ async def _board_matrix_impl(emp: dict):
         g["quarterly"] = {"state": "overdue", "due": qdate.get(clid) or pk,
                            "assignees": [n for n in names if n]}
 
+    # A non-admin user sees ONLY their own involvement: every row already belongs to a machine
+    # they are assigned to, but the assignee lists still carry co-workers. Strip those down to
+    # just this user, so the board shows only their name/status and never other people's.
+    if not is_admin:
+        my_name = emp_name.get(uid)
+
+        def _mine_names(names):
+            return [n for n in (names or []) if n == my_name]
+
+        def _mine_status(lst):
+            return [x for x in (lst or []) if x.get("emp") == my_name]
+        for r in by_asset.values():
+            for key in ("daily", "quarterly"):
+                d = r.get(key)
+                if not d:
+                    continue
+                if "assignees" in d:
+                    d["assignees"] = _mine_names(d.get("assignees"))
+                if "assignee_status" in d:
+                    d["assignee_status"] = _mine_status(d.get("assignee_status"))
+            for b in (r.get("breakdowns") or []):
+                if "assignees" in b:
+                    b["assignees"] = _mine_names(b.get("assignees"))
+
     rows = sorted(by_asset.values(), key=lambda r: str(r.get("code")))
     return _json({"today": today.isoformat(), "rows": rows})
 
