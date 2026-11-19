@@ -2938,8 +2938,15 @@ async def _file_breakdown_report(bd: dict, assignee_names: str):
                 _causes = json.loads(_causes)
             except Exception:
                 _causes = [_causes]
-        cause_txt = (", ".join(str(c).strip() for c in _causes if str(c).strip())
-                     if isinstance(_causes, list) else str(_causes or ""))
+        if not isinstance(_causes, list):
+            _causes = [_causes]
+        # The close dialog stores a free-text reason under the "Other" category as
+        # "Other: <reason>". The report should show ONLY the reason, not the "Other" label.
+        def _clean_cause(c):
+            s = str(c or "").strip()
+            m = re.match(r"^other\s*[:\-–—]\s*(.+)$", s, re.I)
+            return m.group(1).strip() if m else s
+        cause_txt = ", ".join(_clean_cause(c) for c in _causes if str(c).strip())
         meta = {"doc_no": str(bd.get("id") or now.strftime("%y%m%d%H%M")),
                 "asset_code": bd.get("asset_code") or "", "asset_name": bd.get("asset_name") or "",
                 "raised": raised, "raised_by": bd.get("reported_by") or "—",
