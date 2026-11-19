@@ -5646,7 +5646,10 @@ async def _board_matrix_impl(emp: dict):
                     clid, q_cps.get(clid) or [], q_done, q_pk.get(clid), q_absent)
 
     for b in _bd_rows:
-        b_aids = b.get("assignees") or ([b.get("assignee_emp_id")] if b.get("assignee_emp_id") else [])
+        # assignees comes back as a JSONB value that can be a raw string ("[12,15]") — parse it
+        # via _bd_aids so it is always an int list. (Doing `uid in <that string>` crashed the
+        # board for non-admin users with: 'in <string>' requires string as left operand, not int.)
+        b_aids = _bd_aids(b)
         if not is_admin and uid not in b_aids:
             continue
         aid = b.get("asset_id")
@@ -5657,7 +5660,7 @@ async def _board_matrix_impl(emp: dict):
                                  "daily": None, "daily_sched": None,
                                  "quarterly": None, "quarterly_sched": None, "breakdowns": []}
         bnames = []
-        for a in (b.get("assignees") or ([b.get("assignee_emp_id")] if b.get("assignee_emp_id") else [])):
+        for a in b_aids:
             nm = emp_name.get(a)
             if nm:
                 bnames.append(nm)
