@@ -2336,6 +2336,13 @@ async def schedules_list(emp: dict = Depends(require_employee)):
     await _refresh_holidays()
     today = _today()
     cps_have = await _checklists_with_cps()
+    # Who each checklist's checkpoints are assigned to (for the Assigned To column).
+    cp_aids = {}
+    for r in await db.fetch("SELECT DISTINCT checklist_id, assigned_emp_id FROM maint_checkpoints "
+                            "WHERE assigned_emp_id IS NOT NULL AND checklist_id IS NOT NULL"):
+        cp_aids.setdefault(r["checklist_id"], []).append(r["assigned_emp_id"])
+    emp_nm = {e["id"]: (e["name"] or e["emp_no"])
+              for e in await db.fetch("SELECT id, name, emp_no FROM employees")}
     out = []
     for s in await _schedule_rows():
         if s.get("checklist_id") not in cps_have:
@@ -2361,6 +2368,14 @@ async def schedules_list(emp: dict = Depends(require_employee)):
         elif ft == "quarterly" and info.get("due") and not info.get("overdue") \
                 and _quarterly_overdue_today():
             s["overdue"] = True
+        # Assigned To = the people this machine's checkpoints are assigned to; Assigned By = Admin
+        # (PM schedules are set up by the admin — same convention as the Monitor).
+        _aids = cp_aids.get(s.get("checklist_id")) or []
+        _names = [emp_nm.get(a) for a in _aids if emp_nm.get(a)]
+        if not _names and s.get("assignee_name"):
+            _names = [s.get("assignee_name")]
+        s["assigned_to"] = ", ".join(_names) if _names else "—"
+        s["assigned_by"] = "Admin"
         out.append(s)
     return _json(out)
 
