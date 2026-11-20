@@ -210,7 +210,7 @@ function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.g
   var badge=document.getElementById('s_cnt');badge.textContent='Due / overdue: '+dueCnt;badge.classList.toggle('zero',dueCnt===0);
   var rows=dueOnly?SCHED.filter(function(x){return x.active&&(x.due||x.overdue);}):SCHED;
   if(!rows.length){host.innerHTML='<div class="empty">'+(SCHED.length?'No plans match the filter.':'No plans yet. Add one to start scheduling preventive maintenance.')+'</div>';return;}
-  var cols=[['Asset','13%'],['Task','14%'],['Schedule','11%'],['Last done','8%'],['Next due','9%'],['Meter now','9%'],['Status','8%'],['Assigned To','11%'],['Assigned By','8%'],['Actions','9%']];
+  var cols=[['Asset','14%'],['Task','15%'],['Schedule','12%'],['Last done','9%'],['Next due','10%'],['Meter now','10%'],['Status','9%'],['Assigned By','9%'],['Actions','12%']];
   var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
   var anyActive=SCHED.some(function(x){return x.active;});
   var allBtn='<a href="#" class="'+(anyActive?'ic-del':'ic-edit')+'" style="font-weight:700;margin-left:6px" onclick="toggleAll('+(!anyActive)+');return false">'+(anyActive?'Pause all':'Resume all')+'</a>'
@@ -224,7 +224,7 @@ function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.g
     return '<tr><td>'+esc((x.asset_code?x.asset_code+' ':'')+(x.asset_name||''))+'</td><td>'+esc(x.title||'')+'</td>'
       +'<td>'+esc(freqText(x))+'</td><td class="c">'+fmtd(x.last_done)+'</td><td class="c">'+nd+'</td>'
       +'<td class="c">'+meterText(x)+'</td><td class="c">'+dueBadge(x)+'</td>'
-      +'<td>'+esc(x.assigned_to||'—')+'</td><td class="c">'+esc(x.assigned_by||'Admin')+'</td>'
+      +'<td class="c">'+esc(x.assigned_by||'Admin')+'</td>'
       +'<td class="c"><a href="#" onclick="sEdit('+x.id+');return false" class="ic-edit">Edit</a> · '+tog+' · '
       +'<a href="#" onclick="sDel('+x.id+');return false" class="ic-del">Delete</a></td></tr>';
   }).join('');
