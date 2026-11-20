@@ -2495,8 +2495,51 @@ async def leave_list(emp: dict = Depends(require_employee)):
     return _json([dict(r) for r in rows])
 
 
+async def _leave_insert(eid: int, f: date, t: date, reason: str) -> bool:
+    """Insert one leave row, UNLESS an existing row for the same employee already covers
+    the whole span. This is the single guard that stops a duplicate entry when a user
+    applies for leave AND an admin also enters the same leave — only one row is kept, so
+    the auto-reassignment (which is itself idempotent) never fires twice. Returns True
+    when a new row was actually inserted."""
+    if t < f:
+        t = f
+    dup = await db.fetchrow(
+        "SELECT 1 FROM maint_leave WHERE emp_id=$1 AND from_date<=$2 AND to_date>=$3 LIMIT 1",
+        eid, f, t)
+    if dup:
+        return False                       # already on leave for this span — skip
+    await db.execute(
+        "INSERT INTO maint_leave (emp_id,from_date,to_date,reason) VALUES ($1,$2,$3,$4)",
+        eid, f, t, (reason or "").strip())
+    return True
+
+
+async def _cover_for(eid):
+    """(cover_emp_id, cover_name) for an employee while on leave, or (None, None)."""
+    try:
+        cid = (await _cover_map()).get(eid)
+        if not cid:
+            return (None, None)
+        r = await db.fetchrow("SELECT name, emp_no FROM employees WHERE id=$1", cid)
+        return (cid, (r["name"] or r["emp_no"]) if r else None)
+    except Exception:
+        return (None, None)
+
+
+async def _reassign_now():
+    """Run the existing leave-cover engine straight away so same-day leave is reassigned
+    the moment it's entered, instead of waiting for the next reminder cron tick. Never raises."""
+    try:
+        return await _sync_leave_covers(_today())
+    except Exception as e:
+        print("[maint] immediate reassign skipped:", e)
+        return {}
+
+
 @router.post("/leave/save")
 async def leave_save(body: dict, emp: dict = Depends(require_employee)):
+    """Admin entry: mark any staff member on leave. Reuses the same dedup guard and the
+    same auto-reassignment as the user self-apply flow, so the two can't double up."""
     await ensure_tables()
     try:
         eid = int(body.get("emp_id"))          # select sends a string — INT column needs an int
@@ -2508,10 +2551,9 @@ async def leave_save(body: dict, emp: dict = Depends(require_employee)):
         raise HTTPException(400, "Pick a staff member and a from-date")
     if t < f:
         raise HTTPException(400, "To-date can't be before from-date")
-    await db.execute(
-        "INSERT INTO maint_leave (emp_id,from_date,to_date,reason) VALUES ($1,$2,$3,$4)",
-        eid, f, t, (body.get("reason") or "").strip())
-    return {"ok": True}
+    inserted = await _leave_insert(eid, f, t, body.get("reason"))
+    await _reassign_now()                  # same-day work moves to the cover immediately
+    return {"ok": True, "inserted": inserted}
 
 
 @router.post("/leave/delete")
@@ -2522,6 +2564,57 @@ async def leave_delete(body: dict, emp: dict = Depends(require_employee)):
     except (TypeError, ValueError):
         raise HTTPException(400, "Missing id")
     await db.execute("DELETE FROM maint_leave WHERE id=$1", lid)
+    await _reassign_now()                  # restore any now-uncovered work immediately
+    return {"ok": True}
+
+
+# ---------- user self-service: apply for own leave ----------
+@router.get("/leave/my")
+async def leave_my(emp: dict = Depends(require_employee)):
+    """The signed-in person's own leave rows + who will cover them."""
+    await ensure_tables()
+    rows = await db.fetch(
+        "SELECT id, from_date, to_date, reason FROM maint_leave WHERE emp_id=$1 "
+        "ORDER BY from_date DESC", emp["id"])
+    cid, cname = await _cover_for(emp["id"])
+    return _json({"leaves": [dict(r) for r in rows], "has_cover": bool(cid),
+                  "cover_name": cname})
+
+
+@router.post("/leave/apply")
+async def leave_apply(body: dict, emp: dict = Depends(require_employee)):
+    """A user applies for their OWN leave (emp_id is forced to the signed-in person, so a
+    body value can't be used to apply on someone else's behalf). The current day's assigned
+    work is reassigned to their cover right away, through the same engine the admin path uses."""
+    await ensure_tables()
+    eid = emp["id"]
+    f = _d(body.get("from_date"))
+    t = _d(body.get("to_date")) or f
+    if not f:
+        raise HTTPException(400, "Pick a from-date")
+    if t < f:
+        raise HTTPException(400, "To-date can't be before from-date")
+    inserted = await _leave_insert(eid, f, t, body.get("reason"))
+    await _reassign_now()
+    cid, cname = await _cover_for(eid)
+    return {"ok": True, "inserted": inserted, "has_cover": bool(cid), "cover_name": cname}
+
+
+@router.post("/leave/my-cancel")
+async def leave_my_cancel(body: dict, emp: dict = Depends(require_employee)):
+    """Cancel one's OWN leave row only; the covered work is restored immediately."""
+    await ensure_tables()
+    try:
+        lid = int(body.get("id"))
+    except (TypeError, ValueError):
+        raise HTTPException(400, "Missing id")
+    row = await db.fetchrow("SELECT emp_id FROM maint_leave WHERE id=$1", lid)
+    if not row:
+        return {"ok": True}                # already gone
+    if row["emp_id"] != emp["id"]:
+        raise HTTPException(403, "You can only cancel your own leave")
+    await db.execute("DELETE FROM maint_leave WHERE id=$1", lid)
+    await _reassign_now()
     return {"ok": True}
 
 

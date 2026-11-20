@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Apply Leave · {{ app_name }}{% endblock %}
+{% block tb_title %}Apply Leave{% endblock %}
+{% block content %}
+<div class="acc-teal">
+<style>
+.mf label{display:block;font-size:11.5px;font-weight:700;color:var(--ink-2);margin-bottom:6px;text-transform:uppercase;letter-spacing:.3px}
+.mf input{width:100%;padding:10px 11px;border:1px solid var(--line-2);border-radius:9px;font-family:inherit;font-size:13px;background:#fff;outline:none}
+.mf input:focus{border-color:var(--acc);box-shadow:0 0 0 3px var(--acc-soft)}
+.lv-top{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end;margin-bottom:4px}
+.lv-reason{margin-top:12px}
+@media(max-width:720px){.lv-top{grid-template-columns:1fr 1fr}}
+.lv-item{display:flex;align-items:center;gap:12px;padding:11px 2px;border-top:1px solid var(--line);font-size:13.5px}
+.lv-item .rng{font-weight:700;color:var(--acc-ink);min-width:150px}
+.lv-item .rs{color:var(--muted)}.lv-item .sp{flex:1}
+.lv-item .on{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px;background:#e3f6ee;color:#0a7d55;margin-left:4px}
+.cover-note{font-size:12.5px;color:var(--ink-2);background:var(--acc-soft);border:1px solid var(--line-2);border-radius:9px;padding:9px 12px;margin-top:12px}
+.cover-note b{color:var(--acc-ink)}
+</style>
+
+<div class="page-head"><h1>Apply for leave</h1><p>Apply for your own leave here. For the days you're on leave, your Daily PM, Quarterly PM, Maintenance Work and open breakdowns are <b>automatically reassigned to your cover</b>, and handed back to you when you return.</p></div>
+
+<div class="panel"><div class="panel-head"><span class="hi">{{ icon('calendar',17) }}</span>New leave</div>
+<div class="panel-body"><div class="mf">
+  <div class="lv-top">
+    <div><label>From</label><input id="lv_from" type="date"></div>
+    <div><label>To</label><input id="lv_to" type="date"></div>
+    <div><button class="btn btn-primary" onclick="lvApply()">Apply</button></div>
+  </div>
+  <div class="lv-reason"><label>Reason <span style="text-transform:none;color:var(--muted);font-weight:400">(optional)</span></label><input id="lv_reason" placeholder="e.g. casual leave"></div>
+  <div id="cover_note" class="cover-note" style="display:none"></div>
+</div></div></div>
+
+<div class="panel" style="margin-top:16px"><div class="panel-head"><span class="hi">{{ icon('users',17) }}</span>My leave</div>
+<div class="panel-body"><div id="leave_list"><div class="empty">Loading…</div></div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function v(id){var e=document.getElementById(id);return e?e.value:'';}
+function sv(id,x){var e=document.getElementById(id);if(e)e.value=(x==null?'':x);}
+function esc(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function today(){var d=new Date();return d.getFullYear()+'-'+('0'+(d.getMonth()+1)).slice(-2)+'-'+('0'+d.getDate()).slice(-2);}
+function fmtd(s){if(!s)return'—';var p=String(s).slice(0,10).split('-');return p.length===3?(p[2]+'-'+p[1]+'-'+p[0]):s;}
+function isActive(l){var t=today();var f=(l.from_date||'').slice(0,10),to=(l.to_date||f).slice(0,10);return f&&f<=t&&t<=to;}
+
+function showCover(d){var box=document.getElementById('cover_note');if(!box)return;
+  if(d&&d.has_cover){box.style.display='';box.innerHTML='While you’re on leave your work moves to <b>'+esc(d.cover_name)+'</b>.';}
+  else{box.style.display='';box.innerHTML='No cover is set for you yet — ask the admin to configure your cover so your work is reassigned automatically.';}}
+
+async function lvLoad(){var box=document.getElementById('leave_list');box.innerHTML='<div class="empty">Loading…</div>';
+  var d;try{d=await (await fetch('/maint/leave/my',{cache:'no-store'})).json();}
+  catch(e){box.innerHTML='<div class="empty" style="color:#c23438">Couldn’t load.</div>';return;}
+  showCover(d);var ls=(d&&d.leaves)||[];
+  if(!ls.length){box.innerHTML='<div class="empty">You have no leave applied.</div>';return;}
+  box.innerHTML=ls.map(function(l){var range=fmtd(l.from_date)+(l.to_date&&l.to_date!==l.from_date?(' → '+fmtd(l.to_date)):'');
+    return '<div class="lv-item"><span class="rng">'+esc(range)+(isActive(l)?'<span class="on">on leave now</span>':'')+'</span>'
+      +(l.reason?('<span class="rs">· '+esc(l.reason)+'</span>'):'')
+      +'<span class="sp"></span><a href="#" class="ic-del" onclick="lvCancel('+l.id+');return false">Cancel</a></div>';}).join('');}
+
+async function lvApply(){var f=v('lv_from'),t=v('lv_to'),rs=v('lv_reason').trim();
+  if(!f){toast('err','Pick a from-date');return;}
+  if(t&&t<f){toast('err','“To” is before “From”');return;}
+  try{var r=await fetch('/maint/leave/apply',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({from_date:f,to_date:t||f,reason:rs})});
+    var o=await r.json().catch(function(){return{};});if(!r.ok||!o.ok)throw new Error(o.detail||'Failed');
+    sv('lv_reason','');
+    if(o.inserted===false){toast('ok','You’re already on leave for those dates');}
+    else if(o.has_cover){toast('ok','Leave applied — your work moves to '+(o.cover_name||'your cover'));}
+    else{toast('ok','Leave applied');}
+    await lvLoad();}catch(e){toast('err',(e&&e.message)||'Failed');}}
+
+async function lvCancel(id){if(!confirm('Cancel this leave?'))return;
+  try{var r=await fetch('/maint/leave/my-cancel',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:id})});
+  var o=await r.json();if(!r.ok||!o.ok)throw 0;toast('ok','Leave cancelled');await lvLoad();}catch(e){toast('err','Failed');}}
+
+sv('lv_from',today());sv('lv_to',today());lvLoad();
+</script>
+{% endblock %}

@@ -39,6 +39,8 @@ NAV_GROUPS = [
      "items": [
          {"name": "My Checklist", "icon": "clipboard", "desc": "Your assigned daily & quarterly checks and breakdowns.",
           "href": "/maint/my-checklist", "active_key": "maint_my"},
+         {"name": "Apply Leave", "icon": "calendar", "desc": "Apply for your own leave; today's work moves to your cover automatically.",
+          "href": "/maint/my-leave", "active_key": "maint_my_leave"},
          {"name": "Analytics", "icon": "gauge", "desc": "MTTR, MTBF, availability, downtime and PM compliance.",
           "href": "/maint/analytics", "active_key": "maint_analytics"},
          {"name": "Maintenance Board", "icon": "gauge", "desc": "Due today, overdue and upcoming PM at a glance.",
@@ -89,7 +91,7 @@ ADMIN_NAV = [
 router = APIRouter()
 
 # Maintenance sub-items a NON-admin may see. Admins see the whole group.
-MAINT_PUBLIC_KEYS = {"maint_my", "maint", "maint_breakdown"}
+MAINT_PUBLIC_KEYS = {"maint_my", "maint_my_leave", "maint", "maint_breakdown"}
 
 
 def _is_admin(emp) -> bool:
@@ -284,6 +286,7 @@ async def customers_page(request: Request):
 # Raise Breakdown; the rest redirect them back to the board even by direct URL.
 _MAINT_PAGES = [
     ("/maint/my-checklist", "maint_my.html", "maint_my", "My Checklist", False),
+    ("/maint/my-leave", "maint_my_leave.html", "maint_my_leave", "Apply Leave", False),
     ("/maint/analytics", "maint_analytics.html", "maint_analytics", "Maintenance Analytics", True),
     ("/maint", "maint_board.html", "maint", "Maintenance Board", False),
     ("/maint/monitor", "maint_monitor.html", "maint_monitor", "Monitor", True),
