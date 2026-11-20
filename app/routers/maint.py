@@ -2321,13 +2321,25 @@ async def _schedule_rows():
     return [dict(r) for r in rows]
 
 
+async def _checklists_with_cps():
+    """Set of checklist_ids that have at least one checkpoint. A PM schedule whose checklist has
+    none (nothing to perform) is hidden from the Schedule page, Monitor and Maintenance board
+    until checkpoints are added — then it reappears automatically (filter is at query time)."""
+    rows = await db.fetch(
+        "SELECT DISTINCT checklist_id FROM maint_checkpoints WHERE checklist_id IS NOT NULL")
+    return {r["checklist_id"] for r in rows}
+
+
 @router.get("/schedules/list")
 async def schedules_list(emp: dict = Depends(require_employee)):
     await ensure_tables()
     await _refresh_holidays()
     today = _today()
+    cps_have = await _checklists_with_cps()
     out = []
     for s in await _schedule_rows():
+        if s.get("checklist_id") not in cps_have:
+            continue   # no checkpoints for this machine -> hide until checkpoints are added
         info = compute_due(s, s.get("asset_hours"), today)
         s.update(info)
         # A DAILY schedule is same-day only — it must NEVER pile up as Overdue. If it was due
@@ -5540,11 +5552,12 @@ async def _board_matrix_impl(emp: dict):
     # with the DB in another region, serial round-trips are what tips this over Vercel's limit.)
     (cps_by_cl, done_set, absent_set, log_set, window_days), \
         (q_cps, q_pk, q_done, q_absent, q_skip), \
-        _emp_rows, _bd_rows = await asyncio.gather(
+        _emp_rows, _bd_rows, _cps_have = await asyncio.gather(
             _daily_window_state(sched_all, daily_cl_ids, today),
             _quarterly_state(sched_all, today),
             db.fetch("SELECT id, name, emp_no FROM employees"),
-            _open_breakdowns())
+            _open_breakdowns(),
+            _checklists_with_cps())
     cur_due = window_days[0] if window_days else today
 
     def _day_overdue(clid, piso, cps, is_cur):
@@ -5649,6 +5662,8 @@ async def _board_matrix_impl(emp: dict):
     for s in sched_all:
         if not s.get("active"):
             continue
+        if s.get("checklist_id") not in _cps_have:
+            continue   # no checkpoints -> nothing to perform; hide this machine's PM
         aid = s.get("asset_id")
         g = by_asset.get(aid)
         if g is None:
@@ -7416,6 +7431,7 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
     cutoff = today - timedelta(days=days - 1)
     emps = {e["id"]: (e["name"] or e["emp_no"])
             for e in await db.fetch("SELECT id, name, emp_no FROM employees")}
+    cps_have = await _checklists_with_cps()   # hide machines whose checklist has no checkpoints
 
     # ---- PM work orders from the logs, grouped by (asset, checklist, period) ----
     wo = {}
@@ -7447,6 +7463,8 @@ async def monitor_data(days: int = Query(default=30), emp: dict = Depends(requir
             "FROM maint_schedules s LEFT JOIN maint_assets a ON a.id=s.asset_id "
             "LEFT JOIN maint_checklists c ON c.id=s.checklist_id "
             "WHERE COALESCE(s.active,true)=true AND s.checklist_id IS NOT NULL"):
+        if s["checklist_id"] not in cps_have:
+            continue   # no checkpoints -> hide this machine's PM from the monitor
         cname = s["cname"] or ""
         ft = (s["freq_type"] or "").lower()
         is_daily = ft == "daily" or (not ft and s["freq_days"] and int(s["freq_days"]) == 1)
