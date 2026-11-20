@@ -5,6 +5,7 @@ body with result=false rather than raising, so callers get (ok, detail) and
 log the detail instead of trusting an exception.
 """
 import re
+import asyncio
 import httpx
 
 from .config import (WATI_BASE_URL, WATI_TOKEN, WATI_OTP_TEMPLATE,
@@ -124,6 +125,32 @@ async def _resolve_template(name: str) -> str:
     return _tmpl_map.get(key, name)
 
 
+async def _wati_post(num, body, retries=2):
+    """POST one send to WATI, retrying briefly on a timeout or transient network error —
+    otherwise a single hiccup silently drops that person's message for the whole run.
+    Returns (response, err): on success err is "" and response is the httpx Response; on
+    give-up response is None and err is a readable label (e.g. "send error: timeout") for
+    the delivery log, instead of the old blank "send error:". A real (non-network) error
+    is not retried."""
+    err = "send error: timeout"
+    for attempt in range(retries + 1):
+        try:
+            async with httpx.AsyncClient(timeout=20) as c:
+                return (await c.post(send_url(), params={"whatsappNumber": num},
+                                     headers={"Authorization": _auth(),
+                                              "Content-Type": "application/json"},
+                                     json=body)), ""
+        except httpx.TimeoutException:
+            err = "send error: timeout"
+        except httpx.TransportError as e:
+            err = "send error: network (%s)" % e.__class__.__name__
+        except Exception as e:
+            return None, "send error: %s" % (str(e) or e.__class__.__name__)
+        if attempt < retries:
+            await asyncio.sleep(1.5 * (attempt + 1))
+    return None, err
+
+
 async def send_template(template: str, number: str, params, broadcast: str = ""):
     """Send any approved WATI template. `params` may be an ordered list (mapped to
     WATI's positional names "1","2",...) OR a dict of named parameters (mapped to
@@ -146,15 +173,13 @@ async def send_template(template: str, number: str, params, broadcast: str = "")
         "broadcast_name": broadcast or template,
         "parameters": parameters,
     }
+    r, err = await _wati_post(num, body)
+    if r is None:
+        return False, err
     try:
-        async with httpx.AsyncClient(timeout=20) as c:
-            r = await c.post(send_url(), params={"whatsappNumber": num},
-                             headers={"Authorization": _auth(),
-                                      "Content-Type": "application/json"},
-                             json=body)
-            j = r.json() if r.content else {}
-    except Exception as e:
-        return False, f"send error: {e}"
+        j = r.json() if r.content else {}
+    except Exception:
+        j = {}
     if isinstance(j, dict) and j.get("result") is True:
         return True, "sent"
     if r.status_code < 300 and isinstance(j, dict) and j.get("result") is None and not j.get("errors"):
@@ -175,15 +200,13 @@ async def send_otp(number: str, code: str):
         "broadcast_name": WATI_OTP_BROADCAST or WATI_OTP_TEMPLATE,
         "parameters": [{"name": WATI_OTP_PARAM, "value": str(code)}],
     }
+    r, err = await _wati_post(num, body)
+    if r is None:
+        return False, err
     try:
-        async with httpx.AsyncClient(timeout=20) as c:
-            r = await c.post(send_url(), params={"whatsappNumber": num},
-                             headers={"Authorization": _auth(),
-                                      "Content-Type": "application/json"},
-                             json=body)
-            j = r.json() if r.content else {}
-    except Exception as e:
-        return False, f"send error: {e}"
+        j = r.json() if r.content else {}
+    except Exception:
+        j = {}
     if isinstance(j, dict) and j.get("result") is True:
         return True, "sent"
     if r.status_code < 300 and isinstance(j, dict) and j.get("result") is None and not j.get("errors"):
