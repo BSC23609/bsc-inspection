@@ -17,8 +17,8 @@ from pydantic import BaseModel
 import httpx as _httpx
 
 from .. import db, graph, xlsxlog, odsync
-from ..auth import require_employee
-from ..config import ONEDRIVE_BASE
+from ..auth import require_employee, current_employee
+from ..config import ONEDRIVE_BASE, AGENT_TOKEN
 from ..pdfgen import build_coil_pdf
 
 router = APIRouter(prefix="/coil", tags=["coil"])
@@ -301,6 +301,35 @@ async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bo
     if excel:
         await st.run("Excel log (Inward_Log.xlsx)", _xlsx())
     return await odsync.record(st)
+
+
+@router.get("/regen-pdfs")
+async def coil_regen_pdfs(token: str = Query(default=""), skip: int = Query(default=0),
+                          limit: int = Query(default=8), emp: dict = Depends(current_employee)):
+    """Rebuild the OneDrive PDF for existing coil-inward records so old reports pick up the
+    clean rounded decimals (PDF only — the Excel log is not touched). Processed in batches to
+    stay under the hosting time limit: start at ?skip=0 and keep calling with the returned
+    next_skip until done=true (the coil-regen workflow does this loop automatically).
+    Admin session or ?token=AGENT_TOKEN."""
+    await ensure_table()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    skip = max(0, int(skip or 0))
+    limit = max(1, min(int(limit or 8), 20))
+    total = (await db.fetchrow("SELECT COUNT(*) AS n FROM coil_inward"))["n"]
+    rows = await db.fetch("SELECT id FROM coil_inward ORDER BY id LIMIT $1 OFFSET $2", limit, skip)
+    done_ids, errs = [], []
+    for r in rows:
+        try:
+            await od_sync(r["id"], excel=False, pdf=True)
+            done_ids.append(r["id"])
+        except Exception as e:
+            errs.append({"id": r["id"], "error": str(e)[:120]})
+    next_skip = skip + len(rows)
+    return JSONResponse({"total": total, "from": skip, "processed": len(done_ids),
+                         "ids": done_ids, "errors": errs, "next_skip": next_skip,
+                         "done": (not rows) or next_skip >= total},
+                        headers={"Cache-Control": "no-store"})
 
 
 @router.post("/submit")

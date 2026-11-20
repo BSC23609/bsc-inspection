@@ -1,0 +1,25 @@
+name: Regenerate coil inward PDFs (one-time)
+
+# Manual one-time job: rebuilds every coil-inward OneDrive PDF so old reports pick up the clean
+# rounded decimals (3.8, 27.8). Calls /coil/regen-pdfs in small batches and loops until the
+# endpoint reports done. Run it from the Actions tab (Run workflow). Safe to re-run.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  regen:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Regenerate all coil PDFs
+        run: |
+          skip=0
+          for i in $(seq 1 600); do
+            resp=$(curl -sS "https://qms.bharatsteels.in/coil/regen-pdfs?token=BSC%40123&skip=$skip&limit=8")
+            echo "$resp"
+            done=$(printf '%s' "$resp" | python3 -c "import sys,json;print(json.load(sys.stdin).get('done'))" 2>/dev/null || echo "err")
+            next=$(printf '%s' "$resp" | python3 -c "import sys,json;print(json.load(sys.stdin).get('next_skip',0))" 2>/dev/null || echo "$skip")
+            if [ "$done" = "err" ]; then echo "Bad response — stopping."; exit 1; fi
+            if [ "$done" = "True" ]; then echo "All coil PDFs regenerated."; break; fi
+            skip=$next
+            sleep 2
+          done
