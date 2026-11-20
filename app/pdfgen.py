@@ -57,10 +57,39 @@ def fmt_min(mins):
     return f"{m}m"
 
 
+def _trim_num(x):
+    """Round a number to at most 2 decimals and drop trailing zeros: 27.80498->27.8, 3.78->3.78, 1250->1250."""
+    try:
+        s = f"{float(x):.2f}"
+    except (TypeError, ValueError):
+        return str(x)
+    if "." in s:
+        s = s.rstrip("0").rstrip(".")
+    return s
+
+
 def _fmt(v):
     if v is None or v == "":
         return ""
-    return str(v)
+    # Numbers (including Postgres NUMERIC Decimals that keep the full binary-float expansion, e.g.
+    # 27.804988689080697...296875) are rounded to a clean short form; text is left untouched.
+    if isinstance(v, bool):
+        return str(v)
+    if isinstance(v, (int, float)):
+        return _trim_num(v)
+    if isinstance(v, str):
+        s = v.strip()
+        # Only reformat if the whole string is a number (vehicle/batch numbers with letters stay as-is).
+        try:
+            float(s)
+        except ValueError:
+            return v
+        return _trim_num(s)
+    # Decimal and any other numeric-like type.
+    try:
+        return _trim_num(v)
+    except Exception:
+        return str(v)
 
 
 def build_dg_pdf(rows, dg_set: str, month: str) -> bytes:

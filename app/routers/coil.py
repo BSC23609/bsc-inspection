@@ -128,6 +128,15 @@ def _num(v):
         return None
 
 
+def _num2(v, nd=2):
+    """Round to `nd` decimals and return a Decimal, so NUMERIC columns store a clean short value
+    (27.8, 3.78) instead of the full binary-float expansion."""
+    f = _num(v)
+    if f is None:
+        return None
+    return Decimal(f"{f:.{nd}f}")
+
+
 def _s(v, n=120):
     return (str(v).strip()[:n] if v is not None else "")
 
@@ -210,9 +219,9 @@ async def _normalize(b: CoilIn):
         "log_date": d,
         "vehicle_number": _s(b.vehicle_number, 40), "batch_number": _s(b.batch_number, 60),
         "make_of_coil": _s(b.make_of_coil, 60), "grade": _s(b.grade, 60),
-        "width": _s(b.width, 30), "thickness": _num(b.thickness),
-        "coil_weight": _num(b.coil_weight), "coil_id": _s(b.coil_id, 30),
-        "actual_thickness": _num(b.actual_thickness), "actual_width": _num(b.actual_width),
+        "width": _s(b.width, 30), "thickness": _num2(b.thickness),
+        "coil_weight": _num2(b.coil_weight), "coil_id": _s(b.coil_id, 30),
+        "actual_thickness": _num2(b.actual_thickness), "actual_width": _num2(b.actual_width),
         "id_sticker": _s(b.id_sticker, 8), "edge_inner": _s(b.edge_inner, 8),
         "edge_outer": _s(b.edge_outer, 8), "scratch": _s(b.scratch, 8),
         "strapping": _s(b.strapping, 8), "rust": _s(b.rust, 8),
