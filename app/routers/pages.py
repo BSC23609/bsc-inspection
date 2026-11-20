@@ -17,7 +17,7 @@ NAV_GROUPS = [
      "items": [
          {"name": "Coil Inward", "icon": "coil", "desc": "Inspect mother coils on arrival.",
           "href": "/coil", "active_key": "coil"},
-         {"name": "Quality Inspection", "icon": "ruler", "desc": "Cut-to-length quality and sheet measurements.",
+         {"name": "CTL Quality Inspection", "icon": "ruler", "desc": "Cut-to-length quality and sheet measurements.",
           "href": "/quality", "active_key": "quality"},
          {"name": "Shearing Quality Inspection", "icon": "scissors", "desc": "Shearing quality, output sizes, reworks.",
           "href": "/shearing", "active_key": "shearing"},
