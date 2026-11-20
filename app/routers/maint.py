@@ -1098,6 +1098,17 @@ def _is_offday(d):
 
 
 DAILY_CLOSE_HOUR = 14   # daily PM window closes 2 PM IST — a daily PM locks (Incomplete) after this
+QUARTERLY_CLOSE_HOUR = 19  # a quarterly PM due today escalates to Overdue after 7 PM IST (not locked)
+
+
+def _quarterly_overdue_today(now=None):
+    """True once past the 7 PM cutoff: a quarterly PM still due today then shows as Overdue.
+    This is display-only — the quarterly stays completable (no lock), unlike the daily rule."""
+    now = now or datetime.now(IST)
+    try:
+        return now.hour >= QUARTERLY_CLOSE_HOUR
+    except Exception:
+        return False
 
 
 def _daily_closed(day, now=None):
@@ -2321,13 +2332,18 @@ async def schedules_list(emp: dict = Depends(require_employee)):
         s.update(info)
         # A DAILY PM not completed today locks as Incomplete after its 2 PM cutoff (same rule
         # as My Checklist / Monitor). Quarterly / hours-based schedules are untouched.
-        if (s.get("freq_type") or "").lower() == "daily" and not _is_offday(today) \
+        ft = (s.get("freq_type") or "").lower()
+        if ft == "daily" and not _is_offday(today) \
                 and _daily_closed(today) and (info.get("due") or info.get("overdue")):
             ld = s.get("last_done")
             if not (ld and str(ld)[:10] == today.isoformat()):
                 s["incomplete"] = True
                 s["due"] = False
                 s["overdue"] = False
+        # Quarterly due today but not done by 7 PM -> show Overdue (still completable, no lock).
+        elif ft == "quarterly" and info.get("due") and not info.get("overdue") \
+                and _quarterly_overdue_today():
+            s["overdue"] = True
         out.append(s)
     return _json(out)
 
@@ -5586,7 +5602,9 @@ async def _board_matrix_impl(emp: dict):
         if info["overdue"]:
             return {"state": "overdue", "due": info.get("next_due")}
         if info["due"]:
-            return {"state": "due", "due": info.get("next_due")}
+            # Due today but not completed by the 7 PM cutoff -> escalate to Overdue (display only).
+            st = "overdue" if _quarterly_overdue_today() else "due"
+            return {"state": st, "due": info.get("next_due")}
         nd = _d(info["next_due"]) if info.get("next_due") else None
         if nd and nd <= today + timedelta(days=7):
             return {"state": "upcoming", "due": info.get("next_due")}
