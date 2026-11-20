@@ -2330,16 +2330,21 @@ async def schedules_list(emp: dict = Depends(require_employee)):
     for s in await _schedule_rows():
         info = compute_due(s, s.get("asset_hours"), today)
         s.update(info)
-        # A DAILY PM not completed today locks as Incomplete after its 2 PM cutoff (same rule
-        # as My Checklist / Monitor). Quarterly / hours-based schedules are untouched.
+        # A DAILY schedule is same-day only — it must NEVER pile up as Overdue. If it was due
+        # (or showing as overdue from an old uncompleted day) and not completed today:
+        #   before 2 PM  -> Due today     after 2 PM -> Incomplete (locked).
+        # Completed today stays OK. Quarterly / hours-based schedules are untouched here.
         ft = (s.get("freq_type") or "").lower()
-        if ft == "daily" and not _is_offday(today) \
-                and _daily_closed(today) and (info.get("due") or info.get("overdue")):
+        if ft == "daily" and not _is_offday(today) and (info.get("due") or info.get("overdue")):
             ld = s.get("last_done")
-            if not (ld and str(ld)[:10] == today.isoformat()):
-                s["incomplete"] = True
-                s["due"] = False
+            done_today = bool(ld) and str(ld)[:10] == today.isoformat()
+            if not done_today:
                 s["overdue"] = False
+                if _daily_closed(today):
+                    s["incomplete"] = True
+                    s["due"] = False
+                else:
+                    s["due"] = True
         # Quarterly due today but not done by 7 PM -> show Overdue (still completable, no lock).
         elif ft == "quarterly" and info.get("due") and not info.get("overdue") \
                 and _quarterly_overdue_today():
