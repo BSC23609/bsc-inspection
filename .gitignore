@@ -3,3 +3,7 @@ node_modules/
 *.log
 .DS_Store
 ecosystem.config.js
+
+# Python bytecode
+__pycache__/
+*.pyc
