@@ -1097,11 +1097,11 @@ def _is_offday(d):
     return d.weekday() == 6 or d.isoformat() in HOLIDAYS   # Sunday (6) or a holiday
 
 
-DAILY_CLOSE_HOUR = 19   # plant close 7 PM IST — a daily PM locks (becomes Incomplete) after this
+DAILY_CLOSE_HOUR = 14   # daily PM window closes 2 PM IST — a daily PM locks (Incomplete) after this
 
 
 def _daily_closed(day, now=None):
-    """A daily PM for `day` is OPEN only on its own date before 19:00 IST (plant close);
+    """A daily PM for `day` is OPEN only on its own date before 14:00 IST (2 PM window close);
     otherwise it is CLOSED and locked — nobody (user or admin) can complete it, and it is
     treated as Incomplete. `day` is a date. Used everywhere the daily same-day rule applies."""
     now = now or datetime.now(IST)
@@ -2319,6 +2319,15 @@ async def schedules_list(emp: dict = Depends(require_employee)):
     for s in await _schedule_rows():
         info = compute_due(s, s.get("asset_hours"), today)
         s.update(info)
+        # A DAILY PM not completed today locks as Incomplete after its 2 PM cutoff (same rule
+        # as My Checklist / Monitor). Quarterly / hours-based schedules are untouched.
+        if (s.get("freq_type") or "").lower() == "daily" and not _is_offday(today) \
+                and _daily_closed(today) and (info.get("due") or info.get("overdue")):
+            ld = s.get("last_done")
+            if not (ld and str(ld)[:10] == today.isoformat()):
+                s["incomplete"] = True
+                s["due"] = False
+                s["overdue"] = False
         out.append(s)
     return _json(out)
 

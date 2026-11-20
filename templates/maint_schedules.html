@@ -26,7 +26,7 @@
 .note{font-size:11.5px;color:var(--muted);margin-top:5px}
 .chk{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2)}.chk input{width:auto}
 .badge{display:inline-block;font-size:10px;font-weight:700;border-radius:20px;padding:2px 9px}
-.b-ok{background:#e3f6ee;color:#0a7d55}.b-due{background:#fff4e0;color:#9a6508}.b-over{background:#fdecec;color:#c23438}.b-off{background:#eef2f7;color:#5d6879}
+.b-ok{background:#e3f6ee;color:#0a7d55}.b-due{background:#fff4e0;color:#9a6508}.b-over{background:#fdecec;color:#c23438}.b-off{background:#eef2f7;color:#5d6879}.b-inc{background:#fde0e1;color:#c0241c}
 /* holidays modal */
 .hmodal{background:#fff;border-radius:14px;max-width:460px;width:100%;box-shadow:0 20px 60px rgba(0,0,0,.3)}
 .hmodal .hh{padding:16px 18px;border-bottom:1px solid var(--line)}
@@ -203,6 +203,7 @@ function meterText(x){if(x.hours_interval){var tgt=Number(x.last_done_hours||0)+
     return esc(fmtHrs(x.asset_hours!=null?x.asset_hours:0))+' / '+esc(fmtHrs(tgt))+' hrs';}
   return x.asset_hours!=null?esc(fmtHrs(x.asset_hours))+' hrs':'—';}
 function dueBadge(x){if(!x.active)return '<span class="badge b-off">Paused</span>';
+  if(x.incomplete)return '<span class="badge b-inc">Incomplete</span>';
   if(x.overdue)return '<span class="badge b-over">Overdue</span>';if(x.due)return '<span class="badge b-due">Due</span>';return '<span class="badge b-ok">OK</span>';}
 function sRender(){var host=document.getElementById('s_rows'),dueOnly=document.getElementById('s_dueonly').checked;
   var dueCnt=SCHED.filter(function(x){return x.active&&(x.due||x.overdue);}).length;
