@@ -41,6 +41,9 @@ WATI_MAINT_DUE_TEMPLATE       = getattr(_cfg, "WATI_MAINT_DUE_TEMPLATE", "") or 
 # body carries no variables. The old text template was bsc_pm_overdue.
 WATI_MAINT_OVERDUE_TEMPLATE   = getattr(_cfg, "WATI_MAINT_OVERDUE_TEMPLATE", "") or "bsc_maint_overdue_report8"
 WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") or "bsc_breakdown_alert2"
+# Unscheduled PM raise alert — its own template so it reads as an unscheduled PM, not a breakdown.
+# Same 5 variables / button as the breakdown alert, so _send_breakdown_alert just swaps the name.
+WATI_MAINT_UNSCHEDULED_TEMPLATE = os.environ.get("WATI_MAINT_UNSCHEDULED_TEMPLATE") or "bsc_unscheduled_alert"
 # Dedicated templates for the hold / resume notifications (see _send_hold_resume_alert).
 WATI_MAINT_HOLD_TEMPLATE      = os.environ.get("WATI_MAINT_HOLD_TEMPLATE") or "bsc_maint_hold"
 WATI_MAINT_RESUME_TEMPLATE    = os.environ.get("WATI_MAINT_RESUME_TEMPLATE") or "bsc_maint_resume"
@@ -3220,7 +3223,11 @@ async def _wsend(template, phone, params, name="", kind=""):
 
 
 async def _send_breakdown_alert(bd: dict):
-    """Fire bsc_breakdown_alert to the assignee (if any) + every supervisor."""
+    """Fire the raise alert to the assignee(s) + every supervisor. A Breakdown uses
+    bsc_breakdown_alert2; an Unscheduled PM uses its own bsc_unscheduled_alert — both share
+    the same 5 variables / button, so only the template name changes by work-order type."""
+    _wtype = _wo_type(bd.get("wo_type"))
+    _tmpl = WATI_MAINT_UNSCHEDULED_TEMPLATE if _wtype == "Unscheduled PM" else WATI_MAINT_BREAKDOWN_TEMPLATE
     label = (str(bd.get("asset_code") or "") + " " + str(bd.get("asset_name") or "")).strip() or "—"
     detail = (bd.get("problem") or "—").strip() or "—"
     btype = _norm_type(bd.get("btype"))
@@ -3248,7 +3255,7 @@ async def _send_breakdown_alert(bd: dict):
             targets.append((m, "Supervisor")); seen.add(m)
     results = []
     for m, nm in targets:
-        ok, detail = await _wsend(WATI_MAINT_BREAKDOWN_TEMPLATE, m, params, name=nm, kind="breakdown")
+        ok, detail = await _wsend(_tmpl, m, params, name=nm, kind="breakdown")
         results.append({"to": m, "result": "sent" if ok else f"failed: {detail}"})
     return results
 
