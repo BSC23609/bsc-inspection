@@ -184,7 +184,7 @@ async def group_sso(request: Request, token: str = "", next: str = ""):
     target = next if (next.startswith("/") and not next.startswith("//")) else "/"
     resp = RedirectResponse(target, status_code=303)
     resp.headers["Referrer-Policy"] = "no-referrer"
-    set_cookie(resp, make_token(emp, "employee"))
+    set_cookie(resp, make_token(emp, "employee"), embedded=request.query_params.get("embed") == "1")
     return resp
 
 

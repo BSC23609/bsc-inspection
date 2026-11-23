@@ -16,6 +16,17 @@ _BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 app = FastAPI(title=APP_NAME, docs_url=None, redoc_url=None)
 
+
+@app.middleware("http")
+async def _hub_frame(request, call_next):
+    # The group hub (app.thebharatsteelgroup.com) may show QMS inside its own tabs; no other site may frame it.
+    resp = await call_next(request)
+    resp.headers["Content-Security-Policy"] = ("frame-ancestors 'self' https://app.thebharatsteelgroup.com "
+                                               "https://bsg-hub-one.vercel.app")
+    if "x-frame-options" in resp.headers:
+        del resp.headers["x-frame-options"]
+    return resp
+
 # Static assets (Vercel also serves /static directly; this covers local runs)
 _static_dir = os.path.join(_BASE, "static")
 if os.path.isdir(_static_dir):

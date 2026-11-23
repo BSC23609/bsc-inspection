@@ -46,7 +46,13 @@ def decode_token(token: str) -> dict | None:
         return None
 
 
-def set_cookie(resp: Response, token: str):
+def set_cookie(resp: Response, token: str, embedded: bool = False):
+    if embedded:
+        # Opened in a tab inside the group hub: the browser only keeps a SameSite=None, Partitioned cookie
+        # there, and sends it only while the hub is the page around QMS (no other site can use it).
+        resp.headers.append("set-cookie", f"{COOKIE_NAME}={token}; Max-Age={COOKIE_TTL}; Path=/; HttpOnly; "
+                                          "Secure; SameSite=None; Partitioned")
+        return
     resp.set_cookie(COOKIE_NAME, token, max_age=COOKIE_TTL, httponly=True,
                     secure=True, samesite="lax", path="/")
 
