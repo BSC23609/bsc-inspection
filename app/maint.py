@@ -78,7 +78,7 @@ SEED_ASSETS = [
     ("MC-002", "MOBILE CRANE- 14 TON", "Crane", "YARD", "ACE", "14 XW", "Capacity: 14 TON"),
     ("M/C-015", "SHEARING MACHINE 25MM", "Shearing", "SHED B", "ENERGYMISSION", "", "Capacity: 25MM"),
     ("M/C-016", "SHEARING MACHINE 3MM", "Shearing", "SHED B", "", "", "Capacity: 3MM"),
-    ("M/C-017", "LEVELLER NACHINE", "Leveller", "SHED B", "", "", "Capacity: 25MM"),
+    ("M/C-017", "LEVELLER MACHINE", "Leveller", "SHED B", "", "", "Capacity: 25MM"),
     ("M/C-018", "IRON WORKER MACHINE", "Iron Worker", "SHED B", "", "", "Capacity: 25MM"),
     ("M/C-019", "TRANSFER TROLLEY", "Transfer Trolley", "SHED A", "", "INHOUSE", "Capacity: 32 TON"),
     ("M/C-020", "SEMI GANDRY CRANE", "Gantry Crane", "SHED B", "AMSAK CRANES PVT LTD", "AMSAK", "Capacity: 3 TON"),
