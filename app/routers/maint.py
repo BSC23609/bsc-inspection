@@ -7531,7 +7531,7 @@ async def ensure_report_folders(token: str = Query(default=""), skip: int = Quer
 @router.get("/admin/rename-asset")
 async def admin_rename_asset(token: str = Query(default=""), code: str = Query(default=""),
                              name: str = Query(default=""), merge: int = Query(default=1),
-                             dry: int = Query(default=0),
+                             from_name: str = Query(default=""), dry: int = Query(default=0),
                              emp: dict = Depends(current_employee)):
     """Rename a machine (maint_assets.name) and, when that changes its OneDrive report
     folder, merge the old folder's reports into the new one and remove the old folder.
@@ -7560,10 +7560,15 @@ async def admin_rename_asset(token: str = Query(default=""), code: str = Query(d
     if not row:
         raise HTTPException(404, f"No machine with code {code}")
     old_name = row["name"] or ""
-    old_folder = _machine_folder(row["code"], old_name)
+    # The folder to merge FROM is normally the asset's current name, but pass from_name to
+    # merge a stray folder whose spelling no longer matches the DB (e.g. the DB was already
+    # renamed, yet an old 'LEVELLER NACHINE' folder still sits in OneDrive).
+    merge_from_name = (from_name or "").strip() or old_name
+    old_folder = _machine_folder(row["code"], merge_from_name)
     new_folder = _machine_folder(row["code"], new_name)
-    out = {"code": row["code"], "old_name": old_name, "new_name": new_name,
-           "old_folder": old_folder, "new_folder": new_folder, "dry_run": is_dry}
+    out = {"code": row["code"], "old_name": old_name, "merge_from": merge_from_name,
+           "new_name": new_name, "old_folder": old_folder, "new_folder": new_folder,
+           "dry_run": is_dry}
 
     do_merge = bool(int(merge)) and old_folder != new_folder
     plan = {"moved": [], "duplicates": [], "errors": [], "deleted_old_folder": False}
