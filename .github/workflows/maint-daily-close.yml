@@ -1,13 +1,13 @@
-name: Maintenance daily PM close (2 PM)
+name: Maintenance daily PM close (7 PM)
 
-# Fires the daily-PM window close once a day at 2:05 PM IST (08:35 UTC), just after the 2 PM
+# Fires the daily-PM window close once a day at 7:05 PM IST (13:35 UTC), just after the 7 PM
 # cutoff. It finalizes each daily PM for the day: a single-assignee machine (or a machine nobody
 # completed) has its incomplete work order deleted; a multi-assignee machine with some completions
 # has its PDF finalized with the missing person(s) shown as Incomplete. Idempotent — safe to
-# re-run (before 2 PM it is a no-op). GitHub cron is UTC.
+# re-run (before 7 PM it is a no-op). GitHub cron is UTC.
 on:
   schedule:
-    - cron: '35 8 * * *'
+    - cron: '35 13 * * *'
   workflow_dispatch: {}   # lets you run it manually from the Actions tab
 
 jobs:

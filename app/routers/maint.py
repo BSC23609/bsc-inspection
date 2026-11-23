@@ -1100,7 +1100,7 @@ def _is_offday(d):
     return d.weekday() == 6 or d.isoformat() in HOLIDAYS   # Sunday (6) or a holiday
 
 
-DAILY_CLOSE_HOUR = 14   # daily PM window closes 2 PM IST — a daily PM locks (Incomplete) after this
+DAILY_CLOSE_HOUR = 19   # daily PM window closes 7 PM IST — a daily PM locks (Incomplete) after this
 QUARTERLY_CLOSE_HOUR = 19  # a quarterly PM due today escalates to Overdue after 7 PM IST (not locked)
 
 
@@ -1115,7 +1115,7 @@ def _quarterly_overdue_today(now=None):
 
 
 def _daily_closed(day, now=None):
-    """A daily PM for `day` is OPEN only on its own date before 14:00 IST (2 PM window close);
+    """A daily PM for `day` is OPEN only on its own date before 19:00 IST (7 PM window close);
     otherwise it is CLOSED and locked — nobody (user or admin) can complete it, and it is
     treated as Incomplete. `day` is a date. Used everywhere the daily same-day rule applies."""
     now = now or datetime.now(IST)
@@ -2354,7 +2354,7 @@ async def schedules_list(emp: dict = Depends(require_employee)):
         s.update(info)
         # A DAILY schedule is same-day only — it must NEVER pile up as Overdue. If it was due
         # (or showing as overdue from an old uncompleted day) and not completed today:
-        #   before 2 PM  -> Due today     after 2 PM -> Incomplete (locked).
+        #   before 7 PM  -> Due today     after 7 PM -> Incomplete (locked).
         # Completed today stays OK. Quarterly / hours-based schedules are untouched here.
         ft = (s.get("freq_type") or "").lower()
         if ft == "daily" and not _is_offday(today) and (info.get("due") or info.get("overdue")):
