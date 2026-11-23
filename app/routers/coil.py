@@ -301,12 +301,22 @@ async def coil_relabel_inward(token: str = Query(default=""),
     rec = cand[0]
     row_idx = rec.get("_row")
 
-    d = rec.get("log_date")
-    dd = d.strftime("%d-%m-%Y") if hasattr(d, "strftime") else str(d)
-    new_ref = f"{new_batch.strip()}_({dd})_Inward"
-
     ref_col = await graph.column_values(gtoken, item_id, INWARD_TABLE, 0)
     old_ref = ref_col[row_idx] if (row_idx is not None and row_idx < len(ref_col)) else ""
+
+    # Keep the Ref format identical by reusing the existing Ref's "_(dd-mm-yyyy)_Inward" tail;
+    # fall back to formatting the row's own date as dd-mm-yyyy only if the old Ref is unusable.
+    if old_ref and "_(" in old_ref:
+        suffix = old_ref[old_ref.index("_("):]          # "_(08-10-2026)_Inward"
+    else:
+        d = rec.get("log_date")
+        if hasattr(d, "strftime"):
+            dd = d.strftime("%d-%m-%Y")
+        else:
+            p = str(d).split("-")                        # "2026-10-08" -> "08-10-2026"
+            dd = f"{p[2]}-{p[1]}-{p[0]}" if len(p) == 3 else str(d)
+        suffix = f"_({dd})_Inward"
+    new_ref = f"{new_batch.strip()}{suffix}"
 
     pdf_rec = dict(rec)
     pdf_rec["batch_number"] = new_batch.strip()
