@@ -372,3 +372,39 @@ async def read_table(token: str, item_id: str, table: str):
         vals = item.get("values") or [[]]
         rows.append(vals[0] if vals else [])
     return cols, rows
+
+
+def col_letter(n: int) -> str:
+    """0-based column index -> spreadsheet letter (0->A, 3->D, 8->I, 26->AA)."""
+    s = ""
+    n += 1
+    while n:
+        n, rem = divmod(n - 1, 26)
+        s = chr(65 + rem) + s
+    return s
+
+
+async def table_body_anchor(token: str, item_id: str, table: str):
+    """(sheet_name, top_row_1based, left_col_0based) of a table's data body, or None.
+    Lets a caller address a specific body cell by (row_index, col_index)."""
+    url = (f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook/tables/{table}"
+           f"/dataBodyRange?$select=address,rowIndex,columnIndex")
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+    if r.status_code != 200:
+        return None
+    j = r.json()
+    addr = j.get("address", "")                 # e.g. "Sheet1!A2:U1056"
+    sheet = addr.split("!")[0].strip("'") if "!" in addr else "Sheet1"
+    return sheet, int(j.get("rowIndex", 1)) + 1, int(j.get("columnIndex", 0))
+
+
+async def update_cell(token: str, item_id: str, sheet: str, address: str, value):
+    """PATCH a single worksheet cell (address like 'A886') to `value`."""
+    url = (f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook"
+           f"/worksheets('{sheet}')/range(address='{address}')")
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.patch(url, headers=headers, json={"values": [[value]]})
+    if r.status_code >= 300:
+        raise RuntimeError(f"cell patch {address} failed ({r.status_code}): {r.text[:200]}")

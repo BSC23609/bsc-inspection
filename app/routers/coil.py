@@ -254,6 +254,94 @@ async def coil_list(emp: dict = Depends(require_employee)):
     return JSONResponse(jsonable_encoder(merged), headers={"Cache-Control": "no-store"})
 
 
+def _num_eq(a, b, tol=0.001):
+    try:
+        return abs(float(str(a).strip()) - float(str(b).strip())) <= tol
+    except Exception:
+        return str(a).strip() == str(b).strip()
+
+
+@router.get("/relabel-inward")
+async def coil_relabel_inward(token: str = Query(default=""),
+                              match_batch: str = Query(default=""),
+                              match_vehicle: str = Query(default=""),
+                              match_weight: str = Query(default=""),
+                              new_batch: str = Query(default=""),
+                              new_weight: str = Query(default=""),
+                              dry: int = Query(default=1),
+                              emp: dict = Depends(current_employee)):
+    """Fix ONE legacy (Excel-only) InwardLog row that was saved under the wrong batch, and
+    rebuild its PDF. The row is found by its current batch + vehicle + weight (must match
+    exactly one row — add vehicle/weight to pin it); then its Ref and Batch (and weight, if
+    new_weight is given) are corrected in Inward_Log.xlsx and a correctly-named PDF is written
+    from the row's data. Passing new_batch == the current batch (no new_weight) just rebuilds
+    that row's PDF. dry=1 (default) previews every change and writes nothing. Admin or
+    ?token=AGENT_TOKEN. Only for pre-Neon rows that live solely in the Excel log — records in
+    the coil_inward table are edited by SQL / the normal save path instead."""
+    await ensure_table()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    if not (match_batch.strip() and new_batch.strip()):
+        raise HTTPException(400, "Pass match_batch and new_batch")
+    is_dry = bool(int(dry))
+
+    gtoken = await graph.get_token()
+    item_id = await graph.get_item_id(gtoken, INWARD_XLSX)
+    if not item_id:
+        raise HTTPException(500, "Inward_Log.xlsx not found")
+
+    legacy = await _read_inward_legacy()               # each record carries _row (table body index)
+    cand = [r for r in legacy
+            if str(r.get("batch_number", "")).strip().lower() == match_batch.strip().lower()
+            and (not match_vehicle or str(r.get("vehicle_number", "")).strip().lower() == match_vehicle.strip().lower())
+            and (not match_weight or _num_eq(r.get("coil_weight"), match_weight))]
+    if len(cand) != 1:
+        raise HTTPException(400, f"Match is not unique — {len(cand)} row(s) matched. "
+                                 "Add match_vehicle and/or match_weight to pin exactly one row.")
+    rec = cand[0]
+    row_idx = rec.get("_row")
+
+    d = rec.get("log_date")
+    dd = d.strftime("%d-%m-%Y") if hasattr(d, "strftime") else str(d)
+    new_ref = f"{new_batch.strip()}_({dd})_Inward"
+
+    ref_col = await graph.column_values(gtoken, item_id, INWARD_TABLE, 0)
+    old_ref = ref_col[row_idx] if (row_idx is not None and row_idx < len(ref_col)) else ""
+
+    pdf_rec = dict(rec)
+    pdf_rec["batch_number"] = new_batch.strip()
+    if new_weight.strip():
+        pdf_rec["coil_weight"] = new_weight.strip()
+
+    anchor = await graph.table_body_anchor(gtoken, item_id, INWARD_TABLE)
+    if not anchor:
+        raise HTTPException(500, "Could not locate the InwardLog table body")
+    sheet, top, left = anchor
+    sheet_row = top + row_idx
+
+    def cell(idx):
+        return f"{graph.col_letter(left + idx)}{sheet_row}"
+
+    changes = []                                       # (cell, field, new_value) — Ref=0, Batch=3, Weight=8
+    changes.append((cell(0), "Ref", old_ref, new_ref, new_ref))
+    changes.append((cell(3), "Batch", rec.get("batch_number"), new_batch.strip(), new_batch.strip()))
+    if new_weight.strip():
+        changes.append((cell(8), "Coil Weight", rec.get("coil_weight"), new_weight.strip(), new_weight.strip()))
+
+    out = {"matched_row": row_idx, "sheet_row": sheet_row, "old_ref": old_ref, "new_ref": new_ref,
+           "changes": [{"cell": c, "field": f, "old": str(o), "new": str(n)} for c, f, o, n, _ in changes],
+           "pdf": f"{ONEDRIVE_BASE}/Inward/PDF/{new_ref}.pdf", "dry_run": is_dry}
+    if is_dry:
+        return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
+
+    for c, _f, _o, _n, val in changes:
+        await graph.update_cell(gtoken, item_id, sheet, c, val)
+    await graph.upload_file(gtoken, f"{ONEDRIVE_BASE}/Inward/PDF/{new_ref}.pdf",
+                            build_coil_pdf(pdf_rec), "application/pdf")
+    out["applied"] = True
+    return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
+
+
 async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bool = True) -> dict:
     """Write one coil record to OneDrive (PDF + InwardLog row). Awaited inside the
     request. `dedupe` (backfill) skips the Excel row if the batch is already logged."""
