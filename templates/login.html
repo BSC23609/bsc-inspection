@@ -69,5 +69,6 @@
     <div class="forgot-row"><a href="/forgot">Forgot password?</a></div>
   </form>
 </section>
+<script>/* group hub: tell the hub this app is asking for a sign-in inside its tab */ try { if (window.top !== window.self) window.parent.postMessage({ bsg: "login" }, "*"); } catch (e) {}</script>
 </body>
 </html>
