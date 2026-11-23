@@ -83,10 +83,31 @@ async def current_employee(request: Request) -> dict | None:
     return u
 
 
+def _hub_signin_url(request: Request) -> str | None:
+    """Where to send a browser tab that opened a QMS link (a PDF, a download) without a QMS session.
+
+    This happens when QMS runs inside the group hub's tab and a link opens in a new browser tab: the new tab
+    doesn't carry the in-hub sign-in. The hub signs the person in again with one click and comes straight
+    back to the same link. Only for page/link opens (not background API calls), and only if group sign-in is on.
+    """
+    import os
+    from urllib.parse import quote
+    if not os.getenv("GROUP_SSO_SECRET") or request.method != "GET":
+        return None
+    if request.headers.get("sec-fetch-mode") != "navigate" and "text/html" not in request.headers.get("accept", ""):
+        return None
+    hub = os.getenv("GROUP_HUB_URL", "https://app.thebharatsteelgroup.com").rstrip("/")
+    here = request.url.path + (f"?{request.url.query}" if request.url.query else "")
+    return f"{hub}/launch/{os.getenv('GROUP_SSO_APP_KEY', 'qms')}?next={quote(here, safe='')}"
+
+
 async def require_employee(request: Request) -> dict:
     """FastAPI dependency for JSON APIs — 401 when not an active employee."""
     u = await current_employee(request)
     if not u:
+        url = _hub_signin_url(request)
+        if url:   # a link opened in a new tab: sign in through the group hub and come back here
+            raise HTTPException(status_code=303, detail="sign_in", headers={"Location": url})
         raise HTTPException(status_code=401, detail="auth_required")
     return u
 
