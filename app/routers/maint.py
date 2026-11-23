@@ -7528,6 +7528,120 @@ async def ensure_report_folders(token: str = Query(default=""), skip: int = Quer
     return _json(out)
 
 
+@router.get("/admin/rename-asset")
+async def admin_rename_asset(token: str = Query(default=""), code: str = Query(default=""),
+                             name: str = Query(default=""), merge: int = Query(default=1),
+                             dry: int = Query(default=0),
+                             emp: dict = Depends(current_employee)):
+    """Rename a machine (maint_assets.name) and, when that changes its OneDrive report
+    folder, merge the old folder's reports into the new one and remove the old folder.
+
+    General + idempotent — fixes any machine whose folder spelling drifted (e.g. the
+    M/C-017 'LEVELLER NACHINE' typo that made a duplicate folder). Rules:
+      • every UNIQUE report under the old folder is moved into the matching subfolder of
+        the new folder;
+      • a report whose name already exists in the destination is a DUPLICATE — it is left
+        in place and removed together with the old folder (no overwrite);
+      • the old folder is deleted ONLY when every unique file moved cleanly, so a move
+        failure can never lose a report;
+      • ?dry=1 previews the whole plan and changes nothing (no rename, no move, no delete).
+    Admin session or ?token=AGENT_TOKEN. Example:
+      /maint/admin/rename-asset?token=…&code=M/C-017&name=LEVELLER MACHINE&dry=1
+    """
+    await ensure_tables()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    is_dry = bool(int(dry))
+    code = (code or "").strip()
+    new_name = (name or "").strip()
+    if not code or not new_name:
+        raise HTTPException(400, "Pass both code and name")
+    row = await db.fetchrow("SELECT id, code, name FROM maint_assets WHERE lower(code)=lower($1)", code)
+    if not row:
+        raise HTTPException(404, f"No machine with code {code}")
+    old_name = row["name"] or ""
+    old_folder = _machine_folder(row["code"], old_name)
+    new_folder = _machine_folder(row["code"], new_name)
+    out = {"code": row["code"], "old_name": old_name, "new_name": new_name,
+           "old_folder": old_folder, "new_folder": new_folder, "dry_run": is_dry}
+
+    do_merge = bool(int(merge)) and old_folder != new_folder
+    plan = {"moved": [], "duplicates": [], "errors": [], "deleted_old_folder": False}
+    if do_merge:
+        base = f"{ONEDRIVE_BASE}/Maintenance/Reports"
+        old_base, new_base = f"{base}/{old_folder}", f"{base}/{new_folder}"
+        try:
+            gtoken = await graph.get_token()
+        except Exception as e:
+            raise HTTPException(500, f"Graph token error: {e}")
+        old_root_id = await graph.get_item_id(gtoken, old_base)
+        if not old_root_id:
+            plan["note"] = "Old folder not found in OneDrive — nothing to merge."
+        else:
+            if not is_dry:                        # make sure the destination tree exists
+                await graph.create_folder(gtoken, base, new_folder)
+                for sub in _REPORT_SUBS:
+                    await graph.create_folder(gtoken, new_base, sub)
+            children = await graph.list_children(gtoken, old_base)
+            # 1) files inside each subfolder -> the matching subfolder of the new machine
+            for sf in [c for c in children if c.get("is_folder")]:
+                sub = sf["name"]
+                dst = f"{new_base}/{sub}"
+                if not is_dry:
+                    await graph.create_folder(gtoken, new_base, sub)
+                dst_names = {(c.get("name") or "").lower()
+                             for c in await graph.list_children(gtoken, dst)}
+                dst_id = None if is_dry else await graph.get_item_id(gtoken, dst)
+                for f in await graph.list_children(gtoken, f"{old_base}/{sub}"):
+                    if f.get("is_folder"):
+                        continue
+                    fn = f.get("name") or ""
+                    rec = {"sub": sub, "file": fn}
+                    if fn.lower() in dst_names:
+                        plan["duplicates"].append(rec); continue
+                    if is_dry:
+                        plan["moved"].append(rec); continue
+                    if dst_id and await graph.move_item(gtoken, f["id"], dst_id):
+                        plan["moved"].append(rec); dst_names.add(fn.lower())
+                    else:
+                        plan["errors"].append(rec)
+            # 2) any loose files sitting directly in the old machine folder -> new folder root
+            loose = [c for c in children if not c.get("is_folder")]
+            if loose:
+                root_names = {(c.get("name") or "").lower()
+                              for c in await graph.list_children(gtoken, new_base)}
+                new_root_id = None if is_dry else await graph.get_item_id(gtoken, new_base)
+                for f in loose:
+                    fn = f.get("name") or ""
+                    rec = {"sub": "(root)", "file": fn}
+                    if fn.lower() in root_names:
+                        plan["duplicates"].append(rec); continue
+                    if is_dry:
+                        plan["moved"].append(rec); continue
+                    if new_root_id and await graph.move_item(gtoken, f["id"], new_root_id):
+                        plan["moved"].append(rec); root_names.add(fn.lower())
+                    else:
+                        plan["errors"].append(rec)
+            # delete the old folder only when every unique file moved cleanly
+            if (not is_dry) and not plan["errors"]:
+                if await graph.delete_item(gtoken, old_root_id):
+                    plan["deleted_old_folder"] = True
+        out["merge"] = plan
+    elif old_folder == new_folder:
+        out["merge"] = {"note": "Folder name unchanged — no OneDrive merge needed."}
+
+    # rename the DB row — skip in dry-run, and skip if a move failed so a retry still finds the files
+    if is_dry:
+        out["renamed"] = False
+    elif do_merge and plan["errors"]:
+        out["renamed"] = False
+        out["note"] = "Some files could not be moved — name left unchanged so you can re-run."
+    else:
+        await db.execute("UPDATE maint_assets SET name=$1 WHERE id=$2", new_name, row["id"])
+        out["renamed"] = True
+    return _json(out)
+
+
 def _wo_category(cname: str) -> str:
     return "Quarterly PM" if "quarter" in (cname or "").lower() else "Daily PM"
 
