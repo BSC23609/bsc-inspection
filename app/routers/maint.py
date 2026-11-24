@@ -6435,14 +6435,23 @@ async def weekly_incomplete_report(token: str = Query(default=""), days: int = Q
         ecols = set()
     emailcol = "email" if "email" in ecols else ("email_id" if "email_id" in ecols else None)
     esel = f"{emailcol} AS email" if emailcol else "NULL AS email"
+    # Emails aren't in the staff list, so allow an env override: WEEKLY_PM_EMAILS =
+    # "Kannan=k@x.com;Jeevabharathy=j@x.com;Gourav=g@x.com" (name match is case-insensitive).
+    overrides = {}
+    for part in (os.environ.get("WEEKLY_PM_EMAILS", "") or "").replace(";", ",").split(","):
+        if "=" in part:
+            k, v = part.split("=", 1)
+            if k.strip() and v.strip():
+                overrides[k.strip().lower()] = v.strip()
     recips = []
     for nm in [n.strip() for n in WEEKLY_PM_RECIPIENTS.split(",") if n.strip()]:
         r = await db.fetchrow(
             f"SELECT name, {esel}, COALESCE(mobile,'') AS mobile FROM employees "
             "WHERE lower(name) LIKE $1 ORDER BY id LIMIT 1", f"%{nm.lower()}%")
+        email = (r["email"] if r else None) or overrides.get(nm.lower())
         recips.append({"query": nm, "found": bool(r),
                        "name": (r["name"] if r else None),
-                       "email": (r["email"] if r else None),
+                       "email": email,
                        "mobile": (r["mobile"] if r else None)})
 
     mach_csv = (", ".join(machines[:25]) + (" …" if len(machines) > 25 else "")) if machines else "None"
