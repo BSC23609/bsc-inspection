@@ -47,6 +47,12 @@ WATI_MAINT_UNSCHEDULED_TEMPLATE = os.environ.get("WATI_MAINT_UNSCHEDULED_TEMPLAT
 # Weekly incomplete-PM report (sent every Saturday to a fixed recipient list, email + WhatsApp).
 WATI_PM_WEEKLY_TEMPLATE = os.environ.get("WATI_PM_WEEKLY_TEMPLATE") or "bsc_pm_weekly_incomplete"
 WEEKLY_PM_RECIPIENTS = os.environ.get("WEEKLY_PM_RECIPIENTS") or "Kannan,Jeevabharathy,Gourav"
+# To send the weekly report as a WhatsApp IMAGE, set WATI_PM_WEEKLY_IMG_TEMPLATE to an approved
+# template that has an IMAGE header, and WATI_PM_WEEKLY_IMG_PARAM to that header's variable name;
+# the send passes the live /maint/weekly-incomplete.png URL there. If unset, WhatsApp falls back
+# to the text template above. Email always sends the image inline.
+WATI_PM_WEEKLY_IMG_TEMPLATE = os.environ.get("WATI_PM_WEEKLY_IMG_TEMPLATE") or ""
+WATI_PM_WEEKLY_IMG_PARAM = os.environ.get("WATI_PM_WEEKLY_IMG_PARAM") or ""
 # Dedicated templates for the hold / resume notifications (see _send_hold_resume_alert).
 WATI_MAINT_HOLD_TEMPLATE      = os.environ.get("WATI_MAINT_HOLD_TEMPLATE") or "bsc_maint_hold"
 WATI_MAINT_RESUME_TEMPLATE    = os.environ.get("WATI_MAINT_RESUME_TEMPLATE") or "bsc_maint_resume"
@@ -6326,6 +6332,62 @@ async def daily_close(token: str = Query(default=""), date: str = Query(default=
                   "finalized_multi_incomplete": finalized})
 
 
+async def _weekly_incomplete_data(days: int) -> dict:
+    """Gather the incomplete daily-PM checks for the last `days` working days.
+    Returns {range, rows:[{date,code,machine,checklist,assignee}], machines:[code]}."""
+    today = _today()
+    dates = []
+    for i in range(max(1, int(days))):
+        d = today - timedelta(days=i)
+        if _is_offday(d) or not _daily_closed(d):
+            continue
+        dates.append(d)
+    dates.sort()
+    emap = await _emp_map()
+    emp_name = {k: (v.get("name") or "") for k, v in emap.items()}
+    sched = await _schedule_rows()
+    daily_scheds, seen = [], set()
+    for s in sched:
+        ft = (s.get("freq_type") or "").lower()
+        is_daily = ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
+        clid = s.get("checklist_id")
+        if s.get("active") and is_daily and clid and clid not in seen:
+            seen.add(clid)
+            daily_scheds.append(s)
+    rows = []
+    for d in dates:
+        pk = d.isoformat()
+        for s in daily_scheds:
+            clid = s["checklist_id"]
+            cps = await db.fetch(
+                "SELECT id, assigned_emp_id FROM maint_checkpoints WHERE checklist_id=$1", clid)
+            if not cps:
+                continue
+            absent = await _absent_emp_ids(clid, pk)
+            by_emp = {}
+            for c in cps:
+                aid = c["assigned_emp_id"]
+                if aid and aid not in absent:
+                    by_emp.setdefault(aid, []).append(c["id"])
+            if not by_emp:
+                continue
+            done_ids = {r["checkpoint_id"] for r in await db.fetch(
+                "SELECT checkpoint_id FROM maint_checkpoint_done "
+                "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])",
+                pk, [c["id"] for c in cps])}
+            for aid, cp_ids in by_emp.items():
+                if not all(cid in done_ids for cid in cp_ids):
+                    rows.append({"date": pk, "code": s.get("asset_code") or "",
+                                 "machine": s.get("asset_name") or "",
+                                 "checklist": s.get("checklist_name") or "",
+                                 "assignee": emp_name.get(aid) or f"#{aid}"})
+    rows.sort(key=lambda r: (r["date"], str(r["code"])))
+    week_range = (f"{dates[0].strftime('%d-%m-%Y')} to {dates[-1].strftime('%d-%m-%Y')}"
+                  if dates else "—")
+    machines = sorted({(r["code"] or r["machine"]) for r in rows})
+    return {"range": week_range, "rows": rows, "machines": machines}
+
+
 def _weekly_email_html(week_range, rows, machines):
     """Styled HTML table of the week's incomplete daily PMs (one row per machine/person/day)."""
     hd = ("<tr>" + "".join(
@@ -6370,61 +6432,8 @@ async def weekly_incomplete_report(token: str = Query(default=""), days: int = Q
     if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
         raise HTTPException(403, "Admins only")
     is_dry = bool(int(dry))
-    today = _today()
-
-    # the week = up to `days` days ending today, skipping off-days and any day not yet closed
-    dates = []
-    for i in range(max(1, int(days))):
-        d = today - timedelta(days=i)
-        if _is_offday(d) or not _daily_closed(d):
-            continue
-        dates.append(d)
-    dates.sort()
-
-    emap = await _emp_map()
-    emp_name = {k: (v.get("name") or "") for k, v in emap.items()}
-    sched = await _schedule_rows()
-    daily_scheds, seen = [], set()
-    for s in sched:
-        ft = (s.get("freq_type") or "").lower()
-        is_daily = ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
-        clid = s.get("checklist_id")
-        if s.get("active") and is_daily and clid and clid not in seen:
-            seen.add(clid)
-            daily_scheds.append(s)
-
-    rows = []
-    for d in dates:
-        pk = d.isoformat()
-        for s in daily_scheds:
-            clid = s["checklist_id"]
-            cps = await db.fetch(
-                "SELECT id, assigned_emp_id FROM maint_checkpoints WHERE checklist_id=$1", clid)
-            if not cps:
-                continue
-            absent = await _absent_emp_ids(clid, pk)
-            by_emp = {}
-            for c in cps:
-                aid = c["assigned_emp_id"]
-                if aid and aid not in absent:
-                    by_emp.setdefault(aid, []).append(c["id"])
-            if not by_emp:
-                continue
-            done_ids = {r["checkpoint_id"] for r in await db.fetch(
-                "SELECT checkpoint_id FROM maint_checkpoint_done "
-                "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])",
-                pk, [c["id"] for c in cps])}
-            for aid, cp_ids in by_emp.items():
-                if not all(cid in done_ids for cid in cp_ids):
-                    rows.append({"date": pk, "code": s.get("asset_code") or "",
-                                 "machine": s.get("asset_name") or "",
-                                 "checklist": s.get("checklist_name") or "",
-                                 "assignee": emp_name.get(aid) or f"#{aid}"})
-    rows.sort(key=lambda r: (r["date"], str(r["code"])))
-
-    week_range = (f"{dates[0].strftime('%d-%m-%Y')} to {dates[-1].strftime('%d-%m-%Y')}"
-                  if dates else "—")
-    machines = sorted({(r["code"] or r["machine"]) for r in rows})
+    data = await _weekly_incomplete_data(int(days))
+    week_range, rows, machines = data["range"], data["rows"], data["machines"]
     count = len(rows)
 
     # resolve recipients by name from the staff list -> email + mobile
@@ -6456,34 +6465,65 @@ async def weekly_incomplete_report(token: str = Query(default=""), days: int = Q
 
     mach_csv = (", ".join(machines[:25]) + (" …" if len(machines) > 25 else "")) if machines else "None"
     wa_params = [week_range, str(count), mach_csv]
-    html = _weekly_email_html(week_range, rows, machines)
+    # live PNG URL for the WhatsApp image header (cache-busted so WhatsApp fetches a fresh image)
+    tok = urllib.parse.quote(str(OVERDUE_IMG_TOKEN), safe="")
+    png_url = (f"https://qms.bharatsteels.in/maint/weekly-incomplete.png?token={tok}"
+               f"&days={int(days)}&t={int(datetime.now(IST).timestamp())}")
+    img_mode = bool(WATI_PM_WEEKLY_IMG_TEMPLATE and WATI_PM_WEEKLY_IMG_PARAM)
     out = {"range": week_range, "days": int(days), "incomplete_count": count,
            "machines": machines, "rows": rows[:300], "recipients": recips,
-           "whatsapp_template": WATI_PM_WEEKLY_TEMPLATE, "whatsapp_params": wa_params,
-           "dry_run": is_dry}
+           "image_url": png_url, "whatsapp_mode": "image" if img_mode else "text",
+           "whatsapp_template": WATI_PM_WEEKLY_IMG_TEMPLATE if img_mode else WATI_PM_WEEKLY_TEMPLATE,
+           "whatsapp_params": wa_params, "dry_run": is_dry}
     if is_dry:
         return _json(out)
 
-    from ..notify import send_email_html
+    from .. import overdue_img
+    from ..notify import send_email_image
+    png = overdue_img.build_weekly_incomplete_png(week_range, rows)
+    intro = (f"<p style='font:14px Arial,sans-serif'>Weekly incomplete daily-PM report "
+             f"(<b>{week_range}</b>) — <b>{count}</b> not completed.</p>")
     subject = f"Weekly Incomplete PM Report — {week_range}"
     sends = []
     for rc in recips:
         res = {"query": rc["query"], "name": rc["name"]}
         if rc.get("email"):
-            ok, det = send_email_html(rc["email"], subject, html)
+            ok, det = send_email_image(rc["email"], subject, png, intro)
             res["email"] = "sent" if ok else f"failed: {det}"
         else:
             res["email"] = "no email on file"
         mob = wati.normalize_number(rc.get("mobile") or "")
         if mob:
-            ok, det = await _wsend(WATI_PM_WEEKLY_TEMPLATE, mob, wa_params,
-                                   name=rc.get("name") or "", kind="weekly_incomplete")
+            if img_mode:
+                params = {"1": week_range, "2": str(count), "3": mach_csv,
+                          WATI_PM_WEEKLY_IMG_PARAM: png_url}
+                ok, det = await _wsend(WATI_PM_WEEKLY_IMG_TEMPLATE, mob, params,
+                                       name=rc.get("name") or "", kind="weekly_incomplete")
+            else:
+                ok, det = await _wsend(WATI_PM_WEEKLY_TEMPLATE, mob, wa_params,
+                                       name=rc.get("name") or "", kind="weekly_incomplete")
             res["whatsapp"] = "sent" if ok else f"failed: {det}"
         else:
             res["whatsapp"] = "no mobile on file"
         sends.append(res)
     out["sent"] = sends
     return _json(out)
+
+
+@router.get("/weekly-incomplete.png")
+async def weekly_incomplete_png(token: str = Query(default=""), days: int = Query(default=7)):
+    """Live PNG of the weekly incomplete-PM report — the image header for the WhatsApp template
+    and the inline image in the email. Token-gated with OVERDUE_IMG_TOKEN (falls back to AGENT_TOKEN)."""
+    if token != OVERDUE_IMG_TOKEN and token != AGENT_TOKEN:
+        raise HTTPException(403, "Bad token")
+    await ensure_tables()
+    await _ensure_absent_table()
+    data = await _weekly_incomplete_data(int(days))
+    from .. import overdue_img
+    png = overdue_img.build_weekly_incomplete_png(data["range"], data["rows"])
+    return Response(content=png, media_type="image/png",
+                    headers={"Cache-Control": "no-store, max-age=0",
+                             "Content-Disposition": "inline; filename=weekly-incomplete.png"})
 
 
 @router.get("/board-debug")

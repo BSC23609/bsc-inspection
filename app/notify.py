@@ -117,6 +117,34 @@ def send_email_html(to: str, subject: str, html: str, text_fallback: str = "") -
     return True, "sent"
 
 
+def send_email_image(to: str, subject: str, png_bytes: bytes, intro_html: str = "") -> tuple[bool, str]:
+    """Send an email whose body is a PNG image shown inline (and attached). Returns (ok, detail)."""
+    if not email_ready():
+        return False, "Email not set up"
+    from email.mime.image import MIMEImage
+    sender = os.getenv("SMTP_FROM", "info@bharatsteels.in")
+    root = MIMEMultipart("related")
+    root["Subject"] = subject
+    root["From"] = f"{os.getenv('SMTP_FROM_NAME', 'Bharat Steel Group')} <{sender}>"
+    root["To"] = to
+    html = (f"<div style='font-family:Arial,sans-serif;color:#1e1d1d'>{intro_html}"
+            "<img src='cid:report' style='max-width:100%;border:1px solid #d9e1ec'/></div>")
+    root.attach(MIMEText(html, "html"))
+    img = MIMEImage(png_bytes, _subtype="png")
+    img.add_header("Content-ID", "<report>")
+    img.add_header("Content-Disposition", "inline", filename="weekly-incomplete-report.png")
+    root.attach(img)
+    try:
+        with smtplib.SMTP(os.getenv("SMTP_HOST"), int(os.getenv("SMTP_PORT", "587")), timeout=25) as s:
+            s.starttls()
+            if os.getenv("SMTP_USER"):
+                s.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASS", ""))
+            s.sendmail(sender, [to], root.as_string())
+    except Exception as exc:  # noqa: BLE001
+        return False, f"SMTP error: {type(exc).__name__}: {str(exc)[:150]}"
+    return True, "sent"
+
+
 def send_email_code(to: str, name: str, code: str) -> tuple[bool, str]:
     if not email_ready():
         return False, "Email not set up"

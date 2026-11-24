@@ -276,3 +276,112 @@ def build_overdue_png(tdisp, pm, bd):
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
+
+
+# ---- weekly incomplete-PM report image ----
+WCOLS = [
+    ("sno", "S.No", 58),
+    ("date", "Date", 122),
+    ("code", "M/C Code", 118),
+    ("name", "Machine Name", 236),
+    ("checklist", "Checklist", 170),
+    ("who", "Not completed by", 214),
+]
+
+
+def build_weekly_incomplete_png(week_range, rows):
+    """PNG of the week's incomplete daily-PM checks.
+    rows: list of {date, code, name/machine, checklist, who/assignee}."""
+    f_hdr = _font(bold=True, size=19)
+    f_cell = _font(bold=False, size=19)
+    f_cell_b = _font(bold=True, size=19)
+    f_title = _font(bold=True, size=30)
+    f_sub = _font(bold=False, size=20)
+    f_foot = _font(bold=True, size=18)
+    line_h = 25
+    table_w = sum(c[2] for c in WCOLS)
+    W = table_w + 2 * MARGIN
+
+    tmp = Image.new("RGB", (10, 10))
+    d0 = ImageDraw.Draw(tmp)
+    wrap_cols = {"name", "checklist", "who"}
+    prepared = []
+    for i, r in enumerate(rows, 1):
+        vals = {"sno": str(i), "date": str(r.get("date") or "-"),
+                "code": (r.get("code") or "-").strip() or "-",
+                "name": (r.get("name") or r.get("machine") or "-").strip() or "-",
+                "checklist": (r.get("checklist") or "-").strip() or "-",
+                "who": (r.get("who") or r.get("assignee") or "-").strip() or "-"}
+        cell_lines, max_lines = {}, 1
+        for key, _hdr, w in WCOLS:
+            ls = _wrap(d0, vals[key], f_cell, w - 2 * PAD) if key in wrap_cols else [vals[key]]
+            cell_lines[key] = ls
+            max_lines = max(max_lines, len(ls))
+        rh = max_lines * line_h + 2 * VPAD
+        prepared.append((cell_lines, rh))
+
+    body_h = sum(p[1] for p in prepared) if prepared else 60
+    H = MARGIN + HEADER_H + ROWH_HDR + body_h + 54
+    img = Image.new("RGB", (W, H), WHITE)
+    d = ImageDraw.Draw(img)
+
+    y = MARGIN
+    logo_w = 0
+    try:
+        if os.path.exists(_LOGO):
+            logo = Image.open(_LOGO).convert("RGBA")
+            lw = 150
+            lh = int(logo.height * lw / logo.width)
+            logo = logo.resize((lw, lh))
+            img.paste(logo, (MARGIN, y), logo)
+            logo_w = lw + 18
+    except Exception:
+        logo_w = 0
+    d.text((MARGIN + logo_w, y + 6), "WEEKLY INCOMPLETE PM", font=f_title, fill=NAVY)
+    d.text((MARGIN + logo_w, y + 48), f"Daily PM not completed  |  {week_range}", font=f_sub, fill=MUT)
+    y += HEADER_H
+
+    x = MARGIN
+    d.rectangle([MARGIN, y, MARGIN + table_w, y + ROWH_HDR], fill=NAVY)
+    for key, hdr, w in WCOLS:
+        d.text((x + PAD, y + (ROWH_HDR - line_h) // 2 + 2), hdr, font=f_hdr, fill=WHITE)
+        x += w
+    y += ROWH_HDR
+
+    if not prepared:
+        d.rectangle([MARGIN, y, MARGIN + table_w, y + 60], fill=(233, 249, 241))
+        d.text((MARGIN + PAD, y + 18), "All daily PM checks were completed this week.",
+               font=f_cell_b, fill=(10, 125, 85))
+        y += 60
+    for idx, (cell_lines, rh) in enumerate(prepared):
+        bg = WHITE if idx % 2 == 0 else SOFT
+        d.rectangle([MARGIN, y, MARGIN + table_w, y + rh], fill=bg)
+        x = MARGIN
+        for key, _hdr, w in WCOLS:
+            cy = y + VPAD
+            fnt = f_cell_b if key in ("sno", "who") else f_cell
+            col = NAVY if key == "sno" else (RED if key == "who" else DARK)
+            for ln in cell_lines[key]:
+                d.text((x + PAD, cy), ln, font=fnt, fill=col)
+                cy += line_h
+            x += w
+        d.line([MARGIN, y + rh, MARGIN + table_w, y + rh], fill=LINEC, width=1)
+        y += rh
+
+    top = MARGIN + HEADER_H
+    d.rectangle([MARGIN, top, MARGIN + table_w, y], outline=LINEC, width=1)
+    x = MARGIN
+    for key, _hdr, w in WCOLS[:-1]:
+        x += w
+        d.line([x, top, x, y], fill=LINEC, width=1)
+
+    d.text((MARGIN, y + 16), "THE BHARAT STEEL GROUP", font=f_foot, fill=NAVY)
+    n = len(rows)
+    tag = f"{n} incomplete" if n != 1 else "1 incomplete"
+    tw = d0.textlength(tag, font=f_sub)
+    d.text((MARGIN + table_w - tw, y + 17), tag, font=f_sub, fill=MUT)
+
+    import io
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
