@@ -6495,7 +6495,8 @@ async def weekly_incomplete_report(token: str = Query(default=""), days: int = Q
         mob = wati.normalize_number(rc.get("mobile") or "")
         if mob:
             if img_mode:
-                params = {"1": week_range, "2": str(count), "3": mach_csv,
+                # image template body = {{1}} week, {{2}} count (machine list is in the image)
+                params = {"1": week_range, "2": str(count),
                           WATI_PM_WEEKLY_IMG_PARAM: png_url}
                 ok, det = await _wsend(WATI_PM_WEEKLY_IMG_TEMPLATE, mob, params,
                                        name=rc.get("name") or "", kind="weekly_incomplete")
