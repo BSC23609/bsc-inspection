@@ -73,8 +73,26 @@ def _inward_record(row, hmap):
     }
 
 
-async def _read_inward_legacy():
-    """Read historical rows from the OneDrive InwardLog workbook (best effort)."""
+import time as _time
+# In-process cache for the legacy Excel read. The log has grown to ~1,000+ rows and re-reading
+# all of it from OneDrive on every /coil/list load is slow — when that read is slow or errors,
+# the older (Excel-only) entries silently drop off the page. We cache a SUCCESSFUL read for a few
+# minutes so repeat loads are instant and reliable; a failed/empty read is never cached, so the
+# next load simply retries. Legacy rows are historical, so short staleness is harmless.
+_legacy_cache = {"value": None, "exp": 0.0}
+_LEGACY_TTL = 900  # seconds
+
+
+def _bust_legacy_cache():
+    _legacy_cache["value"] = None
+    _legacy_cache["exp"] = 0.0
+
+
+async def _read_inward_legacy(use_cache: bool = False):
+    """Read historical rows from the OneDrive InwardLog workbook (best effort). With use_cache,
+    serve a recent successful read from memory instead of re-reading the whole sheet."""
+    if use_cache and _legacy_cache["value"] is not None and _time.time() < _legacy_cache["exp"]:
+        return _legacy_cache["value"]
     try:
         token = await graph.get_token()
         item_id = await graph.get_item_id(token, INWARD_XLSX)
@@ -89,6 +107,9 @@ async def _read_inward_legacy():
                 rec["_row"] = i
                 out.append(rec)
         out.reverse()  # newest last in the sheet -> show newest first
+        if use_cache and out:                      # only cache a successful, non-empty read
+            _legacy_cache["value"] = out
+            _legacy_cache["exp"] = _time.time() + _LEGACY_TTL
         return out
     except Exception as e:
         print("[coil-legacy]", e)
@@ -248,7 +269,7 @@ async def coil_list(emp: dict = Depends(require_employee)):
     neon = [dict(r) for r in await db.fetch(
         f"SELECT {cols} FROM coil_inward ORDER BY log_date DESC NULLS LAST, id DESC LIMIT 2000")]
     seen = {_key(r) for r in neon}
-    legacy = await _read_inward_legacy()
+    legacy = await _read_inward_legacy(use_cache=True)
     merged = neon + [r for r in legacy if _key(r) not in seen]
     merged.sort(key=lambda r: str(r.get("log_date") or ""), reverse=True)
     return JSONResponse(jsonable_encoder(merged), headers={"Cache-Control": "no-store"})
@@ -348,6 +369,7 @@ async def coil_relabel_inward(token: str = Query(default=""),
         await graph.update_cell(gtoken, item_id, sheet, c, val)
     await graph.upload_file(gtoken, f"{ONEDRIVE_BASE}/Inward/PDF/{new_ref}.pdf",
                             build_coil_pdf(pdf_rec), "application/pdf")
+    _bust_legacy_cache()
     out["applied"] = True
     return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
 
@@ -385,6 +407,7 @@ async def coil_purge_inward_row(token: str = Query(default=""), batch: str = Que
         return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
     for t in sorted(targets, key=lambda x: x["row_index"], reverse=True):   # delete bottom-up
         await graph.delete_table_row(gtoken, item_id, INWARD_TABLE, t["row_index"])
+    _bust_legacy_cache()
     out["deleted"] = len(targets)
     return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
 
@@ -427,6 +450,7 @@ async def coil_purge_stray_cells(token: str = Query(default=""), batch: str = Qu
         return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
     for t in targets:
         await graph.update_row_cells(gtoken, item_id, sheet, 0, t["sheet_row"], [""] * ncols)
+    _bust_legacy_cache()
     out["cleared"] = len(targets)
     return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
 
