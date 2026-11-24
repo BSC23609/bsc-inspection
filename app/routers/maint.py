@@ -6469,11 +6469,18 @@ async def weekly_incomplete_report(token: str = Query(default=""), days: int = Q
     tok = urllib.parse.quote(str(OVERDUE_IMG_TOKEN), safe="")
     png_url = (f"https://qms.bharatsteels.in/maint/weekly-incomplete.png?token={tok}"
                f"&days={int(days)}&t={int(datetime.now(IST).timestamp())}")
-    img_mode = bool(WATI_PM_WEEKLY_IMG_TEMPLATE and WATI_PM_WEEKLY_IMG_PARAM)
+    # Send as a WhatsApp IMAGE whenever an image-header variable is known. The param name is
+    # inherited from the overdue report's WATI_OVERDUE_IMG_PARAM, so you only need to point
+    # WATI_PM_WEEKLY_TEMPLATE at an image-header template — no new env var required. A dedicated
+    # WATI_PM_WEEKLY_IMG_TEMPLATE / WATI_PM_WEEKLY_IMG_PARAM still override if set.
+    img_param = WATI_PM_WEEKLY_IMG_PARAM or WATI_OVERDUE_IMG_PARAM
+    wtmpl = WATI_PM_WEEKLY_IMG_TEMPLATE or WATI_PM_WEEKLY_TEMPLATE
+    img_mode = bool(img_param)
     out = {"range": week_range, "days": int(days), "incomplete_count": count,
            "machines": machines, "rows": rows[:300], "recipients": recips,
            "image_url": png_url, "whatsapp_mode": "image" if img_mode else "text",
-           "whatsapp_template": WATI_PM_WEEKLY_IMG_TEMPLATE if img_mode else WATI_PM_WEEKLY_TEMPLATE,
+           "whatsapp_template": wtmpl if img_mode else WATI_PM_WEEKLY_TEMPLATE,
+           "whatsapp_img_param": img_param if img_mode else "",
            "whatsapp_params": wa_params, "dry_run": is_dry}
     if is_dry:
         return _json(out)
@@ -6496,9 +6503,8 @@ async def weekly_incomplete_report(token: str = Query(default=""), days: int = Q
         if mob:
             if img_mode:
                 # image template body = {{1}} week, {{2}} count (machine list is in the image)
-                params = {"1": week_range, "2": str(count),
-                          WATI_PM_WEEKLY_IMG_PARAM: png_url}
-                ok, det = await _wsend(WATI_PM_WEEKLY_IMG_TEMPLATE, mob, params,
+                params = {"1": week_range, "2": str(count), img_param: png_url}
+                ok, det = await _wsend(wtmpl, mob, params,
                                        name=rc.get("name") or "", kind="weekly_incomplete")
             else:
                 ok, det = await _wsend(WATI_PM_WEEKLY_TEMPLATE, mob, wa_params,
