@@ -425,6 +425,23 @@ async def update_row_cells(token: str, item_id: str, sheet: str,
         raise RuntimeError(f"row patch {addr} failed ({r.status_code}): {r.text[:200]}")
 
 
+async def worksheet_used_values(token: str, item_id: str, sheet: str):
+    """(top_row_1based, values_2d) of a worksheet's used range — includes stray cells typed
+    below a table, which the table APIs don't see. (None, []) on failure."""
+    url = (f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook"
+           f"/worksheets('{sheet}')/usedRange(valuesOnly=true)?$select=address,values")
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.get(url, headers={"Authorization": f"Bearer {token}"})
+    if r.status_code != 200:
+        return None, []
+    j = r.json()
+    addr = j.get("address", "")                 # e.g. "Sheet1!A1:U1064"
+    cell = addr.split("!")[-1].split(":")[0]    # "A1"
+    m = "".join(ch for ch in cell if ch.isdigit())
+    top = int(m) if m else 1
+    return top, (j.get("values") or [])
+
+
 async def delete_table_row(token: str, item_id: str, table: str, index: int) -> bool:
     """Delete one table row by 0-based body index (shifts rows below it up)."""
     url = (f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook"

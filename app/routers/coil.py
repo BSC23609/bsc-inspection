@@ -389,6 +389,48 @@ async def coil_purge_inward_row(token: str = Query(default=""), batch: str = Que
     return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
 
 
+@router.get("/purge-stray-cells")
+async def coil_purge_stray_cells(token: str = Query(default=""), batch: str = Query(default=""),
+                                 dry: int = Query(default=1), emp: dict = Depends(current_employee)):
+    """Clear stray cells typed into the sheet BELOW the InwardLog table (no Ref, no record) — the
+    kind that show only in the Excel. Targets only rows whose Ref (col A) is empty and whose Batch
+    (col D) matches, so real table rows (which carry a Ref) are never touched. dry=1 (default)
+    previews. Admin or ?token=AGENT_TOKEN."""
+    await ensure_table()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    if not batch.strip():
+        raise HTTPException(400, "Pass batch")
+    is_dry = bool(int(dry))
+    gtoken = await graph.get_token()
+    item_id = await graph.get_item_id(gtoken, INWARD_XLSX)
+    if not item_id:
+        raise HTTPException(500, "Inward_Log.xlsx not found")
+    anchor = await graph.table_body_anchor(gtoken, item_id, INWARD_TABLE)
+    sheet = anchor[0] if anchor else "Sheet1"
+    top, values = await graph.worksheet_used_values(gtoken, item_id, sheet)
+    if top is None:
+        raise HTTPException(500, "Could not read the worksheet")
+    bpos = _INWARD_POS.index("batch_number")
+    ncols = max((len(r) for r in values), default=len(_INWARD_POS))
+    targets = []
+    for k, row in enumerate(values):
+        ref = (str(row[0]).strip() if len(row) > 0 and row[0] is not None else "")
+        bat = (str(row[bpos]).strip() if len(row) > bpos and row[bpos] is not None else "")
+        if ref:                                           # a real row carries a Ref — never touch
+            continue
+        if bat.lower() == batch.strip().lower():
+            targets.append({"sheet_row": top + k,
+                            "preview": [("" if c is None else str(c)) for c in row]})
+    out = {"batch": batch.strip(), "matched": targets, "cleared": 0, "dry_run": is_dry}
+    if is_dry or not targets:
+        return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
+    for t in targets:
+        await graph.update_row_cells(gtoken, item_id, sheet, 0, t["sheet_row"], [""] * ncols)
+    out["cleared"] = len(targets)
+    return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
+
+
 async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bool = True,
                   excel_update_ref: str = "") -> dict:
     """Write one coil record to OneDrive (PDF + InwardLog row). Awaited inside the
