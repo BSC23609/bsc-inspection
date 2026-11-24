@@ -408,3 +408,30 @@ async def update_cell(token: str, item_id: str, sheet: str, address: str, value)
         r = await c.patch(url, headers=headers, json={"values": [[value]]})
     if r.status_code >= 300:
         raise RuntimeError(f"cell patch {address} failed ({r.status_code}): {r.text[:200]}")
+
+
+async def update_row_cells(token: str, item_id: str, sheet: str,
+                           first_col_idx: int, row_1based: int, values: list):
+    """PATCH a horizontal run of cells on one row, starting at `first_col_idx` (0-based)."""
+    start = col_letter(first_col_idx)
+    end = col_letter(first_col_idx + len(values) - 1)
+    addr = f"{start}{row_1based}:{end}{row_1based}"
+    url = (f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook"
+           f"/worksheets('{sheet}')/range(address='{addr}')")
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.patch(url, headers=headers, json={"values": [list(values)]})
+    if r.status_code >= 300:
+        raise RuntimeError(f"row patch {addr} failed ({r.status_code}): {r.text[:200]}")
+
+
+async def delete_table_row(token: str, item_id: str, table: str, index: int) -> bool:
+    """Delete one table row by 0-based body index (shifts rows below it up)."""
+    url = (f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}/workbook"
+           f"/tables/{table}/rows/itemAt(index={int(index)})")
+    headers = {"Authorization": f"Bearer {token}"}
+    async with httpx.AsyncClient(timeout=60) as c:
+        r = await c.delete(url, headers=headers)
+    if r.status_code >= 300:
+        raise RuntimeError(f"row delete index={index} failed ({r.status_code}): {r.text[:200]}")
+    return True

@@ -352,9 +352,50 @@ async def coil_relabel_inward(token: str = Query(default=""),
     return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
 
 
-async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bool = True) -> dict:
+@router.get("/purge-inward-row")
+async def coil_purge_inward_row(token: str = Query(default=""), batch: str = Query(default=""),
+                                require_empty_ref: int = Query(default=1), dry: int = Query(default=1),
+                                emp: dict = Depends(current_employee)):
+    """Remove orphan InwardLog rows for a batch — rows typed straight into the Excel with no Ref
+    and no backing record. By default only rows whose Ref cell is EMPTY are deleted, so a real
+    full row is never removed. dry=1 (default) previews. Admin or ?token=AGENT_TOKEN."""
+    await ensure_table()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    if not batch.strip():
+        raise HTTPException(400, "Pass batch")
+    is_dry = bool(int(dry))
+    gtoken = await graph.get_token()
+    item_id = await graph.get_item_id(gtoken, INWARD_XLSX)
+    if not item_id:
+        raise HTTPException(500, "Inward_Log.xlsx not found")
+    refs = await graph.column_values(gtoken, item_id, INWARD_TABLE, 0)
+    batches = await graph.column_values(gtoken, item_id, INWARD_TABLE, _INWARD_POS.index("batch_number"))
+    targets = []
+    for i, b in enumerate(batches):
+        if str(b).strip().lower() != batch.strip().lower():
+            continue
+        ref = refs[i] if i < len(refs) else ""
+        if require_empty_ref and str(ref).strip():
+            continue                              # keep real rows (they carry a Ref)
+        targets.append({"row_index": i, "ref": ref})
+    out = {"batch": batch.strip(), "require_empty_ref": bool(require_empty_ref),
+           "matched": targets, "deleted": 0, "dry_run": is_dry}
+    if is_dry or not targets:
+        return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
+    for t in sorted(targets, key=lambda x: x["row_index"], reverse=True):   # delete bottom-up
+        await graph.delete_table_row(gtoken, item_id, INWARD_TABLE, t["row_index"])
+    out["deleted"] = len(targets)
+    return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
+
+
+async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bool = True,
+                  excel_update_ref: str = "") -> dict:
     """Write one coil record to OneDrive (PDF + InwardLog row). Awaited inside the
-    request. `dedupe` (backfill) skips the Excel row if the batch is already logged."""
+    request. `dedupe` (backfill) skips the Excel row if the batch is already logged.
+    `excel_update_ref`: update the existing InwardLog row whose Ref equals this value
+    (used on edit so the log always matches the record) instead of appending; falls back
+    to appending if that row can't be found."""
     await ensure_table()
     st = odsync.Steps("coil", rec_id)
     row = await db.fetchrow("SELECT * FROM coil_inward WHERE id=$1", rec_id)
@@ -395,6 +436,16 @@ async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bo
         cols = await graph.table_columns(token, item_id, INWARD_TABLE)
         if cols:
             row_vals = (row_vals + [""] * len(cols))[:len(cols)]
+        # On edit, update the record's existing row in place so the log never diverges from the
+        # record (and never grows a duplicate row). Match on the OLD Ref; append only if missing.
+        if excel_update_ref:
+            anchor = await graph.table_body_anchor(token, item_id, INWARD_TABLE)
+            refs = await graph.column_values(token, item_id, INWARD_TABLE, 0)
+            idx = next((i for i, rf in enumerate(refs) if rf == excel_update_ref), -1)
+            if anchor and idx >= 0:
+                sheet, top, left = anchor
+                await graph.update_row_cells(token, item_id, sheet, left, top + idx, row_vals)
+                return
         await graph.add_table_row(token, item_id, INWARD_TABLE, row_vals)
     if excel:
         await st.run("Excel log (Inward_Log.xlsx)", _xlsx())
@@ -434,6 +485,19 @@ async def coil_regen_pdfs(token: str = Query(default=""), skip: int = Query(defa
 async def coil_submit(body: CoilIn, emp: dict = Depends(require_employee)):
     await ensure_table()
     r = await _normalize(body)
+    # Block a duplicate so a double-click / re-submit can't create two DB rows and two log rows.
+    # Same coil = same batch + vehicle + date already in the table.
+    if r.get("log_date"):
+        dup = await db.fetchrow(
+            "SELECT id FROM coil_inward "
+            "WHERE lower(btrim(batch_number)) = lower(btrim($1)) "
+            "AND lower(btrim(coalesce(vehicle_number,''))) = lower(btrim(coalesce($2,''))) "
+            "AND log_date = $3 LIMIT 1",
+            r.get("batch_number") or "", r.get("vehicle_number") or "", r.get("log_date"))
+        if dup:
+            raise HTTPException(409, f"This coil is already saved — batch {r.get('batch_number')}, "
+                                     f"vehicle {r.get('vehicle_number')}, {r.get('log_date')}. "
+                                     "Open and edit that entry instead of adding it again.")
     by = _emp_name(emp)
     cols = ",".join(_FIELDS)
     ph = ",".join(f"${i+1}" for i in range(len(_FIELDS)))
@@ -451,12 +515,29 @@ async def coil_update(body: CoilIn, emp: dict = Depends(require_employee)):
     if not body.id:
         raise HTTPException(400, "id required")
     r = await _normalize(body)
+    old = await db.fetchrow("SELECT batch_number, file_name, created_at FROM coil_inward WHERE id=$1", body.id)
+    old_fn = (old and old["file_name"]) or ""
     sets = ",".join(f"{f}=${i+1}" for i, f in enumerate(_FIELDS))
     vals = [r[f] for f in _FIELDS]
     await db.execute(
         f"UPDATE coil_inward SET {sets},updated_at=now() WHERE id=${len(_FIELDS)+1}",
         *vals, body.id)
-    od = await od_sync(body.id, excel=False)   # refresh the PDF with the edits
+    # Keep the Ref/file name in step with the (possibly edited) batch so the log row and the PDF
+    # name always match the record.
+    new_fn = odsync.legacy_file_name(r.get("batch_number"), (old and old["created_at"]), "Inward")
+    if new_fn != old_fn:
+        await db.execute("UPDATE coil_inward SET file_name=$1 WHERE id=$2", new_fn, body.id)
+    # Refresh the PDF AND update the existing Excel log row in place (no new/duplicate row).
+    od = await od_sync(body.id, excel=True, pdf=True, excel_update_ref=(old_fn or new_fn))
+    # If the batch (hence the file name) changed, delete the now-stale old PDF.
+    if old_fn and new_fn != old_fn:
+        try:
+            gtoken = await graph.get_token()
+            oid = await graph.get_item_id(gtoken, f"{ONEDRIVE_BASE}/Inward/PDF/{old_fn}.pdf")
+            if oid:
+                await graph.delete_item(gtoken, oid)
+        except Exception as e:
+            print("[coil-update] stale PDF cleanup skipped:", e)
     return {"ok": True, "id": body.id, "onedrive": od}
 
 
