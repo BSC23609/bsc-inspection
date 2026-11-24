@@ -13,6 +13,7 @@ import time
 import urllib.error
 import urllib.request
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 
 def _env(name: str, default: str = "") -> str:
@@ -90,6 +91,29 @@ def send_whatsapp_code(phone: str, code: str) -> tuple[bool, str]:
     # Same rule as the other group apps: accepted unless WATI explicitly declines.
     if data.get("result") in (False, "false") or data.get("validWhatsAppNumber") is False:
         return False, str(data.get("info") or data.get("message") or text[:200])
+    return True, "sent"
+
+
+def send_email_html(to: str, subject: str, html: str, text_fallback: str = "") -> tuple[bool, str]:
+    """Send a general HTML email over SMTP. Returns (ok, detail)."""
+    if not email_ready():
+        return False, "Email not set up"
+    sender = os.getenv("SMTP_FROM", "info@bharatsteels.in")
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = f"{os.getenv('SMTP_FROM_NAME', 'Bharat Steel Group')} <{sender}>"
+    msg["To"] = to
+    if text_fallback:
+        msg.attach(MIMEText(text_fallback, "plain"))
+    msg.attach(MIMEText(html, "html"))
+    try:
+        with smtplib.SMTP(os.getenv("SMTP_HOST"), int(os.getenv("SMTP_PORT", "587")), timeout=20) as s:
+            s.starttls()
+            if os.getenv("SMTP_USER"):
+                s.login(os.getenv("SMTP_USER"), os.getenv("SMTP_PASS", ""))
+            s.sendmail(sender, [to], msg.as_string())
+    except Exception as exc:  # noqa: BLE001
+        return False, f"SMTP error: {type(exc).__name__}: {str(exc)[:150]}"
     return True, "sent"
 
 

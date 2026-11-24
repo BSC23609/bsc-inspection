@@ -44,6 +44,9 @@ WATI_MAINT_BREAKDOWN_TEMPLATE = os.environ.get("WATI_MAINT_BREAKDOWN_TEMPLATE") 
 # Unscheduled PM raise alert — its own template so it reads as an unscheduled PM, not a breakdown.
 # Same 5 variables / button as the breakdown alert, so _send_breakdown_alert just swaps the name.
 WATI_MAINT_UNSCHEDULED_TEMPLATE = os.environ.get("WATI_MAINT_UNSCHEDULED_TEMPLATE") or "bsc_unscheduled_alert"
+# Weekly incomplete-PM report (sent every Saturday to a fixed recipient list, email + WhatsApp).
+WATI_PM_WEEKLY_TEMPLATE = os.environ.get("WATI_PM_WEEKLY_TEMPLATE") or "bsc_pm_weekly_incomplete"
+WEEKLY_PM_RECIPIENTS = os.environ.get("WEEKLY_PM_RECIPIENTS") or "Kannan,Jeevabharathy,Gourav"
 # Dedicated templates for the hold / resume notifications (see _send_hold_resume_alert).
 WATI_MAINT_HOLD_TEMPLATE      = os.environ.get("WATI_MAINT_HOLD_TEMPLATE") or "bsc_maint_hold"
 WATI_MAINT_RESUME_TEMPLATE    = os.environ.get("WATI_MAINT_RESUME_TEMPLATE") or "bsc_maint_resume"
@@ -6321,6 +6324,157 @@ async def daily_close(token: str = Query(default=""), date: str = Query(default=
     return _json({"date": pk, "dry": bool(dry), "already_complete": complete,
                   "deleted_single_or_empty": deleted,
                   "finalized_multi_incomplete": finalized})
+
+
+def _weekly_email_html(week_range, rows, machines):
+    """Styled HTML table of the week's incomplete daily PMs (one row per machine/person/day)."""
+    hd = ("<tr>" + "".join(
+        f"<th style='background:#0a2b66;color:#fff;padding:8px 10px;text-align:left;"
+        f"font:600 12px Arial;border:1px solid #0a2b66'>{h}</th>"
+        for h in ("Date", "Machine", "Checklist", "Not completed by")) + "</tr>")
+    body = ""
+    for i, r in enumerate(rows):
+        bg = "#ffffff" if i % 2 == 0 else "#f3f6fb"
+        cells = [r.get("date", ""), (r.get("code") or r.get("machine") or ""),
+                 r.get("checklist", ""), r.get("assignee", "")]
+        body += ("<tr>" + "".join(
+            f"<td style='padding:7px 10px;border:1px solid #d9e1ec;font:13px Arial;"
+            f"background:{bg}'>{str(c)}</td>" for c in cells) + "</tr>")
+    if not rows:
+        body = ("<tr><td colspan='4' style='padding:14px;border:1px solid #d9e1ec;"
+                "font:13px Arial;color:#0a7d55;background:#e9f9f1'>"
+                "✔ All daily PM checks were completed this week. Nothing incomplete.</td></tr>")
+    return (
+        "<div style='font-family:Arial,sans-serif;color:#1e1d1d;max-width:720px'>"
+        "<h2 style='color:#0a2b66;margin:0 0 4px'>Weekly Incomplete PM Report</h2>"
+        f"<p style='margin:0 0 2px;font-size:13px'>Week: <b>{week_range}</b></p>"
+        f"<p style='margin:0 0 14px;font-size:13px'>Total incomplete daily PM checks: "
+        f"<b>{len(rows)}</b>{(' across ' + str(len(machines)) + ' machine(s)') if machines else ''}</p>"
+        "<table style='border-collapse:collapse;width:100%'>"
+        f"{hd}{body}</table>"
+        "<p style='margin:16px 0 0;font-size:11px;color:#777'>"
+        "Daily PM locks at 7:00 PM each working day; any check not completed by then is marked "
+        "Incomplete. This report is sent automatically every Saturday. — Bharat Steel Group QMS</p>"
+        "</div>")
+
+
+@router.get("/weekly-incomplete")
+async def weekly_incomplete_report(token: str = Query(default=""), days: int = Query(default=7),
+                                   dry: int = Query(default=1), emp: dict = Depends(current_employee)):
+    """Weekly report of daily-PM checks that were not completed (locked Incomplete after 7 PM),
+    for the last `days` working days. Sent every Saturday to WEEKLY_PM_RECIPIENTS by BOTH email
+    (full table) and WhatsApp (short summary). dry=1 (default) previews everything — the rows,
+    the resolved recipients and what would be sent — and sends nothing. Admin or ?token=AGENT_TOKEN."""
+    await ensure_tables()
+    await _ensure_absent_table()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    is_dry = bool(int(dry))
+    today = _today()
+
+    # the week = up to `days` days ending today, skipping off-days and any day not yet closed
+    dates = []
+    for i in range(max(1, int(days))):
+        d = today - timedelta(days=i)
+        if _is_offday(d) or not _daily_closed(d):
+            continue
+        dates.append(d)
+    dates.sort()
+
+    emap = await _emp_map()
+    emp_name = {k: (v.get("name") or "") for k, v in emap.items()}
+    sched = await _schedule_rows()
+    daily_scheds, seen = [], set()
+    for s in sched:
+        ft = (s.get("freq_type") or "").lower()
+        is_daily = ft == "daily" or (not ft and s.get("freq_days") and int(s["freq_days"]) == 1)
+        clid = s.get("checklist_id")
+        if s.get("active") and is_daily and clid and clid not in seen:
+            seen.add(clid)
+            daily_scheds.append(s)
+
+    rows = []
+    for d in dates:
+        pk = d.isoformat()
+        for s in daily_scheds:
+            clid = s["checklist_id"]
+            cps = await db.fetch(
+                "SELECT id, assigned_emp_id FROM maint_checkpoints WHERE checklist_id=$1", clid)
+            if not cps:
+                continue
+            absent = await _absent_emp_ids(clid, pk)
+            by_emp = {}
+            for c in cps:
+                aid = c["assigned_emp_id"]
+                if aid and aid not in absent:
+                    by_emp.setdefault(aid, []).append(c["id"])
+            if not by_emp:
+                continue
+            done_ids = {r["checkpoint_id"] for r in await db.fetch(
+                "SELECT checkpoint_id FROM maint_checkpoint_done "
+                "WHERE period_key=$1 AND checkpoint_id = ANY($2::int[])",
+                pk, [c["id"] for c in cps])}
+            for aid, cp_ids in by_emp.items():
+                if not all(cid in done_ids for cid in cp_ids):
+                    rows.append({"date": pk, "code": s.get("asset_code") or "",
+                                 "machine": s.get("asset_name") or "",
+                                 "checklist": s.get("checklist_name") or "",
+                                 "assignee": emp_name.get(aid) or f"#{aid}"})
+    rows.sort(key=lambda r: (r["date"], str(r["code"])))
+
+    week_range = (f"{dates[0].strftime('%d-%m-%Y')} to {dates[-1].strftime('%d-%m-%Y')}"
+                  if dates else "—")
+    machines = sorted({(r["code"] or r["machine"]) for r in rows})
+    count = len(rows)
+
+    # resolve recipients by name from the staff list -> email + mobile
+    try:
+        ecols = {r["column_name"] for r in await db.fetch(
+            "SELECT column_name FROM information_schema.columns WHERE lower(table_name)='employees'")}
+    except Exception:
+        ecols = set()
+    emailcol = "email" if "email" in ecols else ("email_id" if "email_id" in ecols else None)
+    esel = f"{emailcol} AS email" if emailcol else "NULL AS email"
+    recips = []
+    for nm in [n.strip() for n in WEEKLY_PM_RECIPIENTS.split(",") if n.strip()]:
+        r = await db.fetchrow(
+            f"SELECT name, {esel}, COALESCE(mobile,'') AS mobile FROM employees "
+            "WHERE lower(name) LIKE $1 ORDER BY id LIMIT 1", f"%{nm.lower()}%")
+        recips.append({"query": nm, "found": bool(r),
+                       "name": (r["name"] if r else None),
+                       "email": (r["email"] if r else None),
+                       "mobile": (r["mobile"] if r else None)})
+
+    mach_csv = (", ".join(machines[:25]) + (" …" if len(machines) > 25 else "")) if machines else "None"
+    wa_params = [week_range, str(count), mach_csv]
+    html = _weekly_email_html(week_range, rows, machines)
+    out = {"range": week_range, "days": int(days), "incomplete_count": count,
+           "machines": machines, "rows": rows[:300], "recipients": recips,
+           "whatsapp_template": WATI_PM_WEEKLY_TEMPLATE, "whatsapp_params": wa_params,
+           "dry_run": is_dry}
+    if is_dry:
+        return _json(out)
+
+    from ..notify import send_email_html
+    subject = f"Weekly Incomplete PM Report — {week_range}"
+    sends = []
+    for rc in recips:
+        res = {"query": rc["query"], "name": rc["name"]}
+        if rc.get("email"):
+            ok, det = send_email_html(rc["email"], subject, html)
+            res["email"] = "sent" if ok else f"failed: {det}"
+        else:
+            res["email"] = "no email on file"
+        mob = wati.normalize_number(rc.get("mobile") or "")
+        if mob:
+            ok, det = await _wsend(WATI_PM_WEEKLY_TEMPLATE, mob, wa_params,
+                                   name=rc.get("name") or "", kind="weekly_incomplete")
+            res["whatsapp"] = "sent" if ok else f"failed: {det}"
+        else:
+            res["whatsapp"] = "no mobile on file"
+        sends.append(res)
+    out["sent"] = sends
+    return _json(out)
 
 
 @router.get("/board-debug")
