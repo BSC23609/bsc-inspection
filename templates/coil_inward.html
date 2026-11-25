@@ -151,6 +151,17 @@
 
 <div class="panel" style="margin-top:16px">
   <div class="panel-head"><span class="hi">{{ icon('bars',17) }}</span>Recent inward<span class="sub" id="c_cnt"></span></div>
+  <div class="ci-filter">
+    <div class="field"><label for="f_from">From</label><input type="date" id="f_from" onchange="ciRange('')"></div>
+    <div class="field"><label for="f_to">To</label><input type="date" id="f_to" onchange="ciRange('')"></div>
+    <div class="field ci-q"><label for="f_q">Coil / batch no.</label>
+      <input type="search" id="f_q" placeholder="e.g. NF080494 or vehicle no." oninput="coilRender()" autocomplete="off"></div>
+    <div class="ci-quick" role="group" aria-label="Quick dates">
+      <button type="button" data-r="7" onclick="ciQuick(7)">Last 7 days</button>
+      <button type="button" data-r="30" onclick="ciQuick(30)">30 days</button>
+      <button type="button" data-r="all" onclick="ciQuick('all')">All</button>
+    </div>
+  </div>
   <div class="panel-body flush"><div class="dgrid-wrap" id="c_rows"><div class="empty">Loading…</div></div></div>
 </div>
 
@@ -305,6 +316,30 @@ function coilReset(){
 }
 function coilCancel(){coilReset();window.scrollTo({top:0,behavior:'smooth'});}
 
+/* ---- Recent inward filter: last 7 days by default, any date range, coil/batch number search ---- */
+function isoDay(d){var z=new Date(d.getTime()-d.getTimezoneOffset()*60000);return z.toISOString().slice(0,10);}
+function ciQuick(r){
+  var f=document.getElementById('f_from'),t=document.getElementById('f_to');
+  if(r==='all'){f.value='';t.value='';}
+  else{var to=new Date(),from=new Date();from.setDate(to.getDate()-(r-1));f.value=isoDay(from);t.value=isoDay(to);}
+  ciRange(String(r));
+}
+function ciRange(r){
+  document.querySelectorAll('.ci-quick button').forEach(function(b){b.classList.toggle('on',b.dataset.r===r);});
+  coilRender();
+}
+function ciFilter(list){
+  var f=document.getElementById('f_from').value,t=document.getElementById('f_to').value;
+  var q=document.getElementById('f_q').value.trim().toUpperCase().replace(/\s+/g,'');
+  if(q){f='';t='';}   // a coil / batch number is searched across all dates
+  return list.filter(function(x){
+    var d=String(x.log_date||'').slice(0,10);
+    if(f&&(!d||d<f))return false;
+    if(t&&(!d||d>t))return false;
+    if(q){var hay=(String(x.batch_number||'')+'|'+String(x.vehicle_number||'')).toUpperCase().replace(/\s+/g,'');if(hay.indexOf(q)===-1)return false;}
+    return true;
+  });
+}
 async function coilLoad(){
   var h=document.getElementById('c_rows');h.innerHTML='<div class="empty">Loading…</div>';
   try{var r=await fetch('/coil/list',{cache:'no-store'});if(r.status===401){location.href='/login';return;}CI=await r.json();if(!Array.isArray(CI))CI=[];}
@@ -319,13 +354,15 @@ function coilRender(){
   document.getElementById('kpi_ok').textContent=ok;
   document.getElementById('kpi_flag').textContent=flag;
   document.getElementById('kpi_wt').innerHTML=(Math.round(wt*1000)/1000)+' <small>T</small>';
-  document.getElementById('c_cnt').textContent=CI.length?(CI.length+' total'):'';
-  if(!CI.length){host.innerHTML='<div class="empty">No coils logged yet. Add the first one above.</div>';return;}
+  if(!CI.length){document.getElementById('c_cnt').textContent='';host.innerHTML='<div class="empty">No coils logged yet. Add the first one above.</div>';return;}
+  var ALL=CI, rows=ciFilter(ALL);
+  document.getElementById('c_cnt').textContent=rows.length+' of '+ALL.length;
+  if(!rows.length){host.innerHTML='<div class="empty">No coils match these dates'+(document.getElementById('f_q').value.trim()?' and this coil / batch number':'')+'. Try <a href="#" onclick="ciQuick(\'all\');return false">All dates</a>.</div>';return;}
   var cols=[['Date','9%'],['Vehicle','11%'],['Batch','11%'],['Make','9%'],['Grade','10%'],['W×T (mm)','9%'],['Wt (T)','7%'],['Inspector','10%'],['Condition','9%'],['','5%']];
   var cg='<colgroup>'+cols.map(function(c){return'<col style="width:'+c[1]+'">';}).join('')+'</colgroup>';
   var hd='<tr>'+cols.map(function(c){return'<th>'+c[0]+'</th>';}).join('')+'</tr>';
   var g=function(a){return(a===''||a==null)?'':esc(a);};
-  var body=CI.map(function(x){
+  var body=rows.map(function(x){
     var cond=flagged(x)?'<span class="badge bad">Flagged</span>':'<span class="badge good">OK</span>';
     var wt=(x.width||'')+(x.thickness?(' × '+x.thickness):'');
     var act=x._legacy
@@ -394,6 +431,11 @@ async function coilSettings(){
     rebuildPills('c_make',s.mills,true);rebuildPills('c_grade',s.grades,true);rebuildPills('c_insp',insp,true);
   }catch(e){}
 }
-(function(){coilSettings().then(function(){coilReset();coilLoad();});})();
+(function(){
+  var to=new Date(),from=new Date();from.setDate(to.getDate()-6);   // Recent inward opens on the last 7 days
+  document.getElementById('f_from').value=isoDay(from);document.getElementById('f_to').value=isoDay(to);
+  document.querySelector('.ci-quick button[data-r="7"]').classList.add('on');
+  coilSettings().then(function(){coilReset();coilLoad();});
+})();
 </script>
 {% endblock %}

@@ -286,3 +286,19 @@ table.dgrid tfoot td{background:var(--acc-soft,#f6f8fd);font-weight:700;color:va
   table.dgrid td[data-label=""] a{font-size:14px;font-weight:600}
   table.dgrid td:empty{display:none}
 }
+
+/* Recent inward: date range + coil / batch number search */
+.ci-filter{display:flex;flex-wrap:wrap;align-items:flex-end;gap:10px 12px;padding:12px 16px;border-bottom:1px solid var(--line)}
+.ci-filter .field{margin:0;min-width:140px;flex:0 1 160px}
+.ci-filter .ci-q{flex:1 1 220px}
+.ci-filter label{font-size:12px}
+.ci-quick{display:flex;gap:6px;flex-wrap:wrap}
+.ci-quick button{border:1px solid var(--line-2);background:var(--surface);color:var(--ink-2);border-radius:999px;padding:8px 12px;font:600 12.5px Inter,system-ui,sans-serif;cursor:pointer}
+.ci-quick button.on{background:var(--acc,#0069a6);border-color:var(--acc,#0069a6);color:#fff}
+@media(max-width:600px){
+  .ci-filter{padding:12px}
+  .ci-filter .field{flex:1 1 calc(50% - 6px);min-width:0}
+  .ci-filter .ci-q{flex-basis:100%}
+  .ci-quick{flex-basis:100%}
+  .ci-quick button{flex:1}
+}
