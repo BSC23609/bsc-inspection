@@ -256,3 +256,33 @@ table.dgrid tfoot td{background:var(--acc-soft,#f6f8fd);font-weight:700;color:va
 
 /* ---------------- admin nav separator ---------------- */
 .nav-sep{height:1px;background:rgba(255,255,255,.1);margin:10px 8px}
+
+/* Phones and narrow windows (incl. inside the group hub's tab): tables keep readable columns and
+   scroll sideways instead of squeezing every word into a letter-wide column. */
+@media(max-width:900px){
+  .dgrid-wrap,.ia-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  table.dgrid{table-layout:auto;width:max-content;min-width:100%}
+  table.dgrid th,table.dgrid td{white-space:nowrap;word-break:normal;overflow:visible;font-size:12px;padding:8px 10px}
+  table.dgrid th{font-size:11px}
+}
+
+/* Phones: each table row becomes a card with labelled lines, so nothing is squeezed or cut off.
+   (Headings come from the base.html script, which copies each column heading onto its cells.) */
+@media(max-width:600px){
+  .dgrid-wrap{overflow-x:visible}
+  table.dgrid,table.dgrid tbody,table.dgrid tfoot,table.dgrid tr,table.dgrid td{display:block;width:auto!important;min-width:0}
+  table.dgrid colgroup,table.dgrid thead{display:none}
+  table.dgrid tbody tr,table.dgrid tfoot tr{margin:10px 8px;padding:4px 14px;border:1px solid var(--line-2);border-radius:14px;
+    background:var(--surface)!important;box-shadow:0 1px 2px rgba(14,21,36,.05)}
+  table.dgrid tfoot tr{background:var(--surface-2)!important}
+  table.dgrid td,table.dgrid tfoot td{display:flex;align-items:baseline;justify-content:space-between;gap:14px;border:0;
+    border-bottom:1px dashed var(--line);padding:8px 0;font-size:13.5px;line-height:1.35;text-align:right!important;
+    white-space:normal;word-break:normal;overflow-wrap:anywhere;overflow:visible;background:none}
+  table.dgrid td:last-child{border-bottom:0}
+  table.dgrid td::before{content:attr(data-label);flex:none;max-width:45%;text-align:left;font-size:12px;font-weight:600;color:var(--muted)}
+  table.dgrid td[data-label=""]::before{content:none}
+  table.dgrid td[data-label=""]{justify-content:flex-end;gap:16px;padding-top:10px}
+  table.dgrid td[data-label=""] br{display:none}
+  table.dgrid td[data-label=""] a{font-size:14px;font-weight:600}
+  table.dgrid td:empty{display:none}
+}
