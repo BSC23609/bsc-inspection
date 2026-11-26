@@ -25,6 +25,8 @@ NAV_GROUPS = [
           "href": "/pdi", "active_key": "pdi"},
          {"name": "Inspection Analysis", "icon": "gauge", "desc": "Quality across Inward, CTL, Shearing and PDI — supplier scorecard, defect Pareto, batch trace.",
           "href": "/analysis/inspection", "active_key": "analysis_inspection", "admin_only": True},
+         {"name": "Inspection Coverage", "icon": "shield", "desc": "Cross-check SAP receipts, CTL/Shearing production and dispatches against the inspections actually done — find the gaps.",
+          "href": "/insp/coverage", "active_key": "insp_coverage", "admin_only": True},
      ]},
     {"key": "complaints", "title": "Complaints", "accent": "navy", "icon": "complaints",
      "blurb": "Raise, investigate and close quality issues.",
@@ -232,6 +234,16 @@ async def quality_page(request: Request):
     if not emp:
         return RedirectResponse("/login", status_code=303)
     return templates.TemplateResponse("quality.html", _ctx(request, emp, "quality", section="CTL Quality Inspection"))
+
+
+@router.get("/insp/coverage", response_class=HTMLResponse)
+async def insp_coverage_page(request: Request):
+    emp = await current_employee(request)
+    if not emp:
+        return RedirectResponse("/login", status_code=303)
+    if not _is_admin(emp):
+        return RedirectResponse("/", status_code=303)
+    return templates.TemplateResponse("insp_coverage.html", _ctx(request, emp, "insp_coverage", section="Inspection Coverage"))
 
 
 @router.get("/shearing", response_class=HTMLResponse)

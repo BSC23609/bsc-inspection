@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+{% block title %}Inspection Coverage · {{ app_name }}{% endblock %}
+{% block tb_title %}Inspection Coverage{% endblock %}
+{% block content %}
+<div class="acc-navy">
+<style>
+.ic-intro{color:var(--muted);font-size:13px;margin:0 0 14px;max-width:760px}
+.ic-bar{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+.ic-bar .f{display:flex;flex-direction:column;gap:4px}
+.ic-bar label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)}
+.ic-bar input{padding:8px 11px;border:1px solid var(--line-2);border-radius:9px;font-size:13px}
+.ic-btn{border:1px solid var(--acc);color:#fff;background:var(--acc);border-radius:9px;padding:9px 18px;font-size:13px;font-weight:700;cursor:pointer}
+.ic-btn.ghost{background:#fff;color:var(--acc)}
+.ic-bar .sp{flex:1}.ic-bar .db{font-size:12px;color:var(--muted)}
+.ic-cards{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:8px}
+@media(max-width:860px){.ic-cards{grid-template-columns:1fr 1fr}}
+.ic-card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:16px;cursor:pointer;transition:box-shadow .12s,border-color .12s}
+.ic-card:hover{box-shadow:0 6px 18px -8px rgba(10,43,102,.25)}
+.ic-card.on{border-color:var(--acc);box-shadow:0 0 0 3px var(--blue-soft,rgba(10,43,102,.1))}
+.ic-card .nm{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.3px;color:var(--muted)}
+.ic-card .pct{font-size:30px;font-weight:800;margin:6px 0 2px;line-height:1}
+.ic-card .sub{font-size:12px;color:var(--ink-2)}
+.ic-card .miss{font-size:12px;font-weight:700;margin-top:6px}
+.ic-bar.good .pct,.pct.good{color:#0a7d55}.pct.warn{color:#c98a12}.pct.bad{color:#c0241c}
+.miss.z{color:#0a7d55}.miss.n{color:#c0241c}
+.ic-meter{height:7px;border-radius:5px;background:#eef2f7;overflow:hidden;margin-top:10px}
+.ic-meter>i{display:block;height:100%;border-radius:5px}
+.ic-detail{background:#fff;border:1px solid var(--line);border-radius:14px;margin-top:14px;overflow:hidden;display:none}
+.ic-detail.show{display:block}
+.ic-dhead{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.ic-dhead b{font-size:14px}.ic-dhead .mut{color:var(--muted);font-size:12px}
+.ic-dhead .sp{flex:1}
+.ic-xp{border:1px solid var(--line-2);background:#fff;color:var(--acc-ink);border-radius:8px;padding:6px 12px;font-size:12px;font-weight:700;cursor:pointer}
+.ic-scroll{max-height:56vh;overflow:auto}
+.itbl{width:100%;border-collapse:collapse;font-size:13px}
+.itbl th{position:sticky;top:0;background:#f4f7fb;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.3px;color:var(--muted);border-bottom:1px solid var(--line);padding:9px 14px;z-index:1}
+.itbl td{border-bottom:1px solid var(--line);padding:8px 14px}
+.itbl td.b{font-weight:700;color:var(--ink)}
+.itbl .chip{display:inline-block;font-size:10.5px;font-weight:700;border-radius:20px;padding:2px 8px;background:#eef2f7;color:#41506a}
+.ic-empty{padding:26px;text-align:center;color:#0a7d55;font-weight:600}
+.ic-note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.7}
+.ic-diag{margin-top:16px;font-size:12px;color:var(--muted)}
+.ic-diag summary{cursor:pointer;font-weight:700}
+.ic-diag code{background:#f4f7fb;border:1px solid var(--line);border-radius:6px;padding:1px 6px}
+.ic-load{padding:30px;text-align:center;color:var(--muted)}
+.hide{display:none}
+</style>
+
+<p class="ic-intro">Every coil received, cut (CTL), sheared and dispatched in SAP — checked against the inspections actually recorded here. Each card shows how many were inspected; click one to list the ones that slipped through.</p>
+
+<div class="ic-bar">
+  <div class="f"><label>From</label><input type="date" id="ic_from" value="2026-06-01"></div>
+  <div class="f"><label>To</label><input type="date" id="ic_to"></div>
+  <button class="ic-btn" onclick="icLoad()">Check</button>
+  <div class="sp"></div>
+  <div class="db" id="ic_db"></div>
+</div>
+
+<div id="ic_body"><div class="ic-load">Pick a range and press Check.</div></div>
+
+<details class="ic-diag"><summary>Match diagnostics</summary>
+  <div id="ic_diag" style="margin-top:8px"></div>
+</details>
+</div>
+
+<script>
+var IC=null, IC_ACTIVE='inward';
+var LABELS={inward:'Inward (GRPO)',ctl:'CTL',shearing:'Shearing',predispatch:'Pre-dispatch'};
+var COLS={
+  inward:[['date','Date'],['coil','Coil No'],['ItemGroup','Group'],['Supplier','Supplier']],
+  ctl:[['date','Date'],['coil','Coil No'],['MachCode','Machine'],['Grade','Grade']],
+  shearing:[['date','Date'],['coil','Coil No'],['MachCode','Machine'],['Grade','Grade']],
+  predispatch:[['date','Date'],['so','Sales Order'],['customer','Customer'],['doctype','Doc']]
+};
+function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
+function pctClass(p){return p>=98?'good':(p>=90?'warn':'bad');}
+
+function todayISO(){var d=new Date();return d.toISOString().slice(0,10);}
+if(!document.getElementById('ic_to').value) document.getElementById('ic_to').value=todayISO();
+
+async function icLoad(){
+  var f=document.getElementById('ic_from').value, t=document.getElementById('ic_to').value;
+  document.getElementById('ic_body').innerHTML='<div class="ic-load">Checking SAP vs inspections…</div>';
+  try{
+    var r=await fetch('/insp/coverage/data?from='+f+'&to='+t,{headers:{'Cache-Control':'no-cache'}});
+    if(!r.ok){throw new Error('HTTP '+r.status);}
+    IC=await r.json();
+  }catch(e){
+    document.getElementById('ic_body').innerHTML='<div class="ic-load">Could not load — '+esc(e.message)+'</div>';return;
+  }
+  document.getElementById('ic_db').textContent='SAP · '+(IC.company_db||'')+' · '+IC.range.from+' → '+IC.range.to;
+  renderCards(); renderDiag();
+}
+
+function renderCards(){
+  var s=IC.streams, order=['inward','ctl','shearing','predispatch'];
+  var html='<div class="ic-cards">';
+  order.forEach(function(k){
+    var d=s[k], pc=pctClass(d.coverage_pct);
+    var col=pc=='good'?'#15a06e':(pc=='warn'?'#e0a93b':'#d64a42');
+    html+='<div class="ic-card'+(k==IC_ACTIVE?' on':'')+'" onclick="pick(\''+k+'\')">'
+      +'<div class="nm">'+LABELS[k]+'</div>'
+      +'<div class="pct '+pc+'">'+d.coverage_pct+'%</div>'
+      +'<div class="sub">'+d.inspected+' of '+d.total+' inspected</div>'
+      +'<div class="miss '+(d.missing_count?'n':'z')+'">'+(d.missing_count?(d.missing_count+' not inspected'):'all inspected')+'</div>'
+      +'<div class="ic-meter"><i style="width:'+d.coverage_pct+'%;background:'+col+'"></i></div>'
+      +(k=='predispatch'&&d.no_so_count?'<div class="sub" style="margin-top:6px">'+d.no_so_count+' dispatch(es) without an SO — not checkable</div>':'')
+      +'</div>';
+  });
+  html+='</div>';
+  html+='<div class="ic-detail show" id="ic_detail"></div>';
+  document.getElementById('ic_body').innerHTML=html;
+  renderDetail();
+}
+
+function pick(k){IC_ACTIVE=k; document.querySelectorAll('.ic-card').forEach(function(c){c.classList.remove('on');});
+  renderCards();}
+
+function renderDetail(){
+  var k=IC_ACTIVE, d=IC.streams[k], cols=COLS[k];
+  var el=document.getElementById('ic_detail');
+  var head='<div class="ic-dhead"><b>'+LABELS[k]+' — not inspected</b>'
+    +'<span class="mut">'+d.missing_count+' item(s)'+(d.missing_count>d.missing.length?(' · showing first '+d.missing.length):'')+'</span>'
+    +'<span class="sp"></span>'
+    +(d.missing.length?'<button class="ic-xp" onclick="expCsv()">Export CSV</button>':'')+'</div>';
+  if(!d.missing.length){el.innerHTML=head+'<div class="ic-empty">✓ Everything in this stream was inspected for the selected range.</div>';return;}
+  var th=cols.map(function(c){return '<th>'+c[1]+'</th>';}).join('');
+  var rows=d.missing.map(function(m){
+    return '<tr>'+cols.map(function(c,i){return '<td'+(i==1?' class="b"':'')+'>'+esc(m[c[0]]||'—')+'</td>';}).join('')+'</tr>';
+  }).join('');
+  el.innerHTML=head+'<div class="ic-scroll"><table class="itbl"><thead><tr>'+th+'</tr></thead><tbody>'+rows+'</tbody></table></div>';
+}
+
+function expCsv(){
+  var k=IC_ACTIVE, d=IC.streams[k], cols=COLS[k];
+  var lines=[cols.map(function(c){return c[1];}).join(',')];
+  d.missing.forEach(function(m){lines.push(cols.map(function(c){var v=(m[c[0]]==null?'':String(m[c[0]]));return '"'+v.replace(/"/g,'""')+'"';}).join(','));});
+  var blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='not_inspected_'+k+'_'+IC.range.from+'_'+IC.range.to+'.csv';a.click();
+}
+
+function renderDiag(){
+  var g=IC.diagnostics, q=IC.qms_counts;
+  document.getElementById('ic_diag').innerHTML=
+    '<div>Inspection keys found — Inward <b>'+q.inward_keys+'</b>, CTL <b>'+q.ctl_keys+'</b>, Shearing <b>'+q.shearing_keys+'</b>, PDI SOs <b>'+q.pdi_sos+'</b></div>'
+    +'<div style="margin-top:6px">SAP coils (sample): '+g.sap_inward_sample.map(function(x){return '<code>'+esc(x)+'</code>';}).join(' ')+'</div>'
+    +'<div style="margin-top:4px">QMS inward keys (sample): '+g.qms_inward_sample.map(function(x){return '<code>'+esc(x)+'</code>';}).join(' ')+'</div>'
+    +'<div style="margin-top:4px">SAP dispatch SOs: '+g.sap_dispatch_so_sample.map(function(x){return '<code>'+esc(x)+'</code>';}).join(' ')+'</div>'
+    +'<div style="margin-top:4px">QMS PDI SOs: '+g.qms_pdi_so_sample.map(function(x){return '<code>'+esc(x)+'</code>';}).join(' ')+'</div>';
+}
+
+icLoad();
+</script>
+{% endblock %}
