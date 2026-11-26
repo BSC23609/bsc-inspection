@@ -304,10 +304,21 @@ async def organize_pdfs(request: Request, token: str = Query(default=""),
     budget = max(1, limit)
     for m in mods:
         rootp = f"{ONEDRIVE_BASE}/{_ROOTS[m]}"
-        pdi_map = {}
+        # DB fallbacks for files whose NAME carries no (dd-mm-yyyy): map by file_name,
+        # and for CTL by the trailing record id in the file name.
+        pdi_map, name_map, id_map = {}, {}, {}
         if m == "pdi":
             for r in await db.fetch("SELECT report_no, report_date FROM pdi_reports"):
                 pdi_map[str(r["report_no"])] = str(r["report_date"] or "")
+        elif m == "coil":
+            for r in await db.fetch("SELECT file_name, log_date, created_at FROM coil_inward WHERE file_name IS NOT NULL"):
+                name_map[str(r["file_name"])] = odsync.date_folder(r["log_date"] or r["created_at"])
+        elif m == "shearing":
+            for r in await db.fetch("SELECT file_name, log_date, created_at FROM shearing_inspection WHERE file_name IS NOT NULL"):
+                name_map[str(r["file_name"])] = odsync.date_folder(r["log_date"] or r["created_at"])
+        elif m == "quality":
+            for r in await db.fetch("SELECT id, log_date, created_at FROM quality_inspection"):
+                id_map[int(r["id"])] = odsync.date_folder(r["log_date"] or r["created_at"])
         files = await graph.list_files_deep(tok, rootp, max_depth=2)
         planned, moved, errors = [], [], []
         skipped = undated = 0
@@ -323,6 +334,15 @@ async def organize_pdfs(request: Request, token: str = Query(default=""),
                 skipped += 1
                 continue
             d = _date_from_name(name, pdi_map)
+            if not d:                                   # DB fallback by file name / record id
+                base = name[:-4]
+                cand = name_map.get(base)
+                if (not cand or cand == "undated") and m == "quality":
+                    mm = re.search(r"_(\d+)$", base)
+                    if mm:
+                        cand = id_map.get(int(mm.group(1)))
+                if cand and cand != "undated":
+                    d = cand
             if not d:
                 undated += 1
                 continue
