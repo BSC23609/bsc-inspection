@@ -221,9 +221,10 @@ async def coverage(request: Request,
     s_shear = _reconcile_coils([r for r in prod if r.get("Process") == "Shearing"],
                                "CoilNo", "ProdDate", shear_keys, extra=("thk", "wid", "MachCode", "Grade"))
 
-    # Pre-dispatch: distinct Sales Orders dispatched, matched to PDI 'so'
+    # Pre-dispatch: distinct Sales Orders dispatched, matched to PDI 'so'.
+    # PDI is done for Wheels India only, so Ashok Leyland dispatches are out of scope.
     so_seen, so_blank = {}, []
-    for r in disp:
+    for r in [x for x in disp if x.get("Customer") == "Wheels India"]:
         so = idata.so_key(r.get("SO_No"))
         rec = {"so": (r.get("SO_No") or "").strip(), "customer": r.get("Customer", ""),
                "date": (r.get("DispatchDate") or "")[:10], "doc": r.get("DispatchDoc", ""),
