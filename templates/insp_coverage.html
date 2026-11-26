@@ -105,6 +105,7 @@ function renderCards(){
       +'<div class="miss '+(d.missing_count?'n':'z')+'">'+(d.missing_count?(d.missing_count+' not inspected'):'all inspected')+'</div>'
       +'<div class="ic-meter"><i style="width:'+d.coverage_pct+'%;background:'+col+'"></i></div>'
       +(k=='predispatch'&&d.no_so_count?'<div class="sub" style="margin-top:6px">'+d.no_so_count+' dispatch(es) without an SO — not checkable</div>':'')
+      +(k=='inward'&&d.plates_excluded?'<div class="sub" style="margin-top:6px">'+d.plates_excluded+' plate/sheet item(s) excluded (not coils)</div>':'')
       +'</div>';
   });
   html+='</div>';

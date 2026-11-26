@@ -111,3 +111,13 @@ def so_key(so) -> str:
     """Normalise a Sales Order reference to digits (PDI 'SO 400577' -> '400577')."""
     d = re.sub(r"\D", "", str(so or ""))
     return d.lstrip("0") or d
+
+
+# a plate/sheet carries a LENGTH: thickness x width x length (3 numbers). A coil is
+# only thickness x width (2 numbers). So anything with a 3rd X-dimension is NOT a coil.
+_PLATE_DIM = re.compile(r"\d+(?:\.\d+)?\s*[xX]\s*\d+(?:\.\d+)?\s*[xX]\s*\d+", re.I)
+
+
+def is_coil_desc(desc) -> bool:
+    """True for a mother coil (T x W); False for a cut plate/sheet (T x W x L)."""
+    return not _PLATE_DIM.search(str(desc or ""))

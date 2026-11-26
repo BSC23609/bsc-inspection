@@ -187,11 +187,17 @@ async def coverage(request: Request,
     d2 = (date_to or datetime.now(IST).date().isoformat())[:10]
 
     try:
-        inward = [r for r in await idata.inward() if _in_range(r.get("GRPODate"), d1, d2)]
+        inward_all = [r for r in await idata.inward() if _in_range(r.get("GRPODate"), d1, d2)]
         prod = [r for r in await idata.production() if _in_range(r.get("ProdDate"), d1, d2)]
         disp = [r for r in await idata.dispatch() if _in_range(r.get("DispatchDate"), d1, d2)]
     except Exception as e:
         raise HTTPException(502, f"Could not read SAP feeds: {e}")
+
+    # Coil Inward is for mother COILS only — drop plate/sheet items (T x W x L) that are
+    # misfiled under the HR-coil item groups in SAP. Needs the Descr column in the feed;
+    # if it's absent (older feed) nothing is dropped.
+    inward = [r for r in inward_all if idata.is_coil_desc(r.get("Descr", ""))]
+    plates_dropped = len(inward_all) - len(inward)
 
     lg = bool(legacy)
     (inward_keys, m_in), (ctl_keys, m_ctl), (shear_keys, m_sh), pdi_sos = await asyncio.gather(
@@ -200,6 +206,7 @@ async def coverage(request: Request,
 
     s_inward = _reconcile_coils(inward, "CoilNo", "GRPODate", inward_keys,
                                 extra=("ItemGroup", "Supplier"))
+    s_inward["plates_excluded"] = plates_dropped
     s_ctl = _reconcile_coils([r for r in prod if r.get("Process") == "CTL"],
                              "CoilNo", "ProdDate", ctl_keys, extra=("MachCode", "Grade"))
     s_shear = _reconcile_coils([r for r in prod if r.get("Process") == "Shearing"],
