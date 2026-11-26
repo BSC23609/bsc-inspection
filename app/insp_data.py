@@ -46,7 +46,10 @@ async def _csv(name: str) -> list[dict]:
         return []
     if r.status_code >= 300:
         raise RuntimeError(f"{name} not reachable ({r.status_code})")
-    rows = list(csv.DictReader(io.StringIO(r.text)))
+    # utf-8-sig strips the BOM PowerShell Export-Csv writes, else the FIRST column's
+    # header comes back as '﻿ProdDate' and that column reads as empty.
+    text = r.content.decode("utf-8-sig", errors="replace")
+    rows = list(csv.DictReader(io.StringIO(text)))
     _cache[url] = (now, rows)
     return rows
 

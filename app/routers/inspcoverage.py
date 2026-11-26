@@ -49,68 +49,77 @@ def _in_range(d: str, d1: str, d2: str) -> bool:
 # ----- QMS inspection key sets (Neon + legacy) --------------------------------
 
 async def _inward_keys(d1, d2, legacy=True):
-    keys = set()
+    keys, raw = set(), []  # raw = sample of what QMS actually stored
     for r in await db.fetch(
             "SELECT batch_number FROM coil_inward WHERE log_date BETWEEN $1 AND $2",
             date.fromisoformat(d1), date.fromisoformat(d2)):
+        raw.append(r["batch_number"])
         k = idata.batch_key(r["batch_number"])
         if k:
             keys.add(k)
+    neon = len(keys)
     if legacy:
         try:
             from .coil import _read_inward_legacy
             for rec in await _read_inward_legacy(use_cache=True):
                 if _in_range(str(rec.get("log_date") or ""), d1, d2):
+                    raw.append(rec.get("batch_number"))
                     k = idata.batch_key(rec.get("batch_number"))
                     if k:
                         keys.add(k)
         except Exception as e:
             print("[insp inward legacy]", e)
-    return keys
+    return keys, {"neon": neon, "total": len(keys), "raw": [x for x in raw if x][:12]}
 
 
 async def _ctl_keys(d1, d2, legacy=True):
-    keys = set()
+    keys, raw = set(), []
     for r in await db.fetch(
             "SELECT batch_number, coil_number FROM quality_inspection WHERE log_date BETWEEN $1 AND $2",
             date.fromisoformat(d1), date.fromisoformat(d2)):
+        raw.append(r["coil_number"] or r["batch_number"])
         for v in (r["batch_number"], r["coil_number"]):
             k = idata.batch_key(v)
             if k:
                 keys.add(k)
+    neon = len(keys)
     if legacy:
         try:
             from .quality import _read_quality_legacy
             for rec in await _read_quality_legacy():
                 if _in_range(str(rec.get("log_date") or rec.get("date") or ""), d1, d2):
+                    raw.append(rec.get("coil_number") or rec.get("batch_number"))
                     for v in (rec.get("batch_number"), rec.get("coil_number")):
                         k = idata.batch_key(v)
                         if k:
                             keys.add(k)
         except Exception as e:
             print("[insp ctl legacy]", e)
-    return keys
+    return keys, {"neon": neon, "total": len(keys), "raw": [x for x in raw if x][:12]}
 
 
 async def _shearing_keys(d1, d2, legacy=True):
-    keys = set()
+    keys, raw = set(), []
     for r in await db.fetch(
             "SELECT batch_number FROM shearing_inspection WHERE log_date BETWEEN $1 AND $2",
             date.fromisoformat(d1), date.fromisoformat(d2)):
+        raw.append(r["batch_number"])
         k = idata.batch_key(r["batch_number"])
         if k:
             keys.add(k)
+    neon = len(keys)
     if legacy:
         try:
             from .shearing import _read_shearing_legacy
             for rec in await _read_shearing_legacy():
                 if _in_range(str(rec.get("log_date") or rec.get("date") or ""), d1, d2):
+                    raw.append(rec.get("batch_number"))
                     k = idata.batch_key(rec.get("batch_number"))
                     if k:
                         keys.add(k)
         except Exception as e:
             print("[insp shearing legacy]", e)
-    return keys
+    return keys, {"neon": neon, "total": len(keys), "raw": [x for x in raw if x][:12]}
 
 
 async def _pdi_sos(d1, d2):
@@ -185,7 +194,7 @@ async def coverage(request: Request,
         raise HTTPException(502, f"Could not read SAP feeds: {e}")
 
     lg = bool(legacy)
-    inward_keys, ctl_keys, shear_keys, pdi_sos = await asyncio.gather(
+    (inward_keys, m_in), (ctl_keys, m_ctl), (shear_keys, m_sh), pdi_sos = await asyncio.gather(
         _inward_keys(d1, d2, lg), _ctl_keys(d1, d2, lg),
         _shearing_keys(d1, d2, lg), _pdi_sos(d1, d2))
 
@@ -229,11 +238,16 @@ async def coverage(request: Request,
             "shearing": cap(s_shear), "predispatch": cap(s_pre),
         },
         "qms_counts": {"inward_keys": len(inward_keys), "ctl_keys": len(ctl_keys),
-                       "shearing_keys": len(shear_keys), "pdi_sos": len(pdi_sos)},
+                       "shearing_keys": len(shear_keys), "pdi_sos": len(pdi_sos),
+                       "legacy_on": lg},
         "diagnostics": {
-            "sap_inward_sample": [r.get("CoilNo") for r in inward[:8]],
-            "qms_inward_sample": sorted(list(inward_keys))[:8],
-            "sap_dispatch_so_sample": [r.get("SO_No") for r in disp[:8]],
-            "qms_pdi_so_sample": sorted(list(pdi_sos))[:8],
+            "inward": {"sap": [r.get("CoilNo") for r in inward[:12]],
+                       "qms_raw": m_in["raw"], "neon": m_in["neon"], "total": m_in["total"]},
+            "ctl": {"sap": [r.get("CoilNo") for r in prod if r.get("Process") == "CTL"][:12],
+                    "qms_raw": m_ctl["raw"], "neon": m_ctl["neon"], "total": m_ctl["total"]},
+            "shearing": {"sap": [r.get("CoilNo") for r in prod if r.get("Process") == "Shearing"][:12],
+                         "qms_raw": m_sh["raw"], "neon": m_sh["neon"], "total": m_sh["total"]},
+            "predispatch": {"sap": [r.get("SO_No") for r in disp[:12]],
+                            "qms_raw": sorted(list(pdi_sos))[:12]},
         },
     })

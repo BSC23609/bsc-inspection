@@ -142,12 +142,14 @@ function expCsv(){
 
 function renderDiag(){
   var g=IC.diagnostics, q=IC.qms_counts;
+  function codes(a){return (a||[]).map(function(x){return '<code>'+esc(x)+'</code>';}).join(' ')||'<i>none</i>';}
+  function block(k,lab){var d=g[k]||{}; var cnt=(d.total!=null)?(' — QMS records: '+d.total+' ('+d.neon+' Neon + '+(d.total-d.neon)+' legacy)'):'';
+    return '<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--line)"><b>'+lab+'</b>'+cnt
+      +'<div style="margin-top:4px">SAP: '+codes(d.sap)+'</div>'
+      +'<div style="margin-top:3px">QMS (as stored): '+codes(d.qms_raw)+'</div></div>';}
   document.getElementById('ic_diag').innerHTML=
-    '<div>Inspection keys found — Inward <b>'+q.inward_keys+'</b>, CTL <b>'+q.ctl_keys+'</b>, Shearing <b>'+q.shearing_keys+'</b>, PDI SOs <b>'+q.pdi_sos+'</b></div>'
-    +'<div style="margin-top:6px">SAP coils (sample): '+g.sap_inward_sample.map(function(x){return '<code>'+esc(x)+'</code>';}).join(' ')+'</div>'
-    +'<div style="margin-top:4px">QMS inward keys (sample): '+g.qms_inward_sample.map(function(x){return '<code>'+esc(x)+'</code>';}).join(' ')+'</div>'
-    +'<div style="margin-top:4px">SAP dispatch SOs: '+g.sap_dispatch_so_sample.map(function(x){return '<code>'+esc(x)+'</code>';}).join(' ')+'</div>'
-    +'<div style="margin-top:4px">QMS PDI SOs: '+g.qms_pdi_so_sample.map(function(x){return '<code>'+esc(x)+'</code>';}).join(' ')+'</div>';
+    '<div>Inspection keys matched into — Inward <b>'+q.inward_keys+'</b>, CTL <b>'+q.ctl_keys+'</b>, Shearing <b>'+q.shearing_keys+'</b>, PDI SOs <b>'+q.pdi_sos+'</b> · legacy OneDrive '+(q.legacy_on?'ON':'OFF')+'</div>'
+    +block('inward','Inward')+block('ctl','CTL')+block('shearing','Shearing')+block('predispatch','Pre-dispatch');
 }
 
 icLoad();
