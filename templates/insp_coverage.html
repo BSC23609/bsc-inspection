@@ -69,7 +69,7 @@ var LABELS={inward:'Inward (GRPO)',ctl:'CTL',shearing:'Shearing',predispatch:'Pr
 var COLS={
   inward:[['date','Date'],['coil','Coil No'],['thk','Thickness (mm)'],['wid','Width (mm)'],['ItemGroup','Group'],['Supplier','Supplier']],
   ctl:[['date','Date'],['coil','Coil No'],['thk','Thickness (mm)'],['wid','Width (mm)'],['len','Length (mm)'],['MachCode','Machine'],['Grade','Grade']],
-  shearing:[['date','Date'],['coil','Coil No'],['thk','Thickness (mm)'],['wid','Width (mm)'],['MachCode','Machine'],['Grade','Grade']],
+  shearing:[['date','Date'],['coil','Coil No'],['MachCode','Machine'],['Grade','Grade']],
   predispatch:[['date','Date'],['so','Sales Order'],['customer','Customer'],['doctype','Doc']]
 };
 function esc(s){return (s==null?'':String(s)).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];});}
