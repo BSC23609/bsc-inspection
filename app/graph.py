@@ -144,6 +144,22 @@ async def list_children(token: str, path: str) -> list[dict]:
             for it in (r.json().get("value") or [])]
 
 
+async def list_files_deep(token: str, path: str, max_depth: int = 1) -> list[dict]:
+    """All files under `path` and its sub-folders down to max_depth, as
+    [{id,name,parent_path,parent_id}]. Used by the report tools now that PDFs live in
+    date-wise sub-folders (max_depth=1 covers folder/<date>/file)."""
+    out: list[dict] = []
+    kids = await list_children(token, path)
+    for c in kids:
+        if c.get("is_folder"):
+            if max_depth > 0:
+                out.extend(await list_files_deep(token, f"{path}/{c['name']}", max_depth - 1))
+        else:
+            out.append({"id": c["id"], "name": c["name"], "parent_path": path,
+                        "parent_id": None})
+    return out
+
+
 async def move_item(token: str, item_id: str, target_parent_id: str) -> bool:
     """Move a drive item (file or folder) into the folder with id target_parent_id."""
     url = f"{_GRAPH}/users/{USER_ID}/drive/items/{item_id}"

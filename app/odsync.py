@@ -102,6 +102,32 @@ def ist_date_str(when) -> str:
     return w.astimezone(IST).strftime("%d-%m-%Y")
 
 
+def date_folder(when) -> str:
+    """YYYY-MM-DD (IST) for the date-wise OneDrive sub-folder each report is filed under.
+    Accepts a date, datetime, or a yyyy-mm-dd / dd-mm-yyyy / ISO string. ISO naming so
+    the folders sort chronologically (set the OneDrive view to Name descending for
+    newest-first). Falls back to 'undated' when no date can be read."""
+    from datetime import date as _date
+    if when is None or when == "":
+        return "undated"
+    if isinstance(when, datetime):
+        w = when if when.tzinfo else when.replace(tzinfo=timezone.utc)
+        return w.astimezone(IST).strftime("%Y-%m-%d")
+    if isinstance(when, _date):
+        return when.strftime("%Y-%m-%d")
+    s = str(when).strip()
+    m = re.match(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return f"{m.group(1)}-{m.group(2)}-{m.group(3)}"
+    m = re.match(r"(\d{2})-(\d{2})-(\d{4})", s)          # dd-mm-yyyy (incl. inside (…))
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    m = re.search(r"\((\d{2})-(\d{2})-(\d{4})\)", s)     # <batch>_(dd-mm-yyyy)_suffix
+    if m:
+        return f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return "undated"
+
+
 def legacy_file_name(batch, when, suffix: str) -> str:
     """Same name the Node app used: <batch>_(dd-mm-yyyy)_<suffix>."""
     return f"{legacy_safe(batch)}_({ist_date_str(when)})_{suffix}"

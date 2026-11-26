@@ -318,8 +318,9 @@ async def od_sync(rec_id: int, photos: list = None, excel: bool = True, dedupe: 
             if paths:
                 data["photo_paths"] = have + paths
         if pdf:
+            _dfold = odsync.date_folder(r.get("log_date") or data.get("date") or r.get("created_at"))
             await st.run("PDF report", graph.upload_file(
-                token, f"{ONEDRIVE_BASE}/Shearing/PDF/{fn}.pdf",
+                token, f"{ONEDRIVE_BASE}/Shearing/PDF/{_dfold}/{fn}.pdf",
                 build_shearing_pdf(data, rec_id, MP_SPEC), "application/pdf"))
         if excel:
             await st.run("Excel log (Shearing_Log.xlsx)", _write_excel(token, data, fn, old_name, dedupe))
@@ -592,8 +593,8 @@ async def s_fix_filenames(token: str = Query(...), apply: int = Query(0),
         "FROM shearing_inspection ORDER BY id DESC LIMIT $1", limit)
     tok = await graph.get_token()
     # Index existing PDFs by name so we can find item ids to delete old copies.
-    children = await graph.list_children(tok, f"{ONEDRIVE_BASE}/Shearing/PDF") if tok else []
-    by_name = {c["name"]: c["id"] for c in children if not c.get("is_folder")}
+    children = await graph.list_files_deep(tok, f"{ONEDRIVE_BASE}/Shearing/PDF") if tok else []
+    by_name = {c["name"]: c["id"] for c in children}
 
     # Pass 1 — assign a UNIQUE final name to every record. If the same batch was
     # inspected more than once on the same day, both map to the same base name;
@@ -636,10 +637,11 @@ async def s_fix_filenames(token: str = Query(...), apply: int = Query(0),
         if not tok:
             errors.append({**item, "error": "no OneDrive token"}); continue
         try:
-            # Regenerate the PDF from THIS record and upload under its unique name,
-            # then remove the stale copy (only if nothing else now uses that name).
+            # Regenerate the PDF from THIS record and upload under its unique name into
+            # its date-wise folder, then remove the stale copy (only if unused now).
+            _df = odsync.date_folder(rec.get("insp_date") or rec["data"].get("date"))
             await graph.upload_file(
-                tok, f"{ONEDRIVE_BASE}/Shearing/PDF/{correct}.pdf",
+                tok, f"{ONEDRIVE_BASE}/Shearing/PDF/{_df}/{correct}.pdf",
                 build_shearing_pdf(rec["data"], rec["id"], MP_SPEC), "application/pdf")
             old_id = by_name.get(f"{cur}.pdf") if cur else None
             if old_id and cur != correct and cur not in final.values():
@@ -672,8 +674,8 @@ async def s_fix_dates(token: str = Query(...), apply: int = Query(0),
         "SELECT id, payload, file_name, created_at, batch_number, log_date "
         "FROM shearing_inspection ORDER BY id DESC LIMIT $1", limit)
     tok = await graph.get_token()
-    children = await graph.list_children(tok, f"{ONEDRIVE_BASE}/Shearing/PDF") if tok else []
-    by_name = {c["name"]: c["id"] for c in children if not c.get("is_folder")}
+    children = await graph.list_files_deep(tok, f"{ONEDRIVE_BASE}/Shearing/PDF") if tok else []
+    by_name = {c["name"]: c["id"] for c in children}
     planned, changed, errors = [], [], []
     for row in rows:
         r = dict(row)
@@ -792,9 +794,8 @@ async def s_dedupe(token: str = Query(...), apply: int = Query(0), limit: int = 
     tok = await graph.get_token()
     by_name = {}
     if tok:
-        for c in await graph.list_children(tok, f"{ONEDRIVE_BASE}/Shearing/PDF"):
-            if not c.get("is_folder"):
-                by_name[c["name"]] = c["id"]
+        for c in await graph.list_files_deep(tok, f"{ONEDRIVE_BASE}/Shearing/PDF"):
+            by_name[c["name"]] = c["id"]
     for d in to_delete:
         try:
             await db.execute("DELETE FROM shearing_inspection WHERE id=$1", d["id"])

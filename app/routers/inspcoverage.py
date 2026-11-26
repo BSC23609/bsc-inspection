@@ -14,16 +14,17 @@ Admin or ?token=AGENT_TOKEN. Read-only; never writes to SAP or QMS.
 """
 import asyncio
 import json
+import re
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Query, HTTPException, Request
 from fastapi.responses import JSONResponse
 
-from .. import db
+from .. import db, graph, odsync
 from .. import insp_data as idata
 from ..auth import current_employee
-from ..config import AGENT_TOKEN, SAP_COMPANY_DB
+from ..config import AGENT_TOKEN, SAP_COMPANY_DB, ONEDRIVE_BASE
 
 router = APIRouter(prefix="/insp")
 IST = ZoneInfo("Asia/Kolkata")
@@ -258,3 +259,98 @@ async def coverage(request: Request,
                             "qms_raw": sorted(list(pdi_sos))[:12]},
         },
     })
+
+
+# =============================================================================
+#  ONE-OFF: file EXISTING report PDFs into date-wise sub-folders
+#  New reports already save into <module>/PDF/<YYYY-MM-DD>/… ; this moves the
+#  historical flat files in. Idempotent, dry-run by default, chunked by `limit`.
+#    /insp/organize-pdfs?token=BSC%40123&module=all&dry=1
+#    …&module=coil&dry=0&limit=150   (repeat until remaining=0)
+# =============================================================================
+_ROOTS = {"coil": "Inward/PDF", "quality": "Quality/PDF",
+          "shearing": "Shearing/PDF", "pdi": "Pre-Delivery"}
+_DATEDIR = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _date_from_name(name: str, pdi_map: dict | None = None) -> str | None:
+    base = name[:-4] if name.lower().endswith(".pdf") else name
+    d = odsync.date_folder(name)                 # parses (dd-mm-yyyy)
+    if d != "undated":
+        return d
+    if pdi_map and base in pdi_map:              # PDI: look up report_date by report_no
+        d = odsync.date_folder(pdi_map[base])
+        if d != "undated":
+            return d
+    m = re.search(r"-(\d{2})(\d{2})(\d{2})(?:-|$)", base)   # report_no …-161126-09
+    if m:
+        dd, mm, yy = m.groups()
+        return f"20{yy}-{mm}-{dd}"
+    return None
+
+
+@router.get("/organize-pdfs")
+async def organize_pdfs(request: Request, token: str = Query(default=""),
+                        module: str = Query(default="all"),
+                        dry: int = Query(default=1), limit: int = Query(default=50)):
+    await _gate(request, token)
+    mods = list(_ROOTS) if module == "all" else [m for m in [module] if m in _ROOTS]
+    if not mods:
+        raise HTTPException(400, "module must be coil|quality|shearing|pdi|all")
+    tok = await graph.get_token()
+    if not tok:
+        raise HTTPException(502, "OneDrive sign-in failed")
+    out = {}
+    budget = max(1, limit)
+    for m in mods:
+        rootp = f"{ONEDRIVE_BASE}/{_ROOTS[m]}"
+        pdi_map = {}
+        if m == "pdi":
+            for r in await db.fetch("SELECT report_no, report_date FROM pdi_reports"):
+                pdi_map[str(r["report_no"])] = str(r["report_date"] or "")
+        files = await graph.list_files_deep(tok, rootp, max_depth=2)
+        planned, moved, errors = [], [], []
+        skipped = undated = 0
+        ensured: dict[str, str] = {}   # target folder path -> id (cache)
+        for f in files:
+            name = f["name"]
+            if not name.lower().endswith(".pdf"):
+                continue
+            parent = f["parent_path"]
+            rel = parent[len(rootp):].strip("/")         # "" or "CTL-1" or "2026-11-26[/CTL-1]"
+            segs = [s for s in rel.split("/") if s]
+            if segs and _DATEDIR.match(segs[0]):          # already in a date folder
+                skipped += 1
+                continue
+            d = _date_from_name(name, pdi_map)
+            if not d:
+                undated += 1
+                continue
+            tail = "/".join(segs)                         # preserve e.g. the CTL-1 machine folder
+            target = f"{rootp}/{d}" + (f"/{tail}" if tail else "")
+            planned.append({"file": name, "from": parent or rootp, "to": target})
+            if dry or budget <= 0:
+                continue
+            try:
+                if target not in ensured:
+                    await graph.create_folder(rootp, d)
+                    if tail:
+                        await graph.create_folder(f"{rootp}/{d}", tail)
+                    tid = await graph.get_item_id(tok, target)
+                    if not tid:
+                        errors.append({"file": name, "error": f"target folder missing: {target}"})
+                        continue
+                    ensured[target] = tid
+                if await graph.move_item(tok, f["id"], ensured[target]):
+                    moved.append(name)
+                    budget -= 1
+                else:
+                    errors.append({"file": name, "error": "move failed"})
+            except Exception as e:
+                errors.append({"file": name, "error": str(e)[:160]})
+        out[m] = {"pdf_files": sum(1 for f in files if f["name"].lower().endswith(".pdf")),
+                  "already_filed": skipped, "undated": undated,
+                  "to_move": len(planned), "moved": len(moved),
+                  "remaining": len(planned) - len(moved),
+                  "errors": errors[:20], "sample": planned[:12]}
+    return _json({"dry_run": bool(dry), "modules": out})

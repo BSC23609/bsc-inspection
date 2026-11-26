@@ -291,7 +291,8 @@ async def od_sync(rno: str, dedupe: bool = False, pdf: bool = True) -> dict:
            "approved_by": d.get("approved_by") or "", "created_by": d.get("created_by") or "",
            "created_at": ca.astimezone(IST).strftime("%d-%b-%Y %H:%M") if ca else ""}
     safe = "".join(ch if ch.isalnum() or ch in "._-" else "_" for ch in rno)
-    path = f"{ONEDRIVE_BASE}/Pre-Delivery/{safe}.pdf"
+    dfold = odsync.date_folder(d.get("report_date") or ca)
+    path = f"{ONEDRIVE_BASE}/Pre-Delivery/{dfold}/{safe}.pdf"
     token = await st.run("OneDrive sign-in", graph.get_token())
     if token:
         if pdf:

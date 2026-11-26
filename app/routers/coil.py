@@ -359,15 +359,16 @@ async def coil_relabel_inward(token: str = Query(default=""),
     if new_weight.strip():
         changes.append((cell(8), "Coil Weight", rec.get("coil_weight"), new_weight.strip(), new_weight.strip()))
 
+    _dfold = odsync.date_folder(rec.get("log_date") or old_ref)
     out = {"matched_row": row_idx, "sheet_row": sheet_row, "old_ref": old_ref, "new_ref": new_ref,
            "changes": [{"cell": c, "field": f, "old": str(o), "new": str(n)} for c, f, o, n, _ in changes],
-           "pdf": f"{ONEDRIVE_BASE}/Inward/PDF/{new_ref}.pdf", "dry_run": is_dry}
+           "pdf": f"{ONEDRIVE_BASE}/Inward/PDF/{_dfold}/{new_ref}.pdf", "dry_run": is_dry}
     if is_dry:
         return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
 
     for c, _f, _o, _n, val in changes:
         await graph.update_cell(gtoken, item_id, sheet, c, val)
-    await graph.upload_file(gtoken, f"{ONEDRIVE_BASE}/Inward/PDF/{new_ref}.pdf",
+    await graph.upload_file(gtoken, f"{ONEDRIVE_BASE}/Inward/PDF/{_dfold}/{new_ref}.pdf",
                             build_coil_pdf(pdf_rec), "application/pdf")
     _bust_legacy_cache()
     out["applied"] = True
@@ -476,8 +477,10 @@ async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bo
     if not token:
         return await odsync.record(st)
 
+    _dfold = odsync.date_folder(r.get("log_date") or r.get("created_at"))
+
     async def _pdf():
-        await graph.upload_file(token, f"{ONEDRIVE_BASE}/Inward/PDF/{fn}.pdf",
+        await graph.upload_file(token, f"{ONEDRIVE_BASE}/Inward/PDF/{_dfold}/{fn}.pdf",
                                 build_coil_pdf(r), "application/pdf")
     if pdf:
         await st.run("PDF report", _pdf())
@@ -599,7 +602,9 @@ async def coil_update(body: CoilIn, emp: dict = Depends(require_employee)):
     if old_fn and new_fn != old_fn:
         try:
             gtoken = await graph.get_token()
-            oid = await graph.get_item_id(gtoken, f"{ONEDRIVE_BASE}/Inward/PDF/{old_fn}.pdf")
+            _odf = odsync.date_folder(old_fn)  # old_fn embeds (dd-mm-yyyy); folder unchanged by rename
+            oid = (await graph.get_item_id(gtoken, f"{ONEDRIVE_BASE}/Inward/PDF/{_odf}/{old_fn}.pdf")
+                   or await graph.get_item_id(gtoken, f"{ONEDRIVE_BASE}/Inward/PDF/{old_fn}.pdf"))
             if oid:
                 await graph.delete_item(gtoken, oid)
         except Exception as e:

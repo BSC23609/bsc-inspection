@@ -14,7 +14,7 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
-from .. import db, graph, xlsxlog
+from .. import db, graph, xlsxlog, odsync
 from ..auth import require_employee, current_employee
 from ..config import ONEDRIVE_BASE
 from .. import config as _qcfg
@@ -233,7 +233,8 @@ async def _save_quality_pdf(data: dict, rec_id, s: dict, token=None, strict=Fals
         dt = ld.strftime("%d-%m-%Y") if ld else "nodate"
         mc = re.sub(r"[^A-Za-z0-9-]", "", re.sub(r"\s+", "", str(s.get("machine_name") or ""))) or "CTL"
         fname = f"{coil}_({dt})_CTL_Inspection_{rec_id}.pdf"
-        path = f"{ONEDRIVE_BASE}/Quality/PDF/{mc}/{fname}"
+        dfold = odsync.date_folder(ld)
+        path = f"{ONEDRIVE_BASE}/Quality/PDF/{dfold}/{mc}/{fname}"
         await graph.upload_file(token, path, pdf, "application/pdf")
         print("[quality-pdf] saved:", path)
         return path
