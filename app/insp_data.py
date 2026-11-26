@@ -121,3 +121,20 @@ _PLATE_DIM = re.compile(r"\d+(?:\.\d+)?\s*[xX]\s*\d+(?:\.\d+)?\s*[xX]\s*\d+", re
 def is_coil_desc(desc) -> bool:
     """True for a mother coil (T x W); False for a cut plate/sheet (T x W x L)."""
     return not _PLATE_DIM.search(str(desc or ""))
+
+
+_DIM3 = re.compile(r"(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)\s*[xX]\s*(\d+(?:\.\d+)?)")
+_DIM2 = re.compile(r"(\d+(?:\.\d+)?)\s*(?:MM)?\s*[xX]\s*(\d+(?:\.\d+)?)")
+
+
+def parse_dims(desc) -> dict:
+    """Pull thickness / width / length out of an item description, e.g.
+    'SAIL HR COIL 8MMX1250' -> (8, 1250, '');  'HR SHEET 02X1250X2500' -> (02,1250,2500)."""
+    s = str(desc or "")
+    m = _DIM3.search(s)
+    if m:
+        return {"thk": m.group(1), "wid": m.group(2), "len": m.group(3)}
+    m = _DIM2.search(s)
+    if m:
+        return {"thk": m.group(1), "wid": m.group(2), "len": ""}
+    return {"thk": "", "wid": "", "len": ""}

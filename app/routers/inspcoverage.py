@@ -200,18 +200,26 @@ async def coverage(request: Request,
     inward = [r for r in inward_all if idata.is_coil_desc(r.get("Descr", ""))]
     plates_dropped = len(inward_all) - len(inward)
 
+    # parse thickness/width/length from the item descriptions for the drill-down tables
+    for r in inward:
+        d = idata.parse_dims(r.get("Descr", ""))
+        r["thk"], r["wid"] = d["thk"], d["wid"]
+    for r in prod:
+        d = idata.parse_dims(r.get("OutDescr") or r.get("InDescr") or "")
+        r["thk"], r["wid"], r["len"] = d["thk"], d["wid"], d["len"]
+
     lg = bool(legacy)
     (inward_keys, m_in), (ctl_keys, m_ctl), (shear_keys, m_sh), pdi_sos = await asyncio.gather(
         _inward_keys(d1, d2, lg), _ctl_keys(d1, d2, lg),
         _shearing_keys(d1, d2, lg), _pdi_sos(d1, d2))
 
     s_inward = _reconcile_coils(inward, "CoilNo", "GRPODate", inward_keys,
-                                extra=("ItemGroup", "Supplier"))
+                                extra=("thk", "wid", "ItemGroup", "Supplier"))
     s_inward["plates_excluded"] = plates_dropped
     s_ctl = _reconcile_coils([r for r in prod if r.get("Process") == "CTL"],
-                             "CoilNo", "ProdDate", ctl_keys, extra=("MachCode", "Grade"))
+                             "CoilNo", "ProdDate", ctl_keys, extra=("thk", "wid", "len", "MachCode", "Grade"))
     s_shear = _reconcile_coils([r for r in prod if r.get("Process") == "Shearing"],
-                               "CoilNo", "ProdDate", shear_keys, extra=("MachCode", "Grade"))
+                               "CoilNo", "ProdDate", shear_keys, extra=("thk", "wid", "MachCode", "Grade"))
 
     # Pre-dispatch: distinct Sales Orders dispatched, matched to PDI 'so'
     so_seen, so_blank = {}, []
