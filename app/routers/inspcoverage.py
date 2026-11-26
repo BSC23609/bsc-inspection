@@ -353,9 +353,9 @@ async def organize_pdfs(request: Request, token: str = Query(default=""),
                 continue
             try:
                 if target not in ensured:
-                    await graph.create_folder(rootp, d)
+                    await graph.create_folder(tok, rootp, d)
                     if tail:
-                        await graph.create_folder(f"{rootp}/{d}", tail)
+                        await graph.create_folder(tok, f"{rootp}/{d}", tail)
                     tid = await graph.get_item_id(tok, target)
                     if not tid:
                         errors.append({"file": name, "error": f"target folder missing: {target}"})
