@@ -206,18 +206,33 @@ def _yn(v):
     return "-"
 
 
-def build_coil_pdf(r: dict) -> bytes:
-    """One Coil Inward record as a clean, brand-blue A4 report."""
+def _submitted_str(r):
+    dt = r.get("created_at") or r.get("log_date")
+    try:
+        if hasattr(dt, "strftime"):
+            return f"{dt.strftime('%d %b %Y, %I:%M')} {dt.strftime('%p').lower()}"
+    except Exception:
+        pass
+    return str(dt or "")[:19]
+
+
+def build_coil_pdf(r: dict, coil_img: bytes | None = None, sticker_img: bytes | None = None) -> bytes:
+    """One Coil Inward record as a clean, brand-blue A4 report (legacy layout: label|value
+    grid, Submitted line, separate Inspection & Remarks sections, and embedded photos when
+    the coil/sticker image bytes are supplied)."""
     buf = io.BytesIO()
     doc = SimpleDocTemplate(buf, pagesize=A4,
                             leftMargin=34, rightMargin=34, topMargin=26, bottomMargin=30)
     st = {
-        "title": ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=15, textColor=BRAND, alignment=1, leading=18),
-        "sub": ParagraphStyle("s", fontName="Helvetica", fontSize=8.5, textColor=MUT, alignment=1),
-        "meta": ParagraphStyle("m", fontName="Helvetica-Bold", fontSize=9, textColor=DARK, alignment=2, leading=12),
-        "sec": ParagraphStyle("se", fontName="Helvetica-Bold", fontSize=9.5, textColor="white", leading=12),
-        "lab": ParagraphStyle("l", fontName="Helvetica", fontSize=8.5, textColor=MUT, leading=11),
-        "val": ParagraphStyle("v", fontName="Helvetica-Bold", fontSize=9.5, textColor=colors.HexColor("#0e1524"), leading=12),
+        "title": ParagraphStyle("t", fontName="Helvetica-Bold", fontSize=14, textColor=BRAND, alignment=2, leading=17),
+        "sub": ParagraphStyle("s", fontName="Helvetica", fontSize=8, textColor=MUT, alignment=2),
+        "ref": ParagraphStyle("rf", fontName="Helvetica-Bold", fontSize=8, textColor=BRAND, alignment=2),
+        "sec": ParagraphStyle("se", fontName="Helvetica-Bold", fontSize=9, textColor="white", leading=12),
+        "lab": ParagraphStyle("l", fontName="Helvetica-Bold", fontSize=8, textColor=DARK, leading=11),
+        "val": ParagraphStyle("v", fontName="Helvetica", fontSize=9, textColor=colors.HexColor("#0e1524"), leading=12),
+        "note": ParagraphStyle("nt", fontName="Helvetica", fontSize=8.5, textColor=MUT),
+        "rem": ParagraphStyle("rm", fontName="Helvetica", fontSize=9.5, textColor=colors.HexColor("#0e1524"), leading=13),
+        "cap": ParagraphStyle("cp", fontName="Helvetica-Bold", fontSize=8, textColor="white", alignment=1),
     }
     story = []
 
@@ -228,12 +243,12 @@ def build_coil_pdf(r: dict) -> bytes:
         except Exception:
             logo = ""
     wheels = str(r.get("wheels_india") or "").strip().lower() in ("yes", "y", "true", "1")
-    rep_title = "MOTHER COIL INSPECTION REPORT" if wheels else "COIL INWARD INSPECTION"
-    sub = "Wheels India" if wheels else "Mother Coil Inspection Report"
-    title_block = [Paragraph(rep_title, st["title"]), Paragraph(sub, st["sub"])]
+    rep_title = "COIL INWARD INSPECTION"
+    sub = "Mother Coil Inspection Report"
     rid = r.get("id")
-    meta = Paragraph(f"Report #{rid}<br/>{str(r.get('log_date') or '')[:10]}", st["meta"])
-    head = Table([[logo, title_block, meta]], colWidths=[130, None, 130])
+    right = [Paragraph(rep_title, st["title"]), Paragraph(sub, st["sub"]),
+             Paragraph(f"Report #{rid}" if rid not in (None, "") else "", st["ref"])]
+    head = Table([[logo, right]], colWidths=[150, None])
     head.setStyle(TableStyle([
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("ALIGN", (0, 0), (0, 0), "LEFT"),
@@ -241,66 +256,104 @@ def build_coil_pdf(r: dict) -> bytes:
         ("BOTTOMPADDING", (0, 0), (-1, 0), 9),
     ]))
     story.append(head)
-    story.append(Spacer(1, 12))
+    story.append(Spacer(1, 7))
+    story.append(Paragraph(f"Submitted: {_submitted_str(r)}", st["note"]))
+    story.append(Spacer(1, 8))
 
-    def section(title, pairs):
-        bar = Table([[Paragraph(title, st["sec"])]], colWidths=[doc.width])
-        bar.setStyle(TableStyle([
+    def bar(title):
+        b = Table([[Paragraph(title, st["sec"])]], colWidths=[doc.width])
+        b.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, -1), BRAND),
             ("LEFTPADDING", (0, 0), (-1, -1), 8), ("TOPPADDING", (0, 0), (-1, -1), 4),
             ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
         ]))
-        story.append(bar)
+        story.append(b)
+
+    def section(title, pairs):
+        bar(title)
         data, row = [], []
-        for i, (lab, val) in enumerate(pairs):
-            cell = [Paragraph(lab, st["lab"]), Spacer(1, 1), Paragraph(_fmt(val) or "-", st["val"])]
-            row.append(cell)
-            if len(row) == 2:
+        for lab, val in pairs:
+            row += [Paragraph(lab, st["lab"]), Paragraph(_fmt(val) or "-", st["val"])]
+            if len(row) == 4:
                 data.append(row); row = []
         if row:
-            row.append("")
+            while len(row) < 4:
+                row.append("")
             data.append(row)
         if data:
-            t = Table(data, colWidths=[doc.width / 2.0] * 2)
+            lw = doc.width
+            t = Table(data, colWidths=[lw * 0.17, lw * 0.33, lw * 0.17, lw * 0.33])
             t.setStyle(TableStyle([
-                ("VALIGN", (0, 0), (-1, -1), "TOP"),
-                ("TOPPADDING", (0, 0), (-1, -1), 6), ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
-                ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
-                ("LINEBELOW", (0, 0), (-1, -1), 0.4, GRID),
-                ("LINEAFTER", (0, 0), (0, -1), 0.4, GRID),
-                ("BOX", (0, 0), (-1, -1), 0.4, GRID),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("BACKGROUND", (0, 0), (0, -1), HEAD),
+                ("BACKGROUND", (2, 0), (2, -1), HEAD),
+                ("TOPPADDING", (0, 0), (-1, -1), 5), ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+                ("LEFTPADDING", (0, 0), (-1, -1), 7), ("RIGHTPADDING", (0, 0), (-1, -1), 7),
+                ("GRID", (0, 0), (-1, -1), 0.4, GRID),
             ]))
             story.append(t)
-        story.append(Spacer(1, 12))
+        story.append(Spacer(1, 10))
 
     section("VEHICLE &amp; COIL IDENTITY", [
-        ("Vehicle Number", r.get("vehicle_number")),
-        ("Batch Number", r.get("batch_number")),
+        ("Vehicle No.", r.get("vehicle_number")),
+        ("Batch No.", r.get("batch_number")),
         ("Make of Coil", r.get("make_of_coil")),
         ("Grade", r.get("grade")),
-        ("Coil ID (mm)", r.get("coil_id")),
+        ("Coil ID", r.get("coil_id")),
         ("Coil Weight (T)", r.get("coil_weight")),
     ])
     section("DIMENSIONS", [
         ("Width (mm)", r.get("width")),
         ("Thickness (mm)", r.get("thickness")),
-        ("Actual Thickness (mm)", r.get("actual_thickness")),
-        ("Actual Width (mm)", r.get("actual_width")),
+        ("Actual Thickness", r.get("actual_thickness")),
+        ("Actual Width", r.get("actual_width")),
     ])
     section("PHYSICAL CONDITION", [
-        ("Identification Sticker", _yn(r.get("id_sticker"))),
-        ("Edge Damage - Inner", _yn(r.get("edge_inner"))),
-        ("Edge Damage - Outer", _yn(r.get("edge_outer"))),
+        ("ID Sticker", _yn(r.get("id_sticker"))),
+        ("Edge Damage Inner", _yn(r.get("edge_inner"))),
+        ("Edge Damage Outer", _yn(r.get("edge_outer"))),
         ("Scratch Mark", _yn(r.get("scratch"))),
         ("Strapping", _yn(r.get("strapping"))),
         ("Rust on Surface", _yn(r.get("rust"))),
-        ("Any Other Damages", r.get("other_damages")),
-        ("Wheels India Coil", "Yes" if wheels else "No"),
+        ("Other Damages", r.get("other_damages") or "-"),
+        ("Wheels India", "Yes" if wheels else "No"),
     ])
-    section("INSPECTOR &amp; REMARKS", [
+    section("INSPECTION", [
         ("Inspected By", r.get("inspected_by")),
-        ("Remarks", r.get("remarks")),
+        ("Inspection Date", _submitted_str(r)),
     ])
+
+    bar("REMARKS")
+    rbox = Table([[Paragraph(_fmt(r.get("remarks")) or "-", st["rem"])]], colWidths=[doc.width])
+    rbox.setStyle(TableStyle([
+        ("BOX", (0, 0), (-1, -1), 0.4, GRID),
+        ("LEFTPADDING", (0, 0), (-1, -1), 8), ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 16),
+    ]))
+    story.append(rbox)
+    story.append(Spacer(1, 10))
+
+    imgs = []
+    for b in (coil_img, sticker_img):
+        if b:
+            try:
+                imgs.append(Image(io.BytesIO(b), width=doc.width / 2 - 14, height=56 * mm, kind="proportional"))
+            except Exception:
+                pass
+    if imgs:
+        bar(f"PHOTOS ({len(imgs)})")
+        story.append(Spacer(1, 6))
+        caps = [Paragraph(str(i + 1), st["cap"]) for i in range(len(imgs))]
+        while len(imgs) < 2:
+            imgs.append(""); caps.append("")
+        pt = Table([imgs, caps], colWidths=[doc.width / 2] * 2)
+        pt.setStyle(TableStyle([
+            ("VALIGN", (0, 0), (-1, 0), "TOP"), ("ALIGN", (0, 0), (-1, -1), "CENTER"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 6), ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+            ("TOPPADDING", (0, 0), (-1, -1), 3), ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ]))
+        story.append(pt)
+        story.append(Spacer(1, 8))
 
     gen = datetime.now().strftime("%d-%b-%Y %H:%M")
     story.append(Spacer(1, 6))

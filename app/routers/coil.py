@@ -210,6 +210,33 @@ async def _save_photo(token, kind: str, batch: str, data_url: str) -> str:
     return path
 
 
+async def _fetch_photo(token: str, stored) -> bytes | None:
+    """Photo bytes for a stored coil/sticker value — a base64 data URL (decode) or an
+    OneDrive path (fetch via Graph). None if missing or unreadable."""
+    s = str(stored or "").strip()
+    if not s:
+        return None
+    m = _DATAURL.match(s)
+    if m:
+        try:
+            return base64.b64decode(m.group(2))
+        except Exception:
+            return None
+    try:
+        iid = await graph.get_item_id(token, s)
+        if iid:
+            return await graph.download_item(token, iid)
+    except Exception:
+        return None
+    return None
+
+
+async def _coil_imgs(token: str, r: dict) -> tuple:
+    """(coil_photo_bytes, sticker_photo_bytes) for embedding into the report PDF."""
+    return (await _fetch_photo(token, r.get("coil_photo")),
+            await _fetch_photo(token, r.get("sticker_photo")))
+
+
 async def _normalize(b: CoilIn):
     if not b.log_date:
         raise HTTPException(400, "log_date required")
@@ -368,8 +395,9 @@ async def coil_relabel_inward(token: str = Query(default=""),
 
     for c, _f, _o, _n, val in changes:
         await graph.update_cell(gtoken, item_id, sheet, c, val)
+    _ci, _si = await _coil_imgs(gtoken, pdf_rec)
     await graph.upload_file(gtoken, f"{ONEDRIVE_BASE}/Inward/PDF/{_dfold}/{new_ref}.pdf",
-                            build_coil_pdf(pdf_rec), "application/pdf")
+                            build_coil_pdf(pdf_rec, _ci, _si), "application/pdf")
     _bust_legacy_cache()
     out["applied"] = True
     return JSONResponse(jsonable_encoder(out), headers={"Cache-Control": "no-store"})
@@ -480,8 +508,9 @@ async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bo
     _dfold = odsync.date_folder(r.get("log_date") or r.get("created_at"))
 
     async def _pdf():
+        ci, si = await _coil_imgs(token, r)
         await graph.upload_file(token, f"{ONEDRIVE_BASE}/Inward/PDF/{_dfold}/{fn}.pdf",
-                                build_coil_pdf(r), "application/pdf")
+                                build_coil_pdf(r, ci, si), "application/pdf")
     if pdf:
         await st.run("PDF report", _pdf())
 
@@ -629,7 +658,15 @@ async def coil_pdf(id: int = Query(...), emp: dict = Depends(require_employee)):
     row = await db.fetchrow("SELECT * FROM coil_inward WHERE id=$1", id)
     if not row:
         raise HTTPException(404, "not found")
-    pdf = build_coil_pdf(dict(row))
+    rec = dict(row)
+    ci = si = None
+    try:
+        tok = await graph.get_token()
+        if tok:
+            ci, si = await _coil_imgs(tok, rec)
+    except Exception:
+        ci = si = None
+    pdf = build_coil_pdf(rec, ci, si)
     b = (dict(row).get("batch_number") or str(id)).replace(" ", "_")
     fn = f"Coil_Inward_{b}.pdf"
     return Response(pdf, media_type="application/pdf",
