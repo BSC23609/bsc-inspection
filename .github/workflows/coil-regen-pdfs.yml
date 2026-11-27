@@ -14,7 +14,7 @@ jobs:
         run: |
           skip=0
           for i in $(seq 1 600); do
-            resp=$(curl -sS "https://qms.bharatsteels.in/coil/regen-pdfs?token=BSC%40123&skip=$skip&limit=8")
+            resp=$(curl -sS "https://qms.bharatsteels.in/coil/regen-pdfs?token=BSC%40123&skip=$skip&limit=5")
             echo "$resp"
             done=$(printf '%s' "$resp" | python3 -c "import sys,json;print(json.load(sys.stdin).get('done'))" 2>/dev/null || echo "err")
             next=$(printf '%s' "$resp" | python3 -c "import sys,json;print(json.load(sys.stdin).get('next_skip',0))" 2>/dev/null || echo "$skip")
