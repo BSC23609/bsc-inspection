@@ -550,6 +550,27 @@ async def od_sync(rec_id: int, excel: bool = True, dedupe: bool = False, pdf: bo
     return await odsync.record(st)
 
 
+@router.get("/photo-stats")
+async def coil_photo_stats(token: str = Query(default=""), emp: dict = Depends(current_employee)):
+    """How many coil-inward records have the coil / sticker photo saved (so the rebuilt PDF can
+    embed it) vs none. Admin session or ?token=AGENT_TOKEN."""
+    await ensure_table()
+    if not ((emp and emp.get("is_admin")) or (AGENT_TOKEN and token == AGENT_TOKEN)):
+        raise HTTPException(403, "Admins only")
+    row = await db.fetchrow("""
+        SELECT COUNT(*) AS total,
+          COUNT(*) FILTER (WHERE coalesce(btrim(coil_photo),'')    <> '') AS with_coil,
+          COUNT(*) FILTER (WHERE coalesce(btrim(sticker_photo),'') <> '') AS with_sticker,
+          COUNT(*) FILTER (WHERE coalesce(btrim(coil_photo),'')    <> ''
+                              OR coalesce(btrim(sticker_photo),'') <> '') AS with_any_photo,
+          COUNT(*) FILTER (WHERE coalesce(btrim(coil_photo),'')    <> ''
+                             AND coalesce(btrim(sticker_photo),'') <> '') AS with_both_photos,
+          COUNT(*) FILTER (WHERE coalesce(btrim(coil_photo),'')    =  ''
+                             AND coalesce(btrim(sticker_photo),'') =  '') AS with_no_photo
+        FROM coil_inward""")
+    return JSONResponse(dict(row), headers={"Cache-Control": "no-store"})
+
+
 @router.get("/regen-pdfs")
 async def coil_regen_pdfs(token: str = Query(default=""), skip: int = Query(default=0),
                           limit: int = Query(default=8), emp: dict = Depends(current_employee)):
