@@ -5842,7 +5842,9 @@ async def _board_matrix_impl(emp: dict):
         _hraw = b.get("hold_at")
         _eraw = b.get("hold_eta")
         g["breakdowns"].append({"id": b.get("id"), "problem": (b.get("problem") or ""),
-                                "date": raised_iso, "assignees": bnames,
+                                "date": raised_iso,
+                                "raised_ts": (raised.astimezone(IST).isoformat() if isinstance(raised, datetime) else ""),
+                                "assignees": bnames,
                                 "wo_type": _wo_type(b.get("wo_type")),
                                 "by": (b.get("reported_by") or "").strip() or "-",
                                 "hold": (str(b.get("hold_status") or "").strip().lower() == "hold"),
@@ -7114,11 +7116,46 @@ async def _board_png_rows():
     PM that the board shows as Overdue or Due today, and every ACTIVE breakdown / unscheduled
     PM as Overdue. A breakdown that is On Hold is left OFF the image until it is resumed; it
     uses the board's own dates, statuses and assignee names."""
+    now_ist = datetime.now(IST)
+
     def _fmtd(iso):
         try:
             return datetime.fromisoformat(str(iso)[:10]).strftime("%d-%m-%Y")
         except Exception:
             return str(iso or "")
+
+    def _fmt_dur(start_dt):
+        """'10 h 5 min' overdue duration from start_dt (a tz-aware datetime) to now."""
+        if not start_dt:
+            return "-"
+        secs = (now_ist - start_dt).total_seconds()
+        if secs < 60:
+            return "<1 min"
+        total_min = int(secs // 60)
+        d, rem = divmod(total_min, 1440)
+        h, m = divmod(rem, 60)
+        if d:
+            return f"{d} d {h} h"
+        if h:
+            return f"{h} h {m} min"
+        return f"{m} min"
+
+    def _pm_overdue_dur(state, due_iso):
+        """A PM becomes Overdue after the 7 PM cutoff on its due date — measure from there."""
+        if state != "overdue":
+            return "-"
+        try:
+            dd = datetime.fromisoformat(str(due_iso)[:10]).replace(
+                hour=QUARTERLY_CLOSE_HOUR, minute=0, second=0, microsecond=0, tzinfo=IST)
+            return _fmt_dur(dd)
+        except Exception:
+            return "-"
+
+    def _bd_dur(raised_ts):
+        try:
+            return _fmt_dur(datetime.fromisoformat(raised_ts))
+        except Exception:
+            return "-"
 
     def _who(obj):
         ast = obj.get("assignee_status") or []
@@ -7156,7 +7193,8 @@ async def _board_png_rows():
             if _assigned(who):
                 pm.append({"code": code, "name": name, "cat": "Daily Maintenance",
                            "who": who, "date": _fmtd(d.get("due")),
-                           "status": "Due today" if _ds == "due" else "Overdue", "by": "-"})
+                           "status": "Due today" if _ds == "due" else "Overdue", "by": "-",
+                           "dur": _pm_overdue_dur(_ds, d.get("due"))})
         q = m.get("quarterly") or {}
         _qs = q.get("state")
         if _qs in ("overdue", "due"):
@@ -7164,7 +7202,8 @@ async def _board_png_rows():
             if _assigned(who):
                 pm.append({"code": code, "name": name, "cat": "Quarterly Maintenance",
                            "who": who, "date": _fmtd(q.get("due")),
-                           "status": "Due today" if _qs == "due" else "Overdue", "by": "-"})
+                           "status": "Due today" if _qs == "due" else "Overdue", "by": "-",
+                           "dur": _pm_overdue_dur(_qs, q.get("due"))})
         for b in (m.get("breakdowns") or []):
             # A paused (On Hold) breakdown is NOT shown on the WhatsApp image — only ACTIVE
             # breakdowns, as Overdue. When it is resumed it becomes active again and reappears.
@@ -7177,6 +7216,7 @@ async def _board_png_rows():
             bd.append({"code": code, "name": name, "prob": b.get("problem") or "",
                        "who": who, "status": "Overdue",
                        "date": _fmtd(b.get("date")), "by": (b.get("by") or "-"),
+                       "dur": _bd_dur(b.get("raised_ts")),
                        "wo_type": _wo_type(b.get("wo_type")), "hold_reason": ""})
     return pm, bd
 

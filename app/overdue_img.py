@@ -38,6 +38,7 @@ COLS = [
     ("name", "Machine Name", 218),
     ("cat", "Category", 182),
     ("status", "Status", 132),
+    ("dur", "Duration", 132),
     ("who", "Assigned To", 192),
     ("by", "Assigned By", 192),
 ]
@@ -109,6 +110,7 @@ def _rows(pm, bd):
             "name": (it.get("name") or "").strip() or "-",
             "cat": _cat(it.get("cat")),
             "status": it.get("status") or "Overdue",
+            "dur": (it.get("dur") or "-"),
             "who": (it.get("who") or "-").strip() or "-",
             "by": (it.get("by") or "-").strip() or "-",
             "sub": "",   # PM rows have no hold reason
@@ -127,6 +129,7 @@ def _rows(pm, bd):
             "cat": "Unscheduled PM" if is_upm else "Breakdown",
             # carry the breakdown's own status so a paused one shows "On Hold", not "Overdue"
             "status": st,
+            "dur": (it.get("dur") or "-"),
             "who": (it.get("who") or "-").strip() or "-",
             "by": (it.get("by") or "-").strip() or "-",
             # for a paused breakdown, show WHY it is on hold under the machine name
